@@ -12,9 +12,12 @@ export interface UseUserMcpReturn {
   create: (input: {
     name: string;
     description?: string;
-    command: string;
+    transport?: 'stdio' | 'streamable-http' | 'sse';
+    command?: string;
     args?: string[];
     env?: Record<string, string>;
+    url?: string;
+    cwd?: string;
     visibility?: 'private' | 'shared';
     tags?: string[];
     metadata?: ExtensionMetadata;
@@ -31,12 +34,19 @@ export interface UseUserMcpReturn {
     entryFile?: string;
     visibility?: 'private' | 'shared';
   }) => Promise<UserMcpServerView | null>;
+  importFromJson: (input: {
+    json: string;
+    visibility?: 'private' | 'shared';
+  }) => Promise<UserMcpServerView[] | null>;
   update: (id: string, input: Partial<{
     name: string;
     description: string;
+    transport: 'stdio' | 'streamable-http' | 'sse';
     command: string;
     args: string[];
     env: Record<string, string>;
+    url: string;
+    cwd: string;
     enabled: boolean;
     visibility: 'private' | 'shared';
     tags: string[];
@@ -87,6 +97,31 @@ export function useUserMcp(apiBase: string): UseUserMcpReturn {
       return server as UserMcpServerView;
     } catch {
       setError(i18n.t('apps.hook.mcpCreateFailed'));
+      return null;
+    }
+  }, [apiBase, refresh]);
+
+  const importFromJson = useCallback(async (input: Parameters<UseUserMcpReturn['importFromJson']>[0]) => {
+    try {
+      const res = await fetch(`${apiBase}/api/user/mcp-servers/import-json`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(input),
+      });
+      if (!res.ok) {
+        const payload = await res.json().catch(() => ({}));
+        setError(
+          (payload as { error?: string }).error || i18n.t('apps.hook.mcpImportFailed'),
+        );
+        return null;
+      }
+      const payload = (await res.json()) as {
+        servers?: UserMcpServerView[];
+      };
+      await refresh();
+      return payload.servers || [];
+    } catch {
+      setError(i18n.t('apps.hook.mcpImportFailed'));
       return null;
     }
   }, [apiBase, refresh]);
@@ -224,6 +259,7 @@ export function useUserMcp(apiBase: string): UseUserMcpReturn {
     refresh,
     create,
     generateWithAi,
+    importFromJson,
     importFromPath,
     update,
     remove,

@@ -220,4 +220,35 @@ describe('user MCP service', () => {
     expect(result.imported.path).toBe(expectedRoot);
     expect(fs.existsSync(path.join(expectedRoot, 'package', 'index.mjs'))).toBe(true);
   });
+
+  it('imports HTTP MCP JSON without requiring a command', async () => {
+    const { importUserMcpServersFromJson } = await import('./user-mcp-service.js');
+    const result = await importUserMcpServersFromJson('user-a', {
+      json: JSON.stringify({
+        mcpServers: {
+          docs: {
+            name: 'Docs MCP',
+            transport: 'streamable-http',
+            url: 'https://example.com/mcp',
+          },
+        },
+      }),
+    });
+
+    expect(upsertUserMcpServerMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: 'Docs MCP',
+        command: '',
+        metadata_json: expect.stringContaining('streamable-http'),
+      }),
+    );
+    expect(result.servers[0]).toEqual(
+      expect.objectContaining({
+        name: 'Docs MCP',
+        transport: 'streamable-http',
+        command: '',
+        url: 'https://example.com/mcp',
+      }),
+    );
+  });
 });

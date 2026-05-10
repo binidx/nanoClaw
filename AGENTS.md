@@ -43,6 +43,14 @@ For non-trivial work:
 - Conversation creation, naming, replay, cursor, pending-message, websocket, or duplicate-consumption work: also use `nanoclaw-conversation-flow`.
 - Non-trivial code changes: use `nanoclaw-verification` before reporting completion.
 
+## GStack Workflow
+
+For broad refactors, architecture changes, or multi-step optimization work, prefer the gstack flow in `docs/agent-harness.md` when gstack is available in the host.
+
+- Use gstack for planning, review, QA, and release sequencing on large changes.
+- Keep NanoClaw's local `nanoclaw-*` skills for file-scoped implementation work.
+- Do not force gstack onto trivial one-file fixes.
+
 ## Subagents
 
 Use subagents only when the active tool supports them and the task benefits from disjoint work:

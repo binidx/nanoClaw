@@ -51,6 +51,15 @@ For quick repo context, `CLAUDE.md` remains a compact product map, not policy.
 - Keep provider concurrency and parent timeout handling in sync; do not roll back only one side of that change.
 - Do not create overlapping write ownership between workers.
 
+## GStack Workflow
+
+For broad refactors, architecture changes, or multi-step optimization work, prefer the gstack flow when gstack is available in the host.
+
+- Typical sequence: `/office-hours` -> `/autoplan` -> implement -> `/review` -> `/qa` -> `/ship`
+- Use gstack for planning, review, QA, and release sequencing on large changes.
+- Keep NanoClaw's local `nanoclaw-*` skills for file-scoped implementation work.
+- Do not force gstack onto trivial one-file fixes.
+
 ## Edit Boundaries
 
 - Backend work under `src/**` should follow backend guidance.

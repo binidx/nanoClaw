@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { registerPublicLibraryRoutes } from './routes/public-library-routes.js';
 import { registerRegistryRoutes } from './routes/registry-routes.js';
 import { registerRuntimeCustomizationRoutes } from './routes/runtime-customization-routes.js';
+import { registerUserMcpRoutes } from './routes/user-mcp-routes.js';
 import { registerUserSkillRoutes } from './routes/user-skill-routes.js';
 
 const allowAllRequirePermission: import('./auth/auth-middleware.js').RequirePermissionFn =
@@ -65,6 +66,27 @@ describe('local install route guards', () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sourcePath: '/tmp/demo-skill' }),
+      });
+      expect(response.status).toBe(403);
+      await expect(response.json()).resolves.toMatchObject({
+        capability: 'localInstall',
+      });
+    });
+  });
+
+  it('blocks user mcp json import when local install capability is denied', async () => {
+    const app = express();
+    app.use(express.json());
+    registerUserMcpRoutes(app, {
+      requirePermission: allowAllRequirePermission,
+      requireLocalCapability: () => denyLocalInstall(),
+    });
+
+    await withServer(app, async (baseUrl) => {
+      const response = await fetch(`${baseUrl}/api/user/mcp-servers/import-json`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ json: '{"command":"npx"}' }),
       });
       expect(response.status).toBe(403);
       await expect(response.json()).resolves.toMatchObject({

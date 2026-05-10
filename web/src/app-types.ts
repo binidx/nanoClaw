@@ -1827,8 +1827,11 @@ export interface ExtensionUiMetadata {
 export interface ExtensionMetadata {
   capabilities: string[];
   runtime?: {
+    transport?: 'stdio' | 'streamable-http' | 'sse';
     kind?: string;
     entryFile?: string;
+    url?: string;
+    cwd?: string;
   };
   requirements?: ExtensionRequirements;
   artifacts?: ExtensionArtifactMetadata;
@@ -1855,9 +1858,12 @@ export interface UserMcpServerView {
   userId: string;
   name: string;
   description: string | null;
+  transport: 'stdio' | 'streamable-http' | 'sse';
   command: string;
   args: string[];
   env: Record<string, string>;
+  url: string | null;
+  cwd: string | null;
   enabled: boolean;
   visibility: 'private' | 'shared';
   sourceType: string;

@@ -11389,6 +11389,14 @@ async function executeRepoReviewEvent(
       workspacePath: reviewWorkspacePath,
       userId: reviewUserId,
       executionStats: activeExecutionStats,
+      onTurnProgress: async (turnsByWorker) => {
+        reviewTurns = turnsByWorker.flat();
+        activeExecutionStats.extraRepoReadCount = countRepoReviewToolCalls(
+          reviewTurns,
+          'read_file',
+        );
+        await persistReviewProgress();
+      },
       onProgressStep: async (step) => {
         await setProgressStep(
           step.id,

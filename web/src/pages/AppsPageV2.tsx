@@ -137,6 +137,7 @@ export function AppsPageV2({ apiBase, isAdmin }: AppsPageV2Props) {
               loading={mcp.loading || skills.loading}
               onCreateMcp={mcp.create}
               onGenerateMcp={mcp.generateWithAi}
+              onImportMcpJson={mcp.importFromJson}
               onImportMcp={mcp.importFromPath}
               onUpdateMcp={mcp.update}
               onDeleteMcp={mcp.remove}

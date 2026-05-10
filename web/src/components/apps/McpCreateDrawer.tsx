@@ -6,11 +6,18 @@ import { NcSelect } from '../common';
 
 export interface McpCreateDrawerProps {
   editing: UserMcpServerView | null;
+  onImportJson: (input: {
+    json: string;
+    visibility?: 'private' | 'shared';
+  }) => Promise<void>;
   onSave: (input: {
     name: string;
-    command: string;
+    transport?: 'stdio' | 'streamable-http' | 'sse';
+    command?: string;
     args?: string[];
     env?: Record<string, string>;
+    url?: string;
+    cwd?: string;
     description?: string;
     visibility?: 'private' | 'shared';
     metadata?: ExtensionMetadata;
@@ -44,12 +51,17 @@ function envToText(env: Record<string, string>): string {
   return Object.entries(env || {}).map(([k, v]) => `${k}=${v}`).join('\n');
 }
 
-export function McpCreateDrawer({ editing, onSave, onClose }: McpCreateDrawerProps) {
+export function McpCreateDrawer({ editing, onImportJson, onSave, onClose }: McpCreateDrawerProps) {
   const { t } = useTranslation('apps');
   const [name, setName] = useState(editing?.name ?? '');
+  const [transport, setTransport] = useState<'stdio' | 'streamable-http' | 'sse'>(
+    editing?.transport ?? 'stdio',
+  );
   const [command, setCommand] = useState(editing?.command ?? '');
   const [argsText, setArgsText] = useState(editing?.args?.join('\n') ?? '');
   const [envText, setEnvText] = useState(editing?.env ? envToText(editing.env) : '');
+  const [url, setUrl] = useState(editing?.url ?? '');
+  const [cwd, setCwd] = useState(editing?.cwd ?? '');
   const [description, setDescription] = useState(editing?.description ?? '');
   const [metadataText, setMetadataText] = useState(
     metadataToText(editing?.metadata),
@@ -67,7 +79,7 @@ export function McpCreateDrawer({ editing, onSave, onClose }: McpCreateDrawerPro
   }, [onClose]);
 
   const handleSave = async () => {
-    if (!name.trim() || !command.trim()) return;
+    if (!name.trim()) return;
     let metadata: ExtensionMetadata | undefined;
     try {
       metadata = parseMetadataText(metadataText);
@@ -80,9 +92,16 @@ export function McpCreateDrawer({ editing, onSave, onClose }: McpCreateDrawerPro
     try {
       await onSave({
         name: name.trim(),
-        command: command.trim(),
-        args: argsText.split('\n').map((a) => a.trim()).filter(Boolean),
+        transport,
+        ...(transport === 'stdio' ? { command: command.trim() } : {}),
+        ...(transport === 'stdio'
+          ? {
+              args: argsText.split('\n').map((a) => a.trim()).filter(Boolean),
+            }
+          : {}),
         env: parseEnvText(envText),
+        ...(transport !== 'stdio' ? { url: url.trim() } : {}),
+        ...(cwd.trim() ? { cwd: cwd.trim() } : {}),
         description: description.trim() || undefined,
         visibility,
         metadata,
@@ -92,22 +111,17 @@ export function McpCreateDrawer({ editing, onSave, onClose }: McpCreateDrawerPro
     }
   };
 
-  const handleJsonImport = () => {
+  const handleJsonImport = async () => {
+    setSaving(true);
     try {
-      const parsed = JSON.parse(jsonDraft.trim());
-      const srv = parsed.command ? parsed : Object.values(parsed)[0];
-      if (srv && typeof srv === 'object') {
-        setName(srv.name || srv.id || '');
-        setCommand(srv.command || '');
-        setArgsText((srv.args || []).join('\n'));
-        setEnvText(envToText(srv.env || {}));
-        setDescription(srv.description || '');
-        setMetadataText(metadataToText(srv.metadata));
-        setJsonMode(false);
-        setJsonDraft('');
-      }
-    } catch {
-      // invalid json, ignore
+      await onImportJson({
+        json: jsonDraft.trim(),
+        visibility,
+      });
+      setJsonDraft('');
+      setJsonMode(false);
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -128,17 +142,44 @@ export function McpCreateDrawer({ editing, onSave, onClose }: McpCreateDrawerPro
                 <input value={name} onChange={(e) => setName(e.target.value)} placeholder="my-translator" />
               </div>
               <div className="form-group">
-                <label>{t('mcp.commandRequired')}</label>
-                <input value={command} onChange={(e) => setCommand(e.target.value)} placeholder="npx" />
+                <label>Transport</label>
+                <select value={transport} onChange={(e) => setTransport(e.target.value as 'stdio' | 'streamable-http' | 'sse')}>
+                  <option value="stdio">stdio</option>
+                  <option value="streamable-http">streamable-http</option>
+                  <option value="sse">sse</option>
+                </select>
               </div>
-              <div className="form-group">
-                <label>{t('mcp.args')}</label>
-                <textarea value={argsText} onChange={(e) => setArgsText(e.target.value)} rows={3} placeholder="-y&#10;@modelcontextprotocol/server-everything" />
-              </div>
-              <div className="form-group">
-                <label>{t('mcp.envVars')}</label>
-                <textarea value={envText} onChange={(e) => setEnvText(e.target.value)} rows={3} placeholder="API_KEY=xxx" />
-              </div>
+              {transport === 'stdio' ? (
+                <>
+                  <div className="form-group">
+                    <label>{t('mcp.commandRequired')}</label>
+                    <input value={command} onChange={(e) => setCommand(e.target.value)} placeholder="npx" />
+                  </div>
+                  <div className="form-group">
+                    <label>{t('mcp.args')}</label>
+                    <textarea value={argsText} onChange={(e) => setArgsText(e.target.value)} rows={3} placeholder="-y&#10;@modelcontextprotocol/server-everything" />
+                  </div>
+                  <div className="form-group">
+                    <label>{t('mcp.envVars')}</label>
+                    <textarea value={envText} onChange={(e) => setEnvText(e.target.value)} rows={3} placeholder="API_KEY=xxx" />
+                  </div>
+                  <div className="form-group">
+                    <label>CWD</label>
+                    <input value={cwd} onChange={(e) => setCwd(e.target.value)} placeholder="/workspace" />
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="form-group">
+                    <label>URL</label>
+                    <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://example.com/mcp" />
+                  </div>
+                  <div className="form-group">
+                    <label>CWD</label>
+                    <input value={cwd} onChange={(e) => setCwd(e.target.value)} placeholder="/workspace" />
+                  </div>
+                </>
+              )}
               <div className="form-group">
                 <label>{t('mcp.description')}</label>
                 <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} />
@@ -191,7 +232,7 @@ export function McpCreateDrawer({ editing, onSave, onClose }: McpCreateDrawerPro
                 <button type="button" className="btn-outline btn-sm" onClick={() => setJsonMode(false)}>
                   {t('mcp.backToForm')}
                 </button>
-                <button type="button" className="btn-primary btn-sm" onClick={handleJsonImport} disabled={!jsonDraft.trim()}>
+                <button type="button" className="btn-primary btn-sm" onClick={() => void handleJsonImport()} disabled={saving || !jsonDraft.trim()}>
                   {t('mcp.importBtn')}
                 </button>
               </div>
@@ -207,7 +248,11 @@ export function McpCreateDrawer({ editing, onSave, onClose }: McpCreateDrawerPro
               type="button"
               className="btn-primary"
               onClick={handleSave}
-              disabled={saving || !name.trim() || !command.trim()}
+              disabled={
+                saving ||
+                !name.trim() ||
+                (transport === 'stdio' ? !command.trim() : !url.trim())
+              }
             >
               {saving ? t('mcp.saving') : (editing ? t('mcp.saveChanges') : t('mcp.save'))}
             </button>

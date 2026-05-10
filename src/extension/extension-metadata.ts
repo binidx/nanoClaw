@@ -72,8 +72,11 @@ export interface ExtensionUiMetadata {
 export interface ExtensionMetadata {
   capabilities: string[];
   runtime?: {
+    transport?: 'stdio' | 'streamable-http' | 'sse';
     kind?: string;
     entryFile?: string;
+    url?: string;
+    cwd?: string;
   };
   requirements?: ExtensionRequirements;
   artifacts?: ExtensionArtifactMetadata;
@@ -189,6 +192,11 @@ export function normalizeExtensionMetadata(
     ...(isRecord(value.runtime)
       ? {
           runtime: {
+            ...(value.runtime.transport === 'stdio' ||
+            value.runtime.transport === 'streamable-http' ||
+            value.runtime.transport === 'sse'
+              ? { transport: value.runtime.transport }
+              : {}),
             ...(typeof value.runtime.kind === 'string' &&
             value.runtime.kind.trim()
               ? { kind: value.runtime.kind.trim() }
@@ -196,6 +204,12 @@ export function normalizeExtensionMetadata(
             ...(typeof value.runtime.entryFile === 'string' &&
             value.runtime.entryFile.trim()
               ? { entryFile: value.runtime.entryFile.trim() }
+              : {}),
+            ...(typeof value.runtime.url === 'string' && value.runtime.url.trim()
+              ? { url: value.runtime.url.trim() }
+              : {}),
+            ...(typeof value.runtime.cwd === 'string' && value.runtime.cwd.trim()
+              ? { cwd: value.runtime.cwd.trim() }
               : {}),
           },
         }

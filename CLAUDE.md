@@ -50,6 +50,14 @@ The current product is managed mainly through the web UI, not through a docs-des
 - Live2D companion
 - Browser CDP automation
 
+## Skill routing
+
+For broad refactors, architecture changes, or multi-step optimization work, use the gstack flow in `docs/agent-harness.md` when gstack is available in the host.
+
+- Typical sequence: `/office-hours` -> `/autoplan` -> implement -> `/review` -> `/qa` -> `/ship`
+- Use NanoClaw's local `nanoclaw-*` skills for file-scoped implementation work
+- Do not force gstack onto trivial one-file fixes
+
 ## Docs To Trust
 
 - `README.md` (English)

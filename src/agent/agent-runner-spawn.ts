@@ -16,6 +16,8 @@ import {
   listUserMcpServers,
   isProviderVisibleToUser,
 } from '../db.js';
+import { resolveUserMcpRuntimeConfig } from '../user/user-mcp-service.js';
+import type { UserMcpTransport } from '../user/user-mcp-service.js';
 import {
   ensureUserDirectories,
   resolveUserUploadsDir,
@@ -563,7 +565,14 @@ export async function spawnAgent(
   const managedMcpServers = await (async () => {
     let base: Record<
       string,
-      { command: string; args: string[]; env?: Record<string, string> }
+      {
+        command?: string;
+        args?: string[];
+        env?: Record<string, string>;
+        transport?: UserMcpTransport;
+        url?: string;
+        cwd?: string;
+      }
     > = {};
     if (Array.isArray(input.resolvedManagedMcpServers)) {
       base = Object.fromEntries(
@@ -621,26 +630,20 @@ export async function spawnAgent(
         if (seen.has(srv.id)) continue;
         if (allowedUserMcp && !allowedUserMcp.has(srv.id)) continue;
         seen.add(srv.id);
-        const args: string[] = (() => {
-          try {
-            const p = JSON.parse(srv.args_json);
-            return Array.isArray(p) ? p : [];
-          } catch {
-            return [];
-          }
-        })();
-        const env: Record<string, string> = (() => {
-          try {
-            const p = JSON.parse(srv.env_json);
-            return p && typeof p === 'object' && !Array.isArray(p) ? p : {};
-          } catch {
-            return {};
-          }
-        })();
+        const resolved = resolveUserMcpRuntimeConfig(srv);
         base[srv.id] = {
-          command: srv.command,
-          args,
-          ...(Object.keys(env).length > 0 ? { env } : {}),
+          transport: resolved.transport,
+          ...(resolved.transport === 'stdio'
+            ? {
+                command: resolved.command,
+                args: resolved.args,
+                ...(Object.keys(resolved.env).length > 0 ? { env: resolved.env } : {}),
+              }
+            : {
+                url: resolved.url || undefined,
+                ...(resolved.cwd ? { cwd: resolved.cwd } : {}),
+                ...(Object.keys(resolved.env).length > 0 ? { env: resolved.env } : {}),
+              }),
         };
       }
     } catch (err) {

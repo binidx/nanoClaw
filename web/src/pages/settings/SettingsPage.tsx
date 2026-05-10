@@ -1,6 +1,7 @@
 import { Suspense, lazy } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { SettingsTab } from '../../app-types';
+import { AppsPageV2 } from '../AppsPageV2';
 import {
   SettingsExtensionsTab,
   type SettingsExtensionsTabProps,
@@ -52,16 +53,6 @@ const SettingsBrowserTab = lazy(async () => {
 const SettingsLive2DTab = lazy(async () => {
   const m = await import('./SettingsLive2DTab');
   return { default: m.SettingsLive2DTab };
-});
-
-const SettingsMcpTab = lazy(async () => {
-  const m = await import('./SettingsMcpTab');
-  return { default: m.SettingsMcpTab };
-});
-
-const SettingsSkillsTab = lazy(async () => {
-  const m = await import('./SettingsSkillsTab');
-  return { default: m.SettingsSkillsTab };
 });
 
 const SettingsKnowledgeTab = lazy(async () => {
@@ -412,13 +403,13 @@ export function SettingsPage(props: SettingsPageProps) {
 
         {s.settingsTab === 'mcp' && (
           <Suspense fallback={tabFallback}>
-            <SettingsMcpTab {...ext} />
+            <AppsPageV2 apiBase={s.apiBase} isAdmin={s.hasSystemSettings} />
           </Suspense>
         )}
 
         {s.settingsTab === 'skills' && (
           <Suspense fallback={tabFallback}>
-            <SettingsSkillsTab {...ext} />
+            <AppsPageV2 apiBase={s.apiBase} isAdmin={s.hasSystemSettings} />
           </Suspense>
         )}
 

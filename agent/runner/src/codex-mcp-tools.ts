@@ -1,13 +1,18 @@
 import type { Client as SdkClient } from '@modelcontextprotocol/sdk/client/index.js';
 import type { StdioClientTransport as SdkStdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
+import type { StreamableHTTPClientTransport as SdkStreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import type { SSEClientTransport as SdkSSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
 import { fileURLToPath } from 'url';
 import { collectForwardedMemoryEnv } from './memory-tools.js';
 import { formatStructuredPromptValue } from './model-serialization.js';
 
 interface ExternalMcpServer {
-  command: string;
+  transport?: 'stdio' | 'streamable-http' | 'sse';
+  command?: string;
   args?: string[];
   env?: Record<string, string>;
+  url?: string;
+  cwd?: string;
 }
 
 interface DynamicFunctionTool {
@@ -34,6 +39,14 @@ type McpTransportCtor = new (input: {
   cwd: string;
   stderr: 'pipe';
 }) => SdkStdioClientTransport;
+
+type McpHttpTransportCtor = new (
+  url: URL,
+) => SdkStreamableHTTPClientTransport;
+
+type McpSseTransportCtor = new (
+  url: URL,
+) => SdkSSEClientTransport;
 
 const TOOL_LIST_CACHE_TTL_MS = 30000;
 const toolListCache = new Map<string, CachedServerTools>();
@@ -63,9 +76,27 @@ function parseExternalMcpServers(): Record<string, ExternalMcpServer> {
     )) {
       if (!value || typeof value !== 'object' || Array.isArray(value)) continue;
       const entry = value as Record<string, unknown>;
-      if (typeof entry.command !== 'string' || !entry.command.trim()) continue;
+      const command =
+        typeof entry.command === 'string' && entry.command.trim()
+          ? entry.command.trim()
+          : undefined;
+      const url =
+        typeof entry.url === 'string' && entry.url.trim()
+          ? entry.url.trim()
+          : undefined;
+      const transport =
+        entry.transport === 'streamable-http' || entry.transport === 'sse'
+          ? entry.transport
+          : typeof entry.type === 'string' && entry.type.trim().toLowerCase() === 'sse'
+            ? 'sse'
+            : url
+              ? 'streamable-http'
+              : 'stdio';
+      if (transport === 'stdio' && !command) continue;
+      if (transport !== 'stdio' && !url) continue;
       output[name] = {
-        command: entry.command.trim(),
+        transport,
+        command,
         args: Array.isArray(entry.args)
           ? entry.args.filter(
               (item): item is string => typeof item === 'string',
@@ -81,6 +112,11 @@ function parseExternalMcpServers(): Record<string, ExternalMcpServer> {
                     typeof pair[1] === 'string',
                 ),
               )
+            : undefined,
+        url,
+        cwd:
+          typeof entry.cwd === 'string' && entry.cwd.trim()
+            ? entry.cwd.trim()
             : undefined,
       };
     }
@@ -162,24 +198,52 @@ function normalizeToolSchema(schema: unknown): object {
 
 function getServerSignature(server: ExternalMcpServer): string {
   return JSON.stringify({
+    transport: server.transport || 'stdio',
     command: server.command,
     args: server.args || [],
     env: server.env || {},
+    url: server.url || '',
+    cwd: server.cwd || '',
   });
+}
+
+function normalizeServerTransport(server: ExternalMcpServer): 'stdio' | 'streamable-http' | 'sse' {
+  return server.transport === 'streamable-http' || server.transport === 'sse'
+    ? server.transport
+    : server.url
+      ? 'streamable-http'
+      : 'stdio';
+}
+
+function parseServerUrl(server: ExternalMcpServer): URL | null {
+  if (!server.url) return null;
+  try {
+    return new URL(server.url);
+  } catch {
+    return null;
+  }
 }
 
 async function loadMcpSdk(): Promise<{
   Client: McpClientCtor;
   StdioClientTransport: McpTransportCtor;
+  StreamableHTTPClientTransport: McpHttpTransportCtor;
+  SSEClientTransport: McpSseTransportCtor;
 }> {
-  const [clientModule, transportModule] = await Promise.all([
+  const [clientModule, stdioModule, streamableModule, sseModule] = await Promise.all([
     import('@modelcontextprotocol/sdk/client/index.js'),
     import('@modelcontextprotocol/sdk/client/stdio.js'),
+    import('@modelcontextprotocol/sdk/client/streamableHttp.js'),
+    import('@modelcontextprotocol/sdk/client/sse.js'),
   ]);
   return {
     Client: clientModule.Client as McpClientCtor,
     StdioClientTransport:
-      transportModule.StdioClientTransport as McpTransportCtor,
+      stdioModule.StdioClientTransport as McpTransportCtor,
+    StreamableHTTPClientTransport:
+      streamableModule.StreamableHTTPClientTransport as McpHttpTransportCtor,
+    SSEClientTransport:
+      sseModule.SSEClientTransport as McpSseTransportCtor,
   };
 }
 
@@ -188,20 +252,35 @@ async function withMcpClient<T>(
   server: ExternalMcpServer,
   fn: (client: SdkClient) => Promise<T>,
 ): Promise<T> {
-  const { Client, StdioClientTransport } = await loadMcpSdk();
-  const transport = new StdioClientTransport({
-    command: server.command,
-    args: server.args,
-    env: server.env,
-    cwd: process.env.NANOCLAW_GROUP_DIR || process.cwd(),
-    stderr: 'pipe',
-  });
+  const { Client, StdioClientTransport, StreamableHTTPClientTransport, SSEClientTransport } =
+    await loadMcpSdk();
+  const transportKind = normalizeServerTransport(server);
+  const url = parseServerUrl(server);
+  const transport =
+    transportKind === 'stdio'
+      ? new StdioClientTransport({
+          command: server.command || '',
+          args: server.args,
+          env: server.env,
+          cwd: server.cwd || process.env.NANOCLAW_GROUP_DIR || process.cwd(),
+          stderr: 'pipe',
+        })
+      : transportKind === 'sse'
+        ? url
+          ? new SSEClientTransport(url)
+          : null
+        : url
+          ? new StreamableHTTPClientTransport(url)
+          : null;
+  if (!transport) {
+    throw new Error(`MCP server ${serverId} is missing a valid ${transportKind} URL`);
+  }
   const client = new Client({
     name: 'nanoclaw-codex',
     version: '1.0.0',
   });
 
-  if (transport.stderr) {
+  if ('stderr' in transport && transport.stderr) {
     transport.stderr.on('data', (chunk) => {
       const text = String(chunk || '').trim();
       if (text) log(`${serverId}: ${text}`);

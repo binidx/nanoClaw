@@ -32,13 +32,18 @@ import { resolvePromptText } from '../prompt/prompt-service.js';
 import { SYSTEM_USER_ID } from '../tenant/tenant-context.js';
 import { t } from '../i18n/index.js';
 
+export type UserMcpTransport = 'stdio' | 'streamable-http' | 'sse';
+
 export interface UserMcpServerInput {
   id?: string;
   name: string;
   description?: string;
-  command: string;
+  command?: string;
   args?: string[];
   env?: Record<string, string>;
+  transport?: UserMcpTransport;
+  url?: string;
+  cwd?: string;
   enabled?: boolean;
   visibility?: 'private' | 'shared';
   sourceType?: string;
@@ -56,6 +61,9 @@ export interface UserMcpServerView {
   command: string;
   args: string[];
   env: Record<string, string>;
+  transport: UserMcpTransport;
+  url: string | null;
+  cwd: string | null;
   enabled: boolean;
   visibility: 'private' | 'shared';
   sourceType: string;
@@ -72,6 +80,7 @@ export interface UserMcpServerView {
 function recordToView(record: UserMcpServerRecord, currentUserId?: string): UserMcpServerView {
   const env = safeParse<Record<string, string>>(record.env_json, {});
   const metadata = parseExtensionMetadata(record.metadata_json);
+  const runtime = readRuntimeMetadata(metadata);
   const isOwner = currentUserId ? record.user_id === currentUserId : undefined;
   const visibleEnv = isOwner === false ? {} : env;
   return {
@@ -79,9 +88,12 @@ function recordToView(record: UserMcpServerRecord, currentUserId?: string): User
     userId: record.user_id,
     name: record.name,
     description: record.description,
+    transport: runtime.transport,
     command: record.command,
     args: safeParse<string[]>(record.args_json, []),
     env: visibleEnv,
+    url: runtime.url,
+    cwd: runtime.cwd,
     enabled: record.enabled === 1,
     visibility: record.visibility as 'private' | 'shared',
     sourceType: record.source_type,
@@ -108,6 +120,97 @@ function safeParse<T>(json: string | null | undefined, fallback: T): T {
   } catch {
     return fallback;
   }
+}
+
+function normalizeMcpTransport(value: unknown): UserMcpTransport {
+  return value === 'streamable-http' || value === 'sse' ? value : 'stdio';
+}
+
+function normalizeOptionalString(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const text = value.trim();
+  return text ? text : null;
+}
+
+function readRuntimeMetadata(metadata: ExtensionMetadata): {
+  transport: UserMcpTransport;
+  url: string | null;
+  cwd: string | null;
+  entryFile: string | null;
+} {
+  return {
+    transport: normalizeMcpTransport(metadata.runtime?.transport),
+    url: normalizeOptionalString(metadata.runtime?.url),
+    cwd: normalizeOptionalString(metadata.runtime?.cwd),
+    entryFile: normalizeOptionalString(metadata.runtime?.entryFile),
+  };
+}
+
+function withRuntimeMetadata(
+  metadata: ExtensionMetadata | undefined,
+  runtime: {
+    transport?: UserMcpTransport;
+    url?: string | null;
+    cwd?: string | null;
+    entryFile?: string | null;
+  },
+): ExtensionMetadata | undefined {
+  const next: ExtensionMetadata = normalizeExtensionMetadata(metadata);
+  next.runtime = {
+    ...(next.runtime || {}),
+    ...(runtime.transport ? { transport: runtime.transport } : {}),
+    ...(runtime.url ? { url: runtime.url } : {}),
+    ...(runtime.cwd ? { cwd: runtime.cwd } : {}),
+    ...(runtime.entryFile ? { entryFile: runtime.entryFile } : {}),
+  };
+  return next;
+}
+
+function inferTransportFromInput(input: {
+  transport?: unknown;
+  command?: unknown;
+  url?: unknown;
+  metadata?: ExtensionMetadata | null | undefined;
+}): UserMcpTransport {
+  const fromInput =
+    input.transport === 'streamable-http' || input.transport === 'sse'
+      ? input.transport
+      : null;
+  if (fromInput) return fromInput;
+  const fromMetadata = normalizeMcpTransport(input.metadata?.runtime?.transport);
+  if (fromMetadata !== 'stdio') return fromMetadata;
+  if (typeof input.url === 'string' && input.url.trim()) return 'streamable-http';
+  if (typeof input.command === 'string' && input.command.trim()) return 'stdio';
+  return 'stdio';
+}
+
+function normalizeMcpUrl(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const text = value.trim();
+  if (!text) return null;
+  try {
+    const parsed = new URL(text);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      return null;
+    }
+    return parsed.toString();
+  } catch {
+    return null;
+  }
+}
+
+function normalizeUserMcpMetadata(
+  metadata: ExtensionMetadata | undefined,
+  runtime: {
+    transport: UserMcpTransport;
+    url?: string | null;
+    cwd?: string | null;
+    entryFile?: string | null;
+  },
+): ExtensionMetadata {
+  return normalizeExtensionMetadata(
+    withRuntimeMetadata(metadata, runtime),
+  );
 }
 
 const HYDRATE_PAGE_SIZE = 500;
@@ -194,6 +297,11 @@ export interface UserMcpImportPathInput {
   sourcePath: string;
   name?: string;
   entryFile?: string;
+  visibility?: 'private' | 'shared';
+}
+
+export interface UserMcpImportJsonInput {
+  json?: unknown;
   visibility?: 'private' | 'shared';
 }
 
@@ -321,20 +429,198 @@ function copyImportedMcpPackage(input: {
   return { packageRoot: packageDir, entryPath };
 }
 
+function resolveImportJsonPayload(
+  input: UserMcpImportJsonInput,
+): unknown {
+  if (typeof input.json === 'string') {
+    const raw = input.json.trim();
+    if (!raw) throw new Error('json is required');
+    return JSON.parse(raw) as unknown;
+  }
+  if (input.json !== undefined) return input.json;
+  throw new Error('json is required');
+}
+
+function normalizeJsonImportTransport(
+  value: unknown,
+  url: string | null,
+  command: string,
+): UserMcpTransport {
+  const normalized = typeof value === 'string' ? value.trim().toLowerCase() : '';
+  if (normalized === 'streamable-http' || normalized === 'http') {
+    return 'streamable-http';
+  }
+  if (normalized === 'sse') return 'sse';
+  if (normalized === 'stdio') return 'stdio';
+  if (url) return 'streamable-http';
+  if (command) return 'stdio';
+  return 'stdio';
+}
+
+function normalizeImportedJsonMcpServer(
+  value: unknown,
+  fallbackName: string,
+  visibility: 'private' | 'shared',
+): UserMcpServerInput {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error(`Invalid MCP entry: ${fallbackName}`);
+  }
+  const raw = value as Record<string, unknown>;
+  const metadata = normalizeExtensionMetadata(raw.metadata);
+  const command = typeof raw.command === 'string' ? raw.command.trim() : '';
+  const url =
+    normalizeMcpUrl(raw.url) ||
+    normalizeMcpUrl(raw.endpoint) ||
+    normalizeMcpUrl(metadata.runtime?.url);
+  const transport = normalizeJsonImportTransport(
+    raw.transport ?? raw.type,
+    url,
+    command,
+  );
+  const env =
+    raw.env && typeof raw.env === 'object' && !Array.isArray(raw.env)
+      ? Object.fromEntries(
+          Object.entries(raw.env as Record<string, unknown>)
+            .filter((entry): entry is [string, string] => typeof entry[1] === 'string')
+            .map(([key, entryValue]) => [key, entryValue]),
+        )
+      : {};
+  const args = Array.isArray(raw.args)
+    ? raw.args.filter((entry): entry is string => typeof entry === 'string')
+    : [];
+  const enabled =
+    typeof raw.enabled === 'boolean'
+      ? raw.enabled
+      : raw.disabled === true
+        ? false
+        : true;
+  const name =
+    (typeof raw.name === 'string' && raw.name.trim()) ||
+    (typeof raw.id === 'string' && raw.id.trim()) ||
+    fallbackName;
+
+  return {
+    name,
+    description:
+      typeof raw.description === 'string' && raw.description.trim()
+        ? raw.description.trim()
+        : undefined,
+    command,
+    args,
+    env,
+    transport,
+    url: url || undefined,
+    cwd:
+      (typeof raw.cwd === 'string' && raw.cwd.trim()) ||
+      metadata.runtime?.cwd ||
+      undefined,
+    enabled,
+    visibility,
+    metadata,
+  };
+}
+
+function extractImportedJsonMcpServers(
+  payload: unknown,
+  visibility: 'private' | 'shared',
+): UserMcpServerInput[] {
+  if (Array.isArray(payload)) {
+    return payload.map((entry, index) =>
+      normalizeImportedJsonMcpServer(entry, `Imported MCP ${index + 1}`, visibility),
+    );
+  }
+  if (!payload || typeof payload !== 'object') {
+    throw new Error('MCP JSON must be an object, array, or mcpServers map');
+  }
+  const raw = payload as Record<string, unknown>;
+  if (raw.mcpServers && typeof raw.mcpServers === 'object' && !Array.isArray(raw.mcpServers)) {
+    return Object.entries(raw.mcpServers as Record<string, unknown>)
+      .map(([name, entry]) => normalizeImportedJsonMcpServer(entry, name, visibility));
+  }
+  if (
+    typeof raw.command === 'string' ||
+    typeof raw.url === 'string' ||
+    typeof raw.endpoint === 'string' ||
+    typeof raw.transport === 'string' ||
+    typeof raw.type === 'string'
+  ) {
+    return [normalizeImportedJsonMcpServer(raw, typeof raw.name === 'string' ? raw.name : 'Imported MCP', visibility)];
+  }
+  const entries = Object.entries(raw).filter(
+    ([, entry]) => !!entry && typeof entry === 'object' && !Array.isArray(entry),
+  );
+  if (entries.length === 0) {
+    throw new Error('MCP JSON does not contain any importable server definitions');
+  }
+  return entries.map(([name, entry]) => normalizeImportedJsonMcpServer(entry, name, visibility));
+}
+
+export interface ResolvedUserMcpRuntimeConfig {
+  transport: UserMcpTransport;
+  command: string;
+  args: string[];
+  env: Record<string, string>;
+  url: string | null;
+  cwd: string | null;
+  metadata: ExtensionMetadata;
+}
+
+export function resolveUserMcpRuntimeConfig(record: Pick<
+  UserMcpServerRecord,
+  'command' | 'args_json' | 'env_json' | 'metadata_json'
+>): ResolvedUserMcpRuntimeConfig {
+  const metadata = parseExtensionMetadata(record.metadata_json);
+  const runtime = readRuntimeMetadata(metadata);
+  return {
+    transport: runtime.transport,
+    command: record.command || '',
+    args: safeParse<string[]>(record.args_json, []),
+    env: safeParse<Record<string, string>>(record.env_json, {}),
+    url: runtime.url,
+    cwd: runtime.cwd,
+    metadata,
+  };
+}
+
 export async function createUserMcpServer(
   userId: string,
   input: UserMcpServerInput,
 ): Promise<UserMcpServerView> {
   const now = new Date().toISOString();
+  const transport = inferTransportFromInput(input);
+  const command = typeof input.command === 'string' ? input.command.trim() : '';
+  const args = Array.isArray(input.args) ? input.args : [];
+  const url =
+    normalizeMcpUrl(input.url) ||
+    normalizeMcpUrl(input.metadata?.runtime?.url);
+  const cwd =
+    normalizeOptionalString(input.cwd) ||
+    normalizeOptionalString(input.metadata?.runtime?.cwd) ||
+    '';
+  const entryFile = normalizeOptionalString(input.metadata?.runtime?.entryFile) || '';
+
+  if (transport === 'stdio' && !command) {
+    throw new Error('command is required for stdio MCP servers');
+  }
+  if (transport !== 'stdio' && !url) {
+    throw new Error('url is required for HTTP MCP servers');
+  }
+
+  const metadata = normalizeUserMcpMetadata(input.metadata, {
+    transport,
+    url,
+    cwd,
+    entryFile,
+  });
   const record: UserMcpServerRecord = {
     id: input.id ?? generateMcpServerId(),
     user_id: userId,
     name: input.name,
     description: input.description ?? null,
-    command: input.command,
-    args_json: JSON.stringify(input.args ?? []),
+    command: transport === 'stdio' ? command : '',
+    args_json: JSON.stringify(args),
     env_json: JSON.stringify(input.env ?? {}),
-    metadata_json: serializeExtensionMetadata(input.metadata),
+    metadata_json: serializeExtensionMetadata(metadata),
     enabled: input.enabled !== false ? 1 : 0,
     visibility: input.visibility ?? 'private',
     source_type: input.sourceType ?? 'manual',
@@ -387,6 +673,7 @@ export async function importUserMcpServerFromPath(
     metadata: {
       capabilities: [],
       runtime: {
+        transport: 'stdio',
         kind: 'node',
         entryFile: path.relative(packageRoot, entryPath).replace(/\\/g, '/'),
       },
@@ -412,6 +699,39 @@ export async function importUserMcpServerFromPath(
     imported: {
       path: path.join(getUserMcpDir(userId), server.id),
       entryPath,
+    },
+  };
+}
+
+export async function importUserMcpServersFromJson(
+  userId: string,
+  input: UserMcpImportJsonInput,
+): Promise<{
+  servers: UserMcpServerView[];
+  imported: {
+    count: number;
+    ids: string[];
+  };
+}> {
+  const payload = resolveImportJsonPayload(input);
+  const visibility = input.visibility === 'shared' ? 'shared' : 'private';
+  const entries = extractImportedJsonMcpServers(payload, visibility);
+  if (entries.length === 0) {
+    throw new Error('MCP JSON does not contain any importable server definitions');
+  }
+  const servers: UserMcpServerView[] = [];
+  for (const entry of entries) {
+    servers.push(await createUserMcpServer(userId, {
+      ...entry,
+      sourceType: 'import',
+      sourceRef: null,
+    }));
+  }
+  return {
+    servers,
+    imported: {
+      count: servers.length,
+      ids: servers.map((server) => server.id),
     },
   };
 }
@@ -517,6 +837,7 @@ export async function createUserMcpServerWithAi(
     },
     runtime: {
       ...(draft.metadata?.runtime || {}),
+      transport: 'stdio',
       kind: 'node',
       ...(draft.entryFile ? { entryFile: draft.entryFile } : {}),
     },
@@ -573,18 +894,50 @@ export async function updateUserMcpServer(
 ): Promise<UserMcpServerView | null> {
   const existing = await getUserMcpServer(mcpId);
   if (!existing || existing.user_id !== userId) return null;
+  const existingMetadata = parseExtensionMetadata(existing.metadata_json);
+  const runtime = readRuntimeMetadata(existingMetadata);
+  const inputMetadata = input.metadata ? normalizeExtensionMetadata(input.metadata) : undefined;
+  const transport = inferTransportFromInput({
+    transport: input.transport,
+    command: input.command ?? existing.command,
+    url: input.url ?? runtime.url,
+    metadata:
+      inputMetadata !== undefined
+        ? inputMetadata
+        : existingMetadata,
+  });
+  const nextUrl = normalizeMcpUrl(input.url) || normalizeMcpUrl(inputMetadata?.runtime?.url) || runtime.url;
+  const nextCwd =
+    normalizeOptionalString(input.cwd) || normalizeOptionalString(inputMetadata?.runtime?.cwd) || runtime.cwd;
+  const nextEntryFile =
+    normalizeOptionalString(inputMetadata?.runtime?.entryFile) || runtime.entryFile;
+  const nextCommand =
+    typeof input.command === 'string' ? input.command.trim() : existing.command.trim();
+  if (transport === 'stdio' && !nextCommand) {
+    throw new Error('command is required for stdio MCP servers');
+  }
+  if (transport !== 'stdio' && !nextUrl) {
+    throw new Error('url is required for HTTP MCP servers');
+  }
 
   const now = new Date().toISOString();
   const updated: UserMcpServerRecord = {
     ...existing,
     name: input.name ?? existing.name,
     description: input.description !== undefined ? (input.description ?? null) : existing.description,
-    command: input.command ?? existing.command,
+    command: transport === 'stdio' ? nextCommand : '',
     args_json: input.args ? JSON.stringify(input.args) : existing.args_json,
     env_json: input.env ? JSON.stringify(input.env) : existing.env_json,
     metadata_json:
       input.metadata !== undefined
-        ? serializeExtensionMetadata(input.metadata)
+        ? serializeExtensionMetadata(
+            normalizeUserMcpMetadata(input.metadata, {
+              transport,
+              url: nextUrl,
+              cwd: nextCwd,
+              entryFile: nextEntryFile,
+            }),
+          )
         : existing.metadata_json,
     enabled: input.enabled !== undefined ? (input.enabled ? 1 : 0) : existing.enabled,
     visibility: input.visibility ?? existing.visibility,
@@ -594,6 +947,16 @@ export async function updateUserMcpServer(
     tags_json: input.tags ? JSON.stringify(input.tags) : existing.tags_json,
     updated_at: now,
   };
+  if (input.metadata === undefined) {
+    updated.metadata_json = serializeExtensionMetadata(
+      normalizeUserMcpMetadata(existingMetadata, {
+        transport,
+        url: nextUrl,
+        cwd: nextCwd,
+        entryFile: nextEntryFile,
+      }),
+    );
+  }
   await upsertUserMcpServer(updated);
   try { syncMcpToDisk(updated); } catch (err) {
     logger.warn({ err, mcpId: updated.id }, 'user-mcp: disk sync failed after update');

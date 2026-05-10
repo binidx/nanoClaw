@@ -5,6 +5,7 @@ import { getTenantUserId } from '../tenant/tenant-request.js';
 import {
   createUserMcpServer,
   createUserMcpServerWithAi,
+  importUserMcpServersFromJson,
   importUserMcpServerFromPath,
   updateUserMcpServer,
   removeUserMcpServer,
@@ -65,24 +66,30 @@ export function registerUserMcpRoutes(
       const {
         name,
         description,
+        transport,
         command,
         args,
         env,
+        url,
+        cwd,
         enabled,
         visibility,
         tags,
         metadata,
       } = req.body;
-      if (!name || !command) {
-        res.status(400).json({ error: 'name and command are required' });
+      if (!name) {
+        res.status(400).json({ error: 'name is required' });
         return;
       }
       const server = await createUserMcpServer(userId, {
         name,
         description,
+        transport,
         command,
         args,
         env,
+        url,
+        cwd,
         enabled,
         visibility,
         tags,
@@ -104,6 +111,19 @@ export function registerUserMcpRoutes(
       res.status(400).json({
         error:
           err instanceof Error ? err.message : 'Failed to generate MCP with AI',
+      });
+    }
+  });
+
+  app.post('/api/user/mcp-servers/import-json', createGuard, installGuard, async (req: Request, res: Response) => {
+    try {
+      const userId = getTenantUserId(req);
+      res.json(await importUserMcpServersFromJson(userId, req.body || {}));
+    } catch (err) {
+      logger.error({ err }, 'user-mcp: import-json failed');
+      res.status(400).json({
+        error:
+          err instanceof Error ? err.message : 'Failed to import MCP from JSON',
       });
     }
   });

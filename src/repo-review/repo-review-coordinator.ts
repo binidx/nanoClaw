@@ -4,12 +4,22 @@ import path from 'path';
 import type { ReviewOverall } from '../db.js';
 import type { AiProvider } from '../db/assistants.js';
 import { getDefaultProvider, getDefaultProviderForUser, getProvider, isProviderVisibleToUser } from '../db/assistants.js';
+import {
+  requestAgentClose,
+  runAgentProcess,
+  type AgentEventPayload,
+  type AgentRunInput,
+  type AgentRunOutput,
+  type AgentTurnEventPayload,
+  type AgentTurnItemPayload,
+} from '../agent/agent-runner.js';
 import { getProviderForModule } from '../tenant/tenant-db.js';
 import { getProviderAdapter } from '../provider/provider-adapters.js';
 import { recordPromptTrace, resolvePromptText } from '../prompt/prompt-service.js';
 import { buildRepoReviewDiffIndex, getRepoReviewDiffSlice } from './repo-review-diff-index.js';
 import { buildRepoReviewFindingEvidenceKey } from './repo-review-doc-render.js';
 import { buildStructuredRepoReviewMarkdown } from './repo-review-messages.js';
+import { mapWithConcurrencyLimit } from './repo-review-sync-service.js';
 import {
   stringValue,
   type RepoReviewCommitReview,
@@ -20,6 +30,7 @@ import {
   type RepoReviewProgressStepKind,
   type RepoReviewProfile,
   type RepoReviewRepository,
+  type RepoReviewAssistantTurn,
   type RepoReviewRunFinding,
   type ReviewPreparedContext,
   asRecord,
@@ -28,6 +39,7 @@ import {
   REPO_REVIEW_REDUCER_TEMPLATE,
   REPO_REVIEW_WORKER_TEMPLATE,
 } from './repo-review-prompt-templates.js';
+import type { RegisteredGroup } from '../types.js';
 import { logger } from '../logger.js';
 
 const MAX_FULL_FILE_BYTES_PER_FILE = 64 * 1024;
@@ -86,6 +98,7 @@ export interface RepoReviewWorkerResult {
   failed: boolean;
   timedOut: boolean;
   rawOutput: string;
+  turns: RepoReviewAssistantTurn[];
 }
 
 export interface RepoReviewStructuredResult {
@@ -266,6 +279,223 @@ function buildStructuredMarkdownFallback(result: RepoReviewStructuredResult): st
   } as any);
 }
 
+function slugifyId(value: string): string {
+  return String(value || '')
+    .trim()
+    .replace(/[^a-zA-Z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 48) || 'repo-review';
+}
+
+function buildReviewGroup(repository: RepoReviewRepository): RegisteredGroup {
+  return {
+    name: `Repo Review ${repository.name}`,
+    folder: `review-${slugifyId(repository.id)}`,
+    trigger: '@repo-review',
+    added_at: new Date().toISOString(),
+    requiresTrigger: false,
+    isMain: false,
+  };
+}
+
+function buildAgentRunInput(input: {
+  repository: RepoReviewRepository;
+  profile: RepoReviewProfile;
+  prompt: string;
+  runId: string;
+  runtimeNamespace?: string;
+  workspacePath?: string | null;
+  userId?: string;
+  providerOverrideId?: string;
+}): AgentRunInput {
+  const reviewChatJid =
+    input.repository.reviewChatJid || `repo-review:${input.repository.id}`;
+  const agentInput: AgentRunInput = {
+    prompt: { text: input.prompt },
+    groupFolder: buildReviewGroup(input.repository).folder,
+    chatJid: reviewChatJid,
+    isMain: false,
+    isScheduledTask: true,
+    suppressDefaultSystemPrompt: true,
+    suppressScheduledTaskPreamble: true,
+    disableDefaultWebSearch: true,
+    assistantName: 'NanoClaw',
+    runtimeNamespace: input.runtimeNamespace || input.runId,
+    managedSkillIds: input.profile.skillIds,
+    managedMcpServerIds: input.profile.mcpServerIds,
+    ...(input.userId ? { userId: input.userId } : {}),
+    ...(input.providerOverrideId ? { providerOverrideId: input.providerOverrideId } : {}),
+  };
+  const reviewWorkspacePath = input.workspacePath || input.repository.localRepoPath;
+  if (reviewWorkspacePath) {
+    agentInput.extraMounts = [
+      {
+        hostPath: reviewWorkspacePath,
+        targetPath: '/workspace/extra',
+        readonly: true,
+      },
+    ];
+    agentInput.accessModeOverride = 'readonly';
+    agentInput.allowedDirectoriesOverride = [reviewWorkspacePath];
+    agentInput.workingDirectory = '/workspace/extra';
+  }
+  return agentInput;
+}
+
+function buildWorkerToolInstructionBlock(): string {
+  return [
+    '## 工具使用要求',
+    '- 你必须至少执行一次只读工具调用来核对关键证据。',
+    '- 优先使用 `read_file` / `grep` / `glob` / `list_dir` / `bash` 的只读 git 命令。',
+    '- 如果需要核对差异，优先用 `git diff` 或 `git show`。',
+    '- 禁止写文件、禁止任何修改操作、禁止派生子代理。',
+    '- 你只能在本任务提供的文件范围和只读工作区内探索。',
+  ].join('\n');
+}
+
+function createRepoReviewTurn(turnId: string, timestamp: string): RepoReviewAssistantTurn {
+  return {
+    id: turnId,
+    timestamp,
+    isLive: true,
+    isCompleted: false,
+    items: [],
+  };
+}
+
+function upsertRepoReviewTurn(
+  turns: RepoReviewAssistantTurn[],
+  turnId: string,
+  timestamp: string,
+): RepoReviewAssistantTurn[] {
+  const index = turns.findIndex((turn) => turn.id === turnId);
+  if (index < 0) {
+    return [...turns, createRepoReviewTurn(turnId, timestamp)];
+  }
+  const copy = [...turns];
+  copy[index] = {
+    ...copy[index]!,
+    timestamp: copy[index]!.timestamp || timestamp,
+    isLive: true,
+  };
+  return copy;
+}
+
+function upsertRepoReviewTurnItem(
+  turns: RepoReviewAssistantTurn[],
+  event: Extract<
+    AgentTurnEventPayload,
+    { type: 'item.started' | 'item.updated' | 'item.completed' }
+  >,
+): RepoReviewAssistantTurn[] {
+  const turnIndex = turns.findIndex((turn) => turn.id === event.turnId);
+  const baseTurn =
+    turnIndex >= 0
+      ? turns[turnIndex]!
+      : createRepoReviewTurn(event.turnId, event.timestamp);
+  const items = [...baseTurn.items];
+  const itemIndex = items.findIndex((item) => item.id === event.item.id);
+  const nextItem = {
+    ...event.item,
+    timestamp: event.timestamp,
+    ...(event.item.type === 'tool_call' ? { subagentInfo: event.item.subagentInfo } : {}),
+  } as AgentTurnItemPayload;
+  if (itemIndex < 0) {
+    items.push(nextItem);
+  } else {
+    items[itemIndex] = {
+      ...(items[itemIndex] as AgentTurnItemPayload),
+      ...nextItem,
+    };
+  }
+  const nextTurn: RepoReviewAssistantTurn = {
+    ...baseTurn,
+    timestamp: baseTurn.timestamp || event.timestamp,
+    items,
+    isLive: true,
+    isCompleted: baseTurn.isCompleted,
+  };
+  const copy = turnIndex < 0 ? [...turns, nextTurn] : [...turns];
+  if (turnIndex >= 0) copy[turnIndex] = nextTurn;
+  return copy;
+}
+
+function markRepoReviewTurnCompleted(
+  turns: RepoReviewAssistantTurn[],
+  turnId: string,
+  timestamp: string,
+  error?: string,
+): RepoReviewAssistantTurn[] {
+  const index = turns.findIndex((turn) => turn.id === turnId);
+  const turn =
+    index >= 0
+      ? turns[index]!
+      : createRepoReviewTurn(turnId, timestamp);
+  const nextTurn: RepoReviewAssistantTurn = {
+    ...turn,
+    timestamp: turn.timestamp || timestamp,
+    isLive: false,
+    isCompleted: true,
+    ...(error ? { error } : {}),
+  };
+  const copy = index < 0 ? [...turns, nextTurn] : [...turns];
+  if (index >= 0) copy[index] = nextTurn;
+  return copy;
+}
+
+function applyAgentTurnEvent(
+  turns: RepoReviewAssistantTurn[],
+  event: AgentTurnEventPayload,
+): RepoReviewAssistantTurn[] {
+  if (event.type === 'turn.started') {
+    return upsertRepoReviewTurn(turns, event.turnId, event.timestamp);
+  }
+  if (
+    event.type === 'item.started' ||
+    event.type === 'item.updated' ||
+    event.type === 'item.completed'
+  ) {
+    return upsertRepoReviewTurnItem(turns, event);
+  }
+  if (event.type === 'turn.completed') {
+    return markRepoReviewTurnCompleted(turns, event.turnId, event.timestamp);
+  }
+  if (event.type === 'turn.failed') {
+    return markRepoReviewTurnCompleted(turns, event.turnId, event.timestamp, event.error);
+  }
+  return turns;
+}
+
+function extractLatestCompletedAssistantMessageText(
+  turns: RepoReviewAssistantTurn[],
+): string {
+  for (let turnIndex = turns.length - 1; turnIndex >= 0; turnIndex -= 1) {
+    const turn = turns[turnIndex]!;
+    for (let itemIndex = turn.items.length - 1; itemIndex >= 0; itemIndex -= 1) {
+      const item = turn.items[itemIndex]!;
+      if (item.type !== 'assistant_message' || item.status !== 'completed') continue;
+      const text = item.text.trim();
+      if (text) return text;
+    }
+  }
+  return '';
+}
+
+function buildRepoReviewAgentStatusText(event: AgentEventPayload): string {
+  const body = String(event.body || '').trim();
+  if (body && body !== event.title) return `${event.title}：${body}`;
+  return event.title;
+}
+
+function formatProgressKeyValues(
+  entries: Array<[string, string | number | boolean | null | undefined]>,
+): string {
+  return entries
+    .filter(([, value]) => value !== undefined && value !== null && `${value}`.trim())
+    .map(([key, value]) => `${key}: ${value}`)
+    .join('\n');
+}
+
 function extractJsonObject(text: string): string {
   const trimmed = String(text || '').trim();
   if (!trimmed) return '';
@@ -401,6 +631,160 @@ async function runProviderTextCall(input: {
   };
 }
 
+async function runBoundedReviewAgent(input: {
+  repository: RepoReviewRepository;
+  profile: RepoReviewProfile;
+  prompt: string;
+  runId: string;
+  runtimeNamespace?: string;
+  workspacePath?: string | null;
+  userId?: string;
+  providerOverrideId?: string;
+  onTurnProgress?: (turns: RepoReviewAssistantTurn[]) => Promise<void>;
+  onStatusEvent?: (event: AgentEventPayload) => Promise<void>;
+}): Promise<{
+  outputText: string;
+  timedOut: boolean;
+  turns: RepoReviewAssistantTurn[];
+}> {
+  const group = buildReviewGroup(input.repository);
+  const agentInput = buildAgentRunInput({
+    repository: input.repository,
+    profile: input.profile,
+    prompt: input.prompt,
+    runId: input.runtimeNamespace || input.runId,
+    runtimeNamespace: input.runtimeNamespace || input.runId,
+    workspacePath: input.workspacePath,
+    userId: input.userId,
+    providerOverrideId: input.providerOverrideId,
+  });
+  let agentProcess: import('child_process').ChildProcess | null = null;
+  let reviewTurns: RepoReviewAssistantTurn[] = [];
+  let streamedResult = '';
+  let latestResultText = '';
+  let latestCompletedAssistantMessageText = '';
+  let sawTurnEvent = false;
+  let terminalOutputSeen = false;
+  let closeRequested = false;
+  let timedOut = false;
+  let timeoutTimer: NodeJS.Timeout | null = null;
+  const emitTurns = async () => {
+    await input.onTurnProgress?.(reviewTurns);
+  };
+  const closeAgentInput = () => {
+    if (closeRequested) return;
+    closeRequested = true;
+    requestAgentClose(group.folder, input.runtimeNamespace || input.runId);
+    if (!agentProcess?.stdin || agentProcess.stdin.destroyed || agentProcess.stdin.writableEnded) {
+      return;
+    }
+    try {
+      agentProcess.stdin.end();
+    } catch {
+      // Best effort.
+    }
+  };
+  const forceStopAgentProcess = () => {
+    closeAgentInput();
+    if (!agentProcess || agentProcess.killed) return;
+    try {
+      agentProcess.kill('SIGTERM');
+      setTimeout(() => {
+        if (!agentProcess || agentProcess.killed) return;
+        try {
+          agentProcess.kill('SIGKILL');
+        } catch {
+          // Best effort.
+        }
+      }, 1_000).unref?.();
+    } catch {
+      // Best effort.
+    }
+  };
+
+  try {
+    const processPromise = runAgentProcess(
+      group,
+      agentInput,
+      (proc) => {
+        agentProcess = proc;
+      },
+      async (output: AgentRunOutput) => {
+        if (output.event) {
+          await input.onStatusEvent?.(output.event);
+        }
+        if (output.turnEvent) {
+          sawTurnEvent = true;
+          reviewTurns = applyAgentTurnEvent(reviewTurns, output.turnEvent);
+          latestCompletedAssistantMessageText =
+            extractLatestCompletedAssistantMessageText(reviewTurns) ||
+            latestCompletedAssistantMessageText;
+          await emitTurns();
+          if (
+            output.turnEvent.type === 'item.completed' &&
+            output.turnEvent.item.type === 'assistant_message' &&
+            output.turnEvent.item.status === 'completed' &&
+            output.turnEvent.item.text.trim()
+          ) {
+            terminalOutputSeen = true;
+            streamedResult = output.turnEvent.item.text;
+            closeAgentInput();
+          }
+          if (
+            output.turnEvent.type === 'turn.completed' ||
+            output.turnEvent.type === 'turn.failed'
+          ) {
+            closeAgentInput();
+          }
+        }
+        if (output.result) {
+          terminalOutputSeen = true;
+          latestResultText = output.result;
+          streamedResult = output.result;
+          closeAgentInput();
+        } else if (output.status === 'error') {
+          terminalOutputSeen = true;
+          closeAgentInput();
+        }
+      },
+    );
+
+    const timeoutMs = WORKER_TIMEOUT_MS;
+    const timeoutPromise = new Promise<AgentRunOutput>((resolve) => {
+      timeoutTimer = setTimeout(() => {
+        timedOut = true;
+        forceStopAgentProcess();
+        resolve({
+          status: 'error',
+          result: null,
+          error: `Review agent timed out after ${Math.round(timeoutMs / 1000)}s`,
+        });
+      }, timeoutMs);
+    });
+
+    const result = await Promise.race([processPromise, timeoutPromise]);
+    if (result.status !== 'success' && !timedOut) {
+      throw new Error(result.error || 'Review agent did not return a result');
+    }
+  } finally {
+    if (timeoutTimer) {
+      clearTimeout(timeoutTimer);
+      timeoutTimer = null;
+    }
+  }
+
+  const outputText =
+    streamedResult ||
+    latestResultText ||
+    latestCompletedAssistantMessageText ||
+    '';
+  return {
+    outputText,
+    timedOut,
+    turns: reviewTurns,
+  };
+}
+
 function buildWorkerEvidenceText(chunk: RepoReviewEvidenceChunk): string {
   return trimBlock(
     chunk.files
@@ -445,7 +829,11 @@ function buildWorkerResultsPrompt(results: RepoReviewWorkerResult[]): string {
   );
 }
 
-function parseWorkerResult(output: string, chunk: RepoReviewEvidenceChunk): RepoReviewWorkerResult {
+function parseWorkerResult(
+  output: string,
+  chunk: RepoReviewEvidenceChunk,
+  turns: RepoReviewAssistantTurn[],
+): RepoReviewWorkerResult {
   try {
     const parsed = JSON.parse(extractJsonObject(output)) as Record<string, unknown>;
     return {
@@ -470,6 +858,7 @@ function parseWorkerResult(output: string, chunk: RepoReviewEvidenceChunk): Repo
       failed: false,
       timedOut: Boolean(parsed.timed_out ?? parsed.timedOut),
       rawOutput: output,
+      turns,
     };
   } catch {
     return {
@@ -482,6 +871,7 @@ function parseWorkerResult(output: string, chunk: RepoReviewEvidenceChunk): Repo
       failed: true,
       timedOut: false,
       rawOutput: output,
+      turns,
     };
   }
 }
@@ -545,7 +935,7 @@ function buildPromptFileBlock(file: RepoReviewEvidenceFile): string {
     .join('\n');
 }
 
-function buildWorkerPromptContext(chunk: RepoReviewEvidenceChunk): string {
+function buildWorkerEvidenceContext(chunk: RepoReviewEvidenceChunk): string {
   return trimBlock(
     chunk.files.map((file) => buildPromptFileBlock(file)).join('\n\n'),
     40 * 1024,
@@ -576,8 +966,13 @@ async function resolveWorkerPrompt(input: {
       workerId: input.chunk.id,
       workerTitle: input.chunk.title,
       workerFiles: input.chunk.files.map((file) => `- ${file.filePath}`).join('\n'),
-      workerEvidence: buildWorkerPromptContext(input.chunk),
-      customPromptBlock: formatRepoReviewCustomPromptBlock(input.profile.promptTemplate.trim()),
+      workerEvidence: buildWorkerEvidenceContext(input.chunk),
+      customPromptBlock: [
+        buildWorkerToolInstructionBlock(),
+        formatRepoReviewCustomPromptBlock(input.profile.promptTemplate.trim()),
+      ]
+        .filter(Boolean)
+        .join('\n\n'),
     },
     fallbackText: REPO_REVIEW_WORKER_TEMPLATE,
   });
@@ -772,9 +1167,12 @@ async function runWorker(input: {
   prepared: ReviewPreparedContext;
   bundle: RepoReviewEvidenceBundle;
   chunk: RepoReviewEvidenceChunk;
+  workerIndex: number;
+  workerCount: number;
   runId: string;
   userId?: string;
   executionStats?: RepoReviewExecutionStats;
+  onTurnProgress?: (turns: RepoReviewAssistantTurn[]) => Promise<void>;
   onProgressStep?: (step: {
     id: string;
     label: string;
@@ -793,7 +1191,7 @@ async function runWorker(input: {
     id: stepId,
     label: stepLabel,
     status: 'running',
-    detail: `等待 provider 响应：${input.chunk.files.length} 个文件`,
+    detail: `等待 agent 取证：${input.chunk.files.length} 个文件`,
     kind: 'worker',
     inputText: `files:\n${input.chunk.files.map((file) => `- ${file.filePath}`).join('\n')}`,
   });
@@ -817,7 +1215,7 @@ async function runWorker(input: {
       (input.executionStats.promptBytesBuilt || 0) + byteLength(resolved.text);
   }
   await recordPromptTrace({
-    traceKind: 'direct_provider',
+    traceKind: 'agent_envelope',
     promptKey: 'repo_review.worker',
     featureScope: 'repo_review',
     targetUserId: input.userId ?? '',
@@ -835,19 +1233,50 @@ async function runWorker(input: {
       promptBytes: byteLength(resolved.text),
     },
   }).catch((err) => logger.warn({ err }, 'Failed to persist repo review prompt trace'));
-  const response = await runProviderTextCall({
-    provider,
+  await input.onProgressStep?.({
+    id: stepId,
+    label: stepLabel,
+    status: 'running',
+    detail: `等待 agent 取证：${input.chunk.files.length} 个文件`,
+    kind: 'worker',
+    inputText: formatProgressKeyValues([
+      ['worker_index', input.workerIndex + 1],
+      ['worker_count', input.workerCount],
+      ['files', input.chunk.files.length],
+      ['prompt_bytes', byteLength(resolved.text)],
+    ]),
+  });
+  const response = await runBoundedReviewAgent({
+    repository: input.repository,
+    profile: input.profile,
     prompt: resolved.text,
-    promptKey: 'repo_review.worker',
-    featureScope: 'repo_review',
-    targetUserId: input.userId,
-    metadata: {
-      runId: input.runId,
-      repositoryId: input.repository.id,
-      chunkId: input.chunk.id,
+    runId: input.runId,
+    runtimeNamespace: `${input.runId}:worker:${input.chunk.id}`,
+    workspacePath: input.bundle.workspacePath,
+    userId: input.userId,
+    providerOverrideId: provider.id,
+    onTurnProgress: async (turns) => {
+      await input.onTurnProgress?.(turns);
     },
-    timeoutMs: WORKER_TIMEOUT_MS,
-    maxTokens: 1400,
+    onStatusEvent: async (event) => {
+      if (event.kind !== 'status') return;
+      await input.onProgressStep?.({
+        id: stepId,
+        label: stepLabel,
+        status: 'running',
+        detail: buildRepoReviewAgentStatusText(event),
+        kind: 'worker',
+        metadataText: JSON.stringify(
+          {
+            ai_status: event.status,
+            event_title: event.title,
+            event_body: event.body || '',
+          },
+          null,
+          2,
+        ),
+      });
+    },
   });
   if (response.timedOut) {
     await input.onProgressStep?.({
@@ -867,10 +1296,11 @@ async function runWorker(input: {
       needsCrossFileReduction: false,
       failed: true,
       timedOut: true,
-      rawOutput: '',
+      rawOutput: response.outputText || '',
+      turns: response.turns,
     };
   }
-  const parsed = parseWorkerResult(response.text, input.chunk);
+  const parsed = parseWorkerResult(response.outputText, input.chunk, response.turns);
   await input.onProgressStep?.({
     id: stepId,
     label: stepLabel,
@@ -1035,6 +1465,7 @@ export async function runRepoReviewWorkers(input: {
   runId: string;
   userId?: string;
   executionStats?: RepoReviewExecutionStats;
+  onTurnProgress?: (turnsByWorker: RepoReviewAssistantTurn[][]) => Promise<void>;
   onProgressStep?: (step: {
     id: string;
     label: string;
@@ -1048,44 +1479,58 @@ export async function runRepoReviewWorkers(input: {
   }) => Promise<void>;
 }): Promise<RepoReviewWorkerResult[]> {
   const workerResults: RepoReviewWorkerResult[] = [];
-  for (let index = 0; index < input.chunks.length; index += 1) {
-    const chunk = input.chunks[index]!;
-    try {
-      const result = await runWorker({
-        repository: input.repository,
-        profile: input.profile,
-        event: input.event,
-        prepared: input.prepared,
-        bundle: input.bundle,
-        chunk,
-        runId: input.runId,
-        userId: input.userId,
-        executionStats: input.executionStats,
-        onProgressStep: input.onProgressStep,
-      });
-      workerResults.push(result);
-    } catch (err) {
-      workerResults.push({
-        chunk,
-        checkedFiles: chunk.files.map((file) => file.filePath),
-        findings: [],
-        scopeLimitations: [err instanceof Error ? err.message : String(err)],
-        confidence: 'low',
-        needsCrossFileReduction: false,
-        failed: true,
-        timedOut: false,
-        rawOutput: '',
-      });
-      await input.onProgressStep?.({
-        id: chunk.id,
-        label: buildWorkerScheduleLabel(index, input.chunks.length),
-        status: 'failed',
-        detail: 'worker failed',
-        kind: 'worker',
-        error: err instanceof Error ? err.message : String(err),
-      });
-    }
-  }
+  const turnsByWorker: RepoReviewAssistantTurn[][] = input.chunks.map(() => []);
+  const results = await mapWithConcurrencyLimit(
+    input.chunks,
+    Math.max(1, Math.min(3, input.chunks.length)),
+    async (chunk, index) => {
+      try {
+        const result = await runWorker({
+          repository: input.repository,
+          profile: input.profile,
+          event: input.event,
+          prepared: input.prepared,
+          bundle: input.bundle,
+          chunk,
+          workerIndex: index,
+          workerCount: input.chunks.length,
+          runId: input.runId,
+          userId: input.userId,
+          executionStats: input.executionStats,
+          onTurnProgress: async (turns) => {
+            turnsByWorker[index] = turns;
+            await input.onTurnProgress?.(turnsByWorker);
+          },
+          onProgressStep: input.onProgressStep,
+        });
+        turnsByWorker[index] = result.turns;
+        await input.onTurnProgress?.(turnsByWorker);
+        return result;
+      } catch (err) {
+        await input.onProgressStep?.({
+          id: chunk.id,
+          label: buildWorkerScheduleLabel(index, input.chunks.length),
+          status: 'failed',
+          detail: 'worker failed',
+          kind: 'worker',
+          error: err instanceof Error ? err.message : String(err),
+        });
+        return {
+          chunk,
+          checkedFiles: chunk.files.map((file) => file.filePath),
+          findings: [],
+          scopeLimitations: [err instanceof Error ? err.message : String(err)],
+          confidence: 'low',
+          needsCrossFileReduction: false,
+          failed: true,
+          timedOut: false,
+          rawOutput: '',
+          turns: [],
+        } satisfies RepoReviewWorkerResult;
+      }
+    },
+  );
+  workerResults.push(...results);
   return workerResults;
 }
 
@@ -1143,6 +1588,7 @@ export async function runRepoReviewCoordinatedReview(input: {
   workspacePath?: string | null;
   userId?: string;
   executionStats?: RepoReviewExecutionStats;
+  onTurnProgress?: (turnsByWorker: RepoReviewAssistantTurn[][]) => Promise<void>;
   onProgressStep?: (step: {
     id: string;
     label: string;
@@ -1287,6 +1733,7 @@ export async function runRepoReviewCoordinatedReview(input: {
     runId: input.runId,
     userId: input.userId,
     executionStats: input.executionStats,
+    onTurnProgress: input.onTurnProgress,
     onProgressStep: input.onProgressStep,
   });
   if (input.executionStats) {

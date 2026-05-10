@@ -23,9 +23,12 @@ export interface MyAppsPanelProps {
   loading: boolean;
   onCreateMcp: (input: {
     name: string;
-    command: string;
+    transport?: 'stdio' | 'streamable-http' | 'sse';
+    command?: string;
     args?: string[];
     env?: Record<string, string>;
+    url?: string;
+    cwd?: string;
     description?: string;
     visibility?: 'private' | 'shared';
     metadata?: UserMcpServerView['metadata'];
@@ -42,11 +45,18 @@ export interface MyAppsPanelProps {
     entryFile?: string;
     visibility?: 'private' | 'shared';
   }) => Promise<unknown>;
+  onImportMcpJson: (input: {
+    json: string;
+    visibility?: 'private' | 'shared';
+  }) => Promise<unknown>;
   onUpdateMcp: (id: string, input: Partial<{
     name: string;
-    command: string;
+    transport: 'stdio' | 'streamable-http' | 'sse';
+    command?: string;
     args: string[];
     env: Record<string, string>;
+    url: string;
+    cwd: string;
     enabled: boolean;
     description: string;
     metadata: UserMcpServerView['metadata'];
@@ -84,10 +94,16 @@ function getSource(visibility: string, sourceType: string): AppCardSource {
 
 function buildExtensionExtra(input: {
   capabilities: string[];
+  transport?: string;
   healthStatus: ExtensionHealthStatus;
 }, t: (key: string) => string) {
   return (
     <div className="app-card__extra">
+      {input.transport ? (
+        <div className="app-card__tags">
+          <span className="app-card__tag">{input.transport}</span>
+        </div>
+      ) : null}
       {input.capabilities.length > 0 ? (
         <div className="app-card__tags">
           {input.capabilities.slice(0, 4).map((capability) => (
@@ -111,6 +127,7 @@ export function MyAppsPanel({
   onCreateMcp,
   onGenerateMcp,
   onImportMcp,
+  onImportMcpJson,
   onUpdateMcp,
   onDeleteMcp,
   onToggleMcpVisibility,
@@ -232,6 +249,7 @@ export function MyAppsPanel({
               isOwner
               extra={buildExtensionExtra({
                 capabilities: server.metadata?.capabilities || [],
+                transport: server.transport,
                 healthStatus: server.healthStatus,
               }, t)}
               onToggleEnabled={() =>
@@ -275,6 +293,11 @@ export function MyAppsPanel({
       {showMcpDrawer && (
         <McpCreateDrawer
           editing={editingMcp}
+          onImportJson={async (input) => {
+            await onImportMcpJson(input);
+            setShowMcpDrawer(false);
+            setEditingMcp(null);
+          }}
           onSave={async (input) => {
             if (editingMcp) {
               await onUpdateMcp(editingMcp.id, input);
