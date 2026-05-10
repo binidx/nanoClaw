@@ -87,6 +87,14 @@ describe('repo-review prompt templates (lean mode)', () => {
     }
   });
 
+  it('worker and reducer templates require code snippets and scope metadata', () => {
+    expect(REPO_REVIEW_WORKER_TEMPLATE).toContain('"line": "相关行号或行号范围');
+    expect(REPO_REVIEW_WORKER_TEMPLATE).toContain('"codeSnippet": "当前有问题的代码片段"');
+    expect(REPO_REVIEW_WORKER_TEMPLATE).toContain('"fixCode": "修复后的代码示例');
+    expect(REPO_REVIEW_REDUCER_TEMPLATE).toContain('"branch": "当前分支"');
+    expect(REPO_REVIEW_REDUCER_TEMPLATE).toContain('"diff_range": "本次审查范围');
+  });
+
   it('every lean template stays under 8KB to keep provider input bounded', () => {
     for (const [key, template] of Object.entries(REPO_REVIEW_PROMPT_TEMPLATES)) {
       const bytes = Buffer.byteLength(template, 'utf8');

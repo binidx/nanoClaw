@@ -189,6 +189,10 @@ export interface RepoReviewProfile {
 export interface RepoReviewRunFinding {
   severity: 'high' | 'medium' | 'low';
   file?: string;
+  line?: string;
+  codeSnippet?: string;
+  fixCode?: string;
+  evidence?: string;
   title: string;
   detail: string;
   suggestion?: string;

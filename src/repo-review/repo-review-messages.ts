@@ -70,6 +70,27 @@ function fullReportLine(label: string, url?: string): string {
   return `完整 CR 报告: ${label}${url ? `\n${url}` : ''}`;
 }
 
+function formatReviewScopeRange(input: {
+  baseSha?: string;
+  headSha?: string;
+}): string {
+  const baseSha = String(input.baseSha || '').trim();
+  const headSha = String(input.headSha || '').trim();
+  if (baseSha && headSha) return `${shortSha(baseSha)}..${shortSha(headSha)}`;
+  if (headSha) return `${shortSha(headSha)}^!`;
+  if (baseSha) return `${shortSha(baseSha)}..HEAD`;
+  return 'unknown';
+}
+
+function inferCodeFenceLanguage(file?: string): string {
+  const ext = String(file || '').split('.').pop()?.toLowerCase() || '';
+  if (ext === 'ts' || ext === 'tsx' || ext === 'js' || ext === 'jsx') return ext;
+  if (ext === 'py' || ext === 'go' || ext === 'rs' || ext === 'java' || ext === 'json') {
+    return ext;
+  }
+  return 'text';
+}
+
 export function resolveRepoReviewVisibleBody(
   run: Pick<
     RepoReviewRun,
@@ -79,6 +100,9 @@ export function resolveRepoReviewVisibleBody(
     | 'findings'
     | 'commitReviews'
     | 'suggestions'
+    | 'branch'
+    | 'baseSha'
+    | 'headSha'
   >,
 ): string {
   const markdownBody = String(run.markdownBody || '').trim();
@@ -94,14 +118,27 @@ export function resolveRepoReviewVisibleBody(
   if (!rawModelOutput.startsWith('{')) {
     return rawModelOutput;
   }
-  return buildStructuredRepoReviewMarkdown(run);
+  return buildStructuredRepoReviewMarkdown(run, {
+    branch: run.branch,
+    baseSha: run.baseSha,
+    headSha: run.headSha,
+  });
 }
 
 function formatFindingMarkdown(
   finding: Pick<
     RepoReviewRun['findings'][number],
-    'severity' | 'file' | 'title' | 'detail' | 'suggestion'
+    | 'severity'
+    | 'file'
+    | 'line'
+    | 'title'
+    | 'detail'
+    | 'suggestion'
+    | 'codeSnippet'
+    | 'fixCode'
+    | 'evidence'
   >,
+  input?: { compact?: boolean },
 ): string {
   const severityIcon =
     finding.severity === 'high'
@@ -121,22 +158,46 @@ function formatFindingMarkdown(
     : finding.severity === 'medium'
       ? '回归风险'
       : '代码规范';
-  const fileLine = finding.file ? `**文件：** \`${finding.file}\`` : '**文件：** `未知`';
-  const codeSnippet = finding.detail?.trim() || '// 模型未返回可直接展示的代码片段';
-  const fixSnippet = finding.suggestion?.trim() || '// 暂无修复建议';
+  const location = finding.file
+    ? `${finding.file}${finding.line ? `:${finding.line}` : ''}`
+    : '未知';
+  const language = inferCodeFenceLanguage(finding.file);
+  const codeSnippet =
+    finding.codeSnippet?.trim() ||
+    finding.evidence?.trim() ||
+    '// 未提供可直接展示的代码片段';
+  const fixSnippet =
+    finding.fixCode?.trim() ||
+    finding.suggestion?.trim() ||
+    '// 未提供修复示例';
+  if (input?.compact) {
+    return [
+      `${severityIcon} [${issueType}] ${title}`,
+      `**文件：** \`${location}\``,
+      `${finding.detail?.trim() || '暂无详细说明。'}`,
+      finding.suggestion?.trim()
+        ? `**修复建议：** ${finding.suggestion.trim()}`
+        : '',
+    ]
+      .filter(Boolean)
+      .join('\n');
+  }
   return [
     `${severityIcon} [${issueType}] ${title}`,
-    fileLine,
-    '```text',
+    `**文件：** \`${location}\``,
+    `\`\`\`${language}`,
     codeSnippet,
     '```',
     '**问题：** ' + (finding.detail?.trim() || '暂无详细说明。'),
+    finding.evidence?.trim() ? `**补充证据：** ${finding.evidence.trim()}` : '',
     '**修复建议：**',
-    '```text',
+    `\`\`\`${language}`,
     fixSnippet,
     '```',
     `风险等级：${severityLabel}`,
-  ].join('\n');
+  ]
+    .filter(Boolean)
+    .join('\n');
 }
 
 export function buildStructuredRepoReviewMarkdown(
@@ -144,6 +205,16 @@ export function buildStructuredRepoReviewMarkdown(
     RepoReviewRun,
     'summary' | 'findings' | 'commitReviews' | 'suggestions'
   >,
+  metadata?: {
+    repositoryName?: string;
+    branch?: string;
+    baseSha?: string;
+    headSha?: string;
+    actor?: string;
+    stage?: ReviewStage;
+    prMrNumber?: string;
+    scopeLimitations?: string[];
+  },
 ): string {
   const findings = run.findings || [];
   const high = findings.filter((finding) => finding.severity === 'high');
@@ -162,31 +233,64 @@ export function buildStructuredRepoReviewMarkdown(
       (run.suggestions || []).map((entry) => entry.trim()).filter(Boolean),
     ),
   );
+  const scopeLimitations = Array.from(
+    new Set((metadata?.scopeLimitations || []).map((entry) => entry.trim()).filter(Boolean)),
+  );
 
   const summaryText = branchConclusionLine(run.summary || '模型未返回摘要。');
   const buildSection = (
     heading: string,
     emptyMessage: string,
     items: typeof findings,
+    opts?: { compact?: boolean },
   ) => {
     if (items.length === 0) {
-      return [`### ${heading}`, emptyMessage].join('\n');
+      return '';
     }
     return [
       `### ${heading}`,
-      ...items.flatMap((finding) => ['', formatFindingMarkdown(finding)]),
+      ...items.flatMap((finding) => ['', formatFindingMarkdown(finding, opts)]),
     ].join('\n');
   };
+  const scopeLine = [
+    metadata?.repositoryName ? `仓库 \`${metadata.repositoryName}\`` : '',
+    metadata?.branch ? `分支 \`${metadata.branch}\`` : '',
+    metadata?.baseSha || metadata?.headSha
+      ? `范围 \`${formatReviewScopeRange({
+          baseSha: metadata?.baseSha,
+          headSha: metadata?.headSha,
+        })}\``
+      : '',
+  ]
+    .filter(Boolean)
+    .join(' | ');
   const lines: string[] = [
     '## 代码审查报告',
     '',
+    scopeLine ? `**审查范围：** ${scopeLine}` : '',
+    metadata?.actor ? `**提交人：** ${metadata.actor}` : '',
+    metadata?.stage || metadata?.prMrNumber
+      ? `**审查对象：** ${
+          metadata?.prMrNumber
+            ? `PR/MR #${metadata.prMrNumber}`
+            : metadata?.stage === 'commit'
+              ? '本次提交'
+              : metadata?.stage === 'push'
+                ? '本次推送'
+                : ''
+        }`
+      : '',
+    scopeLine || metadata?.actor || metadata?.stage || metadata?.prMrNumber
+      ? ''
+      : '',
     '### 一、审查总结',
     summaryText,
+    ...(scopeLimitations.length > 0
+      ? ['', '**证据边界：**', ...scopeLimitations.map((item) => `- ${item}`)]
+      : []),
     '',
     buildSection('二、高风险问题', '未发现高风险问题。', high),
-    '',
     buildSection('三、中风险问题', '未发现中风险问题。', medium),
-    '',
     buildSection('四、低风险问题 / 代码规范', '未发现低风险问题。', low),
     '',
     '### 五、代码亮点',
@@ -210,7 +314,10 @@ export function buildStructuredRepoReviewMarkdown(
       : `建议在合并前优先处理 ${high.length} 个高风险问题。`,
   ];
 
-  return lines.join('\n');
+  return lines.filter((line, index, source) => {
+    if (line !== '') return true;
+    return index === 0 || source[index - 1] !== '';
+  }).join('\n');
 }
 
 export function formatActorMention(actor: string): string {
@@ -358,6 +465,10 @@ export function formatRepoReviewMarkdownMessage(
       medium,
       low,
     }),
+    `审查范围: ${run.branch || 'unknown'} | ${formatReviewScopeRange({
+      baseSha: run.baseSha,
+      headSha: run.headSha,
+    })}`,
     branchConclusionLine(run.summary),
   ].filter(Boolean);
   const body = resolveRepoReviewVisibleBody(run);
@@ -432,6 +543,12 @@ export function formatRepoReviewCompletedMessage(
     `阶段: ${run.stage} | 来源: ${run.source}`,
     run.actor ? `提交人: ${run.actor}` : '',
     run.branch ? `分支: ${run.branch}` : '',
+    run.branch || run.baseSha || run.headSha
+      ? `审查范围: ${run.branch || 'unknown'} | ${formatReviewScopeRange({
+          baseSha: run.baseSha,
+          headSha: run.headSha,
+        })}`
+      : '',
     `提交数: ${commitCount}`,
     `变更文件数: ${run.changedFiles.length}`,
     run.prMrNumber ? `PR/MR: #${run.prMrNumber}` : '',
@@ -521,6 +638,12 @@ export function formatRepoReviewPlatformCommentMessage(
     `AI 结论: ${overallLabel(run.overall || run.status)}`,
     `需处理: ${describeRunHandling({ run, decisionMode })}`,
     run.branch ? `分支: ${run.branch}` : '',
+    run.branch || run.baseSha || run.headSha
+      ? `审查范围: ${run.branch || 'unknown'} | ${formatReviewScopeRange({
+          baseSha: run.baseSha,
+          headSha: run.headSha,
+        })}`
+      : '',
     run.headSha ? `Head: ${shortSha(run.headSha)}` : '',
     run.summary ? `摘要: ${run.summary}` : '',
   ].filter(Boolean);

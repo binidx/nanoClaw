@@ -10,6 +10,7 @@ import {
   resolveReviewPrompt,
   resolveSupplementalFileReviewPrompt,
 } from '../repo-review/repo-review-run-executor.js';
+import { resolvePromptText } from './prompt-service.js';
 import type {
   RepoReviewEvent,
   RepoReviewProfile,
@@ -1070,6 +1071,78 @@ export async function buildPromptPreviewFromRuntime(input: {
         userPromptText: text,
         providerInputText: text,
         segments: [segmentForPrompt(promptKey, 'Repo Review main plan', text, resolved.resolution.source)],
+        resolution: [resolved.resolution],
+      });
+    }
+
+    if (promptKey === 'repo_review.worker') {
+      const resolved = await resolvePromptText({
+        promptKey,
+        targetUserId: input.targetUserId || undefined,
+        variables: {
+          repositoryName: repository.name,
+          primaryLanguageBlock: repository.language ? `主要语言：${repository.language}` : '',
+          stage: event.stage,
+          source: event.source,
+          actor: prepared.actor || '(unknown)',
+          branch: prepared.branch || '(unknown)',
+          baseSha: prepared.baseSha || '(none)',
+          headSha: prepared.headSha || '(none)',
+          diffRange: prepared.baseSha && prepared.headSha ? `${prepared.baseSha}..${prepared.headSha}` : 'HEAD',
+          workerId: 'worker_chunk_1',
+          workerTitle: 'Worker 1/1',
+          workerFiles: prepared.changedFiles.map((file) => `- ${file}`).join('\n') || '- (none)',
+          workerEvidence: prepared.changedFiles.length > 0
+            ? prepared.changedFiles.map((file) => `### ${file}\n- diff bytes: ${Buffer.byteLength(prepared.diffText || '', 'utf8')}`).join('\n\n')
+            : '(no evidence)',
+          customPromptBlock: repository && (profile.promptTemplate || '').trim()
+            ? `附加审查要求：\n${profile.promptTemplate.trim()}`
+            : '',
+        },
+      });
+      const text = resolved.text;
+      return buildPromptPreviewEnvelope({
+        traceKind: 'direct_provider',
+        featureScope: 'repo_review',
+        promptKey,
+        targetUserId: input.targetUserId || null,
+        userPromptText: text,
+        providerInputText: text,
+        segments: [segmentForPrompt(promptKey, 'Repo Review worker', text, resolved.resolution.source)],
+        resolution: [resolved.resolution],
+      });
+    }
+
+    if (promptKey === 'repo_review.reducer') {
+      const resolved = await resolvePromptText({
+        promptKey,
+        targetUserId: input.targetUserId || undefined,
+        variables: {
+          repositoryName: repository.name,
+          primaryLanguageBlock: repository.language ? `主要语言：${repository.language}` : '',
+          stage: event.stage,
+          source: event.source,
+          actor: prepared.actor || '(unknown)',
+          branch: prepared.branch || '(unknown)',
+          baseSha: prepared.baseSha || '(none)',
+          headSha: prepared.headSha || '(none)',
+          diffRange: prepared.baseSha && prepared.headSha ? `${prepared.baseSha}..${prepared.headSha}` : 'HEAD',
+          changedFiles: prepared.changedFiles.map((file) => `- ${file}`).join('\n') || '- (none)',
+          workerResults: '[]',
+          customPromptBlock: repository && (profile.promptTemplate || '').trim()
+            ? `附加审查要求：\n${profile.promptTemplate.trim()}`
+            : '',
+        },
+      });
+      const text = resolved.text;
+      return buildPromptPreviewEnvelope({
+        traceKind: 'direct_provider',
+        featureScope: 'repo_review',
+        promptKey,
+        targetUserId: input.targetUserId || null,
+        userPromptText: text,
+        providerInputText: text,
+        segments: [segmentForPrompt(promptKey, 'Repo Review reducer', text, resolved.resolution.source)],
         resolution: [resolved.resolution],
       });
     }

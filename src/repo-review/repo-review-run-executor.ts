@@ -3102,6 +3102,11 @@ function parseReviewResult(text: string): {
                 ? 'low'
                 : 'medium') as RepoReviewRunFinding['severity'],
             file: stringValue(entry.file) || undefined,
+            line: stringValue(entry.line) || undefined,
+            codeSnippet:
+              stringValue(entry.codeSnippet || entry.code_snippet) || undefined,
+            fixCode: stringValue(entry.fixCode || entry.fix_code) || undefined,
+            evidence: stringValue(entry.evidence) || undefined,
             title: stringValue(entry.title) || 'Issue',
             detail: stringValue(entry.detail) || stringValue(entry.description),
             suggestion: stringValue(entry.suggestion) || undefined,
@@ -11412,6 +11417,28 @@ async function executeRepoReviewEvent(
       suggestions: parsed.suggestions,
       recommendedBlock: parsed.recommendedBlock,
     };
+    const finalMarkdownBody = buildStructuredRepoReviewMarkdown(
+      {
+        summary: finalReview.summary,
+        findings: finalReview.findings,
+        fileReviews: finalReview.fileReviews,
+        commitReviews: parsed.commitReviews,
+        suggestions: finalReview.suggestions,
+      } as unknown as Pick<
+        RepoReviewRun,
+        'summary' | 'findings' | 'commitReviews' | 'suggestions'
+      >,
+      {
+        repositoryName: repository.name,
+        branch: prepared.branch,
+        baseSha: prepared.baseSha,
+        headSha: prepared.headSha,
+        actor: prepared.actor,
+        stage: event.stage,
+        prMrNumber: event.prMrNumber,
+        scopeLimitations: finalReview.scopeLimitations,
+      },
+    );
     const blocking = computeBlocking(
       profile,
       finalReview.overall,
@@ -11442,7 +11469,7 @@ async function executeRepoReviewEvent(
       commit_reviews: parsed.commitReviews,
       suggestions: finalReview.suggestions,
       changed_files: prepared.changedFiles,
-      markdown_body: parsed.markdownBody || null,
+      markdown_body: finalMarkdownBody,
       raw_model_output: parsed.rawModelOutput || null,
       diff_bytes: Buffer.byteLength(prepared.diffText, 'utf8'),
       duration_ms: runDurationMs(),

@@ -225,6 +225,18 @@ function normalizeFindings(entries: unknown[]): RepoReviewRunFinding[] {
       if (stringValue(record.file)) {
         finding.file = stringValue(record.file);
       }
+      if (stringValue(record.line)) {
+        finding.line = stringValue(record.line);
+      }
+      if (stringValue(record.codeSnippet || record.code_snippet)) {
+        finding.codeSnippet = stringValue(record.codeSnippet || record.code_snippet);
+      }
+      if (stringValue(record.fixCode || record.fix_code)) {
+        finding.fixCode = stringValue(record.fixCode || record.fix_code);
+      }
+      if (stringValue(record.evidence)) {
+        finding.evidence = stringValue(record.evidence);
+      }
       if (stringValue(record.suggestion)) {
         finding.suggestion = stringValue(record.suggestion);
       }
@@ -1295,6 +1307,27 @@ export async function runRepoReviewCoordinatedReview(input: {
     executionStats: input.executionStats,
     onProgressStep: input.onProgressStep,
   });
+  parsed.markdownBody = buildStructuredRepoReviewMarkdown(
+    {
+      summary: parsed.summary,
+      findings: parsed.findings,
+      commitReviews: parsed.commitReviews,
+      suggestions: parsed.suggestions,
+    } as unknown as Pick<
+      RepoReviewStructuredResult,
+      'summary' | 'findings' | 'commitReviews' | 'suggestions'
+    >,
+    {
+      repositoryName: input.repository.name,
+      branch: input.prepared.branch,
+      baseSha: input.prepared.baseSha,
+      headSha: input.prepared.headSha,
+      actor: input.prepared.actor,
+      stage: input.event.stage,
+      prMrNumber: input.event.prMrNumber,
+      scopeLimitations: parsed.scopeLimitations,
+    },
+  );
 
   return {
     parsed,
