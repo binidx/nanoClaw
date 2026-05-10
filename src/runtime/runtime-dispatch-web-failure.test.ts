@@ -1,0 +1,737 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+const { mockRunAgentProcess, mockGetWebChannel } = vi.hoisted(() => ({
+  mockRunAgentProcess: vi.fn(),
+  mockGetWebChannel: vi.fn(),
+}));
+
+vi.mock('../agent/agent-runner.js', () => ({
+  runAgentProcess: mockRunAgentProcess,
+  writeGroupsSnapshot: vi.fn(),
+  writeTasksSnapshot: vi.fn(),
+}));
+
+vi.mock('../assistant/assistant-runtime.js', () => ({
+  resolveAssistantRuntimeConfig: vi.fn(async () => ({
+    instructionsAppend: '',
+    managedSkillIds: [],
+    managedMcpServerIds: [],
+    userSkillIds: [],
+    userMcpServerIds: [],
+    managedKbIds: [],
+    resolvedMcpServers: [],
+    projectRootOverride: undefined,
+    repoBindingDirectories: undefined,
+    providerOverrideId: undefined,
+    modelOverride: undefined,
+    instructionsMode: 'append',
+  })),
+}));
+
+vi.mock('../channels/web.js', () => ({
+  deriveWebGroupFolder: (jid: string) => `web_${jid.replace(/[^a-z0-9]/gi, '_')}`,
+  getWebChannel: () => mockGetWebChannel(),
+}));
+
+vi.mock('../config-store.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../config-store.js')>();
+  return {
+    ...actual,
+    getAssistantName: vi.fn(async () => 'Andy'),
+    getConfiguredChannelInstances: vi.fn(async () => []),
+    getConfigValue: vi.fn(async () => ''),
+    getTriggerPattern: vi.fn((assistantName: string) => new RegExp(`^@${assistantName}\\b`)),
+  };
+});
+
+vi.mock('../soul/emotion-service.js', () => ({
+  analyzeEmotion: vi.fn(async () => 'neutral'),
+  isEmotionEnabled: vi.fn(async () => false),
+}));
+
+vi.mock('../soul/soul-service.js', () => ({
+  buildSoulPrompt: vi.fn(async () => undefined),
+}));
+
+vi.mock('../user/user-service.js', () => ({
+  getUserByUsername: vi.fn(async () => null),
+}));
+
+vi.mock('../memory/memory-extractor.js', () => ({
+  runMemoryExtraction: vi.fn(async () => undefined),
+}));
+
+import {
+  _initTestDatabase,
+  createAssistant,
+  getConversationMessages,
+  getConversationTurns,
+  storeChatMetadata,
+  storeMessage,
+  storeMessageDirectWithTurn,
+} from '../db.js';
+import {
+  _getAgentCursorState,
+  processGroupMessages,
+  regenerateConversationReply,
+} from './runtime-dispatch.js';
+import { buildSoulPrompt } from '../soul/soul-service.js';
+import { runMemoryExtraction } from '../memory/memory-extractor.js';
+import { getUserByUsername } from '../user/user-service.js';
+import {
+  activeConversationTurnIds,
+  assignLastAgentTimestamp,
+  assignPendingAgentTimestamp,
+  assignRegisteredGroups,
+  assignSessions,
+  channels,
+  interruptedAgentRuns,
+  queue,
+  ipcAcknowledgedChats,
+  pendingUploadedFiles,
+} from './runtime-state.js';
+import type { Channel, RegisteredGroup } from '../types.js';
+
+function createMockWebChannel(): Channel & {
+  notifyTurnEvent: ReturnType<typeof vi.fn>;
+  notifyMessage: ReturnType<typeof vi.fn>;
+  sendStreamChunk: ReturnType<typeof vi.fn>;
+} {
+  return {
+    name: 'web',
+    connect: vi.fn(async () => {}),
+    disconnect: vi.fn(async () => {}),
+    isConnected: vi.fn(() => true),
+    ownsJid: vi.fn((jid: string) => jid.startsWith('web:')),
+    sendMessage: vi.fn(async () => {}),
+    sendStreamChunk: vi.fn(async () => {}),
+    setTyping: vi.fn(async () => {}),
+    notifyTurnEvent: vi.fn(),
+    notifyMessage: vi.fn(),
+    notifyAgentEvent: vi.fn(),
+    notifyApprovalRequest: vi.fn(),
+    notifyApprovalResolved: vi.fn(),
+    notifyAskRequest: vi.fn(),
+    notifyAskResolved: vi.fn(),
+    notifyLive2DEmotion: vi.fn(),
+  } as unknown as Channel & {
+    notifyTurnEvent: ReturnType<typeof vi.fn>;
+    notifyMessage: ReturnType<typeof vi.fn>;
+    sendStreamChunk: ReturnType<typeof vi.fn>;
+  };
+}
+
+function createMockOwnedChannel(prefix: string, name: string): Channel {
+  return {
+    name,
+    connect: vi.fn(async () => {}),
+    disconnect: vi.fn(async () => {}),
+    isConnected: vi.fn(() => true),
+    ownsJid: vi.fn((jid: string) => jid.startsWith(prefix)),
+    sendMessage: vi.fn(async () => {}),
+    sendStreamChunk: vi.fn(async () => {}),
+    setTyping: vi.fn(async () => {}),
+  } as unknown as Channel;
+}
+
+describe('runtime dispatch web failure handling', () => {
+  beforeEach(() => {
+    _initTestDatabase();
+    vi.clearAllMocks();
+
+    channels.splice(0, channels.length);
+    assignRegisteredGroups({});
+    assignSessions({});
+    assignLastAgentTimestamp({});
+    assignPendingAgentTimestamp({});
+    activeConversationTurnIds.clear();
+    interruptedAgentRuns.clear();
+    ipcAcknowledgedChats.clear();
+    pendingUploadedFiles.clear();
+  });
+
+  it('resolves soul context from the conversation owner before sender name fallback', async () => {
+    const webChannel = createMockWebChannel();
+    mockGetWebChannel.mockReturnValue(webChannel);
+    channels.push(webChannel);
+
+    const chatJid = 'web:soul-owner';
+    const group: RegisteredGroup = {
+      name: 'Web Chat soul-owner',
+      folder: 'web_soul_owner',
+      trigger: '@Andy',
+      added_at: '2026-04-16T03:24:10.000Z',
+      requiresTrigger: false,
+      isMain: false,
+    };
+    assignRegisteredGroups({ [chatJid]: group });
+
+    await storeChatMetadata(
+      chatJid,
+      '2026-04-16T03:24:10.000Z',
+      'Owner User',
+      'web',
+      false,
+      'owner-user-id',
+    );
+    await storeMessage({
+      id: 'user-owner-1',
+      chat_jid: chatJid,
+      sender: 'web_user',
+      sender_name: 'Display Name Only',
+      content: '@Andy hi',
+      timestamp: '2026-04-16T03:24:12.000Z',
+      is_from_me: false,
+      is_bot_message: false,
+    });
+
+    vi.mocked(buildSoulPrompt).mockResolvedValue('soul prompt');
+    mockRunAgentProcess.mockResolvedValue({
+      status: 'success',
+      result: 'Done',
+      newSessionId: 'session-owner-soul',
+    });
+
+    expect(await processGroupMessages(chatJid)).toBe(true);
+
+    expect(vi.mocked(buildSoulPrompt)).toHaveBeenCalledWith(
+      'owner-user-id',
+      chatJid,
+      '@Andy hi',
+    );
+    expect(vi.mocked(runMemoryExtraction)).toHaveBeenCalledWith(
+      'owner-user-id',
+      [{ id: 'user-owner-1', content: '@Andy hi' }],
+      chatJid,
+    );
+    expect(vi.mocked(getUserByUsername)).not.toHaveBeenCalled();
+  });
+
+  it('skips soul prompt injection when the bound assistant disables soul inheritance', async () => {
+    const webChannel = createMockWebChannel();
+    mockGetWebChannel.mockReturnValue(webChannel);
+    channels.push(webChannel);
+
+    await createAssistant({
+      id: 'no-soul-assistant',
+      name: 'No Soul Assistant',
+      config: {
+        skillIds: [],
+        mcpServerIds: [],
+        userSkillIds: [],
+        userMcpServerIds: [],
+        kbIds: [],
+        rules: { mode: 'append' },
+        persona: { role: '', style: '', guidelines: '', constraints: '' },
+        providerId: null,
+        model: null,
+      },
+    });
+
+    const chatJid = 'web:no-soul';
+    const group: RegisteredGroup = {
+      name: 'Web Chat no-soul',
+      folder: 'web_no_soul',
+      trigger: '@Andy',
+      added_at: '2026-04-16T03:24:10.000Z',
+      requiresTrigger: false,
+      isMain: false,
+      assistantId: 'no-soul-assistant',
+    };
+    assignRegisteredGroups({ [chatJid]: group });
+
+    await storeChatMetadata(
+      chatJid,
+      '2026-04-16T03:24:10.000Z',
+      'Owner User',
+      'web',
+      false,
+      'owner-user-id',
+    );
+    await storeMessage({
+      id: 'user-no-soul-1',
+      chat_jid: chatJid,
+      sender: 'web_user',
+      sender_name: 'Owner User',
+      content: '@Andy hi',
+      timestamp: '2026-04-16T03:24:12.000Z',
+      is_from_me: false,
+      is_bot_message: false,
+    });
+
+    mockRunAgentProcess.mockResolvedValue({
+      status: 'success',
+      result: 'Done',
+      newSessionId: 'session-no-soul',
+    });
+
+    expect(await processGroupMessages(chatJid)).toBe(true);
+
+    expect(vi.mocked(buildSoulPrompt)).not.toHaveBeenCalled();
+    expect(vi.mocked(runMemoryExtraction)).toHaveBeenCalledWith(
+      'owner-user-id',
+      [{ id: 'user-no-soul-1', content: '@Andy hi' }],
+      chatJid,
+    );
+  });
+
+  it('falls back to sender identity for non-web channels instead of using the conversation owner', async () => {
+    const telegramChannel = createMockOwnedChannel('telegram:', 'telegram');
+    channels.push(telegramChannel);
+
+    const chatJid = 'telegram:test';
+    const group: RegisteredGroup = {
+      name: 'Telegram test',
+      folder: 'telegram_test',
+      trigger: '@Andy',
+      added_at: '2026-04-16T03:24:10.000Z',
+      requiresTrigger: false,
+      isMain: false,
+    };
+    assignRegisteredGroups({ [chatJid]: group });
+
+    await storeChatMetadata(
+      chatJid,
+      '2026-04-16T03:24:10.000Z',
+      'Owner User',
+      'telegram',
+      false,
+      'owner-user-id',
+    );
+    await storeMessage({
+      id: 'telegram-user-1',
+      chat_jid: chatJid,
+      sender: 'telegram_user',
+      sender_name: 'Alice',
+      content: '@Andy hi',
+      timestamp: '2026-04-16T03:24:12.000Z',
+      is_from_me: false,
+      is_bot_message: false,
+    });
+
+    vi.mocked(getUserByUsername).mockResolvedValue({
+      id: 'sender-user-id',
+      username: 'alice',
+    } as any);
+    vi.mocked(buildSoulPrompt).mockResolvedValue('soul prompt');
+    mockRunAgentProcess.mockResolvedValue({
+      status: 'success',
+      result: 'Done',
+      newSessionId: 'session-telegram-soul',
+    });
+
+    expect(await processGroupMessages(chatJid)).toBe(true);
+
+    expect(vi.mocked(getUserByUsername)).toHaveBeenCalledWith('Alice');
+    expect(vi.mocked(buildSoulPrompt)).toHaveBeenCalledWith(
+      'sender-user-id',
+      chatJid,
+      '@Andy hi',
+    );
+    expect(vi.mocked(runMemoryExtraction)).toHaveBeenCalledWith(
+      'sender-user-id',
+      [{ id: 'telegram-user-1', content: '@Andy hi' }],
+      chatJid,
+    );
+  });
+
+  it('regenerates the latest assistant reply by deleting the old turn and rewinding the cursor', async () => {
+    const enqueueMessageCheck = vi
+      .spyOn(queue, 'enqueueMessageCheck')
+      .mockImplementation(() => {});
+
+    const chatJid = 'web:regenerate';
+    const group: RegisteredGroup = {
+      name: 'Web Chat regenerate',
+      folder: 'web_regenerate',
+      trigger: '@Andy',
+      added_at: '2026-04-16T03:24:10.000Z',
+      requiresTrigger: false,
+      isMain: false,
+    };
+    assignRegisteredGroups({ [chatJid]: group });
+
+    await storeChatMetadata(
+      chatJid,
+      '2026-04-16T03:24:10.000Z',
+      'Owner User',
+      'web',
+      false,
+      'owner-user-id',
+    );
+    await storeMessage({
+      id: 'user-1',
+      chat_jid: chatJid,
+      sender: 'web_user',
+      sender_name: 'Owner User',
+      content: '@Andy first',
+      timestamp: '2026-04-16T03:24:11.000Z',
+      is_from_me: false,
+      is_bot_message: false,
+    });
+    await storeMessage({
+      id: 'user-2',
+      chat_jid: chatJid,
+      sender: 'web_user',
+      sender_name: 'Owner User',
+      content: '@Andy second',
+      timestamp: '2026-04-16T03:24:12.000Z',
+      is_from_me: false,
+      is_bot_message: false,
+    });
+    await storeMessageDirectWithTurn(
+      {
+        id: 'bot-1',
+        chat_jid: chatJid,
+        sender: 'Andy',
+        sender_name: 'Andy',
+        content: 'assistant reply',
+        timestamp: '2026-04-16T03:24:13.000Z',
+        is_from_me: true,
+        is_bot_message: true,
+      },
+      {
+        id: 'turn-1',
+        timestamp: '2026-04-16T03:24:13.000Z',
+        items: [
+          {
+            id: 'turn-1:assistant',
+            type: 'assistant_message',
+            status: 'completed',
+            text: 'assistant reply',
+            timestamp: '2026-04-16T03:24:13.000Z',
+          },
+        ],
+        isLive: false,
+        isCompleted: true,
+        persistedMessageId: 'bot-1',
+      },
+    );
+
+    await regenerateConversationReply(chatJid, 'turn-1');
+
+    expect(await getConversationMessages(chatJid, 50, 0)).toMatchObject([
+      { id: 'user-1', content: '@Andy first' },
+      { id: 'user-2', content: '@Andy second' },
+    ]);
+    expect(await getConversationTurns(chatJid, 50, 0)).toEqual([]);
+    expect(_getAgentCursorState()).toMatchObject({
+      committed: {
+        [chatJid]: '',
+      },
+    });
+    expect(enqueueMessageCheck).toHaveBeenCalledWith(chatJid);
+  });
+
+  it('ignores stale active turn markers when regenerating a completed reply', async () => {
+    const enqueueMessageCheck = vi
+      .spyOn(queue, 'enqueueMessageCheck')
+      .mockImplementation(() => {});
+
+    const chatJid = 'web:regenerate-stale-active';
+    const group: RegisteredGroup = {
+      name: 'Web Chat regenerate stale active',
+      folder: 'web_regenerate_stale_active',
+      trigger: '@Andy',
+      added_at: '2026-04-16T03:24:10.000Z',
+      requiresTrigger: false,
+      isMain: false,
+    };
+    assignRegisteredGroups({ [chatJid]: group });
+
+    await storeChatMetadata(
+      chatJid,
+      '2026-04-16T03:24:10.000Z',
+      'Owner User',
+      'web',
+      false,
+      'owner-user-id',
+    );
+    await storeMessage({
+      id: 'user-stale-active',
+      chat_jid: chatJid,
+      sender: 'web_user',
+      sender_name: 'Owner User',
+      content: '@Andy retry this',
+      timestamp: '2026-04-16T03:24:11.000Z',
+      is_from_me: false,
+      is_bot_message: false,
+    });
+    await storeMessageDirectWithTurn(
+      {
+        id: 'bot-stale-active',
+        chat_jid: chatJid,
+        sender: 'Andy',
+        sender_name: 'Andy',
+        content: 'assistant reply',
+        timestamp: '2026-04-16T03:24:12.000Z',
+        is_from_me: true,
+        is_bot_message: true,
+      },
+      {
+        id: 'turn-stale-active',
+        timestamp: '2026-04-16T03:24:12.000Z',
+        items: [
+          {
+            id: 'turn-stale-active:assistant',
+            type: 'assistant_message',
+            status: 'completed',
+            text: 'assistant reply',
+            timestamp: '2026-04-16T03:24:12.000Z',
+          },
+        ],
+        isLive: false,
+        isCompleted: true,
+        persistedMessageId: 'bot-stale-active',
+      },
+    );
+    activeConversationTurnIds.set(chatJid, 'turn-stale-active');
+
+    await regenerateConversationReply(chatJid, 'turn-stale-active');
+
+    expect(activeConversationTurnIds.has(chatJid)).toBe(false);
+    expect(await getConversationMessages(chatJid, 50, 0)).toMatchObject([
+      { id: 'user-stale-active', content: '@Andy retry this' },
+    ]);
+    expect(await getConversationTurns(chatJid, 50, 0)).toEqual([]);
+    expect(enqueueMessageCheck).toHaveBeenCalledWith(chatJid);
+  });
+
+  it('validates regenerate targets against the latest visible assistant message', async () => {
+    const enqueueMessageCheck = vi
+      .spyOn(queue, 'enqueueMessageCheck')
+      .mockImplementation(() => {});
+
+    const chatJid = 'web:regenerate-visible-latest';
+    const group: RegisteredGroup = {
+      name: 'Web Chat regenerate visible latest',
+      folder: 'web_regenerate_visible_latest',
+      trigger: '@Andy',
+      added_at: '2026-04-16T03:24:10.000Z',
+      requiresTrigger: false,
+      isMain: false,
+    };
+    assignRegisteredGroups({ [chatJid]: group });
+
+    await storeChatMetadata(
+      chatJid,
+      '2026-04-16T03:24:08.000Z',
+      'Owner User',
+      'web',
+      false,
+      'owner-user-id',
+    );
+    await storeMessage({
+      id: 'user-old',
+      chat_jid: chatJid,
+      sender: 'web_user',
+      sender_name: 'Owner User',
+      content: '@Andy old',
+      timestamp: '2026-04-16T03:24:09.000Z',
+      is_from_me: false,
+      is_bot_message: false,
+    });
+    await storeMessageDirectWithTurn(
+      {
+        id: 'bot-old',
+        chat_jid: chatJid,
+        sender: 'Andy',
+        sender_name: 'Andy',
+        content: 'old assistant reply',
+        timestamp: '2026-04-16T03:24:10.000Z',
+        is_from_me: true,
+        is_bot_message: true,
+      },
+      {
+        id: 'turn-old',
+        timestamp: '2026-04-16T03:24:14.000Z',
+        items: [
+          {
+            id: 'turn-old:assistant',
+            type: 'assistant_message',
+            status: 'completed',
+            text: 'old assistant reply',
+            timestamp: '2026-04-16T03:24:10.000Z',
+          },
+        ],
+        isLive: false,
+        isCompleted: true,
+        persistedMessageId: 'bot-old',
+      },
+    );
+    await storeMessage({
+      id: 'user-new',
+      chat_jid: chatJid,
+      sender: 'web_user',
+      sender_name: 'Owner User',
+      content: '@Andy new',
+      timestamp: '2026-04-16T03:24:12.000Z',
+      is_from_me: false,
+      is_bot_message: false,
+    });
+    await storeMessageDirectWithTurn(
+      {
+        id: 'bot-new',
+        chat_jid: chatJid,
+        sender: 'Andy',
+        sender_name: 'Andy',
+        content: 'new assistant reply',
+        timestamp: '2026-04-16T03:24:13.000Z',
+        is_from_me: true,
+        is_bot_message: true,
+      },
+      {
+        id: 'turn-new',
+        timestamp: '2026-04-16T03:24:13.000Z',
+        items: [
+          {
+            id: 'turn-new:assistant',
+            type: 'assistant_message',
+            status: 'completed',
+            text: 'new assistant reply',
+            timestamp: '2026-04-16T03:24:13.000Z',
+          },
+        ],
+        isLive: false,
+        isCompleted: true,
+        persistedMessageId: 'bot-new',
+      },
+    );
+
+    await regenerateConversationReply(chatJid, 'turn-new');
+
+    expect(await getConversationMessages(chatJid, 50, 0)).toMatchObject([
+      { id: 'user-old', content: '@Andy old' },
+      { id: 'bot-old', content: 'old assistant reply' },
+      { id: 'user-new', content: '@Andy new' },
+    ]);
+    expect((await getConversationTurns(chatJid, 50, 0)).map((turn) => turn.id)).toEqual([
+      'turn-old',
+    ]);
+    expect(_getAgentCursorState()).toMatchObject({
+      committed: {
+        [chatJid]: '2026-04-16T03:24:10.000Z',
+      },
+    });
+    expect(enqueueMessageCheck).toHaveBeenCalledWith(chatJid);
+  });
+
+  it('persists only the failed turn for web non-retryable errors', async () => {
+    const webChannel = createMockWebChannel();
+    mockGetWebChannel.mockReturnValue(webChannel);
+    channels.push(webChannel);
+
+    const chatJid = 'web:test';
+    const group: RegisteredGroup = {
+      name: 'Web Chat test',
+      folder: 'web_test',
+      trigger: '@Andy',
+      added_at: '2026-04-16T03:24:10.000Z',
+      requiresTrigger: false,
+      isMain: false,
+    };
+    assignRegisteredGroups({ [chatJid]: group });
+
+    await storeChatMetadata(
+      chatJid,
+      '2026-04-16T03:24:10.000Z',
+      'Web User',
+      'web',
+      false,
+    );
+    await storeMessage({
+      id: 'user-1',
+      chat_jid: chatJid,
+      sender: 'web_user',
+      sender_name: 'Web User',
+      content: '@Andy hi',
+      timestamp: '2026-04-16T03:24:12.000Z',
+      is_from_me: false,
+      is_bot_message: false,
+    });
+
+    mockRunAgentProcess.mockImplementation(
+      async (
+        _group: unknown,
+        _input: unknown,
+        _registerProcess: unknown,
+        onOutput?: (output: {
+          status: 'success' | 'error';
+          result: string | null;
+          retryable?: boolean;
+          error?: string;
+          turnEvent?: {
+            type: 'turn.started' | 'turn.failed';
+            turnId: string;
+            timestamp: string;
+            error?: string;
+          };
+        }) => Promise<void>,
+      ) => {
+        await onOutput?.({
+          status: 'success',
+          result: null,
+          turnEvent: {
+            type: 'turn.started',
+            turnId: 'turn-1',
+            timestamp: '2026-04-16T03:24:13.000Z',
+          },
+        });
+        await onOutput?.({
+          status: 'error',
+          result: null,
+          retryable: false,
+          error:
+            'Codex API 401: {"error":{"code":"","message":"Invalid token (request id: 202604160324132006325278268d9d6SvsXGiGk)","type":"new_api_error"}}',
+          turnEvent: {
+            type: 'turn.failed',
+            turnId: 'turn-1',
+            timestamp: '2026-04-16T03:24:13.000Z',
+            error:
+              'Invalid token (request id: 202604160324132006325278268d9d6SvsXGiGk)',
+          },
+        });
+
+        return {
+          status: 'error',
+          error:
+            'Codex API 401: {"error":{"code":"","message":"Invalid token (request id: 202604160324132006325278268d9d6SvsXGiGk)","type":"new_api_error"}}',
+        };
+      },
+    );
+
+    expect(await processGroupMessages(chatJid)).toBe(true);
+
+    expect(await getConversationMessages(chatJid, 50, 0)).toMatchObject([
+      {
+        id: 'user-1',
+        content: '@Andy hi',
+        is_bot_message: 0,
+      },
+    ]);
+    expect(await getConversationTurns(chatJid, 50, 0)).toEqual([
+      {
+        id: 'turn-1',
+        clientKey: 'turn-1',
+        timestamp: '2026-04-16T03:24:13.000Z',
+        items: [],
+        isLive: false,
+        isCompleted: true,
+        error:
+          'Invalid token (request id: 202604160324132006325278268d9d6SvsXGiGk)',
+      },
+    ]);
+
+    expect(webChannel.notifyTurnEvent).toHaveBeenCalledWith(
+      chatJid,
+      expect.objectContaining({
+        type: 'turn.failed',
+        turnId: 'turn-1',
+        error:
+          'Invalid token (request id: 202604160324132006325278268d9d6SvsXGiGk)',
+      }),
+    );
+    expect(webChannel.notifyMessage).not.toHaveBeenCalled();
+    expect(webChannel.sendMessage).not.toHaveBeenCalled();
+  });
+});

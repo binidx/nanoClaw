@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nanoclaw-config
+data:
+  NODE_ENV: production
+  NODE_OPTIONS: --use-system-ca
+  NANOCLAW_LOG_STDOUT: "true"
+  LOG_LEVEL: info
+  TZ: Asia/Shanghai
+  MAX_CONCURRENT_AGENTS: "2"
+  AGENT_TIMEOUT: "1800000"
+  IDLE_TIMEOUT: "1800000"
+  COOKIE_SECURE: "false"
+  # Database: configure via Secret or add here for testing.
+  # DB_ENGINE: postgres
+  # DB_PG_HOST: postgres-service
+  # DB_PG_PORT: "5432"
+  # DB_PG_DATABASE: nanoclaw
+  # DB_PG_POOL_SIZE: "20"
+  # DB_PG_SSL: "false"

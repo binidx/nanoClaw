@@ -1,0 +1,22 @@
+{
+  "title.directoryAccess": "Directory access request",
+  "title.commandConfirm": "Command confirmation",
+  "button.reject": "Reject and close",
+  "directoryRequest": "AI requests access to directory:",
+  "directoryHint": "Allowing will automatically add this directory to the current conversation whitelist.",
+  "tool": "Tool: {{name}}",
+  "directory": "Directory: {{path}}",
+  "scope.title": "Authorization scope",
+  "scope.runtime": "Current runtime",
+  "scope.toolCall": "Current command only",
+  "scope.runtimeHint": "Suitable for commands that repeat within the same run.",
+  "scope.toolCallHint": "Only allow this single command.",
+  "timedOut": "Approval timed out, waiting for system sync.",
+  "currentPolicy": "Current policy: {{policy}}",
+  "viewPolicy": "View access policy",
+  "button.rejecting": "Processing...",
+  "button.rejectBtn": "Reject",
+  "button.allowing": "Processing...",
+  "button.allowRuntime": "Allow current runtime",
+  "button.allowOnce": "Allow this time only"
+}

@@ -1,0 +1,9 @@
+{
+  "id": "agent-reach",
+  "name": "Agent Reach",
+  "version": "1.0.0",
+  "description": "Bring Agent Reach style internet routing into NanoClaw.",
+  "skills": [
+    "./skills"
+  ]
+}

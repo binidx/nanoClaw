@@ -1,0 +1,464 @@
+﻿src/agent-runner.ts(472,40): error TS2339: Property 'accessPolicyOverride' does not exist on type 'Promise<ResolvedAssistantRuntimeConfig>'.
+src/agent-runner.ts(617,41): error TS2339: Property 'has' does not exist on type 'Promise<Set<string> | null>'.
+src/agent-runner.ts(993,9): error TS2322: Type '{ TZ: string; NODE_PATH: string; then<TResult1 = Record<string, string>, TResult2 = never>(onfulfilled?: ((value: Record<string, string>) => TResult1 | PromiseLike<TResult1>) | null | undefined, onrejected?: ((reason: any) => TResult2 | PromiseLike<...>) | ... 1 more ... | undefined): Promise<...>; ... 11 more ...; ...' is not assignable to type 'Record<string, string | undefined>'.
+src/agent-runner.ts(1187,5): error TS2345: Argument of type 'Promise<{ mode: AccessMode; directories: string[]; }>' is not assignable to parameter of type 'AccessPolicy'.
+src/agent-runner.ts(1227,7): error TS2345: Argument of type 'Promise<{ mode: AccessMode; directories: string[]; }>' is not assignable to parameter of type 'AccessPolicy'.
+src/assistant-runtime.ts(132,27): error TS2352: Conversion of type 'never[]' to type 'Promise<AssistantMcpBindingRecord[]>' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+src/assistant-runtime.ts(136,5): error TS2739: Type 'never[]' is missing the following properties from type 'Promise<AssistantMcpBindingRecord[]>': then, catch, finally, [Symbol.toStringTag]
+src/assistant-runtime.ts(140,8): error TS2339: Property 'map' does not exist on type 'Promise<AssistantMcpBindingRecord[]>'.
+src/assistant-runtime.ts(140,13): error TS7006: Parameter 'binding' implicitly has an 'any' type.
+src/assistant-runtime.ts(150,16): error TS7006: Parameter 'entry' implicitly has an 'any' type.
+src/assistant-runtime.ts(155,5): error TS2322: Type 'ManagedMcpTemplate[] | Promise<ManagedMcpServerConfig[]>' is not assignable to type 'ManagedMcpTemplate[]'.
+src/assistant-runtime.ts(156,5): error TS2740: Type 'Promise<AssistantMcpBindingRecord[]>' is missing the following properties from type 'AssistantMcpBindingRecord[]': length, pop, push, concat, and 29 more.
+src/assistant-runtime.ts(157,5): error TS2322: Type 'Map<unknown, unknown>' is not assignable to type 'Map<string, AssistantMcpBindingSecretRecord>'.
+src/assistant-runtime.ts(174,35): error TS2339: Property 'id' does not exist on type 'Promise<AiProvider | undefined>'.
+src/assistant-runtime.ts(175,56): error TS2339: Property 'model' does not exist on type 'Promise<AiProvider | undefined>'.
+src/assistant-runtime.ts(178,30): error TS2339: Property 'alias' does not exist on type 'Promise<AiProvider | undefined>'.
+src/assistant-runtime.ts(191,3): error TS2740: Type 'Promise<AiProvider | undefined>' is missing the following properties from type 'AiProvider': id, alias, type, api_key, and 6 more.
+src/browser/config.ts(171,10): error TS2352: Conversion of type 'Promise<Record<string, string>>' to type 'Record<"WEB_BROWSER_ENABLED" | "WEB_BROWSER_CONNECTION_MODE" | "WEB_BROWSER_REMOTE_DEBUG_URL" | "WEB_BROWSER_HEADLESS" | "WEB_BROWSER_EXECUTABLE_PATH" | "WEB_BROWSER_EXTRA_ARGS" | "WEB_BROWSER_START_URL" | "WEB_BROWSER_STARTUP_TIMEOUT_MS" | "WEB_BROWSER_ACTION_TIMEOUT_MS", string>' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+src/channels/discord.ts(686,28): error TS2345: Argument of type '(opts: ChannelOpts) => Promise<DiscordChannel | MultiDiscordChannel | null>' is not assignable to parameter of type 'ChannelFactory'.
+src/channels/feishu.ts(930,27): error TS2345: Argument of type '(opts: ChannelOpts) => Promise<FeishuChannel | MultiFeishuChannel | null>' is not assignable to parameter of type 'ChannelFactory'.
+src/channels/gmail.ts(786,26): error TS2345: Argument of type '(opts: ChannelOpts) => Promise<GmailChannel | MultiGmailChannel | null>' is not assignable to parameter of type 'ChannelFactory'.
+src/channels/slack.ts(656,26): error TS2345: Argument of type '(opts: ChannelOpts) => Promise<SlackChannel | MultiSlackChannel | null>' is not assignable to parameter of type 'ChannelFactory'.
+src/channels/telegram.ts(542,29): error TS2345: Argument of type '(opts: ChannelOpts) => Promise<TelegramChannel | MultiTelegramChannel | null>' is not assignable to parameter of type 'ChannelFactory'.
+src/channels/whatsapp.ts(448,29): error TS2345: Argument of type '(opts: ChannelOpts) => Promise<WhatsAppChannelHandle | null>' is not assignable to parameter of type 'ChannelFactory'.
+src/code-search.ts(1194,3): error TS2739: Type 'Promise<CodeSearchLoadResult | null>' is missing the following properties from type 'CodeSearchLoadResult': cacheKey, rootDirectory, manifestHash, source, index
+src/config-store.ts(641,38): error TS2345: Argument of type 'Promise<string>' is not assignable to parameter of type 'string'.
+src/config-store.ts(702,42): error TS2345: Argument of type 'Promise<unknown[] | null>' is not assignable to parameter of type 'unknown[]'.
+src/config-store.ts(709,3): error TS2322: Type 'Promise<ChannelInstanceConfig>[]' is not assignable to type 'ChannelInstanceConfig[]'.
+src/config-store.ts(726,23): error TS2524: 'await' expressions cannot be used in a parameter initializer.
+src/conversation-admin-support.ts(126,19): error TS2339: Property 'folder' does not exist on type 'Promise<(RegisteredGroup & { jid: string; }) | undefined>'.
+src/conversation-admin-support.ts(260,50): error TS2345: Argument of type 'Promise<string | undefined>' is not assignable to parameter of type 'string'.
+src/doctor.ts(133,14): error TS2339: Property 'WEB_LOGIN_ENABLED' does not exist on type '{}'.
+src/doctor.ts(147,39): error TS2339: Property 'WEB_LOGIN_USERNAME' does not exist on type '{}'.
+src/doctor.ts(148,39): error TS2339: Property 'WEB_LOGIN_PASSWORD' does not exist on type '{}'.
+src/doctor.ts(150,12): error TS2339: Property 'WEB_LOGIN_ENABLED' does not exist on type '{}'.
+src/doctor.ts(170,14): error TS2339: Property 'WEB_TERMINAL_ENABLED' does not exist on type '{}'.
+src/doctor.ts(185,12): error TS2339: Property 'WEB_TERMINAL_ENABLED' does not exist on type '{}'.
+src/doctor.ts(186,12): error TS2339: Property 'WEB_LOGIN_ENABLED' does not exist on type '{}'.
+src/doctor.ts(201,14): error TS2339: Property 'ALLOW_INSECURE_TLS' does not exist on type '{}'.
+src/doctor.ts(271,40): error TS2339: Property 'allowed_directories' does not exist on type '{}'.
+src/doctor.ts(307,17): error TS2339: Property 'length' does not exist on type 'Promise<AiProvider[]>'.
+src/doctor.ts(331,26): error TS2488: Type 'Promise<AiProvider[]>' must have a '[Symbol.iterator]()' method that returns an iterator.
+src/doctor.ts(356,26): error TS2488: Type 'never[] | Promise<ChannelInstanceConfig[]>' must have a '[Symbol.iterator]()' method that returns an iterator.
+src/doctor.ts(394,63): error TS2339: Property 'filter' does not exist on type 'never[] | Promise<ChannelInstanceConfig[]>'.
+src/doctor.ts(395,6): error TS7006: Parameter 'instance' implicitly has an 'any' type.
+src/doctor.ts(411,48): error TS2339: Property 'WEB_PORT' does not exist on type '{}'.
+src/doctor.ts(431,28): error TS2488: Type 'Promise<AiProvider[]>' must have a '[Symbol.iterator]()' method that returns an iterator.
+src/extension-marketplace-service.ts(2541,32): error TS2345: Argument of type 'string' is not assignable to parameter of type 'Promise<string>'.
+src/index.ts(543,38): error TS2345: Argument of type '{ id: string; chat_jid: string; sender: Promise<string>; sender_name: Promise<string>; content: string; timestamp: string; run_id: string | undefined; is_from_me: boolean; is_bot_message: boolean; }' is not assignable to parameter of type '{ id: string; chat_jid: string; sender: string; sender_name: string; content: string; timestamp: string; client_id?: string | undefined; run_id?: string | undefined; is_from_me: boolean; is_bot_message?: boolean | undefined; }'.
+src/index.ts(545,30): error TS2345: Argument of type '{ id: string; chat_jid: string; sender: Promise<string>; sender_name: Promise<string>; content: string; timestamp: string; run_id: string | undefined; is_from_me: boolean; is_bot_message: boolean; }' is not assignable to parameter of type '{ id: string; chat_jid: string; sender: string; sender_name: string; content: string; timestamp: string; client_id?: string | undefined; run_id?: string | undefined; is_from_me: boolean; is_bot_message?: boolean | undefined; }'.
+src/index.ts(547,48): error TS2345: Argument of type '{ id: string; chat_jid: string; sender: Promise<string>; sender_name: Promise<string>; content: string; timestamp: string; run_id: string | undefined; is_from_me: boolean; is_bot_message: boolean; }' is not assignable to parameter of type '{ id: string; sender: string; sender_name: string; content: string; timestamp: string; run_id?: string | undefined; }'.
+src/index.ts(613,29): error TS2345: Argument of type 'Promise<ContextEntryRecord>[]' is not assignable to parameter of type 'ContextEntryRecord[]'.
+src/index.ts(617,5): error TS2322: Type 'Promise<ContextEntryRecord>[]' is not assignable to type 'ContextEntryRecord[]'.
+src/index.ts(1291,32): error TS2345: Argument of type '() => Promise<AgentPromptInput>' is not assignable to parameter of type 'PromptInputFactory'.
+src/index.ts(1308,6): error TS2339: Property 'setTyping' does not exist on type 'Promise<Channel | undefined>'.
+src/index.ts(1309,14): error TS7006: Parameter 'err' implicitly has an 'any' type.
+src/index.ts(1491,13): error TS2339: Property 'instanceId' does not exist on type 'Promise<{ instanceId: string; }>'.
+src/index.ts(1494,63): error TS2339: Property 'chatId' does not exist on type 'Promise<{ chatId: string; name: string; isGroup: boolean; } | null>'.
+src/index.ts(1502,18): error TS2339: Property 'name' does not exist on type 'Promise<{ chatId: string; name: string; isGroup: boolean; } | null>'.
+src/index.ts(1512,25): error TS2339: Property 'isGroup' does not exist on type 'Promise<{ chatId: string; name: string; isGroup: boolean; } | null>'.
+src/index.ts(1513,5): error TS2739: Type 'Promise<{ jid: string; name: string; }>' is missing the following properties from type '{ jid: string; name: string; allowedDirectories?: string[] | undefined; }': jid, name
+src/index.ts(1524,13): error TS2339: Property 'instanceId' does not exist on type 'Promise<{ instanceId: string; }>'.
+src/index.ts(1538,5): error TS2739: Type 'Promise<{ jid: string; name: string; }>' is missing the following properties from type '{ jid: string; name: string; allowedDirectories?: string[] | undefined; }': jid, name
+src/index.ts(1549,13): error TS2339: Property 'instanceId' does not exist on type 'Promise<{ instanceId: string; }>'.
+src/index.ts(1563,5): error TS2739: Type 'Promise<{ jid: string; name: string; }>' is missing the following properties from type '{ jid: string; name: string; allowedDirectories?: string[] | undefined; }': jid, name
+src/index.ts(1574,13): error TS2339: Property 'instanceId' does not exist on type 'Promise<{ instanceId: string; }>'.
+src/index.ts(1588,5): error TS2739: Type 'Promise<{ jid: string; name: string; }>' is missing the following properties from type '{ jid: string; name: string; allowedDirectories?: string[] | undefined; }': jid, name
+src/index.ts(1599,13): error TS2339: Property 'instanceId' does not exist on type 'Promise<{ instanceId: string; }>'.
+src/index.ts(1609,5): error TS2739: Type 'Promise<{ jid: string; name: string; }>' is missing the following properties from type '{ jid: string; name: string; allowedDirectories?: string[] | undefined; }': jid, name
+src/index.ts(1620,13): error TS2339: Property 'instanceId' does not exist on type 'Promise<{ instanceId: string; }>'.
+src/index.ts(1630,5): error TS2739: Type 'Promise<{ jid: string; name: string; }>' is missing the following properties from type '{ jid: string; name: string; allowedDirectories?: string[] | undefined; }': jid, name
+src/index.ts(1736,53): error TS2304: Cannot find name 'AvailableGroup'.
+src/index.ts(1822,17): error TS2339: Property 'setTyping' does not exist on type 'Promise<Channel | undefined>'.
+src/index.ts(1860,17): error TS2339: Property 'name' does not exist on type 'Promise<Channel | undefined>'.
+src/index.ts(1863,21): error TS2339: Property 'setTyping' does not exist on type 'Promise<Channel | undefined>'.
+src/index.ts(1866,19): error TS2339: Property 'sendMessage' does not exist on type 'Promise<Channel | undefined>'.
+src/index.ts(1871,19): error TS2339: Property 'setTyping' does not exist on type 'Promise<Channel | undefined>'.
+src/index.ts(1880,40): error TS2345: Argument of type 'Promise<AgentPromptInput>' is not assignable to parameter of type 'AgentPromptInput'.
+src/index.ts(1966,19): error TS2339: Property 'name' does not exist on type 'Promise<Channel | undefined>'.
+src/index.ts(1966,45): error TS2339: Property 'sendStreamChunk' does not exist on type 'Promise<Channel | undefined>'.
+src/index.ts(1967,23): error TS2339: Property 'sendStreamChunk' does not exist on type 'Promise<Channel | undefined>'.
+src/index.ts(1971,21): error TS2339: Property 'setTyping' does not exist on type 'Promise<Channel | undefined>'.
+src/index.ts(1994,21): error TS2339: Property 'name' does not exist on type 'Promise<Channel | undefined>'.
+src/index.ts(1997,25): error TS2339: Property 'setTyping' does not exist on type 'Promise<Channel | undefined>'.
+src/index.ts(1998,56): error TS2339: Property 'sendStreamChunk' does not exist on type 'Promise<Channel | undefined>'.
+src/index.ts(1999,25): error TS2339: Property 'sendStreamChunk' does not exist on type 'Promise<Channel | undefined>'.
+src/index.ts(2004,25): error TS2339: Property 'setTyping' does not exist on type 'Promise<Channel | undefined>'.
+src/index.ts(2006,25): error TS2339: Property 'sendMessage' does not exist on type 'Promise<Channel | undefined>'.
+src/index.ts(2011,25): error TS2339: Property 'setTyping' does not exist on type 'Promise<Channel | undefined>'.
+src/index.ts(2029,19): error TS2339: Property 'name' does not exist on type 'Promise<Channel | undefined>'.
+src/index.ts(2029,45): error TS2339: Property 'sendStreamChunk' does not exist on type 'Promise<Channel | undefined>'.
+src/index.ts(2030,23): error TS2339: Property 'sendStreamChunk' does not exist on type 'Promise<Channel | undefined>'.
+src/index.ts(2076,15): error TS2339: Property 'name' does not exist on type 'Promise<Channel | undefined>'.
+src/index.ts(2077,15): error TS2339: Property 'sendStreamChunk' does not exist on type 'Promise<Channel | undefined>'.
+src/index.ts(2079,21): error TS2339: Property 'sendStreamChunk' does not exist on type 'Promise<Channel | undefined>'.
+src/index.ts(2081,21): error TS2339: Property 'sendMessage' does not exist on type 'Promise<Channel | undefined>'.
+src/index.ts(2086,17): error TS2339: Property 'setTyping' does not exist on type 'Promise<Channel | undefined>'.
+src/index.ts(2184,5): error TS2345: Argument of type 'Promise<AvailableGroup[]>' is not assignable to parameter of type 'AvailableGroup[]'.
+src/index.ts(2481,5): error TS2322: Type '() => Promise<AvailableGroup[]>' is not assignable to type '() => AvailableGroup[]'.
+src/index.ts(2503,5): error TS2322: Type '(jid: string, name: string, options: { assistantId?: string | undefined; accessPolicy?: AccessPolicy | undefined; } | undefined) => Promise<{ folder: string; accessPolicy: AccessPolicy; }>' is not assignable to type '(jid: string, name: string, options?: { assistantId?: string | undefined; accessPolicy?: AccessPolicy | undefined; } | undefined) => { folder: string; accessPolicy: AccessPolicy; } | null'.
+src/index.ts(2509,5): error TS2322: Type '(jid: string, accessPolicy: AccessPolicy) => Promise<{ folder: string; accessPolicy: AccessPolicy; } | null>' is not assignable to type '(jid: string, accessPolicy: AccessPolicy) => { folder: string; } | null'.
+src/index.ts(2514,5): error TS2322: Type '(taskId: string) => Promise<{ ok: boolean; error?: string | undefined; }>' is not assignable to type '(taskId: string) => { ok: boolean; error?: string | undefined; }'.
+src/memory/compaction-scheduler.ts(59,81): error TS2345: Argument of type '(a: ContextEntryRecord, b: ContextEntryRecord) => Promise<number>' is not assignable to parameter of type '(a: ContextEntryRecord, b: ContextEntryRecord) => number'.
+src/memory/context-assembly.ts(313,8): error TS2339: Property 'find' does not exist on type 'Promise<MemoryDocumentRecord[]>'.
+src/memory/context-assembly.ts(313,14): error TS7006: Parameter 'doc' implicitly has an 'any' type.
+src/memory/context-assembly.ts(336,8): error TS2488: Type 'Promise<{ docId: string; scope: string; ownerType: string; ownerId: string; pathRef: string | null; sourceType: string; title: string; body: string; metadataJson: string | null; updatedAt: string; ... 4 more ...; exactMatchBoost: number; }[]>' must have a '[Symbol.iterator]()' method that returns an iterator.
+src/memory/context-assembly.ts(343,8): error TS2488: Type 'Promise<{ docId: string; scope: string; ownerType: string; ownerId: string; pathRef: string | null; sourceType: string; title: string; body: string; metadataJson: string | null; updatedAt: string; ... 4 more ...; exactMatchBoost: number; }[]>' must have a '[Symbol.iterator]()' method that returns an iterator.
+src/memory/context-assembly.ts(415,9): error TS2339: Property 'filter' does not exist on type 'Promise<ContextEntryRecord[]>'.
+src/memory/context-assembly.ts(415,17): error TS7006: Parameter 'entry' implicitly has an 'any' type.
+src/memory/context-assembly.ts(434,18): error TS7006: Parameter 'entry' implicitly has an 'any' type.
+src/memory/context-assembly.ts(437,12): error TS2488: Type 'never[] | Promise<ContextEntryRecord[]>' must have a '[Symbol.iterator]()' method that returns an iterator.
+src/memory/context-assembly.ts(441,10): error TS7006: Parameter 'entry' implicitly has an 'any' type.
+src/memory/context-assembly.ts(476,52): error TS2345: Argument of type 'Promise<ContextEntryRecord[]>' is not assignable to parameter of type 'ContextEntryRecord[]'.
+src/memory/context-assembly.ts(487,52): error TS2345: Argument of type 'Promise<ContextEntryRecord[]>' is not assignable to parameter of type 'ContextEntryRecord[]'.
+src/memory/conversation-search.ts(6,76): error TS2537: Type 'Promise<{ docId: string; scope: string; ownerType: string; ownerId: string; pathRef: string | null; sourceType: string; title: string; body: string; metadataJson: string | null; updatedAt: string; ... 4 more ...; exactMatchBoost: number; }[]>' has no matching index signature for type 'number'.
+src/memory/document-indexing.ts(270,31): error TS7053: Element implicitly has an 'any' type because expression of type '0' can't be used to index type 'Promise<MemoryDocumentSyncStateRecord[]>'.
+src/memory/document-indexing.ts(379,8): error TS2339: Property 'map' does not exist on type 'Promise<MemoryDocumentSyncStateRecord[]>'.
+src/memory/document-indexing.ts(379,13): error TS7006: Parameter 'state' implicitly has an 'any' type.
+src/memory/document-indexing.ts(474,21): error TS2339: Property 'file_mtime_ms' does not exist on type '{}'.
+src/memory/document-indexing.ts(475,21): error TS2339: Property 'file_size' does not exist on type '{}'.
+src/memory/document-indexing.ts(483,7): error TS2740: Type '{}' is missing the following properties from type 'MemoryDocumentSyncStateRecord': path_ref, scope, owner_type, owner_id, and 5 more.
+src/memory/document-indexing.ts(554,8): error TS2339: Property 'map' does not exist on type 'Promise<MemoryDocumentSyncStateRecord[]>'.
+src/memory/document-indexing.ts(554,13): error TS7006: Parameter 'state' implicitly has an 'any' type.
+src/memory/document-indexing.ts(560,7): error TS2322: Type 'unknown' is not assignable to type 'MemoryDocumentSyncStateRecord | undefined'.
+src/memory/observability.ts(53,18): error TS2352: Conversion of type '{ [k: string]: Promise<string>; }' to type 'Record<"MEMORY_ENABLED" | "MEMORY_READ_ENABLED" | "MEMORY_WRITE_MODE" | "MEMORY_GLOBAL_WRITE_ENABLED" | "MEMORY_AUTO_SAVE_ENABLED" | "MEMORY_SEARCH_SCOPE_DEFAULT" | "MEMORY_SEARCH_MAX_RESULTS" | ... 8 more ... | "MEMORY_COMPACTION_KEEP_RECENT_ENTRIES", string>' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+src/onboard.ts(148,56): error TS2339: Property 'filter' does not exist on type 'never[] | Promise<ChannelInstanceConfig[]>'.
+src/onboard.ts(149,6): error TS7006: Parameter 'instance' implicitly has an 'any' type.
+src/onboard.ts(279,54): error TS2339: Property 'alias' does not exist on type 'Promise<AiProvider | undefined>'.
+src/repo-review-read-service.ts(132,5): error TS2769: No overload matches this call.
+src/repo-review-read-service.ts(155,57): error TS2339: Property 'repositoryId' does not exist on type 'Promise<RepoReviewRun>'.
+src/repo-review-read-service.ts(156,31): error TS2339: Property 'profileId' does not exist on type 'Promise<RepoReviewRun>'.
+src/repo-review-read-service.ts(157,30): error TS2339: Property 'profileId' does not exist on type 'Promise<RepoReviewRun>'.
+src/repo-review-read-service.ts(162,13): error TS2339: Property 'summary' does not exist on type 'Promise<RepoReviewRun>'.
+src/repo-review-read-service.ts(163,13): error TS2339: Property 'actor' does not exist on type 'Promise<RepoReviewRun>'.
+src/repo-review-read-service.ts(164,13): error TS2339: Property 'branch' does not exist on type 'Promise<RepoReviewRun>'.
+src/repo-review-read-service.ts(165,13): error TS2339: Property 'headSha' does not exist on type 'Promise<RepoReviewRun>'.
+src/repo-review-read-service.ts(166,13): error TS2339: Property 'ref' does not exist on type 'Promise<RepoReviewRun>'.
+src/repo-review-read-service.ts(174,5): error TS2322: Type 'Promise<RepoReviewRun>[]' is not assignable to type 'RepoReviewRun[]'.
+src/repo-review-read-service.ts(205,105): error TS2304: Cannot find name 'RepoReviewRepository'.
+src/repo-review-read-service.ts(205,148): error TS2304: Cannot find name 'RepoReviewProfile'.
+src/repo-review-service.ts(1807,7): error TS2322: Type 'Promise<string>' is not assignable to type 'string'.
+src/repo-review-service.ts(1968,11): error TS2801: This condition will always return true since this 'Promise<import("D:/open_source/nanoclaw/src/repo-review-service", { with: { "resolution-mode": "import" } }).RepoReviewEvent | null>' is always defined.
+src/repo-review-service.ts(2007,11): error TS2801: This condition will always return true since this 'Promise<import("D:/open_source/nanoclaw/src/repo-review-service", { with: { "resolution-mode": "import" } }).RepoReviewEvent | null>' is always defined.
+src/repo-review-service.ts(2046,59): error TS2339: Property 'branch' does not exist on type 'Promise<RepoReviewEvent | null>'.
+src/repo-review-service.ts(2051,39): error TS2345: Argument of type 'Promise<RepoReviewEvent | null>' is not assignable to parameter of type 'RepoReviewEvent'.
+src/repo-review-service.ts(2190,31): error TS2339: Property 'targetBranches' does not exist on type 'Promise<RepoReviewProfile>'.
+src/repo-review-service.ts(2194,31): error TS2339: Property 'skillIds' does not exist on type 'Promise<RepoReviewProfile>'.
+src/repo-review-service.ts(2198,31): error TS2339: Property 'mcpServerIds' does not exist on type 'Promise<RepoReviewProfile>'.
+src/repo-review-service.ts(2206,31): error TS2339: Property 'includeGlobs' does not exist on type 'Promise<RepoReviewProfile>'.
+src/repo-review-service.ts(2210,31): error TS2339: Property 'excludeGlobs' does not exist on type 'Promise<RepoReviewProfile>'.
+src/repo-review-service.ts(3272,6): error TS2339: Property 'map' does not exist on type 'Promise<ReviewProfileRecord[]>'.
+src/repo-review-service.ts(3272,11): error TS7006: Parameter 'record' implicitly has an 'any' type.
+src/repo-review-service.ts(3276,12): error TS7006: Parameter 'left' implicitly has an 'any' type.
+src/repo-review-service.ts(3276,18): error TS7006: Parameter 'right' implicitly has an 'any' type.
+src/repo-review-service.ts(3299,41): error TS7031: Binding element 'profile' implicitly has an 'any' type.
+src/repo-review-service.ts(5538,34): error TS2345: Argument of type 'Promise<RepoReviewRun>' is not assignable to parameter of type 'RepoReviewRun'.
+src/repo-review-service.ts(6301,46): error TS2345: Argument of type 'Promise<RepoReviewRun>' is not assignable to parameter of type 'RepoReviewRun'.
+src/repo-review-service.ts(6359,50): error TS2345: Argument of type 'Promise<RepoReviewRun>' is not assignable to parameter of type 'RepoReviewRun'.
+src/repo-review-service.ts(6369,34): error TS2345: Argument of type 'Promise<RepoReviewRun>' is not assignable to parameter of type 'RepoReviewRun'.
+src/repo-review-service.ts(6389,36): error TS2345: Argument of type 'Promise<RepoReviewRun>' is not assignable to parameter of type 'RepoReviewRun'.
+src/repo-review-service.ts(6390,44): error TS2345: Argument of type 'Promise<RepoReviewRun>' is not assignable to parameter of type 'RepoReviewRun'.
+src/repo-review-service.ts(6399,59): error TS2345: Argument of type 'ReviewRunRecord | undefined' is not assignable to parameter of type 'ReviewRunRecord'.
+src/repo-review-service.ts(6483,34): error TS2345: Argument of type 'ReviewRunRecord | undefined' is not assignable to parameter of type 'ReviewRunRecord'.
+src/repo-review-service.ts(6630,41): error TS2345: Argument of type 'ReviewRunRecord | undefined' is not assignable to parameter of type 'ReviewRunRecord'.
+src/repo-review-service.ts(6668,3): error TS2322: Type 'Promise<RepoReviewRepository>[]' is not assignable to type 'RepoReviewRepository[]'.
+src/repo-review-service.ts(6674,3): error TS2322: Type 'Promise<RepoReviewProfile>[]' is not assignable to type 'RepoReviewProfile[]'.
+src/repo-review-service.ts(6678,3): error TS2322: Type 'Promise<RepoReviewRun>[]' is not assignable to type 'RepoReviewRun[]'.
+src/repo-review-service.ts(6710,32): error TS2339: Property 'overall' does not exist on type 'Promise<RepoReviewRun>'.
+src/repo-review-service.ts(6710,47): error TS2339: Property 'status' does not exist on type 'Promise<RepoReviewRun>'.
+src/repo-review-service.ts(6715,13): error TS2339: Property 'summary' does not exist on type 'Promise<RepoReviewRun>'.
+src/repo-review-service.ts(6716,13): error TS2339: Property 'actor' does not exist on type 'Promise<RepoReviewRun>'.
+src/repo-review-service.ts(6717,13): error TS2339: Property 'branch' does not exist on type 'Promise<RepoReviewRun>'.
+src/repo-review-service.ts(6718,13): error TS2339: Property 'ref' does not exist on type 'Promise<RepoReviewRun>'.
+src/repo-review-service.ts(6719,13): error TS2339: Property 'headSha' does not exist on type 'Promise<RepoReviewRun>'.
+src/repo-review-service.ts(6720,13): error TS2339: Property 'baseSha' does not exist on type 'Promise<RepoReviewRun>'.
+src/repo-review-service.ts(6721,13): error TS2339: Property 'prMrNumber' does not exist on type 'Promise<RepoReviewRun>'.
+src/repo-review-service.ts(6727,3): error TS2322: Type 'Promise<RepoReviewRun>[]' is not assignable to type 'RepoReviewRun[]'.
+src/repo-review-service.ts(6868,5): error TS2322: Type 'never[] | Promise<RepoReviewProfile[]>' is not assignable to type 'RepoReviewProfile[]'.
+src/repo-review-service.ts(7091,49): error TS2345: Argument of type 'Promise<ReviewRepositoryRecord>' is not assignable to parameter of type 'ReviewRepositoryRecord'.
+src/repo-review-service.ts(7120,54): error TS2345: Argument of type 'Promise<ReviewRepositoryRecord>' is not assignable to parameter of type 'ReviewRepositoryRecord'.
+src/repo-review-service.ts(7644,67): error TS2339: Property 'runId' does not exist on type 'Promise<RepoReviewQueueItem>'.
+src/repo-review-service.ts(7647,32): error TS2345: Argument of type 'Promise<RepoReviewQueueItem>' is not assignable to parameter of type 'RepoReviewQueueItem'.
+src/repo-review-service.ts(7913,6): error TS2339: Property 'map' does not exist on type 'Promise<ReviewProfileRecord[]>'.
+src/repo-review-service.ts(7943,44): error TS7006: Parameter 'profile' implicitly has an 'any' type.
+src/repo-review-service.ts(8175,41): error TS2345: Argument of type 'ReviewRepositoryRecord | Promise<ReviewRepositoryRecord | undefined>' is not assignable to parameter of type 'ReviewRepositoryRecord'.
+src/repo-review-service.ts(8178,34): error TS2339: Property 'id' does not exist on type 'ReviewRepositoryRecord | Promise<ReviewRepositoryRecord | undefined>'.
+src/repo-review-service.ts(8184,30): error TS2339: Property 'id' does not exist on type 'ReviewRepositoryRecord | Promise<ReviewRepositoryRecord | undefined>'.
+src/repo-review-service.ts(8192,34): error TS2339: Property 'id' does not exist on type 'ReviewRepositoryRecord | Promise<ReviewRepositoryRecord | undefined>'.
+src/repo-review-service.ts(8398,6): error TS2339: Property 'map' does not exist on type 'Promise<ReviewProfileRecord[]>'.
+src/repo-review-service.ts(8436,8): error TS2339: Property 'map' does not exist on type 'Promise<ReviewProfileRecord[]>'.
+src/routes/admin-settings-routes.ts(304,13): error TS2367: This comparison appears to be unintentional because the types 'string' and 'Promise<string>' have no overlap.
+src/routes/assistant-routes.ts(253,36): error TS2339: Property 'mcpBindings' does not exist on type 'Promise<{ assistantId: string; availableSkills: { id: string; name: string; description: string; source: string; enabled: boolean; }[]; selectedSkillIds: string[]; availableMcpTemplates: { id: string; name: string; command: string; args: string[]; enabled: boolean; envKeyCount: number; }[]; mcpBindings: AssistantMcp...'.
+src/routes/internal-memory-routes.ts(34,68): error TS2537: Type 'Promise<{ docId: string; scope: string; ownerType: string; ownerId: string; pathRef: string | null; sourceType: string; title: string; body: string; metadataJson: string | null; updatedAt: string; ... 4 more ...; exactMatchBoost: number; }[]>' has no matching index signature for type 'number'.
+src/routes/internal-memory-routes.ts(305,23): error TS2339: Property 'pathRef' does not exist on type 'Promise<IndexedMemoryFileRef | null>'.
+src/routes/task-session-routes.ts(69,9): error TS2769: No overload matches this call.
+src/routes/ticket-routes.ts(400,31): error TS2339: Property 'artifacts' does not exist on type 'Promise<TicketRun | null>'.
+src/routes/whatsapp-webhook-routes.ts(38,33): error TS2367: This comparison appears to be unintentional because the types 'string' and 'Promise<string>' have no overlap.
+src/runtime-customization-service.ts(89,15): error TS2339: Property 'length' does not exist on type 'Promise<{ name: string; id: string; command: string; args: string[]; env: Record<string, string>; enabled: boolean; }[]>'.
+src/runtime-customization-service.ts(95,38): error TS2345: Argument of type 'Promise<{ name: string; id: string; command: string; args: string[]; env: Record<string, string>; enabled: boolean; }[]>' is not assignable to parameter of type 'ManagedMcpServerConfig[]'.
+src/runtime-customization-service.ts(213,34): error TS2345: Argument of type '{ name: string; id: string; command: string; args: string[]; env: Record<string, string>; enabled: boolean; }[]' is not assignable to parameter of type 'Promise<{ name: string; id: string; command: string; args: string[]; env: Record<string, string>; enabled: boolean; }[]>'.
+src/slash-commands.ts(838,13): error TS2322: Type 'Promise<string>' is not assignable to type 'string'.
+src/stock-analysis-backtest.ts(50,52): error TS2537: Type 'Promise<StockAnalysisReportRecord[]>' has no matching index signature for type 'number'.
+src/stock-analysis-config.ts(720,5): error TS2322: Type 'Promise<StockAnalysisConfigHistoryItem>[]' is not assignable to type 'StockAnalysisConfigHistoryItem[]'.
+src/stock-analysis-config.ts(751,5): error TS2322: Type 'Promise<{ id: string; title: string; description: string; values: StockAnalysisConfigMap; createdAt: string; updatedAt: string; }>[]' is not assignable to type 'StockAnalysisConfigPresetRecord[]'.
+src/stock-analysis-feedback.ts(17,62): error TS2537: Type 'Promise<StockAnalysisReportRecord[]>' has no matching index signature for type 'number'.
+src/stock-analysis-records.ts(39,62): error TS2537: Type 'Promise<StockAnalysisReportRecord[]>' has no matching index signature for type 'number'.
+src/stock-analysis-records.ts(40,67): error TS2537: Type 'Promise<StockAnalysisWatchlistRecord[]>' has no matching index signature for type 'number'.
+src/stock-analysis-records.ts(54,13): error TS2339: Property 'id' does not exist on type 'Promise<StockAnalysisTaskRecord | undefined>'.
+src/stock-analysis-records.ts(55,20): error TS2339: Property 'stock_code' does not exist on type 'Promise<StockAnalysisTaskRecord | undefined>'.
+src/stock-analysis-records.ts(56,20): error TS2339: Property 'stock_name' does not exist on type 'Promise<StockAnalysisTaskRecord | undefined>'.
+src/stock-analysis-records.ts(56,38): error TS2339: Property 'stock_code' does not exist on type 'Promise<StockAnalysisTaskRecord | undefined>'.
+src/stock-analysis-records.ts(57,17): error TS2339: Property 'market' does not exist on type 'Promise<StockAnalysisTaskRecord | undefined>'.
+src/stock-analysis-records.ts(58,17): error TS2339: Property 'status' does not exist on type 'Promise<StockAnalysisTaskRecord | undefined>'.
+src/stock-analysis-records.ts(59,21): error TS2339: Property 'report_type' does not exist on type 'Promise<StockAnalysisTaskRecord | undefined>'.
+src/stock-analysis-records.ts(60,49): error TS2339: Property 'strategy_preset' does not exist on type 'Promise<StockAnalysisTaskRecord | undefined>'.
+src/stock-analysis-records.ts(61,20): error TS2339: Property 'created_at' does not exist on type 'Promise<StockAnalysisTaskRecord | undefined>'.
+src/stock-analysis-records.ts(62,20): error TS2339: Property 'started_at' does not exist on type 'Promise<StockAnalysisTaskRecord | undefined>'.
+src/stock-analysis-records.ts(63,22): error TS2339: Property 'completed_at' does not exist on type 'Promise<StockAnalysisTaskRecord | undefined>'.
+src/stock-analysis-records.ts(64,16): error TS2339: Property 'error' does not exist on type 'Promise<StockAnalysisTaskRecord | undefined>'.
+src/stock-analysis-records.ts(65,19): error TS2339: Property 'report_id' does not exist on type 'Promise<StockAnalysisTaskRecord | undefined>'.
+src/stock-analysis-records.ts(66,21): error TS2339: Property 'result_mode' does not exist on type 'Promise<StockAnalysisTaskRecord | undefined>'.
+src/stock-analysis-records.ts(67,19): error TS2339: Property 'data_as_of' does not exist on type 'Promise<StockAnalysisTaskRecord | undefined>'.
+src/stock-analysis-records.ts(201,8): error TS2339: Property 'map' does not exist on type 'Promise<StockAnalysisTaskRecord[]>'.
+src/stock-analysis-records.ts(201,13): error TS7006: Parameter 'task' implicitly has an 'any' type.
+src/stock-analysis-records.ts(212,5): error TS2322: Type 'Promise<StockAnalysisHistoryItem>[]' is not assignable to type 'StockAnalysisHistoryItem[]'.
+src/stock-analysis-records.ts(231,42): error TS2345: Argument of type 'Promise<StockAnalysisDetail | null>' is not assignable to parameter of type 'StockAnalysisDetail'.
+src/stock-analysis-records.ts(235,3): error TS2322: Type 'Promise<StockAnalysisWatchlistItem>[]' is not assignable to type 'StockAnalysisWatchlistItem[]'.
+src/stock-analysis-service.ts(1315,24): error TS1308: 'await' expressions are only allowed within async functions and at the top levels of modules.
+src/stock-analysis-service.ts(1316,7): error TS1308: 'await' expressions are only allowed within async functions and at the top levels of modules.
+src/stock-analysis-service.ts(1389,37): error TS2339: Property 'config' does not exist on type 'Promise<{ config: StockAnalysisConfigMap; configVersion: string; updatedAt: string | null; }>'.
+src/stock-analysis-service.ts(1390,44): error TS2339: Property 'items' does not exist on type 'Promise<{ items: StockAnalysisWatchlistItem[]; }>'.
+src/stock-analysis-service.ts(1412,24): error TS2339: Property 'total' does not exist on type 'Promise<{ items: StockAnalysisHistoryItem[]; total: number; }>'.
+src/stock-analysis-service.ts(1413,25): error TS2339: Property 'items' does not exist on type 'Promise<{ items: StockAnalysisHistoryItem[]; total: number; }>'.
+src/stock-analysis-service.ts(1434,37): error TS2339: Property 'config' does not exist on type 'Promise<{ config: StockAnalysisConfigMap; configVersion: string; updatedAt: string | null; }>'.
+src/stock-analysis-service.ts(1499,27): error TS2345: Argument of type 'StockAnalysisTaskRecord' is not assignable to parameter of type 'Promise<StockAnalysisTaskRecord | undefined>'.
+src/stock-analysis-service.ts(1526,37): error TS2339: Property 'config' does not exist on type 'Promise<{ config: StockAnalysisConfigMap; configVersion: string; updatedAt: string | null; }>'.
+src/stock-analysis-service.ts(1595,39): error TS2345: Argument of type 'StockAnalysisTaskRecord | undefined' is not assignable to parameter of type 'Promise<StockAnalysisTaskRecord | undefined>'.
+src/stock-analysis-service.ts(1627,35): error TS2345: Argument of type 'StockAnalysisTaskRecord | undefined' is not assignable to parameter of type 'Promise<StockAnalysisTaskRecord | undefined>'.
+src/stock-analysis-service.ts(1633,9): error TS2345: Argument of type 'void' is not assignable to parameter of type 'Promise<unknown>'.
+src/stock-analysis-service.ts(1699,49): error TS2339: Property 'config' does not exist on type 'Promise<{ config: StockAnalysisConfigMap; configVersion: string; updatedAt: string | null; }>'.
+src/stock-analysis-service.ts(1798,37): error TS2339: Property 'config' does not exist on type 'Promise<{ config: StockAnalysisConfigMap; configVersion: string; updatedAt: string | null; }>'.
+src/stock-analysis-service.ts(2051,5): error TS2741: Property 'tasks' is missing in type 'Promise<{ tasks: StockAnalysisTaskSummary[]; }>' but required in type '{ tasks: StockAnalysisTaskSummary[]; }'.
+src/stock-analysis-service.ts(2113,7): error TS2739: Type '{ limit: number; offset: number; then<TResult1 = { items: StockAnalysisHistoryItem[]; total: number; }, TResult2 = never>(onfulfilled?: ((value: { items: StockAnalysisHistoryItem[]; total: number; }) => TResult1 | PromiseLike<...>) | null | undefined, onrejected?: ((reason: any) => TResult2 | PromiseLike<...>) | ......' is missing the following properties from type '{ items: StockAnalysisHistoryItem[]; total: number; limit: number; offset: number; }': items, total
+src/stock-analysis-service.ts(2123,7): error TS2740: Type 'Promise<StockAnalysisFeedbackSnapshot>' is missing the following properties from type 'StockAnalysisFeedbackSnapshot': generatedAt, lookaheadDays, winThresholdPct, lossThresholdPct, and 4 more.
+src/stock-analysis-service.ts(2128,44): error TS2339: Property 'items' does not exist on type 'Promise<{ items: StockAnalysisWatchlistItem[]; }>'.
+src/stock-analysis-service.ts(2130,13): error TS7006: Parameter 'item' implicitly has an 'any' type.
+src/stock-analysis-service.ts(2130,80): error TS2339: Property 'items' does not exist on type 'Promise<{ items: StockAnalysisHistoryItem[]; total: number; }>'.
+src/stock-analysis-service.ts(2131,16): error TS7006: Parameter 'item' implicitly has an 'any' type.
+src/stock-analysis-service.ts(2186,42): error TS2339: Property 'config' does not exist on type 'Promise<{ config: StockAnalysisConfigMap; configVersion: string; updatedAt: string | null; }>'.
+src/stock-analysis-service.ts(2189,26): error TS2339: Property 'config' does not exist on type 'Promise<{ config: StockAnalysisConfigMap; configVersion: string; updatedAt: string | null; }>'.
+src/stock-analysis-service.ts(2193,26): error TS2339: Property 'config' does not exist on type 'Promise<{ config: StockAnalysisConfigMap; configVersion: string; updatedAt: string | null; }>'.
+src/stock-analysis-service.ts(2328,57): error TS2339: Property 'config' does not exist on type 'Promise<{ config: StockAnalysisConfigMap; configVersion: string; updatedAt: string | null; }>'.
+src/stock-analysis-service.ts(2341,7): error TS2740: Type 'Promise<StockAnalysisMarketReview | null>' is missing the following properties from type 'StockAnalysisMarketReview': id, marketScope, createdAt, tradeDate, and 3 more.
+src/stock-analysis-service.ts(2569,37): error TS2339: Property 'config' does not exist on type 'Promise<{ config: StockAnalysisConfigMap; configVersion: string; updatedAt: string | null; }>'.
+src/ticket-feishu-delivery.ts(164,9): error TS2322: Type 'string | Promise<string>' is not assignable to type 'string'.
+src/ticket-feishu-delivery.ts(165,9): error TS2322: Type 'string | Promise<string>' is not assignable to type 'string'.
+src/ticket-history-search.ts(199,3): error TS2322: Type 'Promise<{ id: string; workspaceId: string; runId: string; chatJid: string; title: string; summaryText: string; tags: string[]; createdAt: string; updatedAt: string; normalizedTitle: string; normalizedSummary: string; normalizedTags: string[]; titleTerms: Set<...>; summaryTerms: Set<...>; tagTerms: Set<...>; }>[]' is not assignable to type 'SearchDocument[]'.
+src/ticket-history-search.ts(200,54): error TS2345: Argument of type 'TicketCaseMemoryRecord | Promise<TicketCaseMemoryRecord[]>' is not assignable to parameter of type 'TicketCaseMemoryRecord'.
+src/ticket-history-search.ts(384,6): error TS2339: Property 'map' does not exist on type 'Promise<SearchDocument[]>'.
+src/ticket-history-search.ts(384,11): error TS7006: Parameter 'doc' implicitly has an 'any' type.
+src/ticket-history-search.ts(413,14): error TS7006: Parameter 'result' implicitly has an 'any' type.
+src/ticket-history-search.ts(414,12): error TS7006: Parameter 'left' implicitly has an 'any' type.
+src/ticket-history-search.ts(414,18): error TS7006: Parameter 'right' implicitly has an 'any' type.
+src/ticket-replay-benchmark.ts(216,39): error TS2339: Property 'artifacts' does not exist on type 'Promise<TicketRun | null>'.
+src/ticket-replay-benchmark.ts(324,17): error TS2339: Property 'artifacts' does not exist on type 'Promise<TicketRun | null>'.
+src/ticket-replay-benchmark.ts(325,11): error TS7006: Parameter 'artifact' implicitly has an 'any' type.
+src/ticket-replay-benchmark.ts(326,14): error TS7006: Parameter 'kind' implicitly has an 'any' type.
+src/ticket-replay-benchmark.ts(326,20): error TS7006: Parameter 'index' implicitly has an 'any' type.
+src/ticket-replay-benchmark.ts(326,27): error TS7006: Parameter 'items' implicitly has an 'any' type.
+src/ticket-replay-benchmark.ts(334,12): error TS2339: Property 'artifacts' does not exist on type 'Promise<TicketRun | null>'.
+src/ticket-replay-benchmark.ts(334,28): error TS7006: Parameter 'artifact' implicitly has an 'any' type.
+src/ticket-replay-benchmark.ts(345,12): error TS2339: Property 'artifacts' does not exist on type 'Promise<TicketRun | null>'.
+src/ticket-replay-benchmark.ts(345,28): error TS7006: Parameter 'artifact' implicitly has an 'any' type.
+src/ticket-replay-benchmark.ts(361,35): error TS2339: Property 'artifacts' does not exist on type 'Promise<TicketRun | null>'.
+src/ticket-replay-benchmark.ts(362,6): error TS7006: Parameter 'artifact' implicitly has an 'any' type.
+src/ticket-replay-benchmark.ts(365,12): error TS2339: Property 'result' does not exist on type 'Promise<TicketRun | null>'.
+src/ticket-replay-benchmark.ts(365,36): error TS2339: Property 'result' does not exist on type 'Promise<TicketRun | null>'.
+src/ticket-replay-benchmark.ts(365,81): error TS2339: Property 'result' does not exist on type 'Promise<TicketRun | null>'.
+src/ticket-replay-benchmark.ts(366,17): error TS2339: Property 'result' does not exist on type 'Promise<TicketRun | null>'.
+src/ticket-replay-benchmark.ts(389,14): error TS2339: Property 'ticketClass' does not exist on type 'Promise<TicketRun | null>'.
+src/ticket-replay-benchmark.ts(393,23): error TS2339: Property 'needsInfo' does not exist on type 'Promise<TicketRun | null>'.
+src/ticket-replay-benchmark.ts(394,40): error TS2339: Property 'passed' does not exist on type 'Promise<TicketAcceptanceCheck | null>'.
+src/ticket-replay-benchmark.ts(492,5): error TS2739: Type 'TicketRun' is missing the following properties from type 'Promise<TicketRun | null>': then, catch, finally, [Symbol.toStringTag]
+src/ticket-replay-benchmark.ts(521,41): error TS2345: Argument of type 'TicketRun' is not assignable to parameter of type 'Promise<TicketRun | null>'.
+src/ticket-replay-benchmark.ts(604,40): error TS2339: Property 'artifacts' does not exist on type 'Promise<TicketRun | null>'.
+src/ticket-replay-benchmark.ts(604,55): error TS7006: Parameter 'artifact' implicitly has an 'any' type.
+src/ticket-replay-benchmark.ts(606,12): error TS2339: Property 'artifacts' does not exist on type 'Promise<TicketRun | null>'.
+src/ticket-replay-benchmark.ts(606,28): error TS7006: Parameter 'artifact' implicitly has an 'any' type.
+src/ticket-replay-benchmark.ts(608,12): error TS2339: Property 'artifacts' does not exist on type 'Promise<TicketRun | null>'.
+src/ticket-replay-benchmark.ts(608,28): error TS7006: Parameter 'artifact' implicitly has an 'any' type.
+src/ticket-replay-benchmark.ts(611,12): error TS2339: Property 'artifacts' does not exist on type 'Promise<TicketRun | null>'.
+src/ticket-replay-benchmark.ts(611,28): error TS7006: Parameter 'artifact' implicitly has an 'any' type.
+src/ticket-replay-benchmark.ts(614,12): error TS2339: Property 'artifacts' does not exist on type 'Promise<TicketRun | null>'.
+src/ticket-replay-benchmark.ts(614,28): error TS7006: Parameter 'artifact' implicitly has an 'any' type.
+src/ticket-replay-benchmark.ts(617,12): error TS2339: Property 'artifacts' does not exist on type 'Promise<TicketRun | null>'.
+src/ticket-replay-benchmark.ts(617,28): error TS7006: Parameter 'artifact' implicitly has an 'any' type.
+src/ticket-replay-benchmark.ts(620,12): error TS2339: Property 'artifacts' does not exist on type 'Promise<TicketRun | null>'.
+src/ticket-replay-benchmark.ts(620,28): error TS7006: Parameter 'artifact' implicitly has an 'any' type.
+src/ticket-replay-benchmark.ts(623,12): error TS2339: Property 'ticketClass' does not exist on type 'Promise<TicketRun | null>'.
+src/ticket-replay-benchmark.ts(624,20): error TS2339: Property 'result' does not exist on type 'Promise<TicketRun | null>'.
+src/ticket-replay-benchmark.ts(629,44): error TS2339: Property 'result' does not exist on type 'Promise<TicketRun | null>'.
+src/ticket-replay-benchmark.ts(641,14): error TS2339: Property 'needsInfo' does not exist on type 'Promise<TicketRun | null>'.
+src/ticket-replay-benchmark.ts(642,74): error TS2339: Property 'needsInfo' does not exist on type 'Promise<TicketRun | null>'.
+src/ticket-replay-benchmark.ts(648,24): error TS2339: Property 'passed' does not exist on type 'Promise<TicketAcceptanceCheck | null>'.
+src/ticket-replay-benchmark.ts(649,91): error TS2339: Property 'passed' does not exist on type 'Promise<TicketAcceptanceCheck | null>'.
+src/ticket-replay-benchmark.ts(809,28): error TS2339: Property 'id' does not exist on type 'Promise<TicketBinding>'.
+src/ticket-replay-benchmark.ts(812,33): error TS2339: Property 'chatJid' does not exist on type 'Promise<TicketBinding>'.
+src/ticket-replay-benchmark.ts(823,33): error TS2339: Property 'id' does not exist on type 'Promise<TicketBinding>'.
+src/ticket-replay-benchmark.ts(824,31): error TS2339: Property 'chatJid' does not exist on type 'Promise<TicketBinding>'.
+src/ticket-replay-benchmark.ts(830,49): error TS2339: Property 'id' does not exist on type 'Promise<TicketRun>'.
+src/ticket-replay-benchmark.ts(831,67): error TS2339: Property 'id' does not exist on type 'Promise<TicketRun>'.
+src/ticket-replay-benchmark.ts(832,52): error TS2345: Argument of type 'TicketRun | null' is not assignable to parameter of type 'Promise<TicketRun | null>'.
+src/ticket-replay-benchmark.ts(835,7): error TS2322: Type 'TicketRun | null' is not assignable to type 'Promise<TicketRun | null>'.
+src/ticket-replay-benchmark.ts(836,7): error TS2322: Type 'TicketAcceptanceCheck | null' is not assignable to type 'Promise<TicketAcceptanceCheck | null>'.
+src/ticket-replay-benchmark.ts(848,63): error TS2339: Property 'score' does not exist on type 'Promise<TicketReplayCaseResult>'.
+src/ticket-replay-benchmark.ts(849,61): error TS2339: Property 'score' does not exist on type 'Promise<TicketReplayCaseResult>'.
+src/ticket-replay-benchmark.ts(850,53): error TS2339: Property 'score' does not exist on type 'Promise<TicketReplayCaseResult>'.
+src/ticket-replay-benchmark.ts(857,5): error TS2322: Type 'Promise<TicketReplayCaseResult>[]' is not assignable to type 'TicketReplayCaseResult[]'.
+src/ticket-service.ts(788,3): error TS2322: Type 'Promise<{ id: string; name: string; path: string; keywords: string[]; kibanaServiceNames: string[]; archeryDatabases: string[]; mainTables: string[]; notes: string; }>[]' is not assignable to type 'TicketWorkspaceServiceRoute[]'.
+src/ticket-service.ts(940,79): error TS2345: Argument of type 'EffectiveTicketWorkspaceCodebase[] | Promise<EffectiveTicketWorkspaceCodebase[]>' is not assignable to parameter of type 'EffectiveTicketWorkspaceCodebase[]'.
+src/ticket-service.ts(1014,13): error TS2740: Type 'Promise<TicketWorkspaceServiceRoute[]>' is missing the following properties from type 'TicketWorkspaceServiceRoute[]': length, pop, push, concat, and 29 more.
+src/ticket-service.ts(1061,51): error TS2537: Type 'Promise<{ docId: string; scope: string; ownerType: string; ownerId: string; pathRef: string | null; sourceType: string; title: string; body: string; metadataJson: string | null; updatedAt: string; ... 4 more ...; exactMatchBoost: number; }[]>' has no matching index signature for type 'number'.
+src/ticket-service.ts(1120,8): error TS2339: Property 'map' does not exist on type 'Promise<{ docId: string; scope: string; ownerType: string; ownerId: string; pathRef: string | null; sourceType: string; title: string; body: string; metadataJson: string | null; updatedAt: string; ... 4 more ...; exactMatchBoost: number; }[]>'.
+src/ticket-service.ts(1623,15): error TS2339: Property 'codeIndexBuildOptions' does not exist on type 'Promise<TicketWorkspaceRecord & { enabledBool: boolean; codeIndexBuildOptions: TicketWorkspaceIndexBuildOptionsRecord; ... 5 more ...; serviceCatalog: TicketWorkspaceServiceRouteRecord[]; }>'.
+src/ticket-service.ts(1625,14): error TS2339: Property 'includeGlobs' does not exist on type 'Promise<TicketWorkspaceRecord & { enabledBool: boolean; codeIndexBuildOptions: TicketWorkspaceIndexBuildOptionsRecord; ... 5 more ...; serviceCatalog: TicketWorkspaceServiceRouteRecord[]; }>'.
+src/ticket-service.ts(1626,22): error TS2339: Property 'includeGlobs' does not exist on type 'Promise<TicketWorkspaceRecord & { enabledBool: boolean; codeIndexBuildOptions: TicketWorkspaceIndexBuildOptionsRecord; ... 5 more ...; serviceCatalog: TicketWorkspaceServiceRouteRecord[]; }>'.
+src/ticket-service.ts(1629,14): error TS2339: Property 'excludeGlobs' does not exist on type 'Promise<TicketWorkspaceRecord & { enabledBool: boolean; codeIndexBuildOptions: TicketWorkspaceIndexBuildOptionsRecord; ... 5 more ...; serviceCatalog: TicketWorkspaceServiceRouteRecord[]; }>'.
+src/ticket-service.ts(1630,22): error TS2339: Property 'excludeGlobs' does not exist on type 'Promise<TicketWorkspaceRecord & { enabledBool: boolean; codeIndexBuildOptions: TicketWorkspaceIndexBuildOptionsRecord; ... 5 more ...; serviceCatalog: TicketWorkspaceServiceRouteRecord[]; }>'.
+src/ticket-service.ts(1792,7): error TS2559: Type 'Promise<CodeSearchBuildOptions>' has no properties in common with type 'Partial<CodeSearchBuildOptions>'.
+src/ticket-service.ts(1857,50): error TS2537: Type 'Promise<TicketRunStageRecord[]>' has no matching index signature for type 'number'.
+src/ticket-service.ts(1966,40): error TS2339: Property 'some' does not exist on type 'Promise<TicketArtifactRecord[]>'.
+src/ticket-service.ts(1966,52): error TS7006: Parameter 'artifact' implicitly has an 'any' type.
+src/ticket-service.ts(2026,7): error TS2345: Argument of type 'Promise<TicketStructuredResult>' is not assignable to parameter of type 'TicketStructuredResult'.
+src/ticket-service.ts(2463,52): error TS2537: Type 'Promise<TicketArtifactRecord[]>' has no matching index signature for type 'number'.
+src/ticket-service.ts(3233,22): error TS2740: Type 'Promise<TicketAcceptanceCheck>' is missing the following properties from type 'TicketAcceptanceCheck': passed, summary, blockers, warnings, and 2 more.
+src/ticket-service.ts(3244,55): error TS2345: Argument of type 'TicketStructuredResult | Promise<TicketStructuredResult>' is not assignable to parameter of type 'TicketStructuredResult'.
+src/ticket-service.ts(3247,5): error TS2322: Type 'TicketStructuredResult | Promise<TicketStructuredResult>' is not assignable to type 'TicketStructuredResult'.
+src/ticket-service.ts(3256,17): error TS2339: Property 'conclusion' does not exist on type 'TicketStructuredResult | Promise<TicketStructuredResult>'.
+src/ticket-service.ts(3329,21): error TS2339: Property 'ticketUrl' does not exist on type 'Promise<TicketSourceContext | null>'.
+src/ticket-service.ts(3418,20): error TS2339: Property 'conclusion' does not exist on type 'TicketStructuredResult | Promise<TicketStructuredResult>'.
+src/ticket-service.ts(3425,20): error TS2339: Property 'conclusion' does not exist on type 'TicketStructuredResult | Promise<TicketStructuredResult>'.
+src/ticket-service.ts(3426,20): error TS2339: Property 'risks' does not exist on type 'TicketStructuredResult | Promise<TicketStructuredResult>'.
+src/ticket-service.ts(3427,24): error TS2339: Property 'risks' does not exist on type 'TicketStructuredResult | Promise<TicketStructuredResult>'.
+src/ticket-service.ts(3428,35): error TS2339: Property 'risks' does not exist on type 'TicketStructuredResult | Promise<TicketStructuredResult>'.
+src/ticket-service.ts(3428,46): error TS7006: Parameter 'entry' implicitly has an 'any' type.
+src/ticket-service.ts(3428,53): error TS7006: Parameter 'index' implicitly has an 'any' type.
+src/ticket-service.ts(3430,24): error TS2339: Property 'nextSteps' does not exist on type 'TicketStructuredResult | Promise<TicketStructuredResult>'.
+src/ticket-service.ts(3431,42): error TS2339: Property 'nextSteps' does not exist on type 'TicketStructuredResult | Promise<TicketStructuredResult>'.
+src/ticket-service.ts(3431,57): error TS7006: Parameter 'entry' implicitly has an 'any' type.
+src/ticket-service.ts(3431,64): error TS7006: Parameter 'index' implicitly has an 'any' type.
+src/ticket-service.ts(3823,20): error TS2339: Property 'flatMap' does not exist on type 'EffectiveTicketWorkspaceCodebase[] | Promise<EffectiveTicketWorkspaceCodebase[]>'.
+src/ticket-service.ts(3823,29): error TS7006: Parameter 'codebase' implicitly has an 'any' type.
+src/ticket-service.ts(3827,7): error TS2559: Type 'Promise<CodeSearchBuildOptions>' has no properties in common with type 'Partial<CodeSearchBuildOptions>'.
+src/ticket-service.ts(3919,16): error TS2339: Property 'map' does not exist on type 'EffectiveTicketWorkspaceCodebase[] | Promise<EffectiveTicketWorkspaceCodebase[]>'.
+src/ticket-service.ts(3919,21): error TS7006: Parameter 'entry' implicitly has an 'any' type.
+src/ticket-service.ts(3937,34): error TS2339: Property 'flatMap' does not exist on type 'EffectiveTicketWorkspaceCodebase[] | Promise<EffectiveTicketWorkspaceCodebase[]>'.
+src/ticket-service.ts(3937,49): error TS7006: Parameter 'codebase' implicitly has an 'any' type.
+src/ticket-service.ts(4212,5): error TS2345: Argument of type 'Promise<TicketWorkspaceServiceRoute[]>' is not assignable to parameter of type 'TicketWorkspaceServiceRoute[]'.
+src/ticket-service.ts(4215,6): error TS2339: Property 'map' does not exist on type 'Promise<TicketWorkspaceServiceRoute[]>'.
+src/ticket-service.ts(4215,11): error TS7006: Parameter 'route' implicitly has an 'any' type.
+src/ticket-service.ts(4220,5): error TS2740: Type 'Promise<TicketWorkspaceServiceRoute[]>' is missing the following properties from type 'TicketWorkspaceServiceRoute[]': length, pop, push, concat, and 29 more.
+src/ticket-service.ts(4226,5): error TS2740: Type 'Promise<TicketWorkspaceServiceRoute[]>' is missing the following properties from type 'TicketWorkspaceServiceRoute[]': length, pop, push, concat, and 29 more.
+src/ticket-service.ts(4246,5): error TS2740: Type 'Promise<TicketWorkspaceServiceRoute[]>' is missing the following properties from type 'TicketWorkspaceServiceRoute[]': length, pop, push, concat, and 29 more.
+src/ticket-service.ts(4349,59): error TS2345: Argument of type 'Promise<TicketWorkspaceServiceRoute[]>' is not assignable to parameter of type 'TicketWorkspaceServiceRoute[]'.
+src/ticket-service.ts(4641,31): error TS2339: Property 'name' does not exist on type 'Promise<TicketProfileRecord>'.
+src/ticket-service.ts(4728,43): error TS2345: Argument of type 'Promise<TicketProfileRecord> | null' is not assignable to parameter of type 'TicketProfileRecord | null'.
+src/ticket-service.ts(4844,7): error TS2345: Argument of type 'Promise<TicketWorkspaceRecord>' is not assignable to parameter of type 'TicketWorkspaceRecord'.
+src/ticket-service.ts(4863,25): error TS2339: Property 'length' does not exist on type 'Promise<AgentUploadedFile[]>'.
+src/ticket-service.ts(4880,32): error TS2339: Property 'id' does not exist on type 'Promise<TicketWorkspaceRecord>'.
+src/ticket-service.ts(4881,29): error TS2339: Property 'id' does not exist on type 'Promise<TicketProfileRecord>'.
+src/ticket-service.ts(4882,29): error TS2339: Property 'id' does not exist on type 'Promise<TicketBindingRecord>'.
+src/ticket-service.ts(4987,28): error TS2339: Property 'send_to_chat' does not exist on type 'Promise<TicketBindingRecord>'.
+src/ticket-service.ts(4988,31): error TS2339: Property 'auto_deliver_to_chat' does not exist on type 'Promise<TicketProfileRecord>'.
+src/ticket-service.ts(4999,55): error TS2345: Argument of type 'Promise<TicketBindingRecord> | null' is not assignable to parameter of type 'TicketBindingRecord | null'.
+src/ticket-service.ts(5012,9): error TS2345: Argument of type '{ uploadedFiles?: Promise<AgentUploadedFile[]> | undefined; clientId: string; }' is not assignable to parameter of type '{ uploadedFiles?: AgentUploadedFile[] | undefined; clientId?: string | undefined; }'.
+src/ticket-service.ts(5014,29): error TS2339: Property 'length' does not exist on type 'Promise<AgentUploadedFile[]>'.
+src/ticket-service.ts(5051,55): error TS2345: Argument of type 'Promise<TicketBindingRecord> | null' is not assignable to parameter of type 'TicketBindingRecord | null'.
+src/ticket-service.ts(5255,45): error TS2345: Argument of type 'Promise<TicketRunRecord>' is not assignable to parameter of type 'TicketRunRecord'.
+src/ticket-service.ts(5256,59): error TS2345: Argument of type 'Promise<TicketRunRecord>' is not assignable to parameter of type 'TicketRunRecord'.
+src/ticket-service.ts(5257,55): error TS2345: Argument of type 'Promise<TicketRunRecord>' is not assignable to parameter of type 'TicketRunRecord'.
+src/ticket-service.ts(5292,5): error TS2322: Type 'Promise<{ id: string; runId: string; kind: string; title: string; contentText: string; contentJson: unknown; createdAt: string; }>[]' is not assignable to type 'TicketArtifact[]'.
+src/ticket-service.ts(5457,3): error TS2322: Type 'Promise<TicketWorkspace>[]' is not assignable to type 'TicketWorkspace[]'.
+src/ticket-service.ts(5478,60): error TS2345: Argument of type 'Promise<TicketWorkspaceRecord>' is not assignable to parameter of type 'TicketWorkspaceRecord'.
+src/ticket-service.ts(5490,39): error TS2345: Argument of type 'Promise<TicketWorkspaceRecord>' is not assignable to parameter of type 'TicketWorkspaceRecord'.
+src/ticket-service.ts(5491,59): error TS2345: Argument of type 'Promise<TicketWorkspaceRecord>' is not assignable to parameter of type 'TicketWorkspaceRecord'.
+src/ticket-service.ts(5494,34): error TS2345: Argument of type 'Promise<TicketWorkspaceRecord>' is not assignable to parameter of type 'TicketWorkspaceRecord'.
+src/ticket-service.ts(5498,3): error TS2322: Type 'Promise<TicketProfile>[]' is not assignable to type 'TicketProfile[]'.
+src/ticket-service.ts(5519,3): error TS2322: Type 'Promise<TicketBinding>[]' is not assignable to type 'TicketBinding[]'.
+src/ticket-service.ts(5528,56): error TS2345: Argument of type 'Promise<TicketBindingUpsertInput>' is not assignable to parameter of type 'TicketBindingUpsertInput'.
+src/ticket-service.ts(5562,51): error TS2339: Property 'needsInfo' does not exist on type 'Promise<TicketRun>'.
+src/ticket-service.ts(5567,15): error TS2339: Property 'actionState' does not exist on type 'Promise<TicketRun>'.
+src/ticket-service.ts(5572,15): error TS2339: Property 'feedbackVerdict' does not exist on type 'Promise<TicketRun>'.
+src/ticket-service.ts(5577,15): error TS2339: Property 'actionState' does not exist on type 'Promise<TicketRun>'.
+src/ticket-service.ts(5580,7): error TS2322: Type 'Promise<TicketRun>[]' is not assignable to type 'TicketRun[]'.
+src/ticket-service.ts(5581,7): error TS2322: Type 'Promise<TicketRun>[]' is not assignable to type 'TicketRun[]'.
+src/ticket-service.ts(5593,64): error TS2339: Property 'evidence' does not exist on type 'Promise<Record<string, unknown> | null>'.
+src/ticket-service.ts(5603,45): error TS2339: Property 'acceptanceCheck' does not exist on type 'Promise<Record<string, unknown> | null>'.
+src/ticket-service.ts(5611,5): error TS2339: Property 'map' does not exist on type 'Promise<TicketBindingRecord[]>'.
+src/ticket-service.ts(5612,46): error TS7006: Parameter 'binding' implicitly has an 'any' type.
+src/ticket-service.ts(5614,19): error TS7006: Parameter 'binding' implicitly has an 'any' type.
+src/ticket-service.ts(5618,66): error TS2339: Property 'id' does not exist on type 'Promise<TicketWorkspace>'.
+src/ticket-service.ts(5623,36): error TS2339: Property 'workspaceId' does not exist on type 'Promise<TicketProfile>'.
+src/ticket-service.ts(5623,75): error TS2339: Property 'id' does not exist on type 'Promise<TicketProfile>'.
+src/ticket-service.ts(5628,5): error TS2339: Property 'map' does not exist on type 'Promise<TicketRunRecord[]>'.
+src/ticket-service.ts(5629,12): error TS2322: Type 'Promise<TicketWorkspace>[]' is not assignable to type 'TicketWorkspace[]'.
+src/ticket-service.ts(5629,24): error TS2322: Type 'Promise<TicketProfile>[]' is not assignable to type 'TicketProfile[]'.
+src/ticket-service.ts(5634,3): error TS2322: Type 'Promise<TicketCaseMemory>[]' is not assignable to type 'TicketCaseMemory[]'.
+src/ticket-service.ts(5657,46): error TS2345: Argument of type 'Promise<TicketWorkspaceRecord>' is not assignable to parameter of type 'TicketWorkspaceRecord'.
+src/ticket-service.ts(5657,57): error TS2339: Property 'length' does not exist on type 'Promise<EffectiveTicketWorkspaceCodebase[]>'.
+src/ticket-service.ts(5659,5): error TS2345: Argument of type 'Promise<TicketWorkspaceRecord>' is not assignable to parameter of type 'TicketWorkspaceRecord'.
+src/ticket-service.ts(5673,46): error TS2345: Argument of type 'Promise<TicketWorkspaceRecord>' is not assignable to parameter of type 'TicketWorkspaceRecord'.
+src/ticket-service.ts(5673,57): error TS2339: Property 'length' does not exist on type 'Promise<EffectiveTicketWorkspaceCodebase[]>'.
+src/ticket-service.ts(5675,5): error TS2345: Argument of type 'Promise<TicketWorkspaceRecord>' is not assignable to parameter of type 'TicketWorkspaceRecord'.
+src/ticket-service.ts(5689,57): error TS2339: Property 'length' does not exist on type 'Promise<EffectiveTicketWorkspaceCodebase[]>'.
+src/ticket-service.ts(5705,57): error TS2339: Property 'length' does not exist on type 'Promise<EffectiveTicketWorkspaceCodebase[]>'.
+src/ticket-service.ts(5728,26): error TS2339: Property 'workspace_id' does not exist on type 'TicketBindingRecord | Promise<TicketBindingRecord>'.
+src/ticket-service.ts(5735,5): error TS2322: Type 'TicketBindingRecord | Promise<TicketBindingRecord> | null' is not assignable to type 'TicketBindingRecord | null | undefined'.
+src/ticket-service.ts(5751,25): error TS2339: Property 'send_to_chat' does not exist on type 'TicketBindingRecord | Promise<TicketBindingRecord>'.
+src/ticket-service.ts(5752,27): error TS2339: Property 'auto_deliver_to_chat' does not exist on type 'Promise<TicketProfileRecord | null>'.
+src/ticket-service.ts(5754,29): error TS2345: Argument of type 'TicketBindingRecord | Promise<TicketBindingRecord> | null' is not assignable to parameter of type 'TicketBindingRecord | null'.
+src/ticket-service.ts(5759,26): error TS2339: Property 'id' does not exist on type 'Promise<TicketProfileRecord | null>'.
+src/ticket-service.ts(5760,26): error TS2339: Property 'id' does not exist on type 'TicketBindingRecord | Promise<TicketBindingRecord>'.
+src/ticket-service.ts(5761,35): error TS2339: Property 'chat_jid' does not exist on type 'TicketBindingRecord | Promise<TicketBindingRecord>'.
+src/ticket-service.ts(5796,3): error TS2322: Type 'TicketRun | null' is not assignable to type 'TicketRun'.
+src/ticket-service.ts(5802,3): error TS2740: Type 'Promise<TicketRun | null>' is missing the following properties from type 'TicketRun': id, workspaceId, profileId, bindingId, and 19 more.
+src/ticket-service.ts(5890,25): error TS2339: Property 'passed' does not exist on type 'Promise<TicketAcceptanceCheck | null>'.
+src/ticket-service.ts(5892,24): error TS2339: Property 'blockers' does not exist on type 'Promise<TicketAcceptanceCheck | null>'.
+src/ticket-service.ts(5961,3): error TS2322: Type 'TicketRun | null' is not assignable to type 'TicketRun'.
+src/ticket-service.ts(6013,5): error TS2322: Type 'TicketRun | null' is not assignable to type 'TicketRun'.
+src/ticket-service.ts(6032,5): error TS2322: Type 'TicketRun | null' is not assignable to type 'TicketRun'.
+src/ticket-service.ts(6072,5): error TS2739: Type 'Promise<TicketStructuredResult>' is missing the following properties from type 'TicketStructuredResult': conclusion, risks, nextSteps, evidence
+src/ticket-service.ts(6077,5): error TS2739: Type 'Promise<TicketStructuredResult>' is missing the following properties from type 'TicketStructuredResult': conclusion, risks, nextSteps, evidence
+src/ticket-service.ts(6111,3): error TS2322: Type 'TicketRun | null' is not assignable to type 'TicketRun'.
+src/web-auth-runtime.ts(45,30): error TS2322: Type 'string | Promise<string | undefined>' is not assignable to type 'string'.
+src/web-auth-runtime.ts(46,5): error TS2322: Type 'string | Promise<string>' is not assignable to type 'string'.
+src/web-auth-runtime.ts(108,7): error TS2339: Property 'toLowerCase' does not exist on type 'string | Promise<string>'.
+src/web-auth-runtime.ts(113,29): error TS2345: Argument of type 'string | Promise<string>' is not assignable to parameter of type 'string | null | undefined'.
+src/web-auth-runtime.ts(117,29): error TS2345: Argument of type 'string | Promise<string>' is not assignable to parameter of type 'string | null | undefined'.
+src/web-server-support.ts(108,24): error TS7053: Element implicitly has an 'any' type because expression of type 'string' can't be used to index type 'Promise<Record<string, string>>'.
+src/web-server-support.ts(110,3): error TS2322: Type 'Promise<Record<string, string>>' is not assignable to type 'Record<string, string>'.
+src/web-server.ts(268,3): error TS2322: Type 'Promise<{ channel: string | null; externalUserId: string | null; displayName: string | null; }>[]' is not assignable to type 'MemoryIdentityAlias[]'.
+src/web-server.ts(294,11): error TS2322: Type '() => Promise<MemoryIdentityProfile[]>' is not assignable to type '() => MemoryIdentityProfile[]'.
+src/web-server.ts(295,7): error TS2322: Type 'Promise<MemoryIdentityProfile>[]' is not assignable to type 'MemoryIdentityProfile[]'.
+src/web-server.ts(297,11): error TS2322: Type '(id: string) => Promise<MemoryIdentityProfile | null>' is not assignable to type '(id: string) => MemoryIdentityProfile | null'.
+src/web-server.ts(301,11): error TS2322: Type '(input: { id: string; displayName: string; notes: string[]; aliases: MemoryIdentityAlias[]; }) => Promise<MemoryIdentityProfile>' is not assignable to type '(input: { id: string; displayName: string; notes: string[]; aliases: MemoryIdentityAlias[]; }) => MemoryIdentityProfile'.
+src/web-server.ts(310,11): error TS2322: Type '(input: BindConversationIdentityInput) => Promise<{ chatJid: string; groupFolder: string; personId: string; boundAt: string; }>' is not assignable to type '(input: BindConversationIdentityInput) => ConversationIdentityBinding'.
+src/web-server.ts(319,11): error TS2322: Type '(personId: string) => Promise<{ chatJid: string; groupFolder: string; personId: string; boundAt: string; }[]>' is not assignable to type '(personId: string) => ConversationIdentityBinding[]'.
+src/web-server.ts(360,5): error TS2322: Type '() => Promise<ChannelInstanceConfig[]>' is not assignable to type '() => ChannelInstanceLike[]'.
+src/web-server.ts(381,7): error TS2345: Argument of type '{ name: string; env: Record<string, string>; id: string; enabled: boolean; command: string; args: string[]; }[]' is not assignable to parameter of type 'Promise<{ name: string; id: string; command: string; args: string[]; env: Record<string, string>; enabled: boolean; }[]>'.
+src/web-server.ts(390,5): error TS2322: Type '() => Promise<{ id: string; name: string; description: string | undefined; source: "builtin" | "custom"; enabled: boolean; }[]>' is not assignable to type '() => { id: string; enabled: boolean; source: string; description?: string | undefined; }[]'.
+src/web-server.ts(391,5): error TS2322: Type '() => Promise<{ name: string; id: string; command: string; args: string[]; env: Record<string, string>; enabled: boolean; }[]>' is not assignable to type '() => { id: string; enabled: boolean; name?: string | undefined; command: string; args: string[]; env?: Record<string, string> | undefined; }[]'.
+src/web-server.ts(479,5): error TS2322: Type '() => Promise<{ name: string; id: string; command: string; args: string[]; env: Record<string, string>; enabled: boolean; }[]>' is not assignable to type '() => ManagedMcpServerConfig[]'.
+src/web-server.ts(480,5): error TS2322: Type '(servers: Promise<{ name: string; id: string; command: string; args: string[]; env: Record<string, string>; enabled: boolean; }[]>) => Promise<void>' is not assignable to type '(servers: ManagedMcpServerConfig[]) => void'.
+src/web-server.ts(500,5): error TS2322: Type '() => Promise<{ id: string; name: string; description: string | undefined; source: "builtin" | "custom"; enabled: boolean; }[]>' is not assignable to type '() => ManagedSkillCatalogEntry[]'.
+src/web-server.ts(501,5): error TS2322: Type '() => Promise<{ name: string; id: string; command: string; args: string[]; env: Record<string, string>; enabled: boolean; }[]>' is not assignable to type '() => ManagedMcpTemplate[]'.
+src/web-server.ts(505,73): error TS2339: Property 'folder' does not exist on type 'Promise<(RegisteredGroup & { jid: string; }) | undefined>'.
+src/web-server.ts(685,5): error TS2322: Type '(jid: string) => Promise<{ jid: string; groupFolder: string; accessMode: AccessMode; allowedDirectories: string[]; runtimeApprovalPatches: RuntimeApprovalPatchRecord[]; } | null>' is not assignable to type '(jid: string) => ManagedTerminalConversationState | null'.
+src/web-server.ts(721,5): error TS2322: Type '(jid: string, senderName: string, rawContent: string) => Promise<{ id: string; timestamp: string; }>' is not assignable to type '(jid: string, senderName: string, rawContent: string) => { id: string; timestamp: string; }'.
+src/web-server.ts(723,5): error TS2322: Type '(jid: string, text: string) => Promise<{ id: string; timestamp: string; }>' is not assignable to type '(jid: string, text: string) => { id: string; timestamp: string; }'.
+src/wms-assistant-bootstrap.ts(537,7): error TS2345: Argument of type '{ name: string; id: string; command: string; args: string[]; env: Record<string, string>; enabled: boolean; }[]' is not assignable to parameter of type 'Promise<{ name: string; id: string; command: string; args: string[]; env: Record<string, string>; enabled: boolean; }[]>'.
+src/workspace-cleanup.ts(92,7): error TS2345: Argument of type 'Promise<Set<string>>' is not assignable to parameter of type 'Set<string>'.
+src/workspace-cleanup.ts(97,7): error TS2345: Argument of type 'Promise<Set<string>>' is not assignable to parameter of type 'Set<string>'.
+src/workspace-cleanup.ts(99,57): error TS2345: Argument of type 'Promise<Set<string>>' is not assignable to parameter of type 'Set<string>'.
+src/workspace-cleanup.ts(104,5): error TS2740: Type 'Promise<StaleRegisteredGroup[]>' is missing the following properties from type 'StaleRegisteredGroup[]': length, pop, push, concat, and 29 more.

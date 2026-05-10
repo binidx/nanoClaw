@@ -1,0 +1,12 @@
+{
+  "name": "NanoClaw Built-in Integrations",
+  "version": "1.0.0",
+  "plugins": [
+    {
+      "name": "agent-reach",
+      "version": "1.0.0",
+      "description": "Install Agent Reach style web and social routing as a NanoClaw skill bundle.",
+      "source": "./bundles/agent-reach"
+    }
+  ]
+}

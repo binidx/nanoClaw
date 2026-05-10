@@ -1,0 +1,22 @@
+{
+  "title.directoryAccess": "目录访问请求",
+  "title.commandConfirm": "命令确认",
+  "button.reject": "拒绝并关闭审批",
+  "directoryRequest": "AI 请求访问目录：",
+  "directoryHint": "允许后将自动把该目录加入当前对话的白名单。",
+  "tool": "工具：{{name}}",
+  "directory": "目录：{{path}}",
+  "scope.title": "授权范围",
+  "scope.runtime": "当前 runtime",
+  "scope.toolCall": "仅当前命令",
+  "scope.runtimeHint": "适合同一轮运行里会重复执行的命令。",
+  "scope.toolCallHint": "仅放行当前这一次命令。",
+  "timedOut": "审批已超时，等待系统同步结果。",
+  "currentPolicy": "当前策略：{{policy}}",
+  "viewPolicy": "查看访问策略",
+  "button.rejecting": "处理中...",
+  "button.rejectBtn": "拒绝",
+  "button.allowing": "处理中...",
+  "button.allowRuntime": "允许当前 runtime",
+  "button.allowOnce": "仅允许这次"
+}

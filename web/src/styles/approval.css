@@ -1,0 +1,306 @@
+.approval-overlay-shell {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 140;
+  pointer-events: none;
+}
+
+.approval-overlay-card {
+  width: min(420px, calc(100vw - 24px));
+  padding: 12px;
+  border-radius: var(--radius-xl);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  background: linear-gradient(180deg, #fffbeb 0%, #fff7ed 100%);
+  box-shadow: 0 18px 48px rgba(15, 23, 42, 0.18);
+  pointer-events: auto;
+}
+
+.approval-overlay-bar {
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.16);
+  overflow: hidden;
+}
+
+.approval-overlay-progress {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #f59e0b 0%, #f97316 100%);
+}
+
+.approval-overlay-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+  margin-top: 10px;
+}
+
+.approval-overlay-header-main,
+.approval-overlay-header-actions,
+.approval-overlay-meta,
+.approval-overlay-footer-copy,
+.approval-overlay-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.approval-overlay-label,
+.approval-overlay-queue,
+.approval-overlay-policy {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.approval-overlay-label,
+.approval-overlay-queue {
+  background: rgba(245, 158, 11, 0.12);
+  color: #b45309;
+}
+
+.approval-overlay-policy {
+  background: rgba(37, 99, 235, 0.08);
+  color: #1d4ed8;
+}
+
+.approval-overlay-timer {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.approval-overlay-timer.expired {
+  color: #b91c1c;
+}
+
+.approval-overlay-close {
+  width: 28px;
+  height: 28px;
+  border: 1px solid rgba(239, 68, 68, 0.28);
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(254, 226, 226, 0.96);
+  color: #dc2626;
+  cursor: pointer;
+  transition:
+    transform 0.15s ease,
+    opacity 0.15s ease,
+    background 0.15s ease;
+}
+
+.approval-overlay-close:hover:not(:disabled) {
+  transform: translateY(-1px);
+  background: rgba(254, 202, 202, 0.96);
+}
+
+.approval-overlay-close:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.approval-overlay-command {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: var(--radius-lg);
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(251, 191, 36, 0.28);
+  color: #9a3412;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.approval-overlay-command code {
+  font-family: 'SFMono-Regular', 'Menlo', 'Monaco', 'Consolas', monospace;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.approval-overlay-meta {
+  margin-top: 8px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.approval-overlay-scope {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.approval-overlay-help,
+.approval-overlay-expired {
+  margin-top: 10px;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.approval-overlay-help {
+  color: var(--text-secondary);
+}
+
+.approval-overlay-expired {
+  color: #b45309;
+}
+
+.approval-overlay-footer {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.approval-overlay-link {
+  border: none;
+  background: transparent;
+  color: #2563eb;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+}
+
+.approval-overlay-link:hover {
+  text-decoration: underline;
+}
+
+.approval-overlay-actions {
+  justify-content: flex-end;
+}
+
+.approval-overlay-btn {
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    transform 0.15s ease,
+    opacity 0.15s ease,
+    background 0.15s ease;
+}
+
+.approval-overlay-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.approval-overlay-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.approval-overlay-btn.deny {
+  background: #fff;
+  color: #dc2626;
+  border-color: #fca5a5;
+}
+
+.approval-overlay-btn.allow {
+  background: #2563eb;
+  color: #fff;
+  border-color: #2563eb;
+}
+
+@media (max-width: 900px) {
+  .app-shell.mobile .approval-overlay-shell {
+      right: 8px;
+      left: 8px;
+      bottom: calc(64px + env(safe-area-inset-bottom, 0px));
+    }
+
+    .app-shell.mobile .approval-overlay-card {
+      width: auto;
+    }
+}
+
+[data-theme='dark'] .approval-overlay-card {
+  border-color: rgba(245, 158, 11, 0.24);
+  background: linear-gradient(
+    180deg,
+    rgba(28, 25, 23, 0.98) 0%,
+    rgba(41, 37, 36, 0.98) 100%
+  );
+  box-shadow: 0 22px 52px rgba(0, 0, 0, 0.45);
+}
+
+[data-theme='dark'] .approval-overlay-bar {
+  background: rgba(71, 85, 105, 0.42);
+}
+
+[data-theme='dark'] .approval-overlay-label,
+[data-theme='dark'] .approval-overlay-queue {
+  background: rgba(245, 158, 11, 0.18);
+  color: #fcd34d;
+}
+
+[data-theme='dark'] .approval-overlay-policy {
+  background: rgba(37, 99, 235, 0.18);
+  color: #93c5fd;
+}
+
+[data-theme='dark'] .approval-overlay-command {
+  background: rgba(120, 53, 15, 0.18);
+  border-color: rgba(245, 158, 11, 0.24);
+  color: #fdba74;
+}
+
+[data-theme='dark'] .approval-overlay-close {
+  background: rgba(69, 10, 10, 0.88);
+  border-color: rgba(248, 113, 113, 0.3);
+  color: #fca5a5;
+}
+
+[data-theme='dark'] .approval-overlay-close:hover:not(:disabled) {
+  background: rgba(127, 29, 29, 0.88);
+}
+
+[data-theme='dark'] .approval-overlay-link {
+  color: #93c5fd;
+}
+
+[data-theme='dark'] .approval-overlay-btn.deny {
+  background: rgba(69, 10, 10, 0.82);
+  color: #fecaca;
+  border-color: rgba(248, 113, 113, 0.3);
+}
+
+[data-theme='dark'] .approval-overlay-btn.allow {
+  background: #1d4ed8;
+  border-color: #1d4ed8;
+}
+
+@media (max-width: 768px) {
+  .approval-overlay-shell {
+      right: 12px;
+      left: 12px;
+      bottom: 12px;
+    }
+
+    .approval-overlay-card {
+      width: auto;
+    }
+
+    .approval-overlay-header,
+    .approval-overlay-footer-copy {
+      display: grid;
+    }
+
+    .approval-overlay-actions {
+      justify-content: stretch;
+    }
+
+    .approval-overlay-btn {
+      flex: 1 1 0;
+    }
+}

@@ -1,0 +1,9 @@
+#!/usr/bin/env sh
+
+if [ "${NANOCLAW_SKIP_MEMORY_GATE-}" = "1" ]; then
+  echo "Skipping NanoClaw memory gate because NANOCLAW_SKIP_MEMORY_GATE=1"
+  exit 0
+fi
+
+echo "Running NanoClaw memory merge gate..."
+npm run test:memory

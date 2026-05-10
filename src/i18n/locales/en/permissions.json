@@ -1,0 +1,6 @@
+{
+  "browser_control": "Browser control",
+  "browser_control_desc": "Allow access to and operation of the local browser control APIs",
+  "local_install": "Local install capability",
+  "local_install_desc": "Allow MCP, Skill, and extension install or removal actions that write into local user or shared directories"
+}

@@ -1,0 +1,6 @@
+{
+  "browser_control": "浏览器控制",
+  "browser_control_desc": "允许访问和操作本机浏览器控制接口",
+  "local_install": "本机安装能力",
+  "local_install_desc": "允许执行会写入本机用户目录或共享目录的 MCP、Skill、扩展安装和删除动作"
+}

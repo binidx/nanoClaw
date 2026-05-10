@@ -1,0 +1,107 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nanoclaw
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: nanoclaw
+  template:
+    metadata:
+      labels:
+        app: nanoclaw
+    spec:
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        fsGroup: 10001
+        fsGroupChangePolicy: OnRootMismatch
+      initContainers:
+        - name: init-runtime-dirs
+          image: busybox:1.36
+          command:
+            - /bin/sh
+            - -c
+            - >
+              set -eu;
+              mkdir -p /mnt/runtime/store
+              /mnt/runtime/groups
+              /mnt/runtime/data
+              /mnt/runtime/logs
+              /mnt/runtime/home-config;
+              chown -R 10001:10001 /mnt/runtime
+          volumeMounts:
+            - name: runtime-data
+              mountPath: /mnt/runtime
+      containers:
+        - name: nanoclaw
+          image: ghcr.io/example/nanoclaw:latest
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: nanoclaw-config
+          ports:
+            - name: http
+              containerPort: 3377
+          startupProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            periodSeconds: 5
+            failureThreshold: 24
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 30
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi
+            limits:
+              cpu: "2"
+              memory: 4Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+          volumeMounts:
+            - name: runtime-data
+              mountPath: /app/store
+              subPath: store
+            - name: runtime-data
+              mountPath: /app/groups
+              subPath: groups
+            - name: runtime-data
+              mountPath: /app/data
+              subPath: data
+            - name: runtime-data
+              mountPath: /app/logs
+              subPath: logs
+            - name: runtime-data
+              mountPath: /home/nanoclaw/.config/nanoclaw
+              subPath: home-config
+            # If Repo Review must inspect local repositories in-cluster,
+            # mount them to a stable path such as /workspace/repos.
+            # - name: review-repos
+            #   mountPath: /workspace/repos
+      volumes:
+        - name: runtime-data
+          persistentVolumeClaim:
+            claimName: nanoclaw-data
+        # - name: review-repos
+        #   persistentVolumeClaim:
+        #     claimName: nanoclaw-review-repos

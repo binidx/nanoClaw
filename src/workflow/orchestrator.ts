@@ -1,0 +1,895 @@
+import { createModuleLogger } from '../logger.js';
+import * as db from '../db/workflows.js';
+import { executeWorkflowTask } from './agent-adapter.js';
+import type {
+  WorkflowEdgeRecord,
+  WorkflowEdgeConfig,
+  WorkflowNodeRecord,
+  WorkflowRecord,
+  WorkflowRunGraph,
+  WorkflowRunRecord,
+} from './types.js';
+import { WorkflowEventBus } from './event-bus.js';
+
+const logger = createModuleLogger('workflow');
+
+const activeOrchestrators = new Map<string, WorkflowOrchestrator>();
+
+function nowIso(): string {
+  return new Date().toISOString();
+}
+
+function parseTaskConfig(node: WorkflowNodeRecord): {
+  prompt?: string;
+  expectedOutput?: string;
+  timeoutMs?: number;
+  approvalRequired?: boolean;
+} {
+  try {
+    return JSON.parse(node.config_json || '{}') as {
+      prompt?: string;
+      expectedOutput?: string;
+      timeoutMs?: number;
+      approvalRequired?: boolean;
+    };
+  } catch {
+    return {};
+  }
+}
+
+function directedEdges(edges: WorkflowEdgeRecord[]): WorkflowEdgeRecord[] {
+  return edges.filter((edge) => edge.direction === 'one_way');
+}
+
+function parseEdgeConfig(edge: WorkflowEdgeRecord): WorkflowEdgeConfig {
+  try {
+    return JSON.parse(edge.config_json || '{}') as WorkflowEdgeConfig;
+  } catch {
+    return {};
+  }
+}
+
+function getDiscussionTurnBudget(edge: WorkflowEdgeRecord): number {
+  const config = parseEdgeConfig(edge);
+  const value = config.discussionTurns;
+  if (typeof value !== 'number' || !Number.isFinite(value)) return 4;
+  return Math.max(0, Math.floor(value));
+}
+
+function countMessagesForEdge(
+  messages: Array<{ payload_json: string }>,
+  edgeId: string,
+): number {
+  let total = 0;
+  for (const message of messages) {
+    try {
+      const payload = JSON.parse(message.payload_json) as Record<string, unknown>;
+      if (payload.edgeId === edgeId) total += 1;
+    } catch {
+      // ignore malformed payloads
+    }
+  }
+  return total;
+}
+
+function getLatestMessageForEdge(
+  messages: Array<{
+    source_node_id: string;
+    target_node_id: string;
+    payload_json: string;
+    created_at: string;
+  }>,
+  edgeId: string,
+): { sourceNodeId: string; targetNodeId: string } | null {
+  const matching = messages
+    .map((message) => {
+      try {
+        const payload = JSON.parse(message.payload_json) as Record<string, unknown>;
+        return payload.edgeId === edgeId
+          ? {
+              sourceNodeId: message.source_node_id,
+              targetNodeId: message.target_node_id,
+              createdAt: message.created_at,
+            }
+          : null;
+      } catch {
+        return null;
+      }
+    })
+    .filter(
+      (
+        item,
+      ): item is {
+        sourceNodeId: string;
+        targetNodeId: string;
+        createdAt: string;
+      } => item !== null,
+    )
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  const latest = matching.at(-1);
+  return latest
+    ? { sourceNodeId: latest.sourceNodeId, targetNodeId: latest.targetNodeId }
+    : null;
+}
+
+function inboundMap(edges: WorkflowEdgeRecord[]): Map<string, WorkflowEdgeRecord[]> {
+  const map = new Map<string, WorkflowEdgeRecord[]>();
+  for (const edge of edges) {
+    const list = map.get(edge.target_node_id) ?? [];
+    list.push(edge);
+    map.set(edge.target_node_id, list);
+  }
+  return map;
+}
+
+function resolveRuntimeTransfer(
+  edge: WorkflowEdgeRecord,
+  sourceNodeId: string,
+): { sourceNodeId: string; targetNodeId: string } | null {
+  if (edge.source_node_id === sourceNodeId) {
+    return {
+      sourceNodeId,
+      targetNodeId: edge.target_node_id,
+    };
+  }
+  if (edge.direction === 'two_way' && edge.target_node_id === sourceNodeId) {
+    return {
+      sourceNodeId,
+      targetNodeId: edge.source_node_id,
+    };
+  }
+  return null;
+}
+
+function resolveRuntimeInbound(
+  edge: WorkflowEdgeRecord,
+  targetNodeId: string,
+): { sourceNodeId: string; targetNodeId: string } | null {
+  if (edge.target_node_id === targetNodeId) {
+    return {
+      sourceNodeId: edge.source_node_id,
+      targetNodeId,
+    };
+  }
+  if (edge.direction === 'two_way' && edge.source_node_id === targetNodeId) {
+    return {
+      sourceNodeId: edge.target_node_id,
+      targetNodeId,
+    };
+  }
+  return null;
+}
+
+export function getWorkflowOrchestrator(
+  runId: string,
+): WorkflowOrchestrator | undefined {
+  return activeOrchestrators.get(runId);
+}
+
+export class WorkflowOrchestrator {
+  private readonly workflowId: string;
+  private readonly eventBus = WorkflowEventBus.getInstance();
+  private runId: string | undefined;
+  private workflow: WorkflowRecord | undefined;
+  private nodesById = new Map<string, WorkflowNodeRecord>();
+  private edges: WorkflowEdgeRecord[] = [];
+  private runStatus: WorkflowRunRecord['status'] | null = null;
+  private runningNodeIds = new Set<string>();
+  private abortControllers = new Map<string, AbortController>();
+  private edgeMessageCounts = new Map<string, number>();
+  private edgeLastTransfers = new Map<
+    string,
+    { sourceNodeId: string; targetNodeId: string }
+  >();
+  private scheduleTail: Promise<void> = Promise.resolve();
+
+  constructor(workflowId: string) {
+    this.workflowId = workflowId;
+  }
+
+  static async restore(runId: string): Promise<WorkflowOrchestrator | undefined> {
+    const graph = await db.getWorkflowRunGraph(runId);
+    if (!graph) return undefined;
+    const orchestrator = new WorkflowOrchestrator(graph.workflow.id);
+    orchestrator.runId = runId;
+    orchestrator.workflow = graph.workflow;
+    orchestrator.nodesById = new Map(graph.nodes.map((node) => [node.id, node]));
+    orchestrator.edges = graph.edges;
+    orchestrator.runStatus = graph.run.status;
+    orchestrator.edgeMessageCounts = new Map(
+      graph.edges.map((edge) => [edge.id, countMessagesForEdge(graph.messages, edge.id)]),
+    );
+    orchestrator.edgeLastTransfers = new Map(
+      graph.edges
+        .map((edge) => [edge.id, getLatestMessageForEdge(graph.messages, edge.id)] as const)
+        .filter(
+          (
+            entry,
+          ): entry is [
+            string,
+            { sourceNodeId: string; targetNodeId: string },
+          ] => entry[1] !== null,
+        ),
+    );
+    activeOrchestrators.set(runId, orchestrator);
+    return orchestrator;
+  }
+
+  async startRun(input: string): Promise<WorkflowRunRecord> {
+    const snapshot = await db.getWorkflowSnapshot(this.workflowId);
+    if (!snapshot) {
+      throw new Error('Workflow not found');
+    }
+    validateWorkflowGraph(snapshot.nodes, snapshot.edges);
+    const run = await db.createWorkflowRun(this.workflowId, input);
+    this.workflow = snapshot.workflow;
+    this.runId = run.id;
+    this.nodesById = new Map(snapshot.nodes.map((node) => [node.id, node]));
+    this.edges = snapshot.edges;
+    this.runStatus = 'running';
+    this.edgeMessageCounts.clear();
+    this.edgeLastTransfers.clear();
+    activeOrchestrators.set(run.id, this);
+
+    for (const node of snapshot.nodes.filter((item) => item.node_type === 'task')) {
+      await db.createWorkflowRunNode(run.id, node.id);
+    }
+    await db.updateWorkflowRun(run.id, {
+      status: 'running',
+      started_at: nowIso(),
+    });
+    this.eventBus.emit(run.id, 'run_started', { workflowId: this.workflowId });
+    this.enqueueSchedule();
+    return (await db.getWorkflowRun(run.id)) ?? {
+      ...run,
+      status: 'running',
+      started_at: nowIso(),
+    };
+  }
+
+  private enqueueSchedule(): void {
+    this.scheduleTail = this.scheduleTail
+      .then(() => this.runSchedule())
+      .catch((err) => {
+        logger.error({ err, runId: this.runId }, 'workflow schedule error');
+      });
+  }
+
+  private recordEdgeMessage(edgeId: string): number {
+    const next = (this.edgeMessageCounts.get(edgeId) ?? 0) + 1;
+    this.edgeMessageCounts.set(edgeId, next);
+    return next;
+  }
+
+  private recordEdgeTransfer(
+    edgeId: string,
+    transfer: { sourceNodeId: string; targetNodeId: string },
+  ): void {
+    this.edgeLastTransfers.set(edgeId, transfer);
+  }
+
+  private async runSchedule(): Promise<void> {
+    if (!this.runId || this.runStatus !== 'running') return;
+    const graph = await db.getWorkflowRunGraph(this.runId);
+    if (!graph) return;
+    const tasks = graph.nodes.filter((node) => node.node_type === 'task');
+    const inbound = inboundMap(directedEdges(graph.edges));
+    const completed = new Set(
+      graph.runNodes
+        .filter((node) => node.status === 'completed' || node.status === 'skipped')
+        .map((node) => node.node_id),
+    );
+    const failed = graph.runNodes.some((node) => node.status === 'failed');
+    const pending = graph.runNodes.filter((node) => node.status === 'pending');
+    if (failed && this.runningNodeIds.size === 0) {
+      await this.finalizeRun('failed');
+      return;
+    }
+    if (pending.length === 0 && this.runningNodeIds.size === 0) {
+      if (await this.queueDeferredTwoWayFollowUp(graph)) {
+        return;
+      }
+      await this.finalizeRun('completed');
+      return;
+    }
+
+    for (const node of tasks) {
+      if (this.runningNodeIds.has(node.id)) continue;
+      const runNode = graph.runNodes.find((item) => item.node_id === node.id);
+      if (!runNode || runNode.status !== 'pending') continue;
+      const deps = inbound.get(node.id) ?? [];
+      const depsReady = deps.every((edge) => completed.has(edge.source_node_id));
+      if (!depsReady) continue;
+      void this.executeNode(graph, node).catch((err) => {
+        logger.error({ err, runId: this.runId, nodeId: node.id }, 'workflow executeNode failed');
+      });
+    }
+  }
+
+  private async executeNode(graph: WorkflowRunGraph, node: WorkflowNodeRecord): Promise<void> {
+    if (!this.runId || this.runStatus !== 'running') return;
+    const runNode = graph.runNodes.find((item) => item.node_id === node.id);
+    if (!runNode) return;
+    const roleNode = this.nodesById.get(node.role_node_id);
+    if (!roleNode || roleNode.node_type !== 'role') {
+      await db.updateWorkflowRunNode(runNode.id, {
+        status: 'failed',
+        last_error: 'Task node is missing a bound role node',
+        completed_at: nowIso(),
+      });
+      this.eventBus.emit(this.runId, 'node_failed', {
+        nodeId: node.id,
+        error: 'missing_role_node',
+      });
+      this.enqueueSchedule();
+      return;
+    }
+
+    this.runningNodeIds.add(node.id);
+    const abortController = new AbortController();
+    this.abortControllers.set(node.id, abortController);
+    const upstreamMessages = await this.buildNodeInput(graph, node);
+    const inputSnapshot = JSON.stringify({
+      runInput: graph.run.input,
+      manualOverride: runNode.manual_input_override || '',
+      inputAnchorFrameId: runNode.input_anchor_frame_id || '',
+      inputPriorityMode: runNode.input_priority_mode || 'feedback_first',
+      upstreamMessages,
+    });
+    await db.updateWorkflowRunNode(runNode.id, {
+      status: 'running',
+      input_snapshot: inputSnapshot,
+      output_snapshot: '',
+      last_error: '',
+      started_at: nowIso(),
+    });
+    this.eventBus.emit(this.runId, 'node_started', {
+      nodeId: node.id,
+      roleNodeId: roleNode.id,
+    });
+
+    const result = await executeWorkflowTask({
+      workflowId: this.workflowId,
+      runId: graph.run.id,
+      roleNode,
+      taskNode: node,
+      runInput: graph.run.input,
+      upstreamMessages,
+      signal: abortController.signal,
+    });
+    this.runningNodeIds.delete(node.id);
+    this.abortControllers.delete(node.id);
+
+    if (abortController.signal.aborted && this.runStatus !== 'running') {
+      await db.updateWorkflowRunNode(runNode.id, {
+        status: 'paused',
+        pause_reason: 'Run paused by user',
+      });
+      this.eventBus.emit(this.runId, 'node_paused', { nodeId: node.id });
+      return;
+    }
+
+    if (!result.success) {
+      await db.updateWorkflowRunNode(runNode.id, {
+        status: 'failed',
+        last_error: result.error || 'Task failed',
+        completed_at: nowIso(),
+      });
+      this.eventBus.emit(this.runId, 'node_failed', {
+        nodeId: node.id,
+        error: result.error || 'Task failed',
+      });
+      this.enqueueSchedule();
+      return;
+    }
+
+    await db.updateWorkflowRunNode(runNode.id, {
+      status: 'completed',
+      output_snapshot: result.output,
+      completed_at: nowIso(),
+      pause_reason: '',
+    });
+    this.eventBus.emit(this.runId, 'node_completed', {
+      nodeId: node.id,
+      output: result.output,
+      executionMs: result.execution_ms,
+    });
+
+    const outEdges = graph.edges
+      .map((edge) => ({ edge, transfer: resolveRuntimeTransfer(edge, node.id) }))
+      .filter(
+        (
+          entry,
+        ): entry is {
+          edge: WorkflowEdgeRecord;
+          transfer: { sourceNodeId: string; targetNodeId: string };
+        } => entry.transfer !== null,
+      );
+    for (const { edge, transfer } of outEdges) {
+      const emittedCount = this.recordEdgeMessage(edge.id);
+      this.recordEdgeTransfer(edge.id, transfer);
+      this.eventBus.emit(this.runId, 'message_sent', {
+        edgeId: edge.id,
+        sourceNodeId: transfer.sourceNodeId,
+        targetNodeId: transfer.targetNodeId,
+        direction: edge.direction,
+        messageType: 'node_output',
+        discussionCount: emittedCount,
+        content: result.output,
+      });
+    }
+    this.enqueueSchedule();
+  }
+
+  private async queueDeferredTwoWayFollowUp(
+    graph: WorkflowRunGraph,
+  ): Promise<boolean> {
+    if (!this.runId) return false;
+    for (const edge of graph.edges.filter((item) => item.direction === 'two_way')) {
+      const budget = getDiscussionTurnBudget(edge);
+      const count = this.edgeMessageCounts.get(edge.id) ?? countMessagesForEdge(graph.messages, edge.id);
+      if (count === 0 || count >= budget) continue;
+      const latestMessage =
+        this.edgeLastTransfers.get(edge.id) ??
+        getLatestMessageForEdge(graph.messages, edge.id);
+      if (!latestMessage) continue;
+      const nextNodeId = latestMessage.targetNodeId;
+      const targetRunNode = await db.getWorkflowRunNode(this.runId, nextNodeId);
+      if (!targetRunNode) continue;
+      if (
+        targetRunNode.status !== 'completed' &&
+        targetRunNode.status !== 'skipped'
+      ) {
+        continue;
+      }
+      await db.updateWorkflowRunNode(targetRunNode.id, {
+        status: 'pending',
+        last_error: '',
+        output_snapshot: '',
+        completed_at: '',
+        pause_reason: `Deferred two-way follow-up for edge ${edge.id}`,
+        version: targetRunNode.version + 1,
+      });
+      this.eventBus.emit(this.runId, 'intervention', {
+        nodeId: nextNodeId,
+        reason: 'two_way_discussion_deferred_follow_up',
+        edgeId: edge.id,
+        remainingTurns: budget - count,
+      });
+      this.enqueueSchedule();
+      return true;
+    }
+    return false;
+  }
+
+  private async buildNodeInput(
+    graph: WorkflowRunGraph,
+    node: WorkflowNodeRecord,
+  ): Promise<Array<{ from: string; to: string; direction: string; content: string }>> {
+    const runNodesByNodeId = new Map(
+      graph.runNodes.map((runNode) => [runNode.node_id, runNode]),
+    );
+    const currentRunNode = graph.runNodes.find((runNode) => runNode.node_id === node.id);
+    const frames = graph.messageFrames;
+    const messages = await db.listWorkflowRunMessages(graph.run.id);
+    const taskName = (id: string) => this.nodesById.get(id)?.name ?? id;
+    const collected: Array<{
+      from: string;
+      to: string;
+      direction: string;
+      content: string;
+    }> = [];
+    for (const edge of graph.edges) {
+      const inbound = resolveRuntimeInbound(edge, node.id);
+      if (!inbound) continue;
+      let existingEdgeFrames = frames.filter(
+        (frame) => frame.edge_id === edge.id && frame.target_node_id === node.id,
+      );
+      if (currentRunNode?.input_anchor_frame_id) {
+        const anchorIndex = existingEdgeFrames.findIndex(
+          (frame) => frame.id === currentRunNode.input_anchor_frame_id,
+        );
+        if (anchorIndex >= 0) {
+          existingEdgeFrames = existingEdgeFrames.slice(anchorIndex);
+        }
+      }
+      if (
+        currentRunNode?.input_priority_mode === 'feedback_first' &&
+        existingEdgeFrames.length > 0
+      ) {
+        existingEdgeFrames = [
+          ...existingEdgeFrames.filter((frame) => frame.frame_type === 'feedback'),
+          ...existingEdgeFrames.filter((frame) => frame.frame_type !== 'feedback'),
+        ];
+      }
+      if (existingEdgeFrames.length > 0) {
+        for (const frame of existingEdgeFrames) {
+          const prefix =
+            frame.frame_type === 'feedback'
+              ? '[feedback] '
+              : frame.frame_type === 'intervention'
+                ? '[intervention] '
+                : '';
+          collected.push({
+            from: taskName(frame.source_node_id),
+            to: taskName(frame.target_node_id),
+            direction: frame.direction,
+            content: `${prefix}${frame.content_text}`,
+          });
+        }
+        continue;
+      }
+      const existingEdgeMessages = messages.filter((message) => {
+        if (message.target_node_id !== node.id) return false;
+        try {
+          const payload = JSON.parse(message.payload_json) as Record<string, unknown>;
+          return payload.edgeId === edge.id;
+        } catch {
+          return false;
+        }
+      });
+      if (existingEdgeMessages.length > 0) {
+        for (const message of existingEdgeMessages) {
+          try {
+            const payload = JSON.parse(message.payload_json) as Record<string, unknown>;
+            if (typeof payload.content === 'string') {
+              collected.push({
+                from: taskName(message.source_node_id),
+                to: taskName(message.target_node_id),
+                direction: message.direction,
+                content: payload.content,
+              });
+            }
+          } catch {
+            // ignore malformed payloads
+          }
+        }
+        continue;
+      }
+      const sourceRunNode = runNodesByNodeId.get(inbound.sourceNodeId);
+      if (sourceRunNode?.output_snapshot) {
+        collected.push({
+          from: taskName(inbound.sourceNodeId),
+          to: taskName(node.id),
+          direction: edge.direction,
+          content: sourceRunNode.output_snapshot,
+        });
+      }
+    }
+    if (currentRunNode?.manual_input_override?.trim()) {
+      collected.unshift({
+        from: 'manual_override',
+        to: taskName(node.id),
+        direction: 'one_way',
+        content: `[manual_override] ${currentRunNode.manual_input_override.trim()}`,
+      });
+    }
+    return collected;
+  }
+
+  private async finalizeRun(status: 'completed' | 'failed'): Promise<void> {
+    if (!this.runId) return;
+    const graph = await db.getWorkflowRunGraph(this.runId);
+    if (!graph) return;
+    if (
+      status === 'completed' &&
+      graph.runNodes.some(
+        (node) => node.status === 'pending' || node.status === 'running' || node.status === 'paused',
+      )
+    ) {
+      return;
+    }
+    const outputs = graph.runNodes
+      .filter((node) => node.output_snapshot)
+      .map((node) => {
+        const task = this.nodesById.get(node.node_id);
+        return `=== ${task?.name || node.node_id} ===\n${node.output_snapshot}`;
+      })
+      .join('\n\n');
+    await db.updateWorkflowRun(this.runId, {
+      status,
+      output: outputs,
+      completed_at: nowIso(),
+    });
+    this.runStatus = status;
+    activeOrchestrators.delete(this.runId);
+    this.eventBus.removeAllForRun(this.runId);
+  }
+
+  async pauseRun(): Promise<void> {
+    if (!this.runId) throw new Error('No active run');
+    this.runStatus = 'paused';
+    for (const controller of this.abortControllers.values()) {
+      controller.abort();
+    }
+    await db.updateWorkflowRun(this.runId, { status: 'paused' });
+    this.eventBus.emit(this.runId, 'run_paused', { workflowId: this.workflowId });
+  }
+
+  async resumeRun(): Promise<void> {
+    if (!this.runId) throw new Error('No active run');
+    this.runStatus = 'running';
+    await db.updateWorkflowRun(this.runId, { status: 'running' });
+    const runNodes = await db.listWorkflowRunNodes(this.runId);
+    for (const runNode of runNodes.filter((node) => node.status === 'paused')) {
+      await db.updateWorkflowRunNode(runNode.id, {
+        status: 'pending',
+        pause_reason: '',
+      });
+    }
+    this.eventBus.emit(this.runId, 'run_resumed', { workflowId: this.workflowId });
+    this.enqueueSchedule();
+  }
+
+  async cancelRun(): Promise<void> {
+    if (!this.runId) throw new Error('No active run');
+    this.runStatus = 'cancelled';
+    for (const controller of this.abortControllers.values()) {
+      controller.abort();
+    }
+    await db.updateWorkflowRun(this.runId, {
+      status: 'cancelled',
+      completed_at: nowIso(),
+    });
+    this.eventBus.emit(this.runId, 'run_cancelled', {
+      workflowId: this.workflowId,
+    });
+    activeOrchestrators.delete(this.runId);
+    this.eventBus.removeAllForRun(this.runId);
+  }
+
+  async pauseNode(nodeId: string): Promise<void> {
+    if (!this.runId) throw new Error('No active run');
+    const runNode = await db.getWorkflowRunNode(this.runId, nodeId);
+    if (!runNode) throw new Error('Run node not found');
+    const controller = this.abortControllers.get(nodeId);
+    if (controller) controller.abort();
+    await db.updateWorkflowRunNode(runNode.id, {
+      status: 'paused',
+      pause_reason: 'Node paused by user',
+    });
+    this.eventBus.emit(this.runId, 'node_paused', { nodeId });
+  }
+
+  async resumeNode(nodeId: string): Promise<void> {
+    if (!this.runId) throw new Error('No active run');
+    const runNode = await db.getWorkflowRunNode(this.runId, nodeId);
+    if (!runNode) throw new Error('Run node not found');
+    await db.updateWorkflowRunNode(runNode.id, {
+      status: 'pending',
+      pause_reason: '',
+    });
+    this.eventBus.emit(this.runId, 'node_resumed', { nodeId });
+    this.enqueueSchedule();
+  }
+
+  async updateNodeInput(nodeId: string, nextInput: string): Promise<void> {
+    if (!this.runId) throw new Error('No active run');
+    const runNode = await db.getWorkflowRunNode(this.runId, nodeId);
+    if (!runNode) throw new Error('Run node not found');
+    await db.insertWorkflowIntervention({
+      run_id: this.runId,
+      node_id: nodeId,
+      intervention_type: 'input_update',
+      summary: 'User edited node input snapshot',
+      before_json: runNode.input_snapshot || '',
+      after_json: nextInput,
+    });
+    await db.updateWorkflowRunNode(runNode.id, {
+      input_snapshot: nextInput,
+      manual_input_override: nextInput,
+      version: runNode.version + 1,
+      status: 'paused',
+      pause_reason: 'Input edited by user',
+    });
+    this.eventBus.emit(this.runId, 'input_updated', { nodeId, input: nextInput });
+  }
+
+  async updateNodeInputConfig(input: {
+    nodeId: string;
+    inputAnchorFrameId?: string;
+    inputPriorityMode?: 'feedback_first' | 'chronological';
+  }): Promise<void> {
+    if (!this.runId) throw new Error('No active run');
+    const runNode = await db.getWorkflowRunNode(this.runId, input.nodeId);
+    if (!runNode) throw new Error('Run node not found');
+    await db.updateWorkflowRunNode(runNode.id, {
+      input_anchor_frame_id: input.inputAnchorFrameId ?? '',
+      input_priority_mode: input.inputPriorityMode ?? runNode.input_priority_mode,
+      version: runNode.version + 1,
+    });
+    this.eventBus.emit(this.runId, 'intervention', {
+      nodeId: input.nodeId,
+      reason: 'input_config_updated',
+      inputAnchorFrameId: input.inputAnchorFrameId ?? '',
+      inputPriorityMode: input.inputPriorityMode ?? runNode.input_priority_mode,
+    });
+  }
+
+  async updateNodeOutput(nodeId: string, nextOutput: string): Promise<void> {
+    if (!this.runId) throw new Error('No active run');
+    const runNode = await db.getWorkflowRunNode(this.runId, nodeId);
+    if (!runNode) throw new Error('Run node not found');
+    await db.insertWorkflowIntervention({
+      run_id: this.runId,
+      node_id: nodeId,
+      intervention_type: 'output_update',
+      summary: 'User edited node output snapshot',
+      before_json: runNode.output_snapshot || '',
+      after_json: nextOutput,
+    });
+    await db.updateWorkflowRunNode(runNode.id, {
+      output_snapshot: nextOutput,
+      version: runNode.version + 1,
+      status: 'completed',
+      completed_at: nowIso(),
+    });
+    const graph = await db.getWorkflowRunGraph(this.runId);
+    if (graph) {
+      const outEdges = graph.edges
+        .map((edge) => ({ edge, transfer: resolveRuntimeTransfer(edge, nodeId) }))
+        .filter(
+          (
+            entry,
+          ): entry is {
+            edge: WorkflowEdgeRecord;
+            transfer: { sourceNodeId: string; targetNodeId: string };
+          } => entry.transfer !== null,
+        );
+      for (const { edge, transfer } of outEdges) {
+        const emittedCount = this.recordEdgeMessage(edge.id);
+        this.recordEdgeTransfer(edge.id, transfer);
+        this.eventBus.emit(this.runId, 'message_sent', {
+          edgeId: edge.id,
+          sourceNodeId: transfer.sourceNodeId,
+          targetNodeId: transfer.targetNodeId,
+          direction: edge.direction,
+          messageType: 'manual_output_override',
+          discussionCount: emittedCount,
+          content: nextOutput,
+        });
+      }
+    }
+    this.eventBus.emit(this.runId, 'output_updated', { nodeId, output: nextOutput });
+    this.enqueueSchedule();
+  }
+
+  async retryNode(nodeId: string): Promise<void> {
+    if (!this.runId) throw new Error('No active run');
+    const runNode = await db.getWorkflowRunNode(this.runId, nodeId);
+    if (!runNode) throw new Error('Run node not found');
+    await db.updateWorkflowRunNode(runNode.id, {
+      status: 'pending',
+      last_error: '',
+      output_snapshot: '',
+      completed_at: '',
+      pause_reason: '',
+    });
+    this.enqueueSchedule();
+  }
+
+  async insertFeedbackFrame(
+    edgeId: string,
+    content: string,
+    direction: 'forward' | 'reverse',
+  ): Promise<void> {
+    if (!this.runId) throw new Error('No active run');
+    const graph = await db.getWorkflowRunGraph(this.runId);
+    const edge = graph?.edges.find((item) => item.id === edgeId);
+    if (!graph || !edge) throw new Error('Edge not found on this run');
+
+    const sourceNodeId =
+      direction === 'reverse' ? edge.target_node_id : edge.source_node_id;
+    const targetNodeId =
+      direction === 'reverse' ? edge.source_node_id : edge.target_node_id;
+
+    await db.createWorkflowFeedbackFrame({
+      run_id: this.runId,
+      edge_id: edge.id,
+      source_node_id: sourceNodeId,
+      target_node_id: targetNodeId,
+      direction: edge.direction,
+      content_text: content,
+      payload_json: JSON.stringify({
+        edgeId: edge.id,
+        content,
+        frameType: 'feedback',
+        feedbackDirection: direction,
+      }),
+    });
+
+    const targetRunNode = await db.getWorkflowRunNode(this.runId, targetNodeId);
+    if (!targetRunNode) return;
+    await db.updateWorkflowRunNode(targetRunNode.id, {
+      status: 'pending',
+      last_error: '',
+      completed_at: '',
+      pause_reason: 'Awaiting feedback follow-up',
+      version: targetRunNode.version + 1,
+    });
+    if (this.runStatus === 'completed' || this.runStatus === 'failed') {
+      this.runStatus = 'running';
+      await db.updateWorkflowRun(this.runId, {
+        status: 'running',
+        completed_at: '',
+      });
+    }
+    this.eventBus.emit(this.runId, 'intervention', {
+      edgeId,
+      targetNodeId,
+      reason: 'feedback_frame_created',
+      direction,
+    });
+    this.enqueueSchedule();
+  }
+}
+
+export function validateWorkflowGraph(
+  nodes: WorkflowNodeRecord[],
+  edges: WorkflowEdgeRecord[],
+): void {
+  const nodeIds = new Set(nodes.map((node) => node.id));
+  const taskIds = new Set(
+    nodes.filter((node) => node.node_type === 'task').map((node) => node.id),
+  );
+  const roleIds = new Set(
+    nodes.filter((node) => node.node_type === 'role').map((node) => node.id),
+  );
+  for (const node of nodes) {
+    if (node.node_type === 'task' && !roleIds.has(node.role_node_id)) {
+      throw new Error(`Task node "${node.name}" is missing a bound role node`);
+    }
+  }
+  for (const edge of edges) {
+    if (!nodeIds.has(edge.source_node_id) || !nodeIds.has(edge.target_node_id)) {
+      throw new Error('Edge references a missing node');
+    }
+    if (edge.source_node_id === edge.target_node_id) {
+      throw new Error('Self-loop edges are not allowed');
+    }
+  }
+
+  const directed = directedEdges(
+    edges.filter(
+      (edge) => taskIds.has(edge.source_node_id) && taskIds.has(edge.target_node_id),
+    ),
+  );
+  const indegree = new Map<string, number>();
+  const adjacency = new Map<string, string[]>();
+  for (const taskId of taskIds) {
+    indegree.set(taskId, 0);
+    adjacency.set(taskId, []);
+  }
+  for (const edge of directed) {
+    indegree.set(edge.target_node_id, (indegree.get(edge.target_node_id) ?? 0) + 1);
+    adjacency.get(edge.source_node_id)?.push(edge.target_node_id);
+  }
+  const queue = Array.from(taskIds).filter((taskId) => (indegree.get(taskId) ?? 0) === 0);
+  let seen = 0;
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    seen += 1;
+    for (const next of adjacency.get(current) ?? []) {
+      const value = (indegree.get(next) ?? 0) - 1;
+      indegree.set(next, value);
+      if (value === 0) queue.push(next);
+    }
+  }
+  if (seen !== taskIds.size) {
+    throw new Error('Directed task graph contains a cycle');
+  }
+}
+
+export async function recoverActiveWorkflowRuns(): Promise<number> {
+  const runs = await db.listActiveWorkflowRuns();
+  for (const run of runs) {
+    const orchestrator = await WorkflowOrchestrator.restore(run.id);
+    if (!orchestrator) continue;
+    if (run.status === 'running') {
+      await db.updateWorkflowRun(run.id, {
+        status: 'paused',
+      });
+    }
+  }
+  return runs.length;
+}

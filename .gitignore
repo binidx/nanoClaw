@@ -1,0 +1,63 @@
+# Dependencies
+node_modules/
+.npm-cache/
+# Build output
+dist/
+
+# Local data & auth
+store/
+data/
+logs/
+
+# Groups - only track base structure and specific CLAUDE.md files
+groups/*
+!groups/main/
+!groups/global/
+groups/main/*
+groups/global/*
+!groups/main/CLAUDE.md
+!groups/global/CLAUDE.md
+
+# Secrets
+*.keys.json
+.env
+
+# Worktrees
+.worktrees/
+
+# Temp files
+.tmp-*
+nanoclaw.pid
+nanoclaw.port
+*.tsbuildinfo
+.tsbuildinfo/
+
+# OS
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
+.claude/*
+!.claude/README.md
+!.claude/agents/
+!.claude/agents/*.md
+!.claude/skills/
+!.claude/skills/*/
+!.claude/skills/*/SKILL.md
+.github
+
+# Skills system (local per-installation state)
+.nanoclaw/
+.nanoclaw-pid
+codex/
+
+agents-sdk-docs
+
+# Agent runner source artifacts should live in dist/, not src/
+agent/runner/src/**/*.js
+agent/runner/src/**/*.js.map
+agent/runner/src/**/*.d.ts
+agent/runner/src/**/*.d.ts.map
+tmp/
+.worktrees

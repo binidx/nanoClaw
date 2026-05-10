@@ -1,0 +1,16 @@
+---
+description: NanoClaw project harness for Cursor
+alwaysApply: true
+---
+
+# NanoClaw Cursor Adapter
+
+This file is intentionally small because Cursor always applies it.
+
+- Canonical policy: `docs/agent-harness.md`
+- Startup index guide: `docs/agent-index-guide.md`
+- Code-location index: `docs/repo-feature-map/index.md`
+- Backend root: `src/**`
+- Frontend root: `web/src/**`
+
+Use the feature map before broad search, verify indexed paths before relying on them, and keep edits scoped to the user request. Do not duplicate shared harness rules here.

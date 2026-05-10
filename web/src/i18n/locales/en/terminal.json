@@ -1,0 +1,12 @@
+{
+  "auto.40de7a8a": "Terminal not enabled",
+  "auto.e27cb1fd": "Please enable Web Terminal in settings first",
+  "auto.757f1ab3": "Go to Settings",
+  "auto.adceefa3": "No conversation selected",
+  "auto.6df7dc2d": "Select a conversation on the chat page first, then open the managed command terminal.",
+  "auto.136d477e": "Back to Chat",
+  "auto.4722bc0c": "Terminal",
+  "auto.f9f9686d": "This page provides a managed command terminal bound to the current conversation, allowing NanoClaw to run and observe commands within a controlled scope.",
+  "auto.352485ff": "Managed command terminal",
+  "auto.mountTimeout": "Terminal container initialization timed out. Please re-enter this page and try again."
+}

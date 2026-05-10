@@ -1,0 +1,33 @@
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH
+
+default:
+  image: node:20-bookworm
+  cache:
+    key:
+      files:
+        - package-lock.json
+        - agent/runner/package-lock.json
+    paths:
+      - node_modules/
+      - agent/runner/node_modules/
+  before_script:
+    - npm ci
+    - cd agent/runner && npm ci && cd ../..
+
+stages:
+  - verify
+  - test
+
+backend_gate:
+  stage: verify
+  script:
+    - npm run build
+    - npm run test:critical
+
+memory_gate:
+  stage: test
+  script:
+    - npm run test:memory

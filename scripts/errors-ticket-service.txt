@@ -1,0 +1,115 @@
+﻿src/ticket-service.ts(788,3): error TS2322: Type 'Promise<{ id: string; name: string; path: string; keywords: string[]; kibanaServiceNames: string[]; archeryDatabases: string[]; mainTables: string[]; notes: string; }>[]' is not assignable to type 'TicketWorkspaceServiceRoute[]'.
+src/ticket-service.ts(940,79): error TS2345: Argument of type 'EffectiveTicketWorkspaceCodebase[] | Promise<EffectiveTicketWorkspaceCodebase[]>' is not assignable to parameter of type 'EffectiveTicketWorkspaceCodebase[]'.
+src/ticket-service.ts(1014,13): error TS2740: Type 'Promise<TicketWorkspaceServiceRoute[]>' is missing the following properties from type 'TicketWorkspaceServiceRoute[]': length, pop, push, concat, and 29 more.
+src/ticket-service.ts(1061,51): error TS2537: Type 'Promise<{ docId: string; scope: string; ownerType: string; ownerId: string; pathRef: string | null; sourceType: string; title: string; body: string; metadataJson: string | null; updatedAt: string; ... 4 more ...; exactMatchBoost: number; }[]>' has no matching index signature for type 'number'.
+src/ticket-service.ts(1120,8): error TS2339: Property 'map' does not exist on type 'Promise<{ docId: string; scope: string; ownerType: string; ownerId: string; pathRef: string | null; sourceType: string; title: string; body: string; metadataJson: string | null; updatedAt: string; ... 4 more ...; exactMatchBoost: number; }[]>'.
+src/ticket-service.ts(1623,15): error TS2339: Property 'codeIndexBuildOptions' does not exist on type 'Promise<TicketWorkspaceRecord & { enabledBool: boolean; codeIndexBuildOptions: TicketWorkspaceIndexBuildOptionsRecord; ... 5 more ...; serviceCatalog: TicketWorkspaceServiceRouteRecord[]; }>'.
+src/ticket-service.ts(1625,14): error TS2339: Property 'includeGlobs' does not exist on type 'Promise<TicketWorkspaceRecord & { enabledBool: boolean; codeIndexBuildOptions: TicketWorkspaceIndexBuildOptionsRecord; ... 5 more ...; serviceCatalog: TicketWorkspaceServiceRouteRecord[]; }>'.
+src/ticket-service.ts(1626,22): error TS2339: Property 'includeGlobs' does not exist on type 'Promise<TicketWorkspaceRecord & { enabledBool: boolean; codeIndexBuildOptions: TicketWorkspaceIndexBuildOptionsRecord; ... 5 more ...; serviceCatalog: TicketWorkspaceServiceRouteRecord[]; }>'.
+src/ticket-service.ts(1629,14): error TS2339: Property 'excludeGlobs' does not exist on type 'Promise<TicketWorkspaceRecord & { enabledBool: boolean; codeIndexBuildOptions: TicketWorkspaceIndexBuildOptionsRecord; ... 5 more ...; serviceCatalog: TicketWorkspaceServiceRouteRecord[]; }>'.
+src/ticket-service.ts(1630,22): error TS2339: Property 'excludeGlobs' does not exist on type 'Promise<TicketWorkspaceRecord & { enabledBool: boolean; codeIndexBuildOptions: TicketWorkspaceIndexBuildOptionsRecord; ... 5 more ...; serviceCatalog: TicketWorkspaceServiceRouteRecord[]; }>'.
+src/ticket-service.ts(1792,7): error TS2559: Type 'Promise<CodeSearchBuildOptions>' has no properties in common with type 'Partial<CodeSearchBuildOptions>'.
+src/ticket-service.ts(1857,50): error TS2537: Type 'Promise<TicketRunStageRecord[]>' has no matching index signature for type 'number'.
+src/ticket-service.ts(1966,40): error TS2339: Property 'some' does not exist on type 'Promise<TicketArtifactRecord[]>'.
+src/ticket-service.ts(1966,52): error TS7006: Parameter 'artifact' implicitly has an 'any' type.
+src/ticket-service.ts(2026,7): error TS2345: Argument of type 'Promise<TicketStructuredResult>' is not assignable to parameter of type 'TicketStructuredResult'.
+src/ticket-service.ts(2463,52): error TS2537: Type 'Promise<TicketArtifactRecord[]>' has no matching index signature for type 'number'.
+src/ticket-service.ts(3233,22): error TS2740: Type 'Promise<TicketAcceptanceCheck>' is missing the following properties from type 'TicketAcceptanceCheck': passed, summary, blockers, warnings, and 2 more.
+src/ticket-service.ts(3244,55): error TS2345: Argument of type 'TicketStructuredResult | Promise<TicketStructuredResult>' is not assignable to parameter of type 'TicketStructuredResult'.
+src/ticket-service.ts(3247,5): error TS2322: Type 'TicketStructuredResult | Promise<TicketStructuredResult>' is not assignable to type 'TicketStructuredResult'.
+src/ticket-service.ts(3256,17): error TS2339: Property 'conclusion' does not exist on type 'TicketStructuredResult | Promise<TicketStructuredResult>'.
+src/ticket-service.ts(3329,21): error TS2339: Property 'ticketUrl' does not exist on type 'Promise<TicketSourceContext | null>'.
+src/ticket-service.ts(3418,20): error TS2339: Property 'conclusion' does not exist on type 'TicketStructuredResult | Promise<TicketStructuredResult>'.
+src/ticket-service.ts(3425,20): error TS2339: Property 'conclusion' does not exist on type 'TicketStructuredResult | Promise<TicketStructuredResult>'.
+src/ticket-service.ts(3426,20): error TS2339: Property 'risks' does not exist on type 'TicketStructuredResult | Promise<TicketStructuredResult>'.
+src/ticket-service.ts(3427,24): error TS2339: Property 'risks' does not exist on type 'TicketStructuredResult | Promise<TicketStructuredResult>'.
+src/ticket-service.ts(3428,35): error TS2339: Property 'risks' does not exist on type 'TicketStructuredResult | Promise<TicketStructuredResult>'.
+src/ticket-service.ts(3428,46): error TS7006: Parameter 'entry' implicitly has an 'any' type.
+src/ticket-service.ts(3428,53): error TS7006: Parameter 'index' implicitly has an 'any' type.
+src/ticket-service.ts(3430,24): error TS2339: Property 'nextSteps' does not exist on type 'TicketStructuredResult | Promise<TicketStructuredResult>'.
+src/ticket-service.ts(3431,42): error TS2339: Property 'nextSteps' does not exist on type 'TicketStructuredResult | Promise<TicketStructuredResult>'.
+src/ticket-service.ts(3431,57): error TS7006: Parameter 'entry' implicitly has an 'any' type.
+src/ticket-service.ts(3431,64): error TS7006: Parameter 'index' implicitly has an 'any' type.
+src/ticket-service.ts(3823,20): error TS2339: Property 'flatMap' does not exist on type 'EffectiveTicketWorkspaceCodebase[] | Promise<EffectiveTicketWorkspaceCodebase[]>'.
+src/ticket-service.ts(3823,29): error TS7006: Parameter 'codebase' implicitly has an 'any' type.
+src/ticket-service.ts(3827,7): error TS2559: Type 'Promise<CodeSearchBuildOptions>' has no properties in common with type 'Partial<CodeSearchBuildOptions>'.
+src/ticket-service.ts(3919,16): error TS2339: Property 'map' does not exist on type 'EffectiveTicketWorkspaceCodebase[] | Promise<EffectiveTicketWorkspaceCodebase[]>'.
+src/ticket-service.ts(3919,21): error TS7006: Parameter 'entry' implicitly has an 'any' type.
+src/ticket-service.ts(3937,34): error TS2339: Property 'flatMap' does not exist on type 'EffectiveTicketWorkspaceCodebase[] | Promise<EffectiveTicketWorkspaceCodebase[]>'.
+src/ticket-service.ts(3937,49): error TS7006: Parameter 'codebase' implicitly has an 'any' type.
+src/ticket-service.ts(4212,5): error TS2345: Argument of type 'Promise<TicketWorkspaceServiceRoute[]>' is not assignable to parameter of type 'TicketWorkspaceServiceRoute[]'.
+src/ticket-service.ts(4215,6): error TS2339: Property 'map' does not exist on type 'Promise<TicketWorkspaceServiceRoute[]>'.
+src/ticket-service.ts(4215,11): error TS7006: Parameter 'route' implicitly has an 'any' type.
+src/ticket-service.ts(4220,5): error TS2740: Type 'Promise<TicketWorkspaceServiceRoute[]>' is missing the following properties from type 'TicketWorkspaceServiceRoute[]': length, pop, push, concat, and 29 more.
+src/ticket-service.ts(4226,5): error TS2740: Type 'Promise<TicketWorkspaceServiceRoute[]>' is missing the following properties from type 'TicketWorkspaceServiceRoute[]': length, pop, push, concat, and 29 more.
+src/ticket-service.ts(4246,5): error TS2740: Type 'Promise<TicketWorkspaceServiceRoute[]>' is missing the following properties from type 'TicketWorkspaceServiceRoute[]': length, pop, push, concat, and 29 more.
+src/ticket-service.ts(4349,59): error TS2345: Argument of type 'Promise<TicketWorkspaceServiceRoute[]>' is not assignable to parameter of type 'TicketWorkspaceServiceRoute[]'.
+src/ticket-service.ts(4641,31): error TS2339: Property 'name' does not exist on type 'Promise<TicketProfileRecord>'.
+src/ticket-service.ts(4728,43): error TS2345: Argument of type 'Promise<TicketProfileRecord> | null' is not assignable to parameter of type 'TicketProfileRecord | null'.
+src/ticket-service.ts(4844,7): error TS2345: Argument of type 'Promise<TicketWorkspaceRecord>' is not assignable to parameter of type 'TicketWorkspaceRecord'.
+src/ticket-service.ts(4863,25): error TS2339: Property 'length' does not exist on type 'Promise<AgentUploadedFile[]>'.
+src/ticket-service.ts(4880,32): error TS2339: Property 'id' does not exist on type 'Promise<TicketWorkspaceRecord>'.
+src/ticket-service.ts(4881,29): error TS2339: Property 'id' does not exist on type 'Promise<TicketProfileRecord>'.
+src/ticket-service.ts(4882,29): error TS2339: Property 'id' does not exist on type 'Promise<TicketBindingRecord>'.
+src/ticket-service.ts(4987,28): error TS2339: Property 'send_to_chat' does not exist on type 'Promise<TicketBindingRecord>'.
+src/ticket-service.ts(4988,31): error TS2339: Property 'auto_deliver_to_chat' does not exist on type 'Promise<TicketProfileRecord>'.
+src/ticket-service.ts(4999,55): error TS2345: Argument of type 'Promise<TicketBindingRecord> | null' is not assignable to parameter of type 'TicketBindingRecord | null'.
+src/ticket-service.ts(5012,9): error TS2345: Argument of type '{ uploadedFiles?: Promise<AgentUploadedFile[]> | undefined; clientId: string; }' is not assignable to parameter of type '{ uploadedFiles?: AgentUploadedFile[] | undefined; clientId?: string | undefined; }'.
+src/ticket-service.ts(5014,29): error TS2339: Property 'length' does not exist on type 'Promise<AgentUploadedFile[]>'.
+src/ticket-service.ts(5051,55): error TS2345: Argument of type 'Promise<TicketBindingRecord> | null' is not assignable to parameter of type 'TicketBindingRecord | null'.
+src/ticket-service.ts(5255,45): error TS2345: Argument of type 'Promise<TicketRunRecord>' is not assignable to parameter of type 'TicketRunRecord'.
+src/ticket-service.ts(5256,59): error TS2345: Argument of type 'Promise<TicketRunRecord>' is not assignable to parameter of type 'TicketRunRecord'.
+src/ticket-service.ts(5257,55): error TS2345: Argument of type 'Promise<TicketRunRecord>' is not assignable to parameter of type 'TicketRunRecord'.
+src/ticket-service.ts(5292,5): error TS2322: Type 'Promise<{ id: string; runId: string; kind: string; title: string; contentText: string; contentJson: unknown; createdAt: string; }>[]' is not assignable to type 'TicketArtifact[]'.
+src/ticket-service.ts(5457,3): error TS2322: Type 'Promise<TicketWorkspace>[]' is not assignable to type 'TicketWorkspace[]'.
+src/ticket-service.ts(5478,60): error TS2345: Argument of type 'Promise<TicketWorkspaceRecord>' is not assignable to parameter of type 'TicketWorkspaceRecord'.
+src/ticket-service.ts(5490,39): error TS2345: Argument of type 'Promise<TicketWorkspaceRecord>' is not assignable to parameter of type 'TicketWorkspaceRecord'.
+src/ticket-service.ts(5491,59): error TS2345: Argument of type 'Promise<TicketWorkspaceRecord>' is not assignable to parameter of type 'TicketWorkspaceRecord'.
+src/ticket-service.ts(5494,34): error TS2345: Argument of type 'Promise<TicketWorkspaceRecord>' is not assignable to parameter of type 'TicketWorkspaceRecord'.
+src/ticket-service.ts(5498,3): error TS2322: Type 'Promise<TicketProfile>[]' is not assignable to type 'TicketProfile[]'.
+src/ticket-service.ts(5519,3): error TS2322: Type 'Promise<TicketBinding>[]' is not assignable to type 'TicketBinding[]'.
+src/ticket-service.ts(5528,56): error TS2345: Argument of type 'Promise<TicketBindingUpsertInput>' is not assignable to parameter of type 'TicketBindingUpsertInput'.
+src/ticket-service.ts(5562,51): error TS2339: Property 'needsInfo' does not exist on type 'Promise<TicketRun>'.
+src/ticket-service.ts(5567,15): error TS2339: Property 'actionState' does not exist on type 'Promise<TicketRun>'.
+src/ticket-service.ts(5572,15): error TS2339: Property 'feedbackVerdict' does not exist on type 'Promise<TicketRun>'.
+src/ticket-service.ts(5577,15): error TS2339: Property 'actionState' does not exist on type 'Promise<TicketRun>'.
+src/ticket-service.ts(5580,7): error TS2322: Type 'Promise<TicketRun>[]' is not assignable to type 'TicketRun[]'.
+src/ticket-service.ts(5581,7): error TS2322: Type 'Promise<TicketRun>[]' is not assignable to type 'TicketRun[]'.
+src/ticket-service.ts(5593,64): error TS2339: Property 'evidence' does not exist on type 'Promise<Record<string, unknown> | null>'.
+src/ticket-service.ts(5603,45): error TS2339: Property 'acceptanceCheck' does not exist on type 'Promise<Record<string, unknown> | null>'.
+src/ticket-service.ts(5611,5): error TS2339: Property 'map' does not exist on type 'Promise<TicketBindingRecord[]>'.
+src/ticket-service.ts(5612,46): error TS7006: Parameter 'binding' implicitly has an 'any' type.
+src/ticket-service.ts(5614,19): error TS7006: Parameter 'binding' implicitly has an 'any' type.
+src/ticket-service.ts(5618,66): error TS2339: Property 'id' does not exist on type 'Promise<TicketWorkspace>'.
+src/ticket-service.ts(5623,36): error TS2339: Property 'workspaceId' does not exist on type 'Promise<TicketProfile>'.
+src/ticket-service.ts(5623,75): error TS2339: Property 'id' does not exist on type 'Promise<TicketProfile>'.
+src/ticket-service.ts(5628,5): error TS2339: Property 'map' does not exist on type 'Promise<TicketRunRecord[]>'.
+src/ticket-service.ts(5629,12): error TS2322: Type 'Promise<TicketWorkspace>[]' is not assignable to type 'TicketWorkspace[]'.
+src/ticket-service.ts(5629,24): error TS2322: Type 'Promise<TicketProfile>[]' is not assignable to type 'TicketProfile[]'.
+src/ticket-service.ts(5634,3): error TS2322: Type 'Promise<TicketCaseMemory>[]' is not assignable to type 'TicketCaseMemory[]'.
+src/ticket-service.ts(5657,46): error TS2345: Argument of type 'Promise<TicketWorkspaceRecord>' is not assignable to parameter of type 'TicketWorkspaceRecord'.
+src/ticket-service.ts(5657,57): error TS2339: Property 'length' does not exist on type 'Promise<EffectiveTicketWorkspaceCodebase[]>'.
+src/ticket-service.ts(5659,5): error TS2345: Argument of type 'Promise<TicketWorkspaceRecord>' is not assignable to parameter of type 'TicketWorkspaceRecord'.
+src/ticket-service.ts(5673,46): error TS2345: Argument of type 'Promise<TicketWorkspaceRecord>' is not assignable to parameter of type 'TicketWorkspaceRecord'.
+src/ticket-service.ts(5673,57): error TS2339: Property 'length' does not exist on type 'Promise<EffectiveTicketWorkspaceCodebase[]>'.
+src/ticket-service.ts(5675,5): error TS2345: Argument of type 'Promise<TicketWorkspaceRecord>' is not assignable to parameter of type 'TicketWorkspaceRecord'.
+src/ticket-service.ts(5689,57): error TS2339: Property 'length' does not exist on type 'Promise<EffectiveTicketWorkspaceCodebase[]>'.
+src/ticket-service.ts(5705,57): error TS2339: Property 'length' does not exist on type 'Promise<EffectiveTicketWorkspaceCodebase[]>'.
+src/ticket-service.ts(5728,26): error TS2339: Property 'workspace_id' does not exist on type 'TicketBindingRecord | Promise<TicketBindingRecord>'.
+src/ticket-service.ts(5735,5): error TS2322: Type 'TicketBindingRecord | Promise<TicketBindingRecord> | null' is not assignable to type 'TicketBindingRecord | null | undefined'.
+src/ticket-service.ts(5751,25): error TS2339: Property 'send_to_chat' does not exist on type 'TicketBindingRecord | Promise<TicketBindingRecord>'.
+src/ticket-service.ts(5752,27): error TS2339: Property 'auto_deliver_to_chat' does not exist on type 'Promise<TicketProfileRecord | null>'.
+src/ticket-service.ts(5754,29): error TS2345: Argument of type 'TicketBindingRecord | Promise<TicketBindingRecord> | null' is not assignable to parameter of type 'TicketBindingRecord | null'.
+src/ticket-service.ts(5759,26): error TS2339: Property 'id' does not exist on type 'Promise<TicketProfileRecord | null>'.
+src/ticket-service.ts(5760,26): error TS2339: Property 'id' does not exist on type 'TicketBindingRecord | Promise<TicketBindingRecord>'.
+src/ticket-service.ts(5761,35): error TS2339: Property 'chat_jid' does not exist on type 'TicketBindingRecord | Promise<TicketBindingRecord>'.
+src/ticket-service.ts(5796,3): error TS2322: Type 'TicketRun | null' is not assignable to type 'TicketRun'.
+src/ticket-service.ts(5802,3): error TS2740: Type 'Promise<TicketRun | null>' is missing the following properties from type 'TicketRun': id, workspaceId, profileId, bindingId, and 19 more.
+src/ticket-service.ts(5890,25): error TS2339: Property 'passed' does not exist on type 'Promise<TicketAcceptanceCheck | null>'.
+src/ticket-service.ts(5892,24): error TS2339: Property 'blockers' does not exist on type 'Promise<TicketAcceptanceCheck | null>'.
+src/ticket-service.ts(5961,3): error TS2322: Type 'TicketRun | null' is not assignable to type 'TicketRun'.
+src/ticket-service.ts(6013,5): error TS2322: Type 'TicketRun | null' is not assignable to type 'TicketRun'.
+src/ticket-service.ts(6032,5): error TS2322: Type 'TicketRun | null' is not assignable to type 'TicketRun'.
+src/ticket-service.ts(6072,5): error TS2739: Type 'Promise<TicketStructuredResult>' is missing the following properties from type 'TicketStructuredResult': conclusion, risks, nextSteps, evidence
+src/ticket-service.ts(6077,5): error TS2739: Type 'Promise<TicketStructuredResult>' is missing the following properties from type 'TicketStructuredResult': conclusion, risks, nextSteps, evidence
+src/ticket-service.ts(6111,3): error TS2322: Type 'TicketRun | null' is not assignable to type 'TicketRun'.

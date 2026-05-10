@@ -1,0 +1,814 @@
+/* ─── Live2D widget: frameless draggable character ──────────── */
+
+.live2d-widget {
+  position: fixed;
+  z-index: var(--z-dropdown);
+  pointer-events: none;
+  touch-action: none;
+  user-select: none;
+  will-change: transform;
+}
+
+/* ── canvas area ───────────────────────────────────────────── */
+
+.live2d-canvas-area {
+  pointer-events: none;
+  position: relative;
+  transition: opacity 0.2s ease;
+  overflow: visible;
+  will-change: transform;
+}
+
+.live2d-hitbox {
+  pointer-events: auto;
+  position: absolute;
+  width: 55%;
+  height: 75%;
+  left: 22.5%;
+  bottom: 3%;
+  cursor: grab;
+  z-index: 1;
+}
+
+.live2d-hitbox:active {
+  cursor: grabbing;
+}
+
+.live2d-canvas-area canvas {
+  display: block;
+}
+
+.live2d-widget--collapsed .live2d-canvas-area {
+  opacity: 0;
+  pointer-events: none;
+  height: 0;
+  overflow: hidden;
+}
+
+/* ── hover toolbar (vertical strip, top-right) ───────────── */
+
+.live2d-widget-toolbar {
+  pointer-events: auto;
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  z-index: var(--z-content-above);
+  animation: live2d-fade-in 0.15s ease;
+}
+
+.live2d-widget-toolbar button {
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.35);
+  color: #fff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(6px);
+  transition: background 0.15s;
+}
+
+.live2d-widget-toolbar button:hover {
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.live2d-emotion-tag {
+  font-size: 10px;
+  padding: 1px 7px;
+  border-radius: var(--radius-sm);
+  background: rgba(0, 0, 0, 0.35);
+  color: #fff;
+  font-weight: 600;
+  text-transform: uppercase;
+  pointer-events: none;
+  backdrop-filter: blur(6px);
+}
+
+/* ── loading / error ───────────────────────────────────────── */
+
+.live2d-widget-msg {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 16px;
+  color: var(--text-muted, #94a3b8);
+  font-size: 13px;
+}
+
+.live2d-widget-msg--err {
+  color: var(--error-color, #f38ba8);
+}
+
+/* ── FAB (collapsed state) ─────────────────────────────────── */
+
+.live2d-fab {
+  pointer-events: auto;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 1px solid rgba(226, 232, 240, 0.3);
+  background: var(--surface-card, rgba(255, 255, 255, 0.85));
+  color: var(--accent-color, #4f46e5);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.live2d-fab:hover {
+  transform: scale(1.12);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+}
+
+[data-theme='dark'] .live2d-fab {
+  background: rgba(30, 30, 46, 0.85);
+  border-color: rgba(49, 50, 68, 0.5);
+}
+
+/* ── settings: range slider override ──────────────────────── */
+
+.live2d-settings input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 6px;
+  min-height: unset;
+  padding: 0;
+  margin: 8px 0;
+  border: none;
+  border-radius: var(--radius-xs);
+  background: var(--border, rgba(203, 213, 225, 0.6));
+  outline: none;
+  cursor: pointer;
+}
+
+.live2d-settings input[type="range"]:focus {
+  box-shadow: none;
+  border-color: transparent;
+}
+
+.live2d-settings input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--accent, #4f46e5);
+  border: 2px solid #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
+  cursor: grab;
+  transition: transform 0.12s ease;
+}
+
+.live2d-settings input[type="range"]::-webkit-slider-thumb:active {
+  cursor: grabbing;
+  transform: scale(1.15);
+}
+
+.live2d-settings input[type="range"]::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--accent, #4f46e5);
+  border: 2px solid #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
+  cursor: grab;
+}
+
+.live2d-settings input[type="range"]::-moz-range-track {
+  height: 6px;
+  border-radius: var(--radius-xs);
+  background: var(--border, rgba(203, 213, 225, 0.6));
+}
+
+[data-theme='dark'] .live2d-settings input[type="range"] {
+  background: rgba(49, 50, 68, 0.7);
+}
+
+[data-theme='dark'] .live2d-settings input[type="range"]::-webkit-slider-thumb {
+  border-color: #1e1e2e;
+}
+
+[data-theme='dark'] .live2d-settings input[type="range"]::-moz-range-track {
+  background: rgba(49, 50, 68, 0.7);
+}
+
+[data-theme='dark'] .live2d-settings input[type="range"]::-moz-range-thumb {
+  border-color: #1e1e2e;
+}
+
+/* ── settings: styled file upload ─────────────────────────── */
+
+.live2d-file-upload {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.live2d-file-upload input[type="file"] {
+  display: none;
+}
+
+.live2d-file-upload-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border: 1px solid var(--border, rgba(203, 213, 225, 0.6));
+  border-radius: var(--radius-md);
+  background: var(--surface-card, rgba(255, 255, 255, 0.85));
+  color: var(--text-secondary, #64748b);
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+
+.live2d-file-upload-btn:hover {
+  border-color: var(--accent, #4f46e5);
+  color: var(--accent, #4f46e5);
+  background: rgba(79, 70, 229, 0.06);
+}
+
+.live2d-file-upload-name {
+  font-size: 13px;
+  color: var(--text-secondary, #64748b);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 200px;
+}
+
+[data-theme='dark'] .live2d-file-upload-btn {
+  background: rgba(30, 30, 46, 0.85);
+  border-color: rgba(49, 50, 68, 0.5);
+  color: var(--text-secondary, #a6adc8);
+}
+
+[data-theme='dark'] .live2d-file-upload-btn:hover {
+  border-color: rgba(139, 155, 255, 0.4);
+  color: #c7d2fe;
+  background: rgba(99, 102, 241, 0.12);
+}
+
+@keyframes live2d-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* ════════════════════════════════════════════════════════════
+   Model management section (tabs + card grid + preview)
+   ════════════════════════════════════════════════════════════ */
+
+.live2d-model-section {
+  margin-top: 8px;
+  border-top: 1px solid var(--border, rgba(203, 213, 225, 0.3));
+  padding-top: 16px;
+}
+
+/* ── Sub-tabs ──────────────────────────────────────────────── */
+
+.live2d-model-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 2px solid var(--border, rgba(203, 213, 225, 0.3));
+  margin-bottom: 16px;
+}
+
+.live2d-model-tab {
+  padding: 8px 20px;
+  border: none;
+  background: none;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-muted, #94a3b8);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.live2d-model-tab:hover {
+  color: var(--text-primary, #334155);
+}
+
+.live2d-model-tab.active {
+  color: var(--accent, #4f46e5);
+  border-bottom-color: var(--accent, #4f46e5);
+}
+
+[data-theme='dark'] .live2d-model-tab:hover {
+  color: var(--text-primary, #cdd6f4);
+}
+
+[data-theme='dark'] .live2d-model-tab.active {
+  color: var(--accent, #8b9bff);
+  border-bottom-color: var(--accent, #8b9bff);
+}
+
+/* ── Search bar ────────────────────────────────────────────── */
+
+.live2d-search {
+  margin-bottom: 14px;
+}
+
+.live2d-search input {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--border, rgba(203, 213, 225, 0.6));
+  border-radius: var(--radius-sm);
+  background: var(--surface-card, rgba(255, 255, 255, 0.6));
+  color: var(--text-primary, #334155);
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.live2d-search input:focus {
+  border-color: var(--accent, #4f46e5);
+}
+
+[data-theme='dark'] .live2d-search input {
+  background: rgba(30, 30, 46, 0.5);
+  border-color: rgba(49, 50, 68, 0.5);
+  color: var(--text-primary, #cdd6f4);
+}
+
+[data-theme='dark'] .live2d-search input:focus {
+  border-color: rgba(139, 155, 255, 0.5);
+}
+
+/* ── Card grid ─────────────────────────────────────────────── */
+
+.live2d-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 14px;
+}
+
+/* ── Individual card ───────────────────────────────────────── */
+
+.live2d-card {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border, rgba(203, 213, 225, 0.4));
+  border-radius: var(--radius-lg);
+  background: var(--surface-card, rgba(255, 255, 255, 0.7));
+  overflow: hidden;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.live2d-card:hover {
+  border-color: var(--accent, #4f46e5);
+  box-shadow: 0 2px 12px rgba(79, 70, 229, 0.08);
+}
+
+.live2d-card.is-selected {
+  border-color: var(--accent, #4f46e5);
+  box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.15);
+}
+
+[data-theme='dark'] .live2d-card {
+  background: rgba(30, 30, 46, 0.6);
+  border-color: rgba(49, 50, 68, 0.5);
+}
+
+[data-theme='dark'] .live2d-card:hover {
+  border-color: rgba(139, 155, 255, 0.4);
+  box-shadow: 0 2px 12px rgba(139, 155, 255, 0.06);
+}
+
+[data-theme='dark'] .live2d-card.is-selected {
+  border-color: rgba(139, 155, 255, 0.5);
+  box-shadow: 0 0 0 2px rgba(139, 155, 255, 0.12);
+}
+
+/* ── Card thumbnail area ───────────────────────────────────── */
+
+.live2d-card-thumb {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 3 / 4;
+  background: linear-gradient(135deg, rgba(241, 245, 249, 0.8), rgba(226, 232, 240, 0.4));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.live2d-card-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  padding: 8px;
+  transition: transform 0.2s ease;
+}
+
+.live2d-card-thumb:hover img {
+  transform: scale(1.05);
+}
+
+[data-theme='dark'] .live2d-card-thumb {
+  background: linear-gradient(135deg, rgba(30, 30, 46, 0.9), rgba(49, 50, 68, 0.5));
+}
+
+/* ── Thumbnail gen button (inside card) ────────────────────── */
+
+.live2d-thumb-gen-btn {
+  width: 100%;
+  height: 100%;
+  border: none;
+  background: none;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: var(--text-muted, #94a3b8);
+  transition: color 0.15s;
+}
+
+.live2d-thumb-gen-btn:hover:not(:disabled) {
+  color: var(--accent, #4f46e5);
+}
+
+.live2d-thumb-gen-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.live2d-thumb-spinner {
+  display: inline-block;
+  width: 24px;
+  height: 24px;
+  border: 2px solid var(--text-muted, #94a3b8);
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: live2d-spin 0.8s linear infinite;
+}
+
+@keyframes live2d-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ── Card info ─────────────────────────────────────────────── */
+
+.live2d-card-info {
+  padding: 10px 12px 4px;
+}
+
+.live2d-card-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary, #334155);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 4px;
+}
+
+[data-theme='dark'] .live2d-card-name {
+  color: var(--text-primary, #cdd6f4);
+}
+
+.live2d-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-muted, #94a3b8);
+  flex-wrap: wrap;
+}
+
+/* ── Card actions ──────────────────────────────────────────── */
+
+.live2d-card-actions {
+  display: flex;
+  gap: 6px;
+  padding: 8px 12px 12px;
+  margin-top: auto;
+}
+
+.live2d-card-actions .btn-sm {
+  flex: 1;
+  font-size: 12px;
+  padding: 5px 8px;
+}
+
+.live2d-card-actions .btn-outline {
+  background: none;
+  border: 1px solid var(--border, rgba(203, 213, 225, 0.6));
+  color: var(--text-muted, #94a3b8);
+  cursor: default;
+  opacity: 0.7;
+}
+
+/* ── Upload form ───────────────────────────────────────────── */
+
+.live2d-upload-form {
+  padding-top: 4px;
+}
+
+/* ════════════════════════════════════════════════════════════
+   Preview modal (lightbox)
+   ════════════════════════════════════════════════════════════ */
+
+.live2d-preview-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: live2d-fade-in 0.15s ease;
+  backdrop-filter: blur(4px);
+}
+
+.live2d-preview-modal {
+  position: relative;
+  background: var(--surface-card, #fff);
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+  max-width: min(420px, 90vw);
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.25);
+}
+
+[data-theme='dark'] .live2d-preview-modal {
+  background: #1e1e2e;
+}
+
+.live2d-preview-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.35);
+  color: #fff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: var(--z-content-above);
+  backdrop-filter: blur(6px);
+  transition: background 0.15s;
+}
+
+.live2d-preview-close:hover {
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.live2d-preview-img {
+  width: 100%;
+  max-height: 60vh;
+  object-fit: contain;
+  background: linear-gradient(135deg, rgba(241, 245, 249, 0.8), rgba(226, 232, 240, 0.4));
+  padding: 16px;
+}
+
+[data-theme='dark'] .live2d-preview-img {
+  background: linear-gradient(135deg, rgba(30, 30, 46, 0.9), rgba(49, 50, 68, 0.5));
+}
+
+.live2d-preview-info {
+  padding: 16px 20px;
+}
+
+.live2d-preview-name {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary, #334155);
+  margin-bottom: 6px;
+}
+
+[data-theme='dark'] .live2d-preview-name {
+  color: var(--text-primary, #cdd6f4);
+}
+
+.live2d-preview-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-muted, #94a3b8);
+}
+
+/* ─── Toolbar ────────────────────────────────────────────── */
+
+.live2d-toolbar {
+  display: grid;
+  gap: 10px;
+}
+
+.live2d-toolbar-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.live2d-search--wide {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.live2d-search--wide input {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+  color: var(--text-primary);
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.live2d-search--wide input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(56, 120, 255, 0.12);
+}
+
+.live2d-search--wide input::placeholder {
+  color: var(--text-muted);
+}
+
+.live2d-toolbar-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.live2d-toolbar-actions .btn-primary,
+.live2d-toolbar-actions .btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.live2d-toolbar-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.live2d-model-count {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+/* ─── Empty hint ─────────────────────────────────────────── */
+
+.live2d-empty-hint {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 48px 24px;
+  min-height: 200px;
+  color: var(--text-muted);
+  font-size: 14px;
+  border: 1.5px dashed var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+}
+
+/* ─── Upload dialog ──────────────────────────────────────── */
+
+.live2d-upload-dialog {
+  background: var(--surface-card, #fff);
+  border-radius: var(--radius-xl);
+  padding: 24px;
+  width: 100%;
+  max-width: 480px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.22);
+  position: relative;
+}
+
+.live2d-upload-dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.live2d-upload-dialog-header h4 {
+  margin: 0;
+  font-size: 16px;
+  color: var(--text-primary);
+}
+
+/* ─── Config panel (reused inside Drawer) ────────────────── */
+
+.live2d-config-panel {
+  display: grid;
+  gap: 16px;
+  padding: 4px 0;
+}
+
+.live2d-config-panel h4 {
+  margin: 0 0 8px 0;
+  font-size: 15px;
+  color: var(--text-primary);
+}
+
+@media (max-width: 900px) {
+  .live2d-toolbar-row {
+    flex-wrap: wrap;
+  }
+  .live2d-upload-dialog {
+    margin: 16px;
+  }
+}
+
+/* ─── Live2D Chat Config (Drawer content) ────────────────── */
+
+.live2d-chat-config {
+  display: grid;
+  gap: 16px;
+  padding: 4px 0;
+}
+
+.live2d-chat-config-field {
+  display: flex;
+  align-items: center;
+}
+
+.live2d-chat-config-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.live2d-chat-config-toggle input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.live2d-chat-config-footer {
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+@media (max-width: 768px) {
+  .app-shell.mobile .live2d-widget {
+    position: fixed;
+    inset: auto !important;
+    top: auto !important;
+    left: auto !important;
+    right: 8px !important;
+    bottom: calc(56px + env(safe-area-inset-bottom, 0px) + 8px) !important;
+    z-index: var(--z-sticky);
+  }
+  .app-shell.mobile .live2d-widget .live2d-canvas-area {
+    width: 100% !important;
+    height: 100% !important;
+  }
+  .app-shell.mobile .live2d-widget .live2d-hitbox {
+    width: 65%;
+    left: 17.5%;
+  }
+  .app-shell.mobile .live2d-widget .live2d-widget-toolbar {
+    top: 4px;
+    right: 4px;
+    position: absolute;
+    pointer-events: auto;
+  }
+  .app-shell.mobile .live2d-widget .live2d-fab {
+    pointer-events: auto;
+  }
+  .app-shell.mobile .live2d-widget canvas {
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: contain;
+  }
+}

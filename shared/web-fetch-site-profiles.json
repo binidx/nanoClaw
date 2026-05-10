@@ -1,0 +1,72 @@
+[
+  {
+    "id": "cloud-tencent",
+    "label": "Tencent Cloud Article",
+    "profile": {
+      "domains": ["cloud.tencent.com"],
+      "pathPrefixes": ["/developer/article/"],
+      "forceProvider": "browser_cli",
+      "waitSelector": ".com-markdown-collpase-main,.article-detail__content,.J-articlePanel",
+      "postWaitMs": 1500,
+      "waitUntil": "domcontentloaded",
+      "viewport": "1440x1200",
+      "userAgent": ""
+    }
+  },
+  {
+    "id": "wechat-article",
+    "label": "WeChat Article",
+    "profile": {
+      "domains": ["mp.weixin.qq.com"],
+      "pathPrefixes": [],
+      "forceProvider": "browser_cli",
+      "waitSelector": "#js_content",
+      "postWaitMs": 2000,
+      "waitUntil": "domcontentloaded",
+      "viewport": "1280x1200",
+      "userAgent": ""
+    }
+  },
+  {
+    "id": "zhihu-zhuanlan",
+    "label": "Zhihu Column",
+    "profile": {
+      "domains": ["zhuanlan.zhihu.com"],
+      "pathPrefixes": ["/p/"],
+      "forceProvider": "browser_cli",
+      "waitSelector": ".Post-RichTextContainer,.RichText.ztext",
+      "postWaitMs": 1500,
+      "waitUntil": "domcontentloaded",
+      "viewport": "1440x1200",
+      "userAgent": ""
+    }
+  },
+  {
+    "id": "juejin-post",
+    "label": "Juejin Post",
+    "profile": {
+      "domains": ["juejin.cn"],
+      "pathPrefixes": ["/post/"],
+      "forceProvider": "browser_cli",
+      "waitSelector": ".article-content,.markdown-body",
+      "postWaitMs": 1500,
+      "waitUntil": "domcontentloaded",
+      "viewport": "1440x1200",
+      "userAgent": ""
+    }
+  },
+  {
+    "id": "36kr-article",
+    "label": "36Kr Article",
+    "profile": {
+      "domains": ["36kr.com"],
+      "pathPrefixes": ["/p/"],
+      "forceProvider": "browser_cli",
+      "waitSelector": ".article-content,.kr-rich-text-wrapper",
+      "postWaitMs": 1500,
+      "waitUntil": "domcontentloaded",
+      "viewport": "1440x1200",
+      "userAgent": ""
+    }
+  }
+]

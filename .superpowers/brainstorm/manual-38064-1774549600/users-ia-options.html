@@ -1,0 +1,90 @@
+<h2>用户管理信息架构方向</h2>
+<p class="subtitle">都保持 NanoClaw 现有的管理台风格，不做花哨重设计，重点优化结构、层级和操作路径。</p>
+
+<div class="cards">
+  <div class="card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup">
+        <div class="mockup-header">A. 总览 + 列表 + 右侧详情</div>
+        <div class="mockup-body">
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:12px;">
+            <div class="placeholder">用户数</div>
+            <div class="placeholder">启用中</div>
+            <div class="placeholder">角色数</div>
+          </div>
+          <div style="display:grid;grid-template-columns:1.3fr 1fr;gap:12px;">
+            <div class="placeholder" style="min-height:220px;">左侧：用户列表、搜索、筛选、批量入口</div>
+            <div class="placeholder" style="min-height:220px;">右侧：选中用户详情、角色、状态、操作</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>工作台式双栏</h3>
+      <p>最像当前助手页和审查页的管理模式。左边负责定位对象，右边专注查看与编辑单个用户。</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup">
+        <div class="mockup-header">B. 指标总览 + 分区卡片</div>
+        <div class="mockup-body">
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:12px;">
+            <div class="placeholder">总用户</div>
+            <div class="placeholder">管理员</div>
+            <div class="placeholder">禁用账号</div>
+            <div class="placeholder">待清理</div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr;gap:12px;">
+            <div class="placeholder" style="min-height:92px;">创建用户卡片</div>
+            <div class="placeholder" style="min-height:140px;">角色与权限说明卡片</div>
+            <div class="placeholder" style="min-height:160px;">用户列表卡片</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>配置中心式纵向分区</h3>
+      <p>更像设置页。信息解释更充分，但长页面会更重，定位具体用户不如双栏快。</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="c" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup">
+        <div class="mockup-header">C. 用户面板 + 角色面板并列</div>
+        <div class="mockup-body">
+          <div style="display:grid;grid-template-columns:1.15fr 0.85fr;gap:12px;">
+            <div class="placeholder" style="min-height:240px;">左栏：用户表格、搜索、创建、编辑</div>
+            <div class="placeholder" style="min-height:240px;">右栏：角色清单、权限摘要、分配关系</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>用户与角色并列</h3>
+      <p>适合把“用户管理”做成更完整的权限面板，但改动会比前两种更大，超出当前页现有复杂度。</p>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="pros-cons">
+    <div class="pros">
+      <h4>我推荐 A</h4>
+      <ul>
+        <li>最接近现有助手页和审查页的结构语言</li>
+        <li>用户对象切换快，适合频繁编辑单个用户</li>
+        <li>能自然容纳后续角色、权限、审计信息</li>
+      </ul>
+    </div>
+    <div class="cons">
+      <h4>代价</h4>
+      <ul>
+        <li>需要把当前单表格页拆成概览区和详情区</li>
+        <li>创建用户更适合抽屉或卡片，不再是顶部直接展开</li>
+      </ul>
+    </div>
+  </div>
+</div>

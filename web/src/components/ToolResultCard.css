@@ -1,0 +1,209 @@
+/* Tool result card — mirrors assistant turn / chat markdown tokens */
+
+.tool-result-card {
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(248, 250, 252, 0.92);
+  overflow: hidden;
+  max-width: 100%;
+}
+
+.tool-result-card.tool-result-card--error {
+  border-color: rgba(248, 113, 113, 0.55);
+  background: rgba(254, 242, 242, 0.92);
+}
+
+.tool-result-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 8px 10px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.28);
+  background: rgba(255, 255, 255, 0.55);
+  min-width: 0;
+}
+
+.tool-result-card--error .tool-result-card-head {
+  border-bottom-color: rgba(248, 113, 113, 0.28);
+  background: rgba(254, 226, 226, 0.35);
+}
+
+.tool-result-card-icon {
+  font-size: 14px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.tool-result-card-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-primary, #0f172a);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1 1 120px;
+}
+
+.tool-result-card-meta {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted, #64748b);
+  flex-shrink: 0;
+}
+
+.tool-result-card-toggle {
+  margin-left: auto;
+  flex-shrink: 0;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--text-muted, #475569);
+  border-radius: var(--radius-sm);
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  line-height: 1.2;
+}
+
+.tool-result-card-toggle:hover {
+  border-color: rgba(59, 130, 246, 0.45);
+  color: #2563eb;
+}
+
+.tool-result-card-body {
+  padding: 10px 10px 12px;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.tool-result-card-body-collapsed {
+  display: none;
+}
+
+/* Search hits as linked cards (markdown lists) */
+.tool-result-search-web .md-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tool-result-search-web .md-list li {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(255, 255, 255, 0.75);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.tool-result-search-web .md-list li a {
+  font-weight: 700;
+  word-break: break-word;
+}
+
+.tool-result-markdown {
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.tool-result-markdown .md-paragraph {
+  margin: 0 0 8px;
+}
+
+.tool-result-markdown .md-paragraph:last-child {
+  margin-bottom: 0;
+}
+
+/* Code wrapper for valid HTML structure (span label outside pre) */
+.tool-result-code-wrapper {
+  position: relative;
+}
+
+.tool-result-code-wrapper > .md-code-lang {
+  display: block;
+  padding: 2px 8px;
+  font-size: 10px;
+  color: var(--text-muted, #64748b);
+}
+
+/* Light syntax tokens inside code-style tool output */
+.tool-result-hl-code {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.tool-result-tok-lit {
+  color: #059669;
+}
+
+.tool-result-tok-url {
+  color: #2563eb;
+}
+
+.tool-result-tok-meta {
+  color: #64748b;
+}
+
+[data-theme='dark'] .tool-result-card {
+  border-color: #334155;
+  background: rgba(15, 23, 42, 0.72);
+}
+
+[data-theme='dark'] .tool-result-card--error {
+  border-color: rgba(248, 113, 113, 0.4);
+  background: rgba(69, 10, 10, 0.42);
+}
+
+[data-theme='dark'] .tool-result-card-head {
+  border-bottom-color: #334155;
+  background: rgba(30, 41, 59, 0.65);
+}
+
+[data-theme='dark'] .tool-result-card--error .tool-result-card-head {
+  border-bottom-color: rgba(248, 113, 113, 0.28);
+  background: rgba(127, 29, 29, 0.35);
+}
+
+[data-theme='dark'] .tool-result-card-title {
+  color: #e2e8f0;
+}
+
+[data-theme='dark'] .tool-result-card-meta {
+  color: rgba(203, 213, 225, 0.75);
+}
+
+[data-theme='dark'] .tool-result-card-toggle {
+  background: rgba(30, 41, 59, 0.85);
+  border-color: #475569;
+  color: #cbd5e1;
+}
+
+[data-theme='dark'] .tool-result-card-toggle:hover {
+  border-color: rgba(96, 165, 250, 0.5);
+  color: #93c5fd;
+}
+
+[data-theme='dark'] .tool-result-search-web .md-list li {
+  border-color: #334155;
+  background: rgba(30, 41, 59, 0.65);
+}
+
+[data-theme='dark'] .tool-result-tok-lit {
+  color: #6ee7b7;
+}
+
+[data-theme='dark'] .tool-result-tok-url {
+  color: #93c5fd;
+}
+
+[data-theme='dark'] .tool-result-tok-meta {
+  color: #94a3b8;
+}
