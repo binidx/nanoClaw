@@ -93,6 +93,7 @@ import { useTerminalSession } from './hooks/useTerminalSession';
 import { useWebSocket } from './hooks/useWebSocket';
 import { pathToNavPage, navPageToPath } from './router/paths';
 import { MobileLayout } from './components/MobileLayout';
+import { AppsPageV2 } from './pages/AppsPageV2';
 import './components/mobile-layout.css';
 import './App.css';
 
@@ -410,11 +411,6 @@ const ChannelsWorkspacePage = lazy(async () => {
 const AssistantsPage = lazy(async () => {
   const module = await import('./pages/AssistantsPage');
   return { default: module.AssistantsPage };
-});
-
-const AppsPageV2 = lazy(async () => {
-  const module = await import('./pages/AppsPageV2');
-  return { default: module.AppsPageV2 };
 });
 
 const SettingsPage = lazy(async () => {
