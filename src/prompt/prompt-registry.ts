@@ -445,8 +445,8 @@ Input:
   {
     key: 'repo_review.digest',
     featureScope: 'repo_review',
-    title: 'Repo Review digest',
-    description: 'Daily or weekly repository activity digest prompt.',
+    title: '仓库审查周报/日报',
+    description: '用于生成仓库的日常或周度活动摘要。',
     promptKind: 'user',
     defaultTemplate: REPO_REVIEW_DIGEST_TEMPLATE,
     variables: [
@@ -466,8 +466,8 @@ Input:
   {
     key: 'repo_review.primary',
     featureScope: 'repo_review',
-    title: 'Repo Review primary',
-    description: 'Primary repo-review prompt for branch or push runs.',
+    title: '仓库审查主提示词',
+    description: '用于分支或推送运行的主仓库审查提示词。',
     promptKind: 'user',
     defaultTemplate: REPO_REVIEW_PRIMARY_TEMPLATE,
     variables: [
@@ -493,8 +493,8 @@ Input:
   {
     key: 'repo_review.agentic_plan',
     featureScope: 'repo_review',
-    title: 'Repo Review main plan',
-    description: 'Main repo-review planning prompt for agentic review runs.',
+    title: '仓库审查主计划',
+    description: '用于 agentic 审查运行的主规划提示词。',
     promptKind: 'user',
     defaultTemplate: REPO_REVIEW_AGENTIC_PLAN_TEMPLATE,
     variables: [
@@ -526,8 +526,8 @@ Input:
   {
     key: 'repo_review.agentic_subagent',
     featureScope: 'repo_review',
-    title: 'Repo Review subagent',
-    description: 'Bounded subagent prompt used by agentic repo review.',
+    title: '仓库审查子代理',
+    description: '用于 agentic 仓库审查的受限子代理提示词。',
     promptKind: 'user',
     defaultTemplate: REPO_REVIEW_AGENTIC_SUBAGENT_TEMPLATE,
     variables: [
@@ -549,8 +549,8 @@ Input:
   {
     key: 'repo_review.agentic_final',
     featureScope: 'repo_review',
-    title: 'Repo Review final report',
-    description: 'Main agent Markdown report prompt after planning and subagent evidence.',
+    title: '仓库审查最终报告',
+    description: '基于计划和子代理证据生成主代理 Markdown 报告。',
     promptKind: 'user',
     defaultTemplate: REPO_REVIEW_AGENTIC_FINAL_TEMPLATE,
     variables: [
@@ -584,8 +584,8 @@ Input:
   {
     key: 'repo_review.agentic_extractor',
     featureScope: 'repo_review',
-    title: 'Repo Review structured extractor',
-    description: 'Structured JSON extractor for the final Markdown report.',
+    title: '仓库审查结构化抽取器',
+    description: '从最终 Markdown 报告中抽取结构化 JSON。',
     promptKind: 'user',
     defaultTemplate: REPO_REVIEW_AGENTIC_EXTRACTOR_TEMPLATE,
     variables: ['mainReportMarkdown', 'subagentResults'],
@@ -593,8 +593,8 @@ Input:
   {
     key: 'repo_review.supplemental_file',
     featureScope: 'repo_review',
-    title: 'Repo Review supplemental file',
-    description: 'Per-file supplemental prompt used during full-file review.',
+    title: '仓库审查单文件补充',
+    description: '用于整文件审查时的按文件补充提示词。',
     promptKind: 'user',
     defaultTemplate: REPO_REVIEW_SUPPLEMENTAL_FILE_TEMPLATE,
     variables: [
