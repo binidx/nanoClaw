@@ -59,6 +59,8 @@ describe('user skill service', () => {
     fs.mkdirSync(tempDataDir, { recursive: true });
     vi.clearAllMocks();
     generateSkillIdMock.mockReturnValue('skill-generated');
+    listUserSkillsMock.mockResolvedValue([]);
+    listVisibleSkillsMock.mockResolvedValue([]);
   });
 
   it('imports a local skill directory and preserves additional files', async () => {

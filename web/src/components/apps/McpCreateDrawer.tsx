@@ -9,7 +9,7 @@ export interface McpCreateDrawerProps {
   onImportJson: (input: {
     json: string;
     visibility?: 'private' | 'shared';
-  }) => Promise<void>;
+  }) => Promise<UserMcpServerView[] | null>;
   onSave: (input: {
     name: string;
     transport?: 'stdio' | 'streamable-http' | 'sse';
@@ -114,12 +114,14 @@ export function McpCreateDrawer({ editing, onImportJson, onSave, onClose }: McpC
   const handleJsonImport = async () => {
     setSaving(true);
     try {
-      await onImportJson({
+      const result = await onImportJson({
         json: jsonDraft.trim(),
         visibility,
       });
-      setJsonDraft('');
-      setJsonMode(false);
+      if (result !== null) {
+        setJsonDraft('');
+        setJsonMode(false);
+      }
     } finally {
       setSaving(false);
     }

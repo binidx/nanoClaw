@@ -8,6 +8,7 @@ const {
   generateMcpServerIdMock,
   listVisibleMcpServersMock,
   listUserMcpServersMock,
+  listUserSkillsMock,
   upsertUserMcpServerMock,
   ensureUserHydratedMock,
   generateTextWithDefaultProviderMock,
@@ -15,6 +16,7 @@ const {
   generateMcpServerIdMock: vi.fn(() => 'mcp-generated'),
   listVisibleMcpServersMock: vi.fn(),
   listUserMcpServersMock: vi.fn(),
+  listUserSkillsMock: vi.fn(),
   upsertUserMcpServerMock: vi.fn(),
   ensureUserHydratedMock: vi.fn(async () => undefined),
   generateTextWithDefaultProviderMock: vi.fn(),
@@ -31,7 +33,9 @@ vi.mock('../db.js', () => ({
   upsertUserMcpServer: upsertUserMcpServerMock,
   getUserMcpServer: vi.fn(),
   listUserMcpServers: listUserMcpServersMock,
+  listUserSkills: listUserSkillsMock,
   listVisibleMcpServers: listVisibleMcpServersMock,
+  listVisibleSkills: vi.fn(async () => []),
   deleteUserMcpServer: vi.fn(),
   deleteMarketplaceInstallsByTarget: vi.fn(),
   getDefaultProvider: vi.fn(async () => ({ id: 'p1', type: 'openai', name: 'Test', config: '{}' })),
@@ -76,6 +80,9 @@ describe('user MCP service', () => {
     fs.mkdirSync(tempDataDir, { recursive: true });
     vi.clearAllMocks();
     generateMcpServerIdMock.mockReturnValue('mcp-generated');
+    listUserMcpServersMock.mockResolvedValue([]);
+    listUserSkillsMock.mockResolvedValue([]);
+    listVisibleMcpServersMock.mockResolvedValue([]);
   });
 
   afterEach(() => {

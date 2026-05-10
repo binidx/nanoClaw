@@ -48,7 +48,7 @@ export interface MyAppsPanelProps {
   onImportMcpJson: (input: {
     json: string;
     visibility?: 'private' | 'shared';
-  }) => Promise<unknown>;
+  }) => Promise<UserMcpServerView[] | null>;
   onUpdateMcp: (id: string, input: Partial<{
     name: string;
     transport: 'stdio' | 'streamable-http' | 'sse';
@@ -99,7 +99,7 @@ function buildExtensionExtra(input: {
 }, t: (key: string) => string) {
   return (
     <div className="app-card__extra">
-      {input.transport ? (
+      {input.transport && input.transport !== 'stdio' ? (
         <div className="app-card__tags">
           <span className="app-card__tag">{input.transport}</span>
         </div>
@@ -294,9 +294,12 @@ export function MyAppsPanel({
         <McpCreateDrawer
           editing={editingMcp}
           onImportJson={async (input) => {
-            await onImportMcpJson(input);
-            setShowMcpDrawer(false);
-            setEditingMcp(null);
+            const result = await onImportMcpJson(input);
+            if (result !== null) {
+              setShowMcpDrawer(false);
+              setEditingMcp(null);
+            }
+            return result;
           }}
           onSave={async (input) => {
             if (editingMcp) {

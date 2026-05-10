@@ -26,11 +26,11 @@ async function withServer(
   app: express.Express,
   run: (baseUrl: string) => Promise<void>,
 ): Promise<void> {
-  const server = await new Promise<ReturnType<express.Express['listen']>>(
-    (resolve) => {
-      const next = app.listen(0, '127.0.0.1', () => resolve(next));
-    },
-  );
+  const server = app.listen(0);
+  await new Promise<void>((resolve, reject) => {
+    server.once('listening', () => resolve());
+    server.once('error', reject);
+  });
   const address = server.address();
   if (!address || typeof address === 'string') {
     server.close();

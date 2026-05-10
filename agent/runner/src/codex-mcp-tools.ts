@@ -85,17 +85,21 @@ function parseExternalMcpServers(): Record<string, ExternalMcpServer> {
           ? entry.url.trim()
           : undefined;
       const transport =
-        entry.transport === 'streamable-http' || entry.transport === 'sse'
+        entry.transport === 'streamable-http' ||
+        entry.transport === 'http' ||
+        entry.transport === 'sse'
           ? entry.transport
           : typeof entry.type === 'string' && entry.type.trim().toLowerCase() === 'sse'
             ? 'sse'
             : url
               ? 'streamable-http'
               : 'stdio';
-      if (transport === 'stdio' && !command) continue;
-      if (transport !== 'stdio' && !url) continue;
+      const normalizedTransport: 'stdio' | 'streamable-http' | 'sse' =
+        transport === 'http' ? 'streamable-http' : transport;
+      if (normalizedTransport === 'stdio' && !command) continue;
+      if (normalizedTransport !== 'stdio' && !url) continue;
       output[name] = {
-        transport,
+        transport: normalizedTransport,
         command,
         args: Array.isArray(entry.args)
           ? entry.args.filter(
@@ -256,43 +260,65 @@ async function withMcpClient<T>(
     await loadMcpSdk();
   const transportKind = normalizeServerTransport(server);
   const url = parseServerUrl(server);
-  const transport =
-    transportKind === 'stdio'
-      ? new StdioClientTransport({
-          command: server.command || '',
-          args: server.args,
-          env: server.env,
-          cwd: server.cwd || process.env.NANOCLAW_GROUP_DIR || process.cwd(),
-          stderr: 'pipe',
-        })
-      : transportKind === 'sse'
-        ? url
-          ? new SSEClientTransport(url)
-          : null
-        : url
-          ? new StreamableHTTPClientTransport(url)
-          : null;
-  if (!transport) {
-    throw new Error(`MCP server ${serverId} is missing a valid ${transportKind} URL`);
-  }
-  const client = new Client({
-    name: 'nanoclaw-codex',
-    version: '1.0.0',
-  });
-
-  if ('stderr' in transport && transport.stderr) {
-    transport.stderr.on('data', (chunk) => {
-      const text = String(chunk || '').trim();
-      if (text) log(`${serverId}: ${text}`);
+  const connect = async (candidate: 'stdio' | 'streamable-http' | 'sse') => {
+    const client = new Client({
+      name: 'nanoclaw-codex',
+      version: '1.0.0',
     });
-  }
+    const transport =
+      candidate === 'stdio'
+        ? new StdioClientTransport({
+            command: server.command || '',
+            args: server.args,
+            env: server.env,
+            cwd: server.cwd || process.env.NANOCLAW_GROUP_DIR || process.cwd(),
+            stderr: 'pipe',
+          })
+        : candidate === 'sse'
+          ? url
+            ? new SSEClientTransport(url)
+            : null
+          : url
+            ? new StreamableHTTPClientTransport(url)
+            : null;
+    if (!transport) {
+      throw new Error(`MCP server ${serverId} is missing a valid ${candidate} URL`);
+    }
+    if ('stderr' in transport && transport.stderr) {
+      transport.stderr.on('data', (chunk) => {
+        const text = String(chunk || '').trim();
+        if (text) log(`${serverId}: ${text}`);
+      });
+    }
+    await client.connect(transport);
+    return { client, transport };
+  };
 
-  await client.connect(transport);
+  const candidates =
+    transportKind === 'streamable-http' ? (['streamable-http', 'sse'] as const) : ([transportKind] as const);
+  let connected: { client: SdkClient; transport: { close: () => Promise<void> | void } } | null = null;
+  let lastError: unknown = null;
+  for (const candidate of candidates) {
+    try {
+      connected = await connect(candidate);
+      break;
+    } catch (error) {
+      lastError = error;
+      await connected?.client.close().catch(() => undefined);
+      await Promise.resolve(connected?.transport.close()).catch(() => undefined);
+      connected = null;
+    }
+  }
+  if (!connected) {
+    throw lastError instanceof Error
+      ? lastError
+      : new Error(`Failed to connect to MCP server ${serverId}`);
+  }
   try {
-    return await fn(client);
+    return await fn(connected.client);
   } finally {
-    await client.close().catch(() => undefined);
-    await transport.close().catch(() => undefined);
+    await connected.client.close().catch(() => undefined);
+    await Promise.resolve(connected.transport.close()).catch(() => undefined);
   }
 }
 
