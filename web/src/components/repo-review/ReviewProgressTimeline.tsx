@@ -95,17 +95,21 @@ const ToolCallDurationLabel = memo(function ToolCallDurationLabel({
 });
 
 function getProgressStepKindLabel(step: RepoReviewProgressStep) {
+  if (step.kind === 'worker') return 'Worker';
+  if (step.kind === 'reducer') return '收敛';
   if (step.kind === 'subagent') return '子代理';
   if (step.kind === 'extractor') return '格式化';
   if (step.kind === 'main') return '主代理';
   if (step.kind === 'stage') return '阶段';
   if (
+    step.id.startsWith('worker_chunk_') ||
     step.id.startsWith('split_diff_worker_') ||
     step.id.startsWith('agentic_subagent_') ||
     step.id.startsWith('full_file_subagent_')
   ) {
-    return '子代理';
+    return 'Worker';
   }
+  if (step.id === 'reduce_results') return '收敛';
   if (step.id === 'split_diff_main' || step.id === 'agentic_main_summary') {
     return '汇总';
   }

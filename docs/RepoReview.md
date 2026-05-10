@@ -25,7 +25,7 @@ Repo Review 是面向 Git 仓库的审查流水线，不只是"把 diff 发给�
 
 ## 模块拆分
 
-当前 Repo Review 已拆分为 12 个子模块：
+当前 Repo Review 已拆分为 13 个子模块：
 
 - `repo-review-service.ts`：barrel 入口
 - `repo-review-budget.ts`：payload 估算、字节预算与分组基础能力
@@ -34,6 +34,7 @@ Repo Review 是面向 Git 仓库的审查流水线，不只是"把 diff 发给�
 - `repo-review-git.ts`：Git 远程操作、URL 解析、provider 推断、clone/compare
 - `repo-review-prompt-templates.ts`：审查 prompt 模板管理
 - `repo-review-messages.ts`：消息格式化
+- `repo-review-coordinator.ts`：V3 evidence bundle / worker / reducer 协调器
 - `repo-review-run-executor.ts`：review run 执行编排
 - `repo-review-read-service.ts`：只读查询服务
 - `repo-review-sync-service.ts`：远端同步队列
@@ -74,21 +75,13 @@ Repo Review 是面向 Git 仓库的审查流水线，不只是"把 diff 发给�
 
 ## 当前执行模型
 
-- 审查现在是 `main-agent plan -> executor subagents -> main-agent summary -> extractor` 的 agentic 流程，主代理先制定计划，再决定是否委派；主计划会尽早发起，diff index 在后续阶段按需构建，减少“看起来还没开始调用 AI”的等待感。
-- `diffSubagentThreshold` 现在只作为“建议委派阈值”，不再强制拆分；全文读取仍受 profile 预算控制。
-- Repo Review 的主审查计划 prompt、子代理 prompt、最终 Markdown prompt、结构化 extractor prompt 和 digest prompt 已进入统一 Prompt 配置中心，可按功能域查看、编辑与追踪。
-- 第一轮 prompt 只产出 `review_plan`；最终的人类可读报告由主代理生成，结构化 JSON 由独立 extractor 转换，`raw_report_markdown` 固定保留主报告正文。
-- 进度时间线现在会透出 agent 运行中的状态事件和持续时间，避免“卡在计划阶段但看不到 AI 已开始请求”的错觉。
-- 旧的 `JSON + ---REVIEW_BODY--- + Markdown` 结果仍兼容解析，但不再作为默认输出协议。
-- executor 会在需要子代理/补充取证时构建统一 diff index，后续主计划、子代理和 extractor 都从同一份原始 diff 做按文件切片，不再反复重建大字符串。
-- 子代理默认超时已放宽到 5 分钟，超时补救会复用同一工作区并透出更明确的状态进度。
-- 最终 Markdown 报告现在严格遵循固定模板，`markdown_body` 作为最终展示正文，不再被主报告正文覆盖回去。
-- executor 已开始记录字节级预算统计：包含 diff 文件数、diff 字节数、额外 `read_file` 次数、子代理数、模型调用数、读取预算和提取尝试次数。
-- review 运行中的中间持久化不再反复写入完整 `reviewTurns` 数组，而是写入紧凑的 `reviewProgress` 快照；完整 turns 只在最终完成时落库。
-- 工具调用失败和上下文不足现在都应被视为恢复边界：优先写入 `scope_limitations`，而不是把开放式仓库探索当作默认控制流。
-- 若模型输出无法解析成合法 JSON，系统会把原始输出保存在 `review_runs.raw_model_output`，并尽量回退展示，不再把整次审查结果直接吞掉。
-- Prompt Trace 会额外记录 Repo Review 在真实运行时发给模型的 prompt 文本，便于核对自定义 prompt 是否真正生效。
-- 这些统计当前主要用于验证和后续优化，不改变审查结论本身。
+- 审查现在是 `prepare_context -> build_evidence_bundle -> schedule_workers -> worker_chunk_* -> reduce_results -> persist_result -> publish_completion` 的受控流水线，Coordinator 负责切分 evidence 并调度 worker，worker 只消费预构建证据块，reducer 统一收敛最终结论。
+- `diffSubagentThreshold` 仅保留兼容字段，不再参与 V3 调度决策。
+- Repo Review 的 V3 worker / reducer prompt 已进入统一 Prompt 配置中心；旧 agentic prompt 继续保留读取兼容，但不再作为新 run 默认路径。
+- worker 超时只影响对应 chunk，reducer 失败才会让整次审查失败。
+- 最终 `markdown_body` 仍是唯一展示正文来源，若 reducer 未返回可用正文则由本地 renderer 回退生成固定模板。
+- 进度时间线现在展示 worker chunk / reducer 状态与耗时，旧 agentic 节点仅用于历史 run 兼容。
+- coordinator 会记录 evidence bundle、worker 数量和 reducer 调用等统计，便于后续验证与优化。
 
 ## 最小前提
 

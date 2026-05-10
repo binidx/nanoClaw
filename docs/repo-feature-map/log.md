@@ -75,3 +75,9 @@
 - 将 `src/extension/marketplaces/*` 记录为 MCP/Skills/扩展市场功能行的一等入口。
 - 新增内置 `Agent Reach` marketplace source，用来发布随仓库分发的 skill bundle。
 - 明确这类互联网能力优先以 Skill 路由 + 上游工具启用方式接入，而不是强行映射成 NanoClaw managed MCP command。
+
+## [2026-05-10] update | Repo Review V3 coordinated review
+
+- 将 Repo Review 的稳定执行边界更新为 `repo-review-coordinator.ts` 负责的 evidence bundle / worker / reducer 流水线。
+- 新增 `repo_review.worker` 与 `repo_review.reducer` prompt 定义，旧 agentic prompt 保留历史兼容但不再是新 run 默认路径。
+- 前端 Repo Review 时间线补充 worker / reducer 语义，兼容旧 step id 的同时展示 V3 进度。

@@ -989,6 +989,12 @@ export interface RepoReviewRun {
     totalReadBudgetBytes?: number;
     maxFullFileBytesPerFile?: number;
     extractorAttempts?: number;
+    workerCount?: number;
+    completedWorkerCount?: number;
+    failedWorkerCount?: number;
+    timedOutWorkerCount?: number;
+    reducerCallCount?: number;
+    evidenceBundleBytes?: number;
   };
   durationMs?: number;
   platformStatus: string;
@@ -1013,7 +1019,7 @@ export interface RepoReviewRun {
 export interface RepoReviewProgressStep {
   id: string;
   label: string;
-  kind?: 'stage' | 'main' | 'subagent' | 'extractor';
+  kind?: 'stage' | 'main' | 'subagent' | 'extractor' | 'worker' | 'reducer';
   status: 'queued' | 'running' | 'completed' | 'failed' | 'skipped';
   startedAt: string;
   activeStartedAt?: string;

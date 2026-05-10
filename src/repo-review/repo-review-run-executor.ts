@@ -125,6 +125,7 @@ import {
   buildRepoReviewSummaryMessage,
   type RepoReviewCloudDocSection,
 } from './repo-review-doc-render.js';
+import { runRepoReviewCoordinatedReview } from './repo-review-coordinator.js';
 import { computeNextDigestAt } from './repo-review-digest-service.js';
 import { getProviderForModule } from '../tenant/tenant-db.js';
 import { runWithTenant, SYSTEM_USER_ID } from '../tenant/tenant-context.js';
@@ -323,6 +324,18 @@ const REPO_REVIEW_AGENTIC_MAX_REVIEW_ROUNDS = Math.max(
 const REPO_REVIEW_SUBAGENT_RESULT_MAX_CHARS = Math.max(
   8_000,
   Number(process.env.NANOCLAW_REVIEW_SUBAGENT_RESULT_MAX_CHARS) || 60_000,
+);
+const REPO_REVIEW_SUBAGENT_PROMPT_PREVIEW_MAX_CHARS = Math.max(
+  800,
+  Number(process.env.NANOCLAW_REVIEW_SUBAGENT_PROMPT_PREVIEW_MAX_CHARS) || 2_400,
+);
+const REPO_REVIEW_AGENTIC_SUBAGENT_DIFF_MAX_CHARS = Math.max(
+  8_000,
+  Number(process.env.NANOCLAW_REVIEW_AGENTIC_SUBAGENT_DIFF_MAX_CHARS) || 16_000,
+);
+const REPO_REVIEW_SUBAGENT_RESULT_PROMPT_MAX_CHARS = Math.max(
+  1_200,
+  Number(process.env.NANOCLAW_REVIEW_SUBAGENT_RESULT_PROMPT_MAX_CHARS) || 4_000,
 );
 const REPO_REVIEW_SUBAGENT_TIMEOUT_MS = Math.max(
   1_000,
@@ -607,7 +620,9 @@ function normalizeRepoReviewProgressStepKind(
     kind === 'stage' ||
     kind === 'main' ||
     kind === 'subagent' ||
-    kind === 'extractor'
+    kind === 'extractor' ||
+    kind === 'worker' ||
+    kind === 'reducer'
   ) {
     return kind;
   }
@@ -1674,6 +1689,31 @@ function formatRepoReviewAgentStatusText(
   const title = event.title.trim();
   const body = event.body?.trim();
   return body ? `${title}\n${body}` : title;
+}
+
+function buildRepoReviewSubagentPromptPreview(input: {
+  label: string;
+  task: string;
+  files?: string[];
+  focus?: string;
+  fullFileFiles?: string[];
+}): string {
+  return trimContextBlock(
+    [
+      `任务：${input.task}`,
+      input.files && input.files.length > 0
+        ? `文件：${input.files.join(', ')}`
+        : '',
+      input.focus ? `重点：${input.focus}` : '',
+      input.fullFileFiles && input.fullFileFiles.length > 0
+        ? `允许全文读取：${input.fullFileFiles.join(', ')}`
+        : '',
+      `运行模式：${input.label}`,
+    ]
+      .filter(Boolean)
+      .join('\n'),
+    REPO_REVIEW_SUBAGENT_PROMPT_PREVIEW_MAX_CHARS,
+  );
 }
 
 function buildRepoReviewAgentStatusProgressHandler(input: {
@@ -5955,7 +5995,11 @@ export async function resolveRepoReviewAgenticSubagentPrompt(input: {
         input.task.fullFileFiles.length > 0
           ? input.task.fullFileFiles.map((file) => `- ${file}`).join('\n')
           : '- (none)',
-      diffSlice: trimContextBlock(diffSlice, 40_000) || '(diff slice unavailable)',
+      diffSlice:
+        trimContextBlock(
+          diffSlice,
+          REPO_REVIEW_AGENTIC_SUBAGENT_DIFF_MAX_CHARS,
+        ) || '(diff slice unavailable)',
     },
     fallbackText: REPO_REVIEW_AGENTIC_SUBAGENT_TEMPLATE,
   });
@@ -6184,7 +6228,13 @@ async function runRepoReviewAgenticSubagents(input: {
           parentRuntimeId: input.runId,
           label: `子代理 ${index + 1}/${input.tasks.length}`,
           task: task.files.length === 1 ? task.files[0]! : task.title,
-          argumentsText: resolved.text,
+          argumentsText: buildRepoReviewSubagentPromptPreview({
+            label: `子代理 ${index + 1}/${input.tasks.length}`,
+            task: task.title,
+            files: task.files,
+            focus: task.focus,
+            fullFileFiles: task.fullFileFiles,
+          }),
           status: 'in_progress',
         });
         await setWorkerTurns();
@@ -6247,7 +6297,13 @@ async function runRepoReviewAgenticSubagents(input: {
           parentRuntimeId: input.runId,
           label: `子代理 ${index + 1}/${input.tasks.length}`,
           task: task.files.length === 1 ? task.files[0]! : task.title,
-          argumentsText: resolved.text,
+          argumentsText: buildRepoReviewSubagentPromptPreview({
+            label: `子代理 ${index + 1}/${input.tasks.length}`,
+            task: task.title,
+            files: task.files,
+            focus: task.focus,
+            fullFileFiles: task.fullFileFiles,
+          }),
           resultText: reviewResult.outputText,
           status: 'completed',
         });
@@ -6326,45 +6382,43 @@ function buildRepoReviewSubagentResultsPrompt(
   results: RepoReviewAgenticSubagentResult[],
 ): string {
   if (results.length === 0) return '未委派子代理。';
-  return results
-    .map((result, index) => {
-      const findings = result.findings.length > 0
-        ? result.findings
-            .map((finding) =>
-              [
-                `- [${finding.severity}] ${finding.file ? `${finding.file}: ` : ''}${finding.title}`,
-                finding.detail ? `  - 说明：${finding.detail}` : '',
-                finding.suggestion ? `  - 建议：${finding.suggestion}` : '',
-              ]
-                .filter(Boolean)
-                .join('\n'),
-            )
-            .join('\n')
-        : '未发现明确问题。';
-      return [
-        `### 子代理 ${index + 1} · ${result.task.title}`,
-        `任务 ID: ${result.task.id}`,
-        `文件: ${result.task.files.join(', ')}`,
-        `置信度: ${result.confidence}`,
-        result.timedOut ? '状态: 超时后已接管' : '状态: 已完成',
-        result.outOfScopeReadCount > 0
-          ? `越权读取: ${result.outOfScopeReadCount}`
-          : '',
-        result.progressSummary ? `进度总结: ${result.progressSummary}` : '',
-        result.checkedFiles.length > 0
-          ? `已检查文件: ${result.checkedFiles.join(', ')}`
-          : '',
-        result.scopeLimitations.length > 0
-          ? `主代理需继续确认:\n${result.scopeLimitations.map((line) => `- ${line}`).join('\n')}`
-          : '',
-        `确认问题:\n${findings}`,
-        `原始输出:\n\`\`\`markdown\n${result.rawOutput.trim()}\n\`\`\``,
-        `---`,
-      ]
-        .filter(Boolean)
-        .join('\n\n');
-    })
-    .join('\n');
+  return compactJsonForPrompt(
+    results.map((result) => ({
+      task: {
+        id: result.task.id,
+        title: result.task.title,
+        files: result.task.files,
+        focus: result.task.focus,
+      },
+      confidence: result.confidence,
+      status: result.timedOut ? 'timed_out' : 'completed',
+      checked_files: result.checkedFiles,
+      findings: result.findings.map((finding) => ({
+        severity: finding.severity,
+        file: finding.file,
+        title: finding.title,
+        detail: trimContextBlock(
+          finding.detail || '',
+          REPO_REVIEW_SUBAGENT_RESULT_PROMPT_MAX_CHARS,
+        ),
+        suggestion: trimContextBlock(
+          finding.suggestion || '',
+          REPO_REVIEW_SUBAGENT_RESULT_PROMPT_MAX_CHARS,
+        ),
+      })),
+      scope_limitations: result.scopeLimitations.map((line) =>
+        trimContextBlock(line, REPO_REVIEW_SUBAGENT_RESULT_PROMPT_MAX_CHARS),
+      ),
+      progress_summary: trimContextBlock(
+        result.progressSummary || '',
+        REPO_REVIEW_SUBAGENT_RESULT_PROMPT_MAX_CHARS,
+      ),
+      remaining_checks: result.remainingChecks.map((line) =>
+        trimContextBlock(line, REPO_REVIEW_SUBAGENT_RESULT_PROMPT_MAX_CHARS),
+      ),
+      out_of_scope_reads: result.outOfScopeReadCount,
+    })),
+  );
 }
 
 function buildRepoReviewSupplementalResultsPrompt(
@@ -8309,7 +8363,11 @@ async function runSupplementalFullFileReviewBatchWorkers(input: {
         parentRuntimeId: input.runId,
         label,
         task: hydrated.filePath,
-        argumentsText: prompt,
+        argumentsText: buildRepoReviewSubagentPromptPreview({
+          label,
+          task: hydrated.filePath,
+          files: [hydrated.filePath],
+        }),
         status: 'in_progress',
       });
       await setWorkerTurns();
@@ -8353,7 +8411,11 @@ async function runSupplementalFullFileReviewBatchWorkers(input: {
           parentRuntimeId: input.runId,
           label,
           task: hydrated.filePath,
-          argumentsText: prompt,
+          argumentsText: buildRepoReviewSubagentPromptPreview({
+            label,
+            task: hydrated.filePath,
+            files: [hydrated.filePath],
+          }),
           resultText: output,
           status: 'completed',
         });
@@ -8383,7 +8445,11 @@ async function runSupplementalFullFileReviewBatchWorkers(input: {
           parentRuntimeId: input.runId,
           label,
           task: hydrated.filePath,
-          argumentsText: prompt,
+          argumentsText: buildRepoReviewSubagentPromptPreview({
+            label,
+            task: hydrated.filePath,
+            files: [hydrated.filePath],
+          }),
           errorText: error,
           status: 'failed',
         });
@@ -11275,7 +11341,6 @@ async function executeRepoReviewEvent(
     });
     const activeExecutionStats = executionStats;
     await persistReviewProgress();
-    const maxSubagents = await resolveRepoReviewMaxSubagents();
     activeExecutionStats.totalReadBudgetBytes =
       REPO_REVIEW_AGENTIC_DEFAULT_MAX_TOTAL_READ_BYTES;
     activeExecutionStats.maxFullFileBytesPerFile =
@@ -11294,17 +11359,12 @@ async function executeRepoReviewEvent(
           ['workspace_path', reviewWorkspacePath || '-'],
           ['total_budget', REPO_REVIEW_AGENTIC_DEFAULT_MAX_TOTAL_READ_BYTES],
         ]),
-        outputText: formatProgressKeyValues([
-          ['prepared_files', prepared.changedFiles.length],
-          ['diff_bytes', Buffer.byteLength(prepared.diffText, 'utf8')],
-        ]),
+      outputText: formatProgressKeyValues([
+        ['prepared_files', prepared.changedFiles.length],
+        ['diff_bytes', Buffer.byteLength(prepared.diffText, 'utf8')],
+      ]),
       },
     );
-    const budget = buildRepoReviewAgenticBudget({
-      profile,
-      maxSubagents,
-    });
-    let agenticPlan: RepoReviewAgenticPlan | null = null;
     let parsed: ParsedReviewResult | null = null;
     let finalReview: {
       overall: ReviewOverall;
@@ -11315,8 +11375,7 @@ async function executeRepoReviewEvent(
       suggestions: string[];
       recommendedBlock: boolean;
     } | null = null;
-    let subagentResults: RepoReviewAgenticSubagentResult[] = [];
-    const agenticReview = await runRepoReviewAgenticReview({
+    const coordinatedReview = await runRepoReviewCoordinatedReview({
       repository,
       profile,
       event,
@@ -11324,21 +11383,7 @@ async function executeRepoReviewEvent(
       runId: runRecord.id,
       workspacePath: reviewWorkspacePath,
       userId: reviewUserId,
-      budget,
       executionStats: activeExecutionStats,
-      onPhaseProgress: async (phase) => {
-        reviewTurns = [
-          ...phase.planTurns,
-          ...phase.subagentTurns.flat(),
-          ...phase.finalTurns,
-          ...phase.extractorTurns,
-        ];
-        activeExecutionStats.extraRepoReadCount = countRepoReviewToolCalls(
-          reviewTurns,
-          'read_file',
-        );
-        await persistReviewProgress();
-      },
       onProgressStep: async (step) => {
         await setProgressStep(
           step.id,
@@ -11356,10 +11401,8 @@ async function executeRepoReviewEvent(
       },
     });
     throwIfRepoReviewRunCancelled(runRecord.id);
-    agenticPlan = agenticReview.plan;
-    subagentResults = agenticReview.subagentResults;
-    parsed = agenticReview.parsed;
-    reviewTurns = agenticReview.reviewTurns;
+    parsed = coordinatedReview.parsed as unknown as ParsedReviewResult;
+    reviewTurns = [];
     finalReview = {
       overall: parsed.overall,
       summary: parsed.summary,

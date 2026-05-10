@@ -6,6 +6,7 @@ export * from './repo-review-git.js';
 export * from './repo-review-messages.js';
 export * from './repo-review-model.js';
 export * from './repo-review-prompt-templates.js';
+export * from './repo-review-coordinator.js';
 export * from './repo-review-read-service.js';
 export * from './repo-review-run-executor.js';
 export * from './repo-review-service.js';

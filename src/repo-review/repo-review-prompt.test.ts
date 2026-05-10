@@ -7,8 +7,10 @@ import {
   REPO_REVIEW_AGENTIC_SUBAGENT_TEMPLATE,
   REPO_REVIEW_DIGEST_TEMPLATE,
   REPO_REVIEW_PRIMARY_TEMPLATE,
+  REPO_REVIEW_REDUCER_TEMPLATE,
   REPO_REVIEW_SUPPLEMENTAL_FILE_TEMPLATE,
   REPO_REVIEW_PROMPT_TEMPLATES,
+  REPO_REVIEW_WORKER_TEMPLATE,
 } from './repo-review-prompt-templates.js';
 import { buildReviewPrompt } from './repo-review-run-executor.js';
 import { getPromptDefinition } from '../prompt/prompt-registry.js';
@@ -18,6 +20,8 @@ describe('repo-review prompt templates (lean mode)', () => {
   it('repo-review prompt templates do not contain auto placeholders', () => {
     const templates = [
       REPO_REVIEW_PRIMARY_TEMPLATE,
+      REPO_REVIEW_WORKER_TEMPLATE,
+      REPO_REVIEW_REDUCER_TEMPLATE,
       REPO_REVIEW_AGENTIC_PLAN_TEMPLATE,
       REPO_REVIEW_AGENTIC_SUBAGENT_TEMPLATE,
       REPO_REVIEW_AGENTIC_FINAL_TEMPLATE,
@@ -69,6 +73,8 @@ describe('repo-review prompt templates (lean mode)', () => {
   it('reviewer templates include the agentic review stages', () => {
     const reviewerKeys: Array<keyof typeof REPO_REVIEW_PROMPT_TEMPLATES> = [
       'repo_review.primary',
+      'repo_review.worker',
+      'repo_review.reducer',
       'repo_review.agentic_plan',
       'repo_review.agentic_subagent',
       'repo_review.agentic_final',

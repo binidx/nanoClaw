@@ -242,6 +242,12 @@ export interface RepoReviewExecutionStats {
   totalReadBudgetBytes?: number;
   maxFullFileBytesPerFile?: number;
   extractorAttempts?: number;
+  workerCount?: number;
+  completedWorkerCount?: number;
+  failedWorkerCount?: number;
+  timedOutWorkerCount?: number;
+  reducerCallCount?: number;
+  evidenceBundleBytes?: number;
 }
 
 export interface RepoReviewProgressSnapshot {
@@ -256,7 +262,9 @@ export type RepoReviewProgressStepKind =
   | 'stage'
   | 'main'
   | 'subagent'
-  | 'extractor';
+  | 'extractor'
+  | 'worker'
+  | 'reducer';
 
 export interface RepoReviewProgressStep {
   id: string;

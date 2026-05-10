@@ -426,6 +426,42 @@ describe('buildReviewProgressEntries', () => {
     ]);
   });
 
+  it('labels v3 worker and reducer steps in the timeline', () => {
+    const entries = buildReviewProgressEntries(
+      makeRun({
+        reviewProgress: {
+          turnCount: 0,
+          latestAssistantText: null,
+          latestErrorText: null,
+          hasTerminalOutput: false,
+          steps: [
+            {
+              id: 'worker_chunk_1',
+              label: 'Worker 1/2',
+              kind: 'worker',
+              status: 'completed',
+              startedAt: '2026-04-23T00:00:01.000Z',
+              completedAt: '2026-04-23T00:00:02.000Z',
+            },
+            {
+              id: 'reduce_results',
+              label: 'Reducer 收敛审查结论',
+              kind: 'reducer',
+              status: 'completed',
+              startedAt: '2026-04-23T00:00:03.000Z',
+              completedAt: '2026-04-23T00:00:04.000Z',
+            },
+          ],
+        },
+      }),
+    );
+
+    const rendered = renderTimeline(entries);
+    expect(rendered.container.textContent).toContain('Worker');
+    expect(rendered.container.textContent).toContain('收敛');
+    rendered.unmount();
+  });
+
   it('uses the active start time for progress step duration labels', () => {
     const entries = buildReviewProgressEntries(
       makeRun({

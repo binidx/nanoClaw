@@ -540,6 +540,98 @@ export const REPO_REVIEW_SUPPLEMENTAL_ORCHESTRATOR_TEMPLATE = [
   OUTPUT_CONTRACT_BLOCK,
 ].join('\n');
 
+export const REPO_REVIEW_WORKER_OUTPUT_CONTRACT_BLOCK = [
+  '## 输出协议',
+  '只返回一个 JSON 对象，不要输出 Markdown 代码块。',
+  '{',
+  '  "checked_files": ["已检查的文件路径"],',
+  '  "findings": [',
+  '    {',
+  '      "severity": "high | medium | low",',
+  '      "file": "相关文件，可为空",',
+  '      "title": "问题标题",',
+  '      "detail": "问题说明",',
+  '      "suggestion": "修复建议，可为空"',
+  '    }',
+  '  ],',
+  '  "scope_limitations": ["证据限制"],',
+  '  "confidence": "high | medium | low",',
+  '  "needs_cross_file_reduction": false',
+  '}',
+].join('\n');
+
+export const REPO_REVIEW_REDUCER_OUTPUT_CONTRACT_BLOCK = [
+  '## 输出协议',
+  '只返回一个 JSON 对象，不要输出 Markdown 代码块。',
+  '{',
+  '  "overall": "pass | warn | fail | error | skipped",',
+  '  "summary": "一句话总体结论",',
+  '  "findings": [',
+  '    {',
+  '      "severity": "high | medium | low",',
+  '      "file": "相关文件，可为空",',
+  '      "title": "问题标题",',
+  '      "detail": "问题说明",',
+  '      "suggestion": "修复建议，可为空"',
+  '    }',
+  '  ],',
+  '  "scope_limitations": ["证据限制"],',
+  '  "suggestions": ["补充建议"],',
+  '  "recommended_block": false,',
+  '  "markdown_body": "可直接展示的人类可读报告"',
+  '}',
+].join('\n');
+
+export const REPO_REVIEW_WORKER_TEMPLATE = [
+  [
+    '## 受控审查 Worker',
+    '仓库：{{repositoryName}}',
+    '分支：{{branch}}',
+    '基线提交：{{baseSha}}',
+    '目标提交：{{headSha}}',
+    '取证范围：{{diffRange}}',
+    'Worker ID：{{workerId}}',
+    'Worker 标题：{{workerTitle}}',
+    '文件列表：',
+    '{{workerFiles}}',
+    '证据块：',
+    '{{workerEvidence}}',
+  ].join('\n'),
+  '',
+  '{{customPromptBlock}}',
+  '',
+  '## 约束',
+  '- 你只能依据本提示中的证据做局部审查。',
+  '- 不要读取仓库、调用工具、派生子代理或扩展到未提供的文件。',
+  '- 如果证据不足，把限制写入 scope_limitations，不要猜测。',
+  '',
+  REPO_REVIEW_WORKER_OUTPUT_CONTRACT_BLOCK,
+].join('\n');
+
+export const REPO_REVIEW_REDUCER_TEMPLATE = [
+  [
+    '## 审查收敛器',
+    '仓库：{{repositoryName}}',
+    '分支：{{branch}}',
+    '基线提交：{{baseSha}}',
+    '目标提交：{{headSha}}',
+    '取证范围：{{diffRange}}',
+    '已变更文件：',
+    '{{changedFiles}}',
+    'Worker 结果：',
+    '{{workerResults}}',
+  ].join('\n'),
+  '',
+  '{{customPromptBlock}}',
+  '',
+  '## 约束',
+  '- 你只能依据全局元数据和 worker 结构化结果收敛结论。',
+  '- 不要重新读取仓库，不要回灌 worker 原始 Markdown 或 rawOutput。',
+  '- 需要跨文件归因时，优先合并重复发现并写入 scope_limitations。',
+  '',
+  REPO_REVIEW_REDUCER_OUTPUT_CONTRACT_BLOCK,
+].join('\n');
+
 export const REPO_REVIEW_DIGEST_TEMPLATE = [
   [
     '## 项目日报 / 周报',
@@ -580,6 +672,8 @@ export const REPO_REVIEW_DIGEST_TEMPLATE = [
 
 export const REPO_REVIEW_PROMPT_TEMPLATES = {
   'repo_review.primary': REPO_REVIEW_PRIMARY_TEMPLATE,
+  'repo_review.worker': REPO_REVIEW_WORKER_TEMPLATE,
+  'repo_review.reducer': REPO_REVIEW_REDUCER_TEMPLATE,
   'repo_review.agentic_plan': REPO_REVIEW_AGENTIC_PLAN_TEMPLATE,
   'repo_review.agentic_subagent': REPO_REVIEW_AGENTIC_SUBAGENT_TEMPLATE,
   'repo_review.agentic_final': REPO_REVIEW_AGENTIC_FINAL_TEMPLATE,
