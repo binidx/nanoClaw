@@ -170,6 +170,18 @@ describe('CodeMapGraphView', () => {
     expect(rendered.transform()).toBe('translate(55,66) scale(1.7)');
   });
 
+  it('auto-fits when a saved viewport would hide the graph', () => {
+    localStorage.setItem(
+      'codemap-view:repo-1:main',
+      JSON.stringify({ zoom: 3, panX: 9000, panY: 9000 }),
+    );
+
+    rendered = renderGraph();
+
+    expect(rendered.transform()).not.toBe('translate(9000,9000) scale(3)');
+    expect(rendered.transform()).toContain('scale(');
+  });
+
   it('offers node count options beyond 200 for larger repositories', () => {
     expect(buildNodeCountOptions(640)).toEqual([30, 50, 80, 120, 200, 300, 500, 640]);
     expect(buildNodeCountOptions(2200)).toContain(2000);

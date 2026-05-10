@@ -59,6 +59,13 @@ interface ViewState {
   panY: number;
 }
 
+interface GraphBounds {
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+}
+
 interface DragState {
   id: string;
   startX: number;
@@ -73,6 +80,38 @@ function hasCompleteViewState(view: Partial<ViewState>): view is ViewState {
     && view.panX !== undefined
     && view.panY !== undefined
   );
+}
+
+function computeGraphBounds(nodes: GraphNode[], maxRank: number, getNodeR: (rank: number, maxRank: number) => number): GraphBounds | null {
+  if (nodes.length === 0) return null;
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const node of nodes) {
+    const r = getNodeR(node.rank, maxRank);
+    minX = Math.min(minX, node.x - r - 24);
+    minY = Math.min(minY, node.y - r - 24);
+    maxX = Math.max(maxX, node.x + r + 24);
+    maxY = Math.max(maxY, node.y + r + 24);
+  }
+  return { minX, minY, maxX, maxY };
+}
+
+function isGraphVisible(
+  bounds: GraphBounds,
+  width: number,
+  height: number,
+  zoom: number,
+  panX: number,
+  panY: number,
+): boolean {
+  if (!(width > 0 && height > 0 && zoom > 0)) return false;
+  const left = (-panX) / zoom;
+  const right = (width - panX) / zoom;
+  const top = (-panY) / zoom;
+  const bottom = (height - panY) / zoom;
+  return bounds.maxX >= left && bounds.minX <= right && bounds.maxY >= top && bounds.minY <= bottom;
 }
 
 export function buildNodeCountOptions(totalFiles: number): number[] {
@@ -158,7 +197,7 @@ function layoutWithForce(
   spacingFactor: number = 1,
 ): void {
   if (nodes.length === 0) return;
-  const ITERATIONS = 280;
+  const ITERATIONS = Math.max(48, Math.min(160, Math.round(160 - nodes.length * 0.4)));
   const REPULSION = 600 * spacingFactor * spacingFactor;
   const LINK_DISTANCE = 70 * spacingFactor;
   const LINK_STRENGTH = 0.06;
@@ -343,6 +382,7 @@ export function CodeMapGraphView({
   });
   const [zoom, setZoom] = useState(initialViewState.zoom ?? 1);
   const [layoutMode, setLayoutMode] = useState<LayoutMode>(savedDisplay.layoutMode ?? 'cluster');
+  const [spacingInput, setSpacingInput] = useState(savedDisplay.spacing ?? 1.5);
   const [spacing, setSpacing] = useState(savedDisplay.spacing ?? 1.5);
   const [maxNodes, setMaxNodes] = useState(savedDisplay.maxNodes ?? DEFAULT_MAX_NODES);
   const [hoveredNode, setHoveredNode] = useState<string | null>(null);
@@ -358,6 +398,13 @@ export function CodeMapGraphView({
   const hasSyncedScopeRef = useRef(false);
   const totalFileCount = allFiles?.length ?? files.length;
   const nodeCountOptions = useMemo(() => buildNodeCountOptions(totalFileCount), [totalFileCount]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setSpacing(spacingInput);
+    }, 120);
+    return () => window.clearTimeout(timer);
+  }, [spacingInput]);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -402,7 +449,7 @@ export function CodeMapGraphView({
     NODE_MIN_R + (rank / mr) * (NODE_MAX_R - NODE_MIN_R),
   []);
 
-  const { nodes, links, maxRank, dirHueMap, actualNodeCount } = useMemo(() => {
+  const { nodes, links, maxRank, dirHueMap, actualNodeCount, bounds } = useMemo(() => {
     const topFiles = [...files].sort((a, b) => b.rank - a.rank).slice(0, maxNodes);
     const topSet = new Set(topFiles.map((f) => f.relativePath));
 
@@ -456,16 +503,24 @@ export function CodeMapGraphView({
     }
 
     const mr = Math.max(...graphNodes.map((n) => n.rank), 0.001);
-    return { nodes: graphNodes, links: graphLinks, maxRank: mr, dirHueMap: hueMap, actualNodeCount: topFiles.length };
+    const bounds = computeGraphBounds(graphNodes, mr, getNodeR);
+    return { nodes: graphNodes, links: graphLinks, maxRank: mr, dirHueMap: hueMap, actualNodeCount: topFiles.length, bounds };
   }, [files, edges, allFiles, allEdges, selectedFile, size.width, size.height, layoutMode, getNodeR, spacing, maxNodes]);
 
   useEffect(() => {
-    saveDisplayPrefs({ maxNodes, spacing, layoutMode });
-  }, [maxNodes, spacing, layoutMode]);
+    saveDisplayPrefs({ maxNodes, spacing: spacingInput, layoutMode });
+  }, [maxNodes, spacingInput, layoutMode]);
 
   useEffect(() => {
     saveViewState(viewScope, { zoom, panX: pan.x, panY: pan.y });
   }, [viewScope, zoom, pan.x, pan.y]);
+
+  useEffect(() => {
+    if (!bounds || shouldAutoFit) return;
+    if (!isGraphVisible(bounds, size.width, size.height, zoom, pan.x, pan.y)) {
+      setShouldAutoFit(true);
+    }
+  }, [bounds, size.width, size.height, zoom, pan.x, pan.y, shouldAutoFit]);
 
   useEffect(() => {
     if (!shouldAutoFit || nodes.length === 0) return;
@@ -799,18 +854,18 @@ export function CodeMapGraphView({
         >
           {layoutMode === 'cluster' ? t('graph.cluster') : t('graph.hierarchy')}
         </button>
-        <div className="codemap-graph-spacing-group" title={t('graph.spacing')}>
-          <span className="codemap-graph-spacing-label">{t('graph.spacing')}</span>
-          <input
-            type="range"
-            className="codemap-graph-spacing-slider"
-            min={0.4}
-            max={3.0}
-            step={0.1}
-            value={spacing}
-            onChange={(e) => setSpacing(Number(e.target.value))}
-          />
-        </div>
+          <div className="codemap-graph-spacing-group" title={t('graph.spacing')}>
+            <span className="codemap-graph-spacing-label">{t('graph.spacing')}</span>
+            <input
+              type="range"
+              className="codemap-graph-spacing-slider"
+              min={0.4}
+              max={3.0}
+              step={0.1}
+              value={spacingInput}
+              onChange={(e) => setSpacingInput(Number(e.target.value))}
+            />
+          </div>
         <NcSelect
           className="codemap-graph-node-count-select"
           value={maxNodes}
