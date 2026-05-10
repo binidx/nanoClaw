@@ -130,7 +130,7 @@ function getFeatureScopeLabels(t: (key: string) => string): Record<string, strin
     user_mcp: t('settings.prompt.用户_MCP'),
     stock_analysis: t('settings.prompt.股票分析'),
     repo_review: t('settings.prompt.仓库审查'),
-    workteam: 'Workteam',
+    workteam: t('settings.prompt.工作流'),
   };
 }
 
@@ -177,9 +177,9 @@ function getScenarioTitleLabels(t: (key: string) => string): Record<string, stri
     'stock_analysis.ai_summary': t('settings.prompt.股票分析_AI_总结'),
     'stock_analysis.market_review': t('settings.prompt.股票市场复盘'),
     'requirement_parser.base': t('settings.prompt.需求解析'),
-    'workteam.smart_creator': t('settings.prompt.Workteam_智能创建'),
-    'workteam.eval': t('settings.prompt.Workteam_结果评估'),
-    'workteam.task': t('settings.prompt.Workteam_任务下发'),
+    'workteam.smart_creator': t('settings.prompt.工作流_智能创建'),
+    'workteam.eval': t('settings.prompt.工作流_结果评估'),
+    'workteam.task': t('settings.prompt.工作流_任务下发'),
   };
 }
 
@@ -220,7 +220,7 @@ function formatScenarioDescription(t: (key: string) => string, scenario: PromptP
     return t('settings.prompt.股票分析模块真实运行时提示词预览');
   }
   if (scenario.featureScope === 'workteam') {
-    return t('settings.prompt.Workteam_模块真实运行时提示词预览');
+    return t('settings.prompt.工作流_模块真实运行时提示词预览');
   }
   return scenario.description;
 }
@@ -699,7 +699,6 @@ export function SettingsPromptTab({ apiBase }: { apiBase: string }) {
                 style={{ textAlign: 'left' }}
               >
                 <div><strong>{definition.title}</strong></div>
-                <div className="settings-hint">{definition.key}</div>
                 <div className="settings-hint">{formatFeatureScope(t, definition.featureScope)} · {formatPromptKind(t, definition.promptKind)}</div>
               </button>
             ))}
@@ -712,8 +711,7 @@ export function SettingsPromptTab({ apiBase }: { apiBase: string }) {
               <h3>{selectedDefinition?.title || t('settings.prompt.选择一个提示词')}</h3>
               <div className="settings-hint">{selectedDefinition?.description}</div>
               <div className="settings-hint">
-                {selectedDefinition?.key}
-                {selectedDefinition ? ` · ${formatFeatureScope(t, selectedDefinition.featureScope)} · ${formatPromptKind(t, selectedDefinition.promptKind)}` : ''}
+                {selectedDefinition ? `${formatFeatureScope(t, selectedDefinition.featureScope)} · ${formatPromptKind(t, selectedDefinition.promptKind)}` : ''}
               </div>
             </div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -897,7 +895,7 @@ export function SettingsPromptTab({ apiBase }: { apiBase: string }) {
                 style={{ textAlign: 'left' }}
               >
                 <div><strong>{formatPromptLabel(trace.prompt_key, trace.feature_scope)}</strong></div>
-                <div className="settings-hint">{trace.prompt_key || formatFeatureScope(t, trace.feature_scope)} · {formatTraceKind(t, trace.trace_kind)} · {trace.created_at}</div>
+                <div className="settings-hint">{formatFeatureScope(t, trace.feature_scope)} · {formatTraceKind(t, trace.trace_kind)} · {trace.created_at}</div>
                 <div className="settings-hint">{trace.chat_jid || trace.target_user_id || '-'}</div>
               </button>
             ))}

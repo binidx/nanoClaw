@@ -93,6 +93,12 @@
   "errors": {
     "assistantIdentity": "我是 {{assistantName}}。",
     "assistantMcpAlreadyBound": "助手已绑定 MCP：{{templateServerId}}",
+    "auto_a689ee": "评估工作流任务输出是否达标。",
+    "auto_d03825": "工作流智能创建",
+    "auto_d25331": "工作流任务下发",
+    "auto_ea8971": "工作流结果评估",
+    "auto_9dacaa": "根据用户需求设计可执行的工作流和任务图。",
+    "auto_fc8beb": "为工作流中的单个任务生成执行提示。",
     "auto_079ff7": "src/example.ts",
     "auto_0bb33b": "代码结构分析",
     "auto_0d936a": "函数不存在",

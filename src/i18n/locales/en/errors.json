@@ -93,6 +93,12 @@
   "errors": {
     "assistantIdentity": "I am {{assistantName}}.",
     "assistantMcpAlreadyBound": "Assistant already has MCP bound: {{templateServerId}}",
+    "auto_a689ee": "Evaluate whether the workteam task output meets the target.",
+    "auto_d03825": "Workteam smart creation",
+    "auto_d25331": "Workteam task dispatch",
+    "auto_ea8971": "Workteam result evaluation",
+    "auto_9dacaa": "Design an executable workflow and task graph from the user's request.",
+    "auto_fc8beb": "Generate execution instructions for a single task in the workteam.",
     "auto_079ff7": "src/example.ts",
     "auto_0bb33b": "Code structure analysis",
     "auto_0d936a": "Function not found",
