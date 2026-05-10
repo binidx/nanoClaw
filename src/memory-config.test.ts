@@ -39,7 +39,7 @@ describe('memory config integration', () => {
       metadata.some(
         (entry) =>
           entry.key === 'MEMORY_SEARCH_SCOPE_DEFAULT' &&
-          entry.summary.includes('group、global、all'),
+          entry.summary.includes('检索范围'),
       ),
     ).toBe(true);
     expect(
@@ -53,7 +53,7 @@ describe('memory config integration', () => {
       metadata.some(
         (entry) =>
           entry.key === 'MEMORY_PROMPT_TOKEN_BUDGET' &&
-          entry.summary.includes('token 预算'),
+          entry.summary.includes('预算'),
       ),
     ).toBe(true);
   });
