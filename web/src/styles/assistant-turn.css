@@ -385,7 +385,8 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  min-width: 0;
 }
 
 .turn-item-kind,
@@ -415,6 +416,8 @@
   background: rgba(148, 163, 184, 0.12);
   border: 1px solid rgba(148, 163, 184, 0.2);
   backdrop-filter: blur(8px);
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 
 .turn-item-duration::before {
@@ -458,6 +461,9 @@
   color: #334155;
   font-size: 13px;
   font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .turn-item-preview {

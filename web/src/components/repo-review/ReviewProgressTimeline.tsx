@@ -88,7 +88,13 @@ const ToolCallDurationLabel = memo(function ToolCallDurationLabel({
     durationMs < 1000
       ? `${durationMs}${i18n.t('assistant.durationSuffix', { ns: 'chat' })}`
       : `${(durationMs / 1000).toFixed(1)}${i18n.t('assistant.durationSuffix', { ns: 'chat' })}`;
-  return <span className="turn-item-duration">{label}</span>;
+  const title = [
+    startedAt ? `开始：${startedAt}` : '',
+    completedAt ? `结束：${completedAt}` : '',
+  ]
+    .filter(Boolean)
+    .join('\n');
+  return <span className="turn-item-duration" title={title || undefined}>{label}</span>;
 });
 
 function getProgressStepKindLabel(step: RepoReviewProgressStep) {

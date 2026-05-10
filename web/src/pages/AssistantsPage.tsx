@@ -2158,7 +2158,7 @@ export function AssistantsPage({
     <div className="page-view assistants-page">
       <div className="page-header">
         <div className="page-header-copy">
-          <h2>{t('assistants.AI 助手')}</h2>
+          <h2>{t('AI 助手')}</h2>
           <p>{t('assistants.这里是助手市场本身。只管理已创建助手，资源、权限和接入关系都按助手独立维护。')}</p>
         </div>
         <div className="page-header-actions">
@@ -2338,7 +2338,7 @@ export function AssistantsPage({
                           <span>{assistant.config.mcpServerIds.length} MCP</span>
                         ) : null}
                         {(conversationCountMap.get(assistant.id) ?? 0) > 0 ? (
-                          <span>{t('assistants.会话计数', { count: conversationCountMap.get(assistant.id) ?? 0 })}</span>
+                          <span>{t('会话计数', { count: conversationCountMap.get(assistant.id) ?? 0 })}</span>
                         ) : null}
                       </div>
                       <div className="assistant-card-item-actions">

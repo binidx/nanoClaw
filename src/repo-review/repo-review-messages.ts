@@ -34,13 +34,6 @@ export function overallLabel(
   return '未知';
 }
 
-function severityText(severity: string): string {
-  if (severity === 'high') return '高';
-  if (severity === 'medium') return '中';
-  if (severity === 'low') return '低';
-  return severity || '未知';
-}
-
 function startedTitle(name: string): string {
   return `AI 审查开始 · ${name}`;
 }
@@ -116,18 +109,34 @@ function formatFindingMarkdown(
       : finding.severity === 'medium'
         ? '🟡'
         : '🔵';
-  const severityLabel = severityText(finding.severity);
-  const lines = [
-    `${severityIcon} ${finding.title || '未命名问题'}`,
-    finding.file ? `文件：${finding.file}` : '',
-    '',
-    finding.detail || '暂无详细说明。',
-    '',
-    finding.suggestion ? `修复建议：${finding.suggestion}` : '',
-    '',
-    `风险等级：${severityLabel}风险`,
-  ].filter(Boolean);
-  return lines.join('\n');
+  const severityLabel =
+    finding.severity === 'high'
+      ? '高风险'
+      : finding.severity === 'medium'
+        ? '中风险'
+        : '低风险';
+  const title = finding.title || '未命名问题';
+  const issueType = finding.severity === 'high'
+    ? '问题类型'
+    : finding.severity === 'medium'
+      ? '回归风险'
+      : '代码规范';
+  const fileLine = finding.file ? `**文件：** \`${finding.file}\`` : '**文件：** `未知`';
+  const codeSnippet = finding.detail?.trim() || '// 模型未返回可直接展示的代码片段';
+  const fixSnippet = finding.suggestion?.trim() || '// 暂无修复建议';
+  return [
+    `${severityIcon} [${issueType}] ${title}`,
+    fileLine,
+    '```text',
+    codeSnippet,
+    '```',
+    '**问题：** ' + (finding.detail?.trim() || '暂无详细说明。'),
+    '**修复建议：**',
+    '```text',
+    fixSnippet,
+    '```',
+    `风险等级：${severityLabel}`,
+  ].join('\n');
 }
 
 export function buildStructuredRepoReviewMarkdown(
@@ -154,66 +163,52 @@ export function buildStructuredRepoReviewMarkdown(
     ),
   );
 
+  const summaryText = branchConclusionLine(run.summary || '模型未返回摘要。');
+  const buildSection = (
+    heading: string,
+    emptyMessage: string,
+    items: typeof findings,
+  ) => {
+    if (items.length === 0) {
+      return [`### ${heading}`, emptyMessage].join('\n');
+    }
+    return [
+      `### ${heading}`,
+      ...items.flatMap((finding) => ['', formatFindingMarkdown(finding)]),
+    ].join('\n');
+  };
   const lines: string[] = [
-    '代码审查报告',
+    '## 代码审查报告',
     '',
-    '一、审查总结',
-    branchConclusionLine(run.summary || '模型未返回摘要。'),
+    '### 一、审查总结',
+    summaryText,
+    '',
+    buildSection('二、高风险问题', '未发现高风险问题。', high),
+    '',
+    buildSection('三、中风险问题', '未发现中风险问题。', medium),
+    '',
+    buildSection('四、低风险问题 / 代码规范', '未发现低风险问题。', low),
+    '',
+    '### 五、代码亮点',
+    commitPositives.length > 0
+      ? commitPositives.map((item) => `- ${item}`).join('\n')
+      : '未发现需要特别说明的代码亮点。',
+    '',
+    '### 六、总结',
+    `| 风险等级 | 数量 | 主要问题 |`,
+    `|---------|------|---------|`,
+    `| 🔴 高风险 | ${high.length} | ${high[0]?.title || '无'} |`,
+    `| 🟡 中风险 | ${medium.length} | ${medium[0]?.title || '无'} |`,
+    `| 🔵 低风险 | ${low.length} | ${low[0]?.title || '无'} |`,
+    '',
+    suggestions.length > 0
+      ? [
+          `建议在合并前优先处理 ${high.length} 个高风险问题。`,
+          '建议优先处理：',
+          ...suggestions.map((item) => `- ${item}`),
+        ].join('\n')
+      : `建议在合并前优先处理 ${high.length} 个高风险问题。`,
   ];
-
-  lines.push('');
-  lines.push('二、高风险问题');
-  if (high.length === 0) {
-    lines.push('未发现高风险问题。');
-  } else {
-    for (const finding of high) {
-      lines.push('');
-      lines.push(formatFindingMarkdown(finding));
-    }
-  }
-
-  lines.push('');
-  lines.push('三、中风险问题');
-  if (medium.length === 0) {
-    lines.push('未发现中风险问题。');
-  } else {
-    for (const finding of medium) {
-      lines.push('');
-      lines.push(formatFindingMarkdown(finding));
-    }
-  }
-
-  lines.push('');
-  lines.push('四、低风险问题');
-  if (low.length === 0) {
-    lines.push('未发现低风险问题。');
-  } else {
-    for (const finding of low) {
-      lines.push('');
-      lines.push(formatFindingMarkdown(finding));
-    }
-  }
-
-  lines.push('');
-  lines.push('五、代码亮点');
-  if (commitPositives.length > 0) {
-    for (const item of commitPositives) {
-      lines.push(`- ${item}`);
-    }
-  } else {
-    lines.push('未发现需要特别说明的代码亮点。');
-  }
-
-  lines.push('');
-  lines.push('六、总结');
-  lines.push(`风险统计：高 ${high.length} / 中 ${medium.length} / 低 ${low.length}`);
-  if (suggestions.length > 0) {
-    lines.push('');
-    lines.push('建议优先处理：');
-    for (const item of suggestions) {
-      lines.push(`- ${item}`);
-    }
-  }
 
   return lines.join('\n');
 }

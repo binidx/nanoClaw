@@ -10,9 +10,9 @@ import { useTranslation } from 'react-i18next';
 import { useNavigatedTab } from '../hooks/useNavigatedTab';
 
 import {
-  DEFAULT_MARKET_SCOPE_OPTIONS,
-  DEFAULT_REPORT_TYPE_OPTIONS,
-  DEFAULT_STRATEGY_OPTIONS,
+  getDefaultMarketScopeOptions,
+  getDefaultReportTypeOptions,
+  getDefaultStrategyOptions,
   resolveConfigMarketScope,
   resolveConfigReportType,
   resolveConfigStrategyPreset,
@@ -1953,36 +1953,36 @@ export function StockAnalysisPage({ apiBase }: StockAnalysisPageProps) {
       resolveSelectOptions(
         configMeta,
         'defaultMarketScope',
-        DEFAULT_MARKET_SCOPE_OPTIONS,
+        getDefaultMarketScopeOptions(t),
       ),
-    [configMeta],
+    [configMeta, t],
   );
   const reviewMarketOptions = useMemo(
     () =>
       resolveSelectOptions(
         configMeta,
         'marketReviewScope',
-        DEFAULT_MARKET_SCOPE_OPTIONS,
+        getDefaultMarketScopeOptions(t),
       ),
-    [configMeta],
+    [configMeta, t],
   );
   const reportTypeOptions = useMemo(
     () =>
       resolveSelectOptions(
         configMeta,
         'defaultReportType',
-        DEFAULT_REPORT_TYPE_OPTIONS,
+        getDefaultReportTypeOptions(t),
       ),
-    [configMeta],
+    [configMeta, t],
   );
   const strategyOptions = useMemo(
     () =>
       resolveSelectOptions(
         configMeta,
         'defaultStrategyPreset',
-        DEFAULT_STRATEGY_OPTIONS,
+        getDefaultStrategyOptions(t),
       ),
-    [configMeta],
+    [configMeta, t],
   );
   const configDirtyKeys = useMemo(
     () => resolveConfigDiffKeys(config, savedConfig),

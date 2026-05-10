@@ -2,7 +2,7 @@
 import { useTranslation } from 'react-i18next';
 import { NcSelect } from '../../components/common';
 import { SubagentRuntimeExplorer } from '../../components/SubagentRuntimeExplorer';
-import { SUBAGENT_MAX_ACTIVE_OPTIONS } from './settings-constants';
+import { getSubagentMaxActiveOptions } from './settings-constants';
 
 export type SettingsSubagentTabProps = {
   subagentEnabled: boolean;
@@ -50,6 +50,7 @@ export function SettingsSubagentTab(props: SettingsSubagentTabProps) {
   } = props;
 
   const { t } = useTranslation('settings');
+  const subagentMaxActiveOptions = getSubagentMaxActiveOptions(t);
 
   return (
   <div className="settings-section">
@@ -116,7 +117,7 @@ export function SettingsSubagentTab(props: SettingsSubagentTabProps) {
           <div className="settings-hint subagent-settings-card-hint">{t('settings.subagent.bccd04')}</div>
           <div className="subagent-settings-select-wrap">
             <NcSelect id="subagent-max-active" value={subagentMaxActive} onChange={(event) => setSubagentMaxActive(Math.max(1, Math.min(16, Number(event.target.value) || 1)))} disabled={subagentSaving}>
-              {SUBAGENT_MAX_ACTIVE_OPTIONS.map((option) => (
+              {subagentMaxActiveOptions.map((option) => (
                 <option key={option.value} value={option.value}>{option.label} · {option.description}</option>
               ))}
             </NcSelect>

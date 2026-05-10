@@ -319,6 +319,39 @@ describe('buildReviewProgressEntries', () => {
     rendered.unmount();
   });
 
+  it('renders synthetic review subagent tool calls as standard tool cards with duration', () => {
+    const entries = buildReviewProgressEntries(
+      makeRun({
+        reviewTurns: [
+          {
+            id: 'turn-subagent',
+            timestamp: '2026-04-23T00:00:05.000Z',
+            isLive: false,
+            isCompleted: true,
+            items: [
+              {
+                id: 'tool-subagent',
+                type: 'tool_call',
+                status: 'completed',
+                title: 'Agent',
+                argumentsText: '任务：审查 demo.ts',
+                resultText: '完成局部审查。',
+                startedAt: '2026-04-23T00:00:05.000Z',
+                completedAt: '2026-04-23T00:00:07.000Z',
+                timestamp: '2026-04-23T00:00:07.000Z',
+              },
+            ],
+          },
+        ],
+      }),
+    );
+
+    const rendered = renderTimeline(entries);
+    expect(rendered.container.querySelector('.subagent-activity-card')).toBeNull();
+    expect(rendered.container.querySelector('.turn-item-duration')).not.toBeNull();
+    rendered.unmount();
+  });
+
   it('filters the direct main-agent summary step from list timelines', () => {
     const entries = buildReviewProgressEntries(
       makeRun({

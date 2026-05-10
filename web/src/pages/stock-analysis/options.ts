@@ -1,5 +1,3 @@
-import i18n from '../../i18n/index.ts';
-
 import type {
   StockAnalysisConfigField,
   StockAnalysisConfigSection,
@@ -9,27 +7,39 @@ import type {
   StockMarketScope,
 } from './types';
 
-export const DEFAULT_MARKET_SCOPE_OPTIONS: StockAnalysisSelectOption[] = [
-  { value: 'both', label: i18n.t('stock.A股港股') },
-  { value: 'cn', label: i18n.t('stock.A股') },
-  { value: 'hk', label: i18n.t('stock.港股') },
-  { value: 'us', label: i18n.t('stock.美股') },
-  { value: 'all', label: i18n.t('stock.全部市场') },
-];
+export function getDefaultMarketScopeOptions(
+  t: (key: string) => string,
+): StockAnalysisSelectOption[] {
+  return [
+    { value: 'both', label: t('stock.A股港股') },
+    { value: 'cn', label: t('stock.A股') },
+    { value: 'hk', label: t('stock.港股') },
+    { value: 'us', label: t('stock.美股') },
+    { value: 'all', label: t('stock.全部市场') },
+  ];
+}
 
-export const DEFAULT_REPORT_TYPE_OPTIONS: StockAnalysisSelectOption[] = [
-  { value: 'brief', label: i18n.t('stock.简版') },
-  { value: 'standard', label: i18n.t('stock.标准') },
-  { value: 'detailed', label: i18n.t('stock.详细') },
-];
+export function getDefaultReportTypeOptions(
+  t: (key: string) => string,
+): StockAnalysisSelectOption[] {
+  return [
+    { value: 'brief', label: t('stock.简版') },
+    { value: 'standard', label: t('stock.标准') },
+    { value: 'detailed', label: t('stock.详细') },
+  ];
+}
 
-export const DEFAULT_STRATEGY_OPTIONS: StockAnalysisSelectOption[] = [
-  { value: 'bull_trend', label: i18n.t('stock.多头趋势') },
-  { value: 'shrink_pullback', label: i18n.t('stock.缩量回踩') },
-  { value: 'volume_breakout', label: i18n.t('stock.放量突破') },
-  { value: 'ma_golden_cross', label: i18n.t('stock.均线金叉') },
-  { value: 'box_oscillation', label: i18n.t('stock.箱体震荡') },
-];
+export function getDefaultStrategyOptions(
+  t: (key: string) => string,
+): StockAnalysisSelectOption[] {
+  return [
+    { value: 'bull_trend', label: t('stock.多头趋势') },
+    { value: 'shrink_pullback', label: t('stock.缩量回踩') },
+    { value: 'volume_breakout', label: t('stock.放量突破') },
+    { value: 'ma_golden_cross', label: t('stock.均线金叉') },
+    { value: 'box_oscillation', label: t('stock.箱体震荡') },
+  ];
+}
 
 export function isStockMarketScope(value: unknown): value is StockMarketScope {
   return (

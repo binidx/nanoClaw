@@ -72,6 +72,7 @@ import {
   runAgentProcess,
   sendAgentPrompt,
   type AgentRunInput,
+  type AgentEventPayload,
   type AgentSubagentInfo,
   type AgentTurnEventPayload,
   type AgentTurnItemPayload,
@@ -325,11 +326,11 @@ const REPO_REVIEW_SUBAGENT_RESULT_MAX_CHARS = Math.max(
 );
 const REPO_REVIEW_SUBAGENT_TIMEOUT_MS = Math.max(
   1_000,
-  Number(process.env.NANOCLAW_REVIEW_SUBAGENT_TIMEOUT_MS) || 90_000,
+  Number(process.env.NANOCLAW_REVIEW_SUBAGENT_TIMEOUT_MS) || 300_000,
 );
 const REPO_REVIEW_SUBAGENT_TIMEOUT_GRACE_MS = Math.max(
   250,
-  Number(process.env.NANOCLAW_REVIEW_SUBAGENT_TIMEOUT_GRACE_MS) || 12_000,
+  Number(process.env.NANOCLAW_REVIEW_SUBAGENT_TIMEOUT_GRACE_MS) || 20_000,
 );
 
 function normalizeLegacyRepoReviewText(value: unknown): string {
@@ -1667,6 +1668,47 @@ function formatProgressKeyValues(
     .join('\n');
 }
 
+function formatRepoReviewAgentStatusText(
+  event: AgentEventPayload,
+): string {
+  const title = event.title.trim();
+  const body = event.body?.trim();
+  return body ? `${title}\n${body}` : title;
+}
+
+function buildRepoReviewAgentStatusProgressHandler(input: {
+  id: string;
+  label: string;
+  kind?: RepoReviewProgressStepKind;
+  onProgressStep?: (step: {
+    id: string;
+    label: string;
+    status: RepoReviewProgressStep['status'];
+    detail?: string;
+    kind?: RepoReviewProgressStepKind;
+    inputText?: string;
+    outputText?: string;
+    metadataText?: string;
+    error?: string;
+  }) => Promise<void>;
+}) {
+  return async (event: AgentEventPayload) => {
+    if (!input.onProgressStep || event.kind !== 'status') return;
+    await input.onProgressStep({
+      id: input.id,
+      label: input.label,
+      status: 'running',
+      detail: formatRepoReviewAgentStatusText(event),
+      kind: input.kind,
+      metadataText: formatProgressKeyValues([
+        ['ai_status', event.status],
+        ['event_title', event.title],
+        ['event_body', event.body || '-'],
+      ]),
+    });
+  };
+}
+
 function capRepoReviewSyntheticToolText(value: string | undefined): string | undefined {
   if (!value) return value;
   if (value.length <= REPO_REVIEW_SUBAGENT_RESULT_MAX_CHARS) return value;
@@ -1704,30 +1746,6 @@ function buildRepoReviewSyntheticSubagentToolTurn(input: {
         resultText: capRepoReviewSyntheticToolText(input.resultText),
         errorText: capRepoReviewSyntheticToolText(input.errorText),
         timestamp,
-        subagentInfo: {
-          agentName: input.label,
-          runtimeId: input.runtimeId || input.toolCallId,
-          provider: 'executor',
-          mode: 'agent',
-          runtimeKind: 'ephemeral_snapshot',
-          parentRuntimeId: input.parentRuntimeId,
-          originTurnId: input.originTurnId || input.turnId,
-          originToolCallId: input.originToolCallId || input.toolCallId,
-          topologyRole: 'leaf',
-          role: 'leaf',
-          workProfile: 'worker',
-          controlScope: 'none',
-          depth: 1,
-          requestCount: 1,
-          controllable: false,
-          task: input.task,
-          status:
-            input.status === 'completed'
-              ? 'completed'
-              : input.status === 'failed'
-                ? 'failed'
-                : 'running',
-        },
       },
     ],
   };
@@ -1757,9 +1775,13 @@ function isRepoReviewMarkdownSectionHeading(
 ): boolean {
   const normalized = normalizeRepoReviewMarkdownHeading(line);
   const escapedTitle = title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return new RegExp(`^(?:${sectionNumber}[、.：:]|${sectionNumber})\\s*${escapedTitle}$`).test(
-    normalized,
-  );
+  const titlePattern =
+    title === '低风险问题'
+      ? `${escapedTitle}(?:\\s*[/／].*)?`
+      : escapedTitle;
+  return new RegExp(
+    `^(?:${sectionNumber}[、.：:]|${sectionNumber})\\s*${titlePattern}$`,
+  ).test(normalized);
 }
 
 function findRepoReviewMarkdownSection(
@@ -1987,7 +2009,13 @@ function parseRepoReviewMarkdownResult(text: string): {
       summaryTail
         .split(/\r?\n/)
         .map((line) => line.trim().replace(/^[-*]\s*/, ''))
-        .filter((line) => line && !/^建议优先处理[:：]/.test(line) && !/^风险统计[:：]/.test(line))
+        .filter(
+          (line) =>
+            line &&
+            !/^建议优先处理[:：]/.test(line) &&
+            !/^风险统计[:：]/.test(line) &&
+            !/^\|/.test(line),
+        )
         .map((line) => line.replace(/^建议优先处理[:：]\s*/, '').trim())
         .filter(Boolean),
     ),
@@ -5177,6 +5205,11 @@ async function runSplitDiffReview(input: {
             workerTurnsByGroup[groupIndex] = turns;
             await emitMergedPhase1Progress();
           },
+          onStatusEvent: buildRepoReviewAgentStatusProgressHandler({
+            id: workerStepId,
+            label: workerLabel,
+            onProgressStep: input.onProgressStep,
+          }),
         });
         const parsed = parseReviewResult(reviewResult.outputText);
         await input.onProgressStep?.({
@@ -5244,6 +5277,11 @@ async function runSplitDiffReview(input: {
         mainTurns = turns;
         await emitMergedPhase1Progress();
       },
+      onStatusEvent: buildRepoReviewAgentStatusProgressHandler({
+        id: 'split_diff_main',
+        label: 'Diff Worker 汇总结论',
+        onProgressStep: input.onProgressStep,
+      }),
     });
     throwIfRepoReviewRunCancelled(runId);
     mainParsed = parseReviewResult(mainReviewResult.outputText);
@@ -5797,6 +5835,12 @@ async function runRepoReviewMainPlan(input: {
         workspacePath: input.workspacePath,
         userId: input.userId,
           onTurnProgress: input.onTurnProgress,
+          onStatusEvent: buildRepoReviewAgentStatusProgressHandler({
+            id: 'agentic_main_plan',
+            label: '主代理制定审查计划',
+            kind: 'main',
+            onProgressStep: input.onProgressStep,
+          }),
         })
       ).outputText;
     } catch (err) {
@@ -6175,6 +6219,12 @@ async function runRepoReviewAgenticSubagents(input: {
             childTurns = turns;
             await setWorkerTurns();
           },
+          onStatusEvent: buildRepoReviewAgentStatusProgressHandler({
+            id: stepId,
+            label: `子代理 ${index + 1}/${input.tasks.length}`,
+            kind: 'subagent',
+            onProgressStep: input.onProgressStep,
+          }),
         });
         const parsed = parseRepoReviewAgenticSubagentResult(
           reviewResult.outputText,
@@ -6408,6 +6458,17 @@ async function extractRepoReviewStructuredResult(input: {
   runId: string;
   workspacePath?: string | null;
   userId?: string;
+  onProgressStep?: (step: {
+    id: string;
+    label: string;
+    status: RepoReviewProgressStep['status'];
+    detail?: string;
+    kind?: RepoReviewProgressStepKind;
+    inputText?: string;
+    outputText?: string;
+    metadataText?: string;
+    error?: string;
+  }) => Promise<void>;
   onTurnProgress: (turns: RepoReviewAssistantTurn[]) => Promise<void>;
   executionStats?: RepoReviewExecutionStats;
 }): Promise<ParsedReviewResult> {
@@ -6439,7 +6500,7 @@ async function extractRepoReviewStructuredResult(input: {
     });
     try {
       const output = (
-        await runReviewAgent({
+      await runReviewAgent({
           repository: input.repository,
           profile: input.profile,
           prompt: resolved.text,
@@ -6449,12 +6510,17 @@ async function extractRepoReviewStructuredResult(input: {
         userId: input.userId,
           attachWorkspace: false,
           onTurnProgress: input.onTurnProgress,
+          onStatusEvent: buildRepoReviewAgentStatusProgressHandler({
+            id: 'agentic_structured_extract',
+            label: '格式化整理',
+            kind: 'extractor',
+            onProgressStep: input.onProgressStep,
+          }),
         })
       ).outputText;
       const parsed = parseReviewResult(output);
       return {
         ...parsed,
-        markdownBody: input.mainReportMarkdown,
         rawModelOutput: output,
       };
     } catch (err) {
@@ -6559,6 +6625,12 @@ async function runRepoReviewAgenticReview(input: {
           extractorTurns: [],
         });
       },
+      onStatusEvent: buildRepoReviewAgentStatusProgressHandler({
+        id: 'agentic_main_summary',
+        label: '主代理直接审查',
+        kind: 'main',
+        onProgressStep: input.onProgressStep,
+      }),
     });
     const parsed = parseReviewResult(mainReportResult.outputText);
     await input.onProgressStep?.({
@@ -6653,6 +6725,35 @@ async function runRepoReviewAgenticReview(input: {
       plan,
       subagentResults: [],
     };
+  }
+  if (plan.shouldDelegate && plan.tasks.length > 0 && !input.prepared.diffIndex) {
+    await input.onProgressStep?.({
+      id: 'build_diff_index',
+      label: '构建 Diff Index',
+      status: 'running',
+      detail: `${input.prepared.changedFiles.length} 个变更文件`,
+      kind: 'stage',
+      inputText: formatProgressKeyValues([
+        ['changed_files', input.prepared.changedFiles.join(', ') || '-'],
+        ['diff_bytes', Buffer.byteLength(input.prepared.diffText || '', 'utf8')],
+      ]),
+    });
+    input.prepared.diffIndex = buildRepoReviewDiffIndex(input.prepared.diffText);
+    await input.onProgressStep?.({
+      id: 'build_diff_index',
+      label: '构建 Diff Index',
+      status: 'completed',
+      detail: `${Buffer.byteLength(input.prepared.diffText || '', 'utf8')} bytes`,
+      kind: 'stage',
+      outputText: formatProgressKeyValues([
+        ['files_indexed', input.prepared.diffIndex.files.length],
+        ['diff_entries', input.prepared.diffIndex.entries.length],
+        ['diff_bytes', Buffer.byteLength(input.prepared.diffText || '', 'utf8')],
+      ]),
+      metadataText: formatProgressKeyValues([
+        ['indexed_files', input.prepared.diffIndex.files.join(', ') || '-'],
+      ]),
+    });
   }
   const effectiveTasks = plan.shouldDelegate ? plan.tasks : [];
   let subagentResults: RepoReviewAgenticSubagentResult[] = [];
@@ -6758,6 +6859,12 @@ async function runRepoReviewAgenticReview(input: {
       finalTurns = turns;
       await emitProgress();
     },
+    onStatusEvent: buildRepoReviewAgentStatusProgressHandler({
+      id: 'agentic_main_summary',
+      label: '主代理汇总结论',
+      kind: 'main',
+      onProgressStep: input.onProgressStep,
+    }),
   });
   throwIfRepoReviewRunCancelled(input.runId);
   const mainReportMarkdown = mainReportResult.outputText;
@@ -6797,6 +6904,7 @@ async function runRepoReviewAgenticReview(input: {
       extractorTurns = turns;
       await emitProgress();
     },
+    onProgressStep: input.onProgressStep,
   });
   await input.onProgressStep?.({
     id: 'agentic_structured_extract',
@@ -8220,6 +8328,11 @@ async function runSupplementalFullFileReviewBatchWorkers(input: {
               childTurns = turns;
               await setWorkerTurns();
             },
+            onStatusEvent: buildRepoReviewAgentStatusProgressHandler({
+              id: stepId,
+              label,
+              onProgressStep: input.onProgressStep,
+            }),
           })
         ).outputText;
         const parsed = parseSupplementalFileReviewResult(output, hydrated.filePath);
@@ -9639,6 +9752,7 @@ async function runReviewAgent(input: {
   timeoutFollowupPrompt?: string;
   timeoutGraceMs?: number;
   onTimeoutFollowupDispatched?: () => void | Promise<void>;
+  onStatusEvent?: (event: AgentEventPayload) => Promise<void>;
   attachWorkspace?: boolean;
 }): Promise<{
   outputText: string;
@@ -9831,6 +9945,9 @@ async function runReviewAgent(input: {
       },
       async (output) => {
         const webChannel = getWebChannel();
+        if (output.event) {
+          await input.onStatusEvent?.(output.event);
+        }
         if (output.turnEvent) {
           sawTurnEvent = true;
           const nextTurns = applyReviewTurnEvent(reviewTurns, output.turnEvent);
@@ -11027,39 +11144,6 @@ async function executeRepoReviewEvent(
         ]),
         metadataText: formatProgressKeyValues([
           ['changed_files', prepared.changedFiles.join(', ') || '-'],
-        ]),
-      },
-    );
-    await setProgressStep(
-      'build_diff_index',
-      '构建 Diff Index',
-      'running',
-      undefined,
-      undefined,
-      {
-        kind: 'stage',
-        inputText: formatProgressKeyValues([
-          ['changed_files', prepared.changedFiles.join(', ') || '-'],
-          ['diff_bytes', Buffer.byteLength(prepared.diffText || '', 'utf8')],
-        ]),
-      },
-    );
-    prepared.diffIndex = buildRepoReviewDiffIndex(prepared.diffText);
-    await setProgressStep(
-      'build_diff_index',
-      '构建 Diff Index',
-      'completed',
-      `${Buffer.byteLength(prepared.diffText || '', 'utf8')} bytes`,
-      undefined,
-      {
-        kind: 'stage',
-        outputText: formatProgressKeyValues([
-          ['files_indexed', prepared.diffIndex.files.length],
-          ['diff_entries', prepared.diffIndex.entries.length],
-          ['diff_bytes', Buffer.byteLength(prepared.diffText || '', 'utf8')],
-        ]),
-        metadataText: formatProgressKeyValues([
-          ['indexed_files', prepared.diffIndex.files.join(', ') || '-'],
         ]),
       },
     );

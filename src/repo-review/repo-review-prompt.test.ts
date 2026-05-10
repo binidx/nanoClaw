@@ -43,11 +43,11 @@ describe('repo-review prompt templates (lean mode)', () => {
   });
 
   it('extractor template keeps the fixed report shape for formatting', () => {
-    expect(REPO_REVIEW_AGENTIC_EXTRACTOR_TEMPLATE).toContain('代码审查报告');
-    expect(REPO_REVIEW_AGENTIC_EXTRACTOR_TEMPLATE).toContain('分支结论：<一句完整结论');
-    expect(REPO_REVIEW_AGENTIC_EXTRACTOR_TEMPLATE).toContain('真实代码片段');
-    expect(REPO_REVIEW_AGENTIC_EXTRACTOR_TEMPLATE).toContain('```<language>');
-    expect(REPO_REVIEW_AGENTIC_EXTRACTOR_TEMPLATE).toContain('风险等级：高风险');
+    expect(REPO_REVIEW_AGENTIC_EXTRACTOR_TEMPLATE).toContain('## 代码审查报告');
+    expect(REPO_REVIEW_AGENTIC_EXTRACTOR_TEMPLATE).toContain('### 一、审查总结');
+    expect(REPO_REVIEW_AGENTIC_EXTRACTOR_TEMPLATE).toContain('**文件：** `文件路径:行号`');
+    expect(REPO_REVIEW_AGENTIC_EXTRACTOR_TEMPLATE).toContain('// 修复后的代码');
+    expect(REPO_REVIEW_AGENTIC_EXTRACTOR_TEMPLATE).toContain('| 风险等级 | 数量 | 主要问题 |');
     expect(REPO_REVIEW_AGENTIC_EXTRACTOR_TEMPLATE).toContain('markdown_body');
   });
 

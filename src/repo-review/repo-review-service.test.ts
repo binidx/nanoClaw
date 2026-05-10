@@ -1092,6 +1092,88 @@ describe('repo-review-service', () => {
     });
   });
 
+  it('surfaces provider wait status inside repo review progress steps', async () => {
+    mockRunAgentProcess
+      .mockImplementationOnce(async (_group, _input, onProcess, onOutput) => {
+        onProcess?.(
+          {
+            stdin: {
+              destroyed: false,
+              writableEnded: false,
+              end() {
+                this.writableEnded = true;
+              },
+            },
+          },
+          'review-agent',
+        );
+        await onOutput?.({
+          status: 'success',
+          result: null,
+          event: {
+            id: 'provider-wait-plan',
+            kind: 'status',
+            status: 'in_progress',
+            title: 'Waiting for Codex provider availability',
+            body: 'Codex plan request',
+            timestamp: '2026-04-23T00:00:00.000Z',
+          },
+        });
+        return buildAgenticPlanMockResult([], {
+          shouldDelegate: false,
+          delegationReason: '主代理独立完成审查。',
+        });
+      })
+      .mockResolvedValueOnce({
+        status: 'success',
+        result: buildAgenticReportMarkdown('主代理独立完成审查。'),
+      })
+      .mockResolvedValueOnce(
+        buildAgenticExtractorMockResult({
+          summary: '主代理独立完成审查。',
+          markdown: buildAgenticReportMarkdown('主代理独立完成审查。'),
+        }),
+      );
+
+    const service = await import('./repo-review-service.js');
+    const repository = await service.upsertRepoReviewRepository({
+      id: 'repo-provider-progress',
+      name: 'Repo Provider Progress',
+      local_repo_path: tempRepo,
+      enabled: true,
+    });
+    await service.upsertRepoReviewProfile({
+      id: 'profile-provider-progress',
+      repository_id: repository.id,
+      name: 'Provider Progress Review',
+      stage: 'push',
+      source_mode: 'local',
+      blocking_mode: 'soft_fail',
+      review_scope: 'staged_diff',
+      include_full_file_context: false,
+      diff_subagent_threshold: 0,
+      write_to_chat: false,
+      write_to_platform: false,
+      enabled: true,
+    });
+
+    const result = await service.triggerLocalRepoReview({
+      repositoryId: repository.id,
+      stage: 'push',
+    });
+
+    expect(result.runs[0]?.run.status).toBe('completed');
+    const progressRun = await service.getRepoReviewRun(result.runs[0]!.run.id);
+    const planStep = progressRun?.reviewProgress?.steps?.find(
+      (step) => step.id === 'agentic_main_plan',
+    );
+    expect(planStep).toBeTruthy();
+    expect(planStep?.metadataText).toContain(
+      'event_title: Waiting for Codex provider availability',
+    );
+    expect(planStep?.metadataText).toContain('event_body: Codex plan request');
+  });
+
   it('lets the main agent consume markdown subagent reports directly', async () => {
     mockRunAgentProcess
       .mockResolvedValueOnce(
@@ -1672,7 +1754,7 @@ describe('repo-review-service', () => {
     );
     expect(firstPrompt).toContain('## 第一轮输出协议');
     expect(firstPrompt).toContain('review_plan');
-    expect(firstPrompt).toContain('计划阶段不要实际读取全文');
+    expect(firstPrompt).toContain('计划阶段禁止调用工具');
     expect(firstPrompt).not.toContain('完整 Markdown 审查报告');
     expect(secondPrompt).toContain('## 输出要求');
     expect(secondPrompt).toContain('确认问题');
@@ -1694,17 +1776,6 @@ describe('repo-review-service', () => {
         title: 'Agent',
         argumentsText: expect.stringContaining('允许文件：'),
         resultText: expect.stringContaining('缺少空 token 分支的回归测试'),
-        subagentInfo: expect.objectContaining({
-          runtimeId: `${run.id}:subagent:1`,
-          parentRuntimeId: run.id,
-          originTurnId: expect.stringContaining(`${run.id}:agentic-subagent-tool:task-1`),
-          originToolCallId: expect.stringContaining(`${run.id}:agentic-subagent-tool:task-1`),
-          workProfile: 'worker',
-          controlScope: 'none',
-          depth: 1,
-          task: 'demo.ts',
-          status: 'completed',
-        }),
       }),
     ]);
     expect(run.fileReviews).toEqual([

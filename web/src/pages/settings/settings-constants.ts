@@ -1,7 +1,6 @@
 import type { AppSelectOption } from '../../components/AppSelect';
 import type { SettingsTab } from '../../app-types';
 import i18n from '../../i18n/index';
-
 export const CORE_CONFIG_ORDER = [
   'ASSISTANT_NAME',
   'WEB_PORT',
@@ -128,26 +127,34 @@ export function getBrowserConnectionModeOptions(t: (key: string) => string): App
 }
 
 /* Subagent runtime status options - kept for reference / future filter reuse */
-void [
-  { value: 'all', label: i18n.t('settings.constants.全部状态') },
-  { value: 'spawning', label: i18n.t('settings.constants.创建中') },
-  { value: 'idle', label: i18n.t('settings.constants.空闲') },
-  { value: 'running', label: i18n.t('settings.constants.运行中') },
-  { value: 'stopping', label: i18n.t('settings.constants.停止中') },
-  { value: 'completed', label: i18n.t('settings.constants.已完成') },
-  { value: 'failed', label: i18n.t('settings.constants.失败') },
-  { value: 'stopped', label: i18n.t('settings.constants.已停止') },
-];
+export function getSubagentRuntimeStatusOptions(
+  t: (key: string) => string,
+): AppSelectOption[] {
+  return [
+    { value: 'all', label: t('settings.constants.全部状态') },
+    { value: 'spawning', label: t('settings.constants.创建中') },
+    { value: 'idle', label: t('settings.constants.空闲') },
+    { value: 'running', label: t('settings.constants.运行中') },
+    { value: 'stopping', label: t('settings.constants.停止中') },
+    { value: 'completed', label: t('settings.constants.已完成') },
+    { value: 'failed', label: t('settings.constants.失败') },
+    { value: 'stopped', label: t('settings.constants.已停止') },
+  ];
+}
 
-export const SUBAGENT_MAX_ACTIVE_OPTIONS = [
-  { value: 1, label: '1', description: i18n.t('settings.constants.串行委派') },
-  { value: 2, label: '2', description: i18n.t('settings.constants.轻量并行') },
-  { value: 4, label: '4', description: i18n.t('settings.constants.默认容量') },
-  { value: 6, label: '6', description: i18n.t('settings.constants.中等并行') },
-  { value: 8, label: '8', description: i18n.t('settings.constants.高并行') },
-  { value: 12, label: '12', description: i18n.t('settings.constants.大任务编排') },
-  { value: 16, label: '16', description: i18n.t('settings.constants.最大限制') },
-] as const;
+export function getSubagentMaxActiveOptions(
+  t: (key: string) => string,
+): Array<{ value: number; label: string; description: string }> {
+  return [
+    { value: 1, label: '1', description: t('settings.constants.串行委派') },
+    { value: 2, label: '2', description: t('settings.constants.轻量并行') },
+    { value: 4, label: '4', description: t('settings.constants.默认容量') },
+    { value: 6, label: '6', description: t('settings.constants.中等并行') },
+    { value: 8, label: '8', description: t('settings.constants.高并行') },
+    { value: 12, label: '12', description: t('settings.constants.大任务编排') },
+    { value: 16, label: '16', description: t('settings.constants.最大限制') },
+  ];
+}
 
 export function getDefaultAccessPolicyOptions(): readonly {
   value: string;

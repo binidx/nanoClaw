@@ -2082,7 +2082,7 @@ export function WorkteamPage({ apiBase, canManage = true }: WorkteamPageProps) {
     <div className="page-view workflow-page">
       <div className="page-header">
         <div className="page-header-copy">
-          <h2>{t('workteam.pageTitle')}</h2>
+          <h2>{t('pageTitle')}</h2>
           <p>{t('workteam.图形化多智能体工作台')}</p>
         </div>
       </div>

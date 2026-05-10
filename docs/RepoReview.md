@@ -74,12 +74,15 @@ Repo Review 是面向 Git 仓库的审查流水线，不只是"把 diff 发给�
 
 ## 当前执行模型
 
-- 审查现在是 `main-agent plan -> executor subagents -> main-agent summary -> extractor` 的 agentic 流程，主代理先制定计划，再决定是否委派。
+- 审查现在是 `main-agent plan -> executor subagents -> main-agent summary -> extractor` 的 agentic 流程，主代理先制定计划，再决定是否委派；主计划会尽早发起，diff index 在后续阶段按需构建，减少“看起来还没开始调用 AI”的等待感。
 - `diffSubagentThreshold` 现在只作为“建议委派阈值”，不再强制拆分；全文读取仍受 profile 预算控制。
 - Repo Review 的主审查计划 prompt、子代理 prompt、最终 Markdown prompt、结构化 extractor prompt 和 digest prompt 已进入统一 Prompt 配置中心，可按功能域查看、编辑与追踪。
 - 第一轮 prompt 只产出 `review_plan`；最终的人类可读报告由主代理生成，结构化 JSON 由独立 extractor 转换，`raw_report_markdown` 固定保留主报告正文。
+- 进度时间线现在会透出 agent 运行中的状态事件和持续时间，避免“卡在计划阶段但看不到 AI 已开始请求”的错觉。
 - 旧的 `JSON + ---REVIEW_BODY--- + Markdown` 结果仍兼容解析，但不再作为默认输出协议。
-- executor 现在会在一次运行开始时构建统一 diff index，后续主计划、子代理和 extractor 都从同一份原始 diff 做按文件切片，不再反复重建大字符串。
+- executor 会在需要子代理/补充取证时构建统一 diff index，后续主计划、子代理和 extractor 都从同一份原始 diff 做按文件切片，不再反复重建大字符串。
+- 子代理默认超时已放宽到 5 分钟，超时补救会复用同一工作区并透出更明确的状态进度。
+- 最终 Markdown 报告现在严格遵循固定模板，`markdown_body` 作为最终展示正文，不再被主报告正文覆盖回去。
 - executor 已开始记录字节级预算统计：包含 diff 文件数、diff 字节数、额外 `read_file` 次数、子代理数、模型调用数、读取预算和提取尝试次数。
 - review 运行中的中间持久化不再反复写入完整 `reviewTurns` 数组，而是写入紧凑的 `reviewProgress` 快照；完整 turns 只在最终完成时落库。
 - 工具调用失败和上下文不足现在都应被视为恢复边界：优先写入 `scope_limitations`，而不是把开放式仓库探索当作默认控制流。

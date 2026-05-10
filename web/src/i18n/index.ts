@@ -285,6 +285,7 @@ export function initI18n(): Promise<typeof i18n> {
         fallbackNS: 'common',
         ns: [...namespaces],
         fallbackLng: 'zh',
+        keySeparator: false,
         interpolation: {
           escapeValue: false,
         },

@@ -28,7 +28,7 @@ import {
   getDefaultAccessPolicyOptions,
   KNOWLEDGE_CONFIG_KEYS,
   MEMORY_CONFIG_KEYS,
-  SUBAGENT_MAX_ACTIVE_OPTIONS,
+  getSubagentMaxActiveOptions,
   WEB_SEARCH_CONFIG_KEYS,
 } from './settings-constants';
 import {
@@ -721,7 +721,7 @@ export function useSettingsPageModel(props: SettingsPageProps) {
       : '-';
   const subagentDepthSummary = i18n.t('settings.model.N层', { value: subagentMaxDepth });
   const subagentMaxActiveSummary =
-    SUBAGENT_MAX_ACTIVE_OPTIONS.find(
+    getSubagentMaxActiveOptions(i18n.t).find(
       (option) => option.value === subagentMaxActive,
     )?.description || i18n.t('settings.model.N个', { value: subagentMaxActive });
   const currentProviderLabel = status?.provider
@@ -2088,7 +2088,6 @@ export function useSettingsPageModel(props: SettingsPageProps) {
     stopSubagentRuntime,
     sendSubagentRuntimeMessage,
     steerSubagentRuntime,
-    SUBAGENT_MAX_ACTIVE_OPTIONS,
     hasLive2dManage,
     extensionMarketplaceSources,
     extensionInstalls,
