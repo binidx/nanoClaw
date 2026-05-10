@@ -319,6 +319,36 @@ describe('buildReviewProgressEntries', () => {
     rendered.unmount();
   });
 
+  it('formats sub-second progress durations in seconds instead of mislabeled milliseconds', () => {
+    const entries = buildReviewProgressEntries(
+      makeRun({
+        reviewProgress: {
+          turnCount: 0,
+          latestAssistantText: null,
+          latestErrorText: null,
+          hasTerminalOutput: false,
+          steps: [
+            {
+              id: 'mark_running',
+              label: '运行状态落库',
+              kind: 'stage',
+              status: 'completed',
+              startedAt: '2026-04-23T00:00:05.000Z',
+              completedAt: '2026-04-23T00:00:05.115Z',
+              durationMs: 115,
+              outputText: 'status: running',
+            },
+          ],
+        },
+      }),
+    );
+
+    const rendered = renderTimeline(entries);
+    expect(rendered.container.textContent).toContain('0.1');
+    expect(rendered.container.textContent).not.toContain('115s');
+    rendered.unmount();
+  });
+
   it('renders synthetic review subagent tool calls as standard tool cards with duration', () => {
     const entries = buildReviewProgressEntries(
       makeRun({

@@ -65,7 +65,7 @@ const ToolCallDurationLabel = memo(function ToolCallDurationLabel({
 
   useEffect(() => {
     if (status !== 'in_progress' || !startedAt) return undefined;
-    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    const timer = window.setInterval(() => setNow(Date.now()), 100);
     return () => window.clearInterval(timer);
   }, [status, startedAt]);
 
@@ -84,10 +84,7 @@ const ToolCallDurationLabel = memo(function ToolCallDurationLabel({
     return null;
   }
   const durationMs = Math.max(0, endMs - startedMs);
-  const label =
-    durationMs < 1000
-      ? `${durationMs}${i18n.t('assistant.durationSuffix', { ns: 'chat' })}`
-      : `${(durationMs / 1000).toFixed(1)}${i18n.t('assistant.durationSuffix', { ns: 'chat' })}`;
+  const label = `${(durationMs / 1000).toFixed(1)}${i18n.t('assistant.durationSuffix', { ns: 'chat' })}`;
   const title = [
     startedAt ? `开始：${startedAt}` : '',
     completedAt ? `结束：${completedAt}` : '',
