@@ -4543,6 +4543,112 @@ describe('repo-review-service', () => {
     });
   });
 
+  it('persists completed main-agent tool-call turns after review completion', async () => {
+    runGit(tempRepo, ['commit', '-m', 'base']);
+    fs.writeFileSync(
+      path.join(tempRepo, 'tool-call.ts'),
+      'export const needsReview = true;\n',
+      'utf8',
+    );
+    runGit(tempRepo, ['add', 'tool-call.ts']);
+
+    mockRunAgentProcess.mockImplementationOnce(
+      async (_group, _input, onProcess, onOutput) => {
+        onProcess?.({
+          stdin: {
+            destroyed: false,
+            writableEnded: false,
+            end() {
+              this.writableEnded = true;
+            },
+          },
+        });
+        await onOutput?.({
+          turnEvent: {
+            type: 'turn.started',
+            turnId: 'turn-tool-call',
+            timestamp: '2026-05-11T10:00:00.000Z',
+          },
+        });
+        await onOutput?.({
+          turnEvent: {
+            type: 'item.completed',
+            turnId: 'turn-tool-call',
+            timestamp: '2026-05-11T10:00:01.000Z',
+            item: {
+              id: 'tool-read-file',
+              type: 'tool_call',
+              status: 'completed',
+              title: 'read_file',
+              argumentsText: '{"path":"tool-call.ts"}',
+              resultText: 'export const needsReview = true;',
+              timestamp: '2026-05-11T10:00:01.000Z',
+            },
+          },
+        });
+        await onOutput?.({
+          status: 'success',
+          result: JSON.stringify({
+            overall: 'pass',
+            summary: '主代理已完成审查。',
+            findings: [],
+            suggestions: [],
+            recommended_block: false,
+            markdown_body: '代码审查报告\n\n一、审查总结\n主代理已完成审查。',
+          }),
+        });
+        await onOutput?.({
+          turnEvent: {
+            type: 'turn.completed',
+            turnId: 'turn-tool-call',
+            timestamp: '2026-05-11T10:00:02.000Z',
+          },
+        });
+        return {
+          status: 'success' as const,
+          result: null,
+        };
+      },
+    );
+
+    const service = await import('./repo-review-service.js');
+    const repository = await service.upsertRepoReviewRepository({
+      id: 'repo-tool-call-persist',
+      name: 'Repo Tool Call Persist',
+      local_repo_path: tempRepo,
+      enabled: true,
+    });
+    await service.upsertRepoReviewProfile({
+      id: 'profile-tool-call-persist',
+      repository_id: repository.id,
+      name: 'Tool Call Persist',
+      stage: 'commit',
+      source_mode: 'local',
+      blocking_mode: 'soft_fail',
+      review_scope: 'staged_diff',
+      write_to_chat: false,
+      write_to_platform: false,
+      enabled: true,
+    });
+
+    const result = await service.triggerLocalRepoReview({
+      repositoryId: repository.id,
+      stage: 'commit',
+    });
+
+    const persistedRun =
+      (await service.getRepoReviewRun(result.runs[0]!.run.id)) ??
+      result.runs[0]!.run;
+    expect(persistedRun.reviewTurns).toHaveLength(1);
+    expect(persistedRun.reviewTurns[0]?.items[0]).toMatchObject({
+      type: 'tool_call',
+      status: 'completed',
+      title: 'read_file',
+      argumentsText: '{"path":"tool-call.ts"}',
+      resultText: 'export const needsReview = true;',
+    });
+  });
+
   it('matches profiles by target branch and treats empty target branches as all branches', async () => {
     mockRunAgentProcess.mockResolvedValue({
       status: 'success',

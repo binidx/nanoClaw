@@ -21,6 +21,7 @@ describe('user-service', () => {
     const auth = await validateCredentials('alice', 'admin123');
     expect(auth?.roles).toContain('admin');
     expect(auth?.permissions).toContain('system.users');
+    expect(auth?.permissions).toContain('local.install');
   });
 
   it('keeps later users non-admin by default while still using admin123 when omitted', async () => {

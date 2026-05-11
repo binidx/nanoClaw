@@ -10872,6 +10872,7 @@ async function executeRepoReviewEvent(
     );
     runCallbackContext = mergeCallbackContext(runCallbackContext, {
       ...patch,
+      reviewTurns,
       reviewProgress,
       ...(executionStats ? { executionStats } : {}),
     });
@@ -11459,7 +11460,6 @@ async function executeRepoReviewEvent(
     });
     throwIfRepoReviewRunCancelled(runRecord.id);
     parsed = coordinatedReview.parsed as unknown as ParsedReviewResult;
-    reviewTurns = [];
     finalReview = {
       overall: parsed.overall,
       summary: parsed.summary,

@@ -44,8 +44,9 @@ export function filterReviewProgressEntriesForList(
     (entry) =>
       !(
         entry.kind === 'progress_step' &&
-        entry.item.id === 'agentic_main_summary' &&
-        entry.item.label === '主代理直接审查'
+        (entry.item.id === 'agentic_main_summary' ||
+          entry.item.id === 'main_agent_review' ||
+          entry.item.id === 'main_agent_fallback_review')
       ),
   );
 }

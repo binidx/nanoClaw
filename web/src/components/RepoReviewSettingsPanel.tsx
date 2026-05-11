@@ -4033,10 +4033,15 @@ export function RepoReviewSettingsPanel({
                           run.overall !== 'skipped';
                         const isManualDecisionPending =
                           manualDecisionRunId === run.id;
+                        const allProgressEntries =
+                          buildReviewProgressEntries(run);
                         const progressEntries =
                           filterReviewProgressEntriesForList(
-                            buildReviewProgressEntries(run),
+                            allProgressEntries,
                           );
+                        const hasSummaryOnlyProgress =
+                          allProgressEntries.length > 0 &&
+                          progressEntries.length === 0;
                         const diffWorkerStepCount =
                           run.reviewProgress?.steps?.filter((step) =>
                             step.id.startsWith('split_diff_worker_') ||
@@ -4194,8 +4199,18 @@ export function RepoReviewSettingsPanel({
                                   {run.status === 'running'
                                     ? diffWorkerStepCount > 0
                                       ? `AI 正在分析中，已分配 ${diffWorkerStepCount} 个子代理任务，面板会自动刷新。`
-                                      : 'AI 正在分析中，面板会自动刷新。'
-                                    : '这里会展示 AI 的思考摘要、工具调用链和完成状态。'}
+                                      : hasSummaryOnlyProgress
+                                        ? 'AI 正在分析中，列表仅显示摘要视图，完整思考和工具调用请点“查看详情”。'
+                                        : 'AI 正在分析中，面板会自动刷新。'
+                                    : hasSummaryOnlyProgress
+                                      ? '列表仅显示摘要视图，完整思考和工具调用请点“查看详情”。'
+                                      : '这里会展示 AI 的思考摘要、工具调用链和完成状态。'}
+                                </span>
+                              </div>
+                            ) : hasSummaryOnlyProgress ? (
+                              <div className="repo-review-run-progress">
+                                <span className="settings-hint">
+                                  列表仅显示摘要视图，完整思考和工具调用请点“查看详情”。
                                 </span>
                               </div>
                             ) : run.status === 'running' ? (

@@ -259,6 +259,7 @@ const PRESET_PERMISSIONS: ReadonlyArray<PresetPermission> = [
   // ── Terminal ──
   { id: 'perm-terminal-access', code: 'terminal.access', name: t('permissions.auto_546b48', {}, undefined), category: 'terminal', module: 'terminal', description: t('permissions.auto_fa2d6c', {}, undefined), sort_order: 140, ui_hint: 'page' },
   { id: 'perm-browser-control', code: 'browser.control', name: t('permissions.browser_control', {}, undefined), category: 'browser', module: 'browser', description: t('permissions.browser_control_desc', {}, undefined), sort_order: 141, ui_hint: 'page' },
+  { id: 'perm-local-install', code: 'local.install', name: t('permissions.local_install', {}, undefined), category: 'system', module: 'system', description: t('permissions.local_install_desc', {}, undefined), sort_order: 142, ui_hint: 'action' },
 
   // ── Marketplace ──
   { id: 'perm-marketplace-view', code: 'marketplace.view', name: t('permissions.auto_2032ff', {}, undefined), category: 'marketplace', module: 'marketplace', description: t('permissions.auto_b03375', {}, undefined), sort_order: 150, ui_hint: 'page' },

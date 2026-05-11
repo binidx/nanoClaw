@@ -81,3 +81,9 @@
 - 将 Repo Review 的稳定执行边界更新为 `repo-review-coordinator.ts` 负责的 evidence bundle / worker / reducer 流水线。
 - 新增 `repo_review.worker` 与 `repo_review.reducer` prompt 定义，旧 agentic prompt 保留历史兼容但不再是新 run 默认路径。
 - 前端 Repo Review 时间线补充 worker / reducer 语义，兼容旧 step id 的同时展示 V3 进度。
+
+## [2026-05-11] update | Repo Review 主代理直审与可观测性边界
+
+- 将 Repo Review 当前稳定行为补充为“主代理直审”与“worker 后主代理补审”双主路径；`reducer` 调整为结构化解析失败时的兜底整理器，而非每次 run 的必经阶段。
+- 明确 `runs-summary` 与 `runs/:id/detail` 的可观测性边界：前者主要返回 `reviewProgress`，后者才返回完整 `reviewTurns` 和 tool-call 流。
+- 更新 `docs/RepoReview.md` 与 feature map 入口描述，避免把“列表里只看到主代理卡片”误判成“后端没有工具调用流”。

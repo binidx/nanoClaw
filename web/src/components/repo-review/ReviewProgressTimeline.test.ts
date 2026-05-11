@@ -433,7 +433,7 @@ describe('buildReviewProgressEntries', () => {
     rendered.unmount();
   });
 
-  it('filters the direct main-agent summary step from list timelines', () => {
+  it('filters main-agent summary steps from list timelines', () => {
     const entries = buildReviewProgressEntries(
       makeRun({
         reviewProgress: {
@@ -450,6 +450,26 @@ describe('buildReviewProgressEntries', () => {
               startedAt: '2026-04-23T00:00:01.000Z',
               activeStartedAt: '2026-04-23T00:00:05.000Z',
               completedAt: '2026-04-23T00:00:06.000Z',
+              durationMs: 1000,
+            },
+            {
+              id: 'main_agent_review',
+              label: '主代理直接审查',
+              kind: 'main',
+              status: 'completed',
+              startedAt: '2026-04-23T00:00:07.000Z',
+              activeStartedAt: '2026-04-23T00:00:08.000Z',
+              completedAt: '2026-04-23T00:00:09.000Z',
+              durationMs: 1000,
+            },
+            {
+              id: 'main_agent_fallback_review',
+              label: '主代理补审',
+              kind: 'main',
+              status: 'completed',
+              startedAt: '2026-04-23T00:00:10.000Z',
+              activeStartedAt: '2026-04-23T00:00:11.000Z',
+              completedAt: '2026-04-23T00:00:12.000Z',
               durationMs: 1000,
             },
             {

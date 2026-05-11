@@ -75,13 +75,23 @@ Repo Review 是面向 Git 仓库的审查流水线，不只是"把 diff 发给�
 
 ## 当前执行模型
 
-- 审查现在是 `prepare_context -> build_evidence_bundle -> schedule_workers -> worker_chunk_* -> reduce_results -> persist_result -> publish_completion` 的受控流水线，Coordinator 负责切分 evidence 并调度 worker，worker 只消费预构建证据块，reducer 统一收敛最终结论。
-- `diffSubagentThreshold` 仅保留兼容字段，不再参与 V3 调度决策。
-- Repo Review 的 V3 worker / reducer prompt 已进入统一 Prompt 配置中心；旧 agentic prompt 继续保留读取兼容，但不再作为新 run 默认路径。
-- worker 超时只影响对应 chunk，reducer 失败才会让整次审查失败。
-- 最终 `markdown_body` 仍是唯一展示正文来源，若 reducer 未返回可用正文则由本地 renderer 回退生成固定模板。
-- 进度时间线现在展示 worker chunk / reducer 状态与耗时，旧 agentic 节点仅用于历史 run 兼容。
-- coordinator 会记录 evidence bundle、worker 数量和 reducer 调用等统计，便于后续验证与优化。
+- 审查入口仍由 `repo-review-run-executor.ts` 编排，但当前主判断链已经不是“每次都先 worker 再 reducer”。
+- 小范围变更会走主代理直接审查：Coordinator 先构建 evidence bundle，再由主代理基于 diff、预加载全文和只读工具取证直接输出结论。
+- 大范围变更会走 worker 并行取证 + 主代理补审：Coordinator 按 evidence chunk 调度 worker，worker 只消费预构建证据块，主代理再综合 worker 结构化结果和 worker turn 证据给出最终结论。
+- `reducer` 现在是结构化解析/兜底整理路径，不是每次 run 都会进入的必经主链路。只有主代理返回结果无法直接解析为结构化报告时，才会调用 reducer 或本地 renderer 补齐最终结果。
+- `diffSubagentThreshold` 仍参与是否走主代理直审或 worker 路径的调度判断，不再表示旧 agentic 时代的“自由子代理阈值”。
+- Repo Review 的默认 prompt 已以 `repo-review-coordinator.ts` 的主代理 / worker / reducer 三段式为准；旧 agentic step id 和 prompt 只保留历史 run 兼容。
+- worker 超时只影响对应 chunk。主代理补审仍会接管已有 worker 结果；只有主代理和 reducer 都无法产出可用结构化结果时，整次审查才会失败。
+- 最终 `markdown_body` 仍是唯一展示正文来源；若模型侧未返回可用正文，则由本地 renderer 回退生成固定模板。
+- coordinator 会记录 evidence bundle、worker 数量、fallback main review 和 reducer 调用等统计，便于后续验证与优化。
+
+## 进度与可观测性
+
+- `reviewTurns` 记录真实的审查执行过程，包含 `tool_call`、`reasoning`、`assistant_message` 和 phase/group 元数据，适合排障和完整回放。
+- `reviewProgress.steps` 记录列表友好的阶段快照，重点展示调度、worker、主代理、reducer、持久化等阶段状态与耗时。
+- `/api/repo-reviews/runs-summary` 默认只返回 summary run 数据：`reviewTurns` 为空，主要依赖 `reviewProgress` 呈现列表里的“分析过程”。
+- `/api/repo-reviews/runs/:runId/detail` 才返回完整 `reviewTurns`，因此“列表里只有主代理直审卡片”通常表示摘要接口做了裁剪，不表示后端没有记录真实 tool-call 流。
+- 前端时间线会兼容历史 run：旧 agentic step id 仍可展示，但当前 run 的主路径应优先理解为“主代理直审”或“worker 后主代理补审”。
 
 ## 最小前提
 
