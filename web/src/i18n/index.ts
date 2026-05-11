@@ -101,8 +101,8 @@ function addNamespaceAliases(
   );
 
   return {
-    ...messages,
     ...aliases,
+    ...messages,
   };
 }
 
@@ -117,8 +117,8 @@ function addGeneratedKeyAliases(
     aliases[`${namespace}.${autoMatch[1]}`] = value;
   }
   return {
-    ...messages,
     ...aliases,
+    ...messages,
   };
 }
 
@@ -139,8 +139,8 @@ function addLiteralValueAliases(
     aliases[zhValue] = localizedValue;
   }
   return {
-    ...messages,
     ...aliases,
+    ...messages,
   };
 }
 
@@ -178,8 +178,8 @@ function buildLocaleBundle(
   return {
     ...expanded,
     common: {
-      ...expanded.common,
       ...commonAliases,
+      ...expanded.common,
     },
   };
 }
