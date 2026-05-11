@@ -282,6 +282,14 @@ export type TurnEvent =
 export interface AssistantTurn {
   id: string;
   clientKey?: string;
+  groupKey?: string;
+  groupLabel?: string;
+  phase?:
+    | 'worker'
+    | 'timeout_followup'
+    | 'main_agent_review'
+    | 'main_agent_fallback_review'
+    | 'reducer';
   runId?: string;
   timestamp: string;
   items: TurnItem[];
@@ -999,6 +1007,10 @@ export interface RepoReviewRun {
     timedOutWorkerCount?: number;
     reducerCallCount?: number;
     evidenceBundleBytes?: number;
+    timeoutFollowupCount?: number;
+    partialWorkerResultCount?: number;
+    fallbackMainReviewCount?: number;
+    fallbackReviewedFileCount?: number;
   };
   durationMs?: number;
   platformStatus: string;

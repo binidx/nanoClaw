@@ -444,6 +444,10 @@ function buildInitialRepoReviewExecutionStats(input: {
     totalReadBudgetBytes: REPO_REVIEW_AGENTIC_DEFAULT_MAX_TOTAL_READ_BYTES,
     maxFullFileBytesPerFile: REPO_REVIEW_AGENTIC_DEFAULT_MAX_FULL_FILE_BYTES_PER_FILE,
     extractorAttempts: 0,
+    timeoutFollowupCount: 0,
+    partialWorkerResultCount: 0,
+    fallbackMainReviewCount: 0,
+    fallbackReviewedFileCount: 0,
   };
 }
 
@@ -593,6 +597,34 @@ function normalizeRepoReviewExecutionStats(
       Number(record.maxFullFileBytesPerFile) || 0,
     ),
     extractorAttempts: Math.max(0, Number(record.extractorAttempts) || 0),
+    workerCount: Math.max(0, Number(record.workerCount) || 0),
+    completedWorkerCount: Math.max(
+      0,
+      Number(record.completedWorkerCount) || 0,
+    ),
+    failedWorkerCount: Math.max(0, Number(record.failedWorkerCount) || 0),
+    timedOutWorkerCount: Math.max(
+      0,
+      Number(record.timedOutWorkerCount) || 0,
+    ),
+    reducerCallCount: Math.max(0, Number(record.reducerCallCount) || 0),
+    evidenceBundleBytes: Math.max(0, Number(record.evidenceBundleBytes) || 0),
+    timeoutFollowupCount: Math.max(
+      0,
+      Number(record.timeoutFollowupCount) || 0,
+    ),
+    partialWorkerResultCount: Math.max(
+      0,
+      Number(record.partialWorkerResultCount) || 0,
+    ),
+    fallbackMainReviewCount: Math.max(
+      0,
+      Number(record.fallbackMainReviewCount) || 0,
+    ),
+    fallbackReviewedFileCount: Math.max(
+      0,
+      Number(record.fallbackReviewedFileCount) || 0,
+    ),
   };
 }
 
@@ -1456,9 +1488,21 @@ function normalizeReviewTurns(value: unknown): RepoReviewAssistantTurn[] {
           .map((item) => normalizeReviewTurnItem(item))
           .filter((item): item is AgentTurnItemPayload => Boolean(item))
       : [];
+    const rawPhase = stringValue(record.phase);
+    const phase =
+      rawPhase === 'worker' ||
+      rawPhase === 'timeout_followup' ||
+      rawPhase === 'main_agent_review' ||
+      rawPhase === 'main_agent_fallback_review' ||
+      rawPhase === 'reducer'
+        ? rawPhase
+        : undefined;
     turns.push({
       id,
       clientKey: stringValue(record.clientKey) || undefined,
+      groupKey: stringValue(record.groupKey) || undefined,
+      groupLabel: stringValue(record.groupLabel) || undefined,
+      phase,
       timestamp,
       items,
       isLive: normalizeBoolean(record.isLive),

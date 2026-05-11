@@ -382,6 +382,57 @@ describe('buildReviewProgressEntries', () => {
     rendered.unmount();
   });
 
+  it('groups worker turns under their worker step and labels timeout follow-ups', () => {
+    const entries = buildReviewProgressEntries(
+      makeRun({
+        reviewProgress: {
+          turnCount: 0,
+          latestAssistantText: null,
+          latestErrorText: null,
+          hasTerminalOutput: false,
+          steps: [
+            {
+              id: 'worker_chunk_1',
+              label: 'Worker 1/1',
+              kind: 'worker',
+              status: 'completed',
+              startedAt: '2026-04-23T00:00:01.000Z',
+              completedAt: '2026-04-23T00:00:03.000Z',
+            },
+          ],
+        },
+        reviewTurns: [
+          {
+            id: 'turn-worker-1',
+            groupKey: 'worker_chunk_1',
+            groupLabel: 'Worker 1/1',
+            phase: 'timeout_followup',
+            timestamp: '2026-04-23T00:00:02.000Z',
+            isLive: false,
+            isCompleted: true,
+            items: [
+              {
+                id: 'tool-worker-1',
+                type: 'tool_call',
+                status: 'completed',
+                title: 'read_file',
+                argumentsText: '{"path":"src/demo.ts"}',
+                resultText: '{"summary":"ok"}',
+                timestamp: '2026-04-23T00:00:02.000Z',
+              },
+            ],
+          },
+        ],
+      }),
+    );
+
+    const rendered = renderTimeline(entries);
+    expect(rendered.container.textContent).toContain('Worker 1/1');
+    expect(rendered.container.textContent).toContain('超时追问');
+    expect(rendered.container.querySelector('.repo-review-progress-turn-group')).not.toBeNull();
+    rendered.unmount();
+  });
+
   it('filters the direct main-agent summary step from list timelines', () => {
     const entries = buildReviewProgressEntries(
       makeRun({

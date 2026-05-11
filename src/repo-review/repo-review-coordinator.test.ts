@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   partitionRepoReviewEvidenceChunks,
   renderRepoReviewMarkdownFromStructuredResult,
+  shouldDirectMainAgentReview,
   type RepoReviewEvidenceBundle,
 } from './repo-review-coordinator.js';
 
@@ -86,7 +87,7 @@ function makeBundle(overrides: Partial<RepoReviewEvidenceBundle> = {}): RepoRevi
     totalPromptBytes: 0,
     commitSummaryBlock: '',
     projectContextBlock: '',
-    directReducerOnly: true,
+    directMainAgentReview: true,
     ...overrides,
   };
 }
@@ -94,7 +95,7 @@ function makeBundle(overrides: Partial<RepoReviewEvidenceBundle> = {}): RepoRevi
 describe('repo-review coordinator', () => {
   it('partitions evidence into bounded worker chunks', () => {
     const bundle = makeBundle({
-      directReducerOnly: false,
+      directMainAgentReview: false,
       files: Array.from({ length: 10 }, (_, index) => ({
         filePath: `src/file-${index}.ts`,
         diffText: 'diff\n' + 'x'.repeat(2000),
@@ -116,6 +117,30 @@ describe('repo-review coordinator', () => {
     expect(chunks.length).toBeGreaterThan(1);
     expect(chunks.every((chunk) => chunk.files.length <= 8)).toBe(true);
     expect(chunks.every((chunk) => chunk.promptBytes > 0)).toBe(true);
+  });
+
+  it('keeps small diffs on the direct main-agent path even above the file threshold', () => {
+    expect(
+      shouldDirectMainAgentReview({
+        changedFileCount: 8,
+        totalPromptBytes: 500000,
+        diffSubagentThreshold: 8,
+      }),
+    ).toBe(true);
+    expect(
+      shouldDirectMainAgentReview({
+        changedFileCount: 9,
+        totalPromptBytes: 50000,
+        diffSubagentThreshold: 8,
+      }),
+    ).toBe(true);
+    expect(
+      shouldDirectMainAgentReview({
+        changedFileCount: 9,
+        totalPromptBytes: 500000,
+        diffSubagentThreshold: 8,
+      }),
+    ).toBe(false);
   });
 
   it('renders markdown from structured results and falls back when needed', () => {

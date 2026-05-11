@@ -130,7 +130,9 @@ function normalizeSummaryReviewProgress(value: unknown) {
               stringValue(step.kind) === 'stage' ||
               stringValue(step.kind) === 'main' ||
               stringValue(step.kind) === 'subagent' ||
-              stringValue(step.kind) === 'extractor'
+              stringValue(step.kind) === 'extractor' ||
+              stringValue(step.kind) === 'worker' ||
+              stringValue(step.kind) === 'reducer'
                 ? (stringValue(step.kind) as RepoReviewProgressStep['kind'])
                 : undefined,
             status,

@@ -252,6 +252,10 @@ export interface RepoReviewExecutionStats {
   timedOutWorkerCount?: number;
   reducerCallCount?: number;
   evidenceBundleBytes?: number;
+  timeoutFollowupCount?: number;
+  partialWorkerResultCount?: number;
+  fallbackMainReviewCount?: number;
+  fallbackReviewedFileCount?: number;
 }
 
 export interface RepoReviewProgressSnapshot {
@@ -268,6 +272,13 @@ export type RepoReviewProgressStepKind =
   | 'subagent'
   | 'extractor'
   | 'worker'
+  | 'reducer';
+
+export type RepoReviewTurnPhase =
+  | 'worker'
+  | 'timeout_followup'
+  | 'main_agent_review'
+  | 'main_agent_fallback_review'
   | 'reducer';
 
 export interface RepoReviewProgressStep {
@@ -546,6 +557,9 @@ export interface RepoReviewDigestRunDetail {
 export interface RepoReviewAssistantTurn {
   id: string;
   clientKey?: string;
+  groupKey?: string;
+  groupLabel?: string;
+  phase?: RepoReviewTurnPhase;
   timestamp: string;
   items: AgentTurnItemPayload[];
   isLive: boolean;

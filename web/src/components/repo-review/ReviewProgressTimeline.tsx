@@ -118,6 +118,14 @@ function getProgressStepKindLabel(step: RepoReviewProgressStep) {
   return '阶段';
 }
 
+function getReviewTurnPhaseLabel(phase?: string) {
+  if (phase === 'timeout_followup') return '超时追问';
+  if (phase === 'main_agent_review') return '主代理';
+  if (phase === 'main_agent_fallback_review') return '主代理补审';
+  if (phase === 'reducer') return '收敛';
+  return '';
+}
+
 function buildProgressStepToolCallItem(
   step: RepoReviewProgressStep,
 ): ToolCallTurnItem {
@@ -179,30 +187,48 @@ export function buildReviewProgressEntries(run: RepoReviewRun) {
         kind: 'progress_step';
         timestamp: string;
         item: RepoReviewProgressStep;
+        groupKey: string;
+        groupLabel: string;
       }
     | {
         key: string;
         kind: 'reasoning';
         timestamp: string;
         item: ReasoningTurnItem;
+        turnId: string;
+        groupKey: string;
+        groupLabel: string;
+        phase?: string;
       }
     | {
         key: string;
         kind: 'tool_call';
         timestamp: string;
         item: ToolCallTurnItem;
+        turnId: string;
+        groupKey: string;
+        groupLabel: string;
+        phase?: string;
       }
     | {
         key: string;
         kind: 'assistant_message';
         timestamp: string;
         item: AssistantMessageTurnItem;
+        turnId: string;
+        groupKey: string;
+        groupLabel: string;
+        phase?: string;
       }
     | {
         key: string;
         kind: 'turn_error';
         timestamp: string;
         error: string;
+        turnId: string;
+        groupKey: string;
+        groupLabel: string;
+        phase?: string;
       }
   > = [];
 
@@ -212,10 +238,14 @@ export function buildReviewProgressEntries(run: RepoReviewRun) {
         kind: 'progress_step',
         timestamp: step.activeStartedAt || step.startedAt || run.createdAt,
         item: step,
+        groupKey: step.id,
+        groupLabel: step.label,
       });
   }
 
   for (const turn of run.reviewTurns) {
+    const groupKey = turn.groupKey || turn.id;
+    const groupLabel = turn.groupLabel || turn.groupKey || turn.id;
     for (const item of turn.items) {
       if (item.type === 'assistant_message') {
         if (!item.text.trim()) continue;
@@ -224,6 +254,10 @@ export function buildReviewProgressEntries(run: RepoReviewRun) {
           kind: item.type,
           timestamp: item.timestamp || turn.timestamp,
           item,
+          turnId: turn.id,
+          groupKey,
+          groupLabel,
+          phase: turn.phase,
         });
         continue;
       }
@@ -233,6 +267,10 @@ export function buildReviewProgressEntries(run: RepoReviewRun) {
           kind: item.type,
           timestamp: item.timestamp || turn.timestamp,
           item,
+          turnId: turn.id,
+          groupKey,
+          groupLabel,
+          phase: turn.phase,
         });
         continue;
       }
@@ -242,6 +280,10 @@ export function buildReviewProgressEntries(run: RepoReviewRun) {
           kind: item.type,
           timestamp: item.timestamp || turn.timestamp,
           item,
+          turnId: turn.id,
+          groupKey,
+          groupLabel,
+          phase: turn.phase,
         });
       }
     }
@@ -251,6 +293,10 @@ export function buildReviewProgressEntries(run: RepoReviewRun) {
         kind: 'turn_error',
         timestamp: turn.timestamp,
         error: turn.error,
+        turnId: turn.id,
+        groupKey,
+        groupLabel,
+        phase: turn.phase,
       });
     }
   }
@@ -294,6 +340,9 @@ export function buildReviewProgressEntries(run: RepoReviewRun) {
           text: run.reviewProgress.latestAssistantText,
           timestamp,
         },
+        turnId: `${run.id}:progress-snapshot:assistant:${timestamp}`,
+        groupKey: 'progress_snapshot',
+        groupLabel: '进度快照',
       });
     }
     if (shouldAppendErrorSnapshot && run.reviewProgress.latestErrorText) {
@@ -302,6 +351,9 @@ export function buildReviewProgressEntries(run: RepoReviewRun) {
         kind: 'turn_error',
         timestamp,
         error: run.reviewProgress.latestErrorText,
+        turnId: `${run.id}:progress-snapshot:error:${timestamp}`,
+        groupKey: 'progress_snapshot',
+        groupLabel: '进度快照',
       });
     }
   }
@@ -331,11 +383,13 @@ export function ReviewProgressTimeline({
     item,
     kindLabel,
     open,
+    phaseLabel,
   }: {
     key: string;
     item: ToolCallTurnItem;
     kindLabel: string;
     open: boolean;
+    phaseLabel?: string;
   }) => (
     <div
       key={key}
@@ -355,6 +409,11 @@ export function ReviewProgressTimeline({
               <div className="turn-item-summary-main">
                 <div className="turn-item-summary-top">
                   <span className="turn-item-kind tool_call">{kindLabel}</span>
+                  {phaseLabel ? (
+                    <span className="repo-review-progress-turn-tag">
+                      {phaseLabel}
+                    </span>
+                  ) : null}
                   <span className="turn-item-title">{item.title}</span>
                   <ToolCallDurationLabel
                     startedAt={item.startedAt}
@@ -413,161 +472,271 @@ export function ReviewProgressTimeline({
     </div>
   );
 
-  return (
-    <div className="repo-review-progress-timeline">
-      {entries.map((entry) => {
-        if (entry.kind === 'progress_step') {
-          return renderToolCallNode({
-            key: entry.key,
-            item: buildProgressStepToolCallItem(entry.item),
-            kindLabel: getProgressStepKindLabel(entry.item),
-            open: entry.item.status === 'failed',
-          });
-        }
-        if (entry.kind === 'assistant_message') {
-          return (
-            <div
-              key={entry.key}
-              className="assistant-turn-node single-entry-node"
-            >
-              <div className="assistant-turn-node-rail" aria-hidden="true">
-                <span className="assistant-turn-node-dot response" />
-                <span className="assistant-turn-node-line" />
-              </div>
-              <div className="assistant-turn-node-main">
-                {fullAssistantBody ? (
-                  <details
-                    className="assistant-turn-card turn-item"
-                    open={entry.item.status !== 'in_progress'}
-                  >
-                    <summary className="turn-item-header turn-item-summary">
-                      <span
-                        className="turn-item-summary-icon response"
-                        aria-hidden="true"
-                      />
-                      <div className="turn-item-summary-main">
-                        <div className="turn-item-summary-top">
-                          <span className="turn-item-kind response">{t('timeline.response')}</span>
-                          <span className="turn-item-title">{t('timeline.aiConclusion')}</span>
-                          <span
-                            className={`turn-item-status ${entry.item.status}`}
-                          >
-                            {getTurnItemStatusLabel(entry.item.status)}
-                          </span>
-                        </div>
-                        <span className="turn-item-preview">
-                          {truncateReviewPreview(entry.item.text)}
+  const stepEntries = entries.filter(
+    (entry): entry is Extract<ReviewProgressEntry, { kind: 'progress_step' }> =>
+      entry.kind === 'progress_step',
+  );
+  const turnEntries = entries.filter(
+    (entry): entry is Exclude<ReviewProgressEntry, { kind: 'progress_step' }> =>
+      entry.kind !== 'progress_step',
+  );
+  const turnGroups = new Map<
+    string,
+    {
+      groupKey: string;
+      groupLabel: string;
+      timestamp: string;
+      phases: Set<string>;
+      entries: typeof turnEntries;
+    }
+  >();
+  for (const entry of turnEntries) {
+    const groupKey = entry.groupKey || entry.turnId || entry.key;
+    const existing = turnGroups.get(groupKey);
+    if (existing) {
+      existing.entries.push(entry);
+      existing.phases.add(entry.phase || '');
+      if (entry.timestamp < existing.timestamp) {
+        existing.timestamp = entry.timestamp;
+      }
+      continue;
+    }
+    turnGroups.set(groupKey, {
+      groupKey,
+      groupLabel: entry.groupLabel || groupKey,
+      timestamp: entry.timestamp,
+      phases: new Set(entry.phase ? [entry.phase] : []),
+      entries: [entry],
+    });
+  }
+
+  const renderTimelineEntry = (entry: Exclude<ReviewProgressEntry, { kind: 'progress_step' }>) => {
+    const phaseLabel = getReviewTurnPhaseLabel(entry.phase);
+    if (entry.kind === 'assistant_message') {
+      return (
+        <div key={entry.key} className="assistant-turn-node single-entry-node">
+          <div className="assistant-turn-node-rail" aria-hidden="true">
+            <span className="assistant-turn-node-dot response" />
+            <span className="assistant-turn-node-line" />
+          </div>
+          <div className="assistant-turn-node-main">
+            {fullAssistantBody ? (
+              <details
+                className="assistant-turn-card turn-item"
+                open={entry.item.status !== 'in_progress'}
+              >
+                <summary className="turn-item-header turn-item-summary">
+                  <span
+                    className="turn-item-summary-icon response"
+                    aria-hidden="true"
+                  />
+                  <div className="turn-item-summary-main">
+                    <div className="turn-item-summary-top">
+                      <span className="turn-item-kind response">
+                        {t('timeline.response')}
+                      </span>
+                      {phaseLabel ? (
+                        <span className="repo-review-progress-turn-tag">
+                          {phaseLabel}
                         </span>
-                      </div>
-                    </summary>
-                    <div className="turn-item-body turn-item-body-response">
-                      <div className="turn-item-section">
-                        <div className="turn-item-label">{t('timeline.content')}</div>
-                        <div className="assistant-activity-text assistant-activity-text-block">
-                          <span className="assistant-activity-body">
-                            {entry.item.text}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  </details>
-                ) : (
-                  <div className="assistant-turn-card turn-item">
-                    <div className="turn-item-header">
-                      <div className="turn-item-summary-main">
-                        <div className="turn-item-summary-top">
-                          <span className="turn-item-kind response">{t('timeline.response')}</span>
-                          <span className="turn-item-title">{t('timeline.aiConclusion')}</span>
-                          <span
-                            className={`turn-item-status ${entry.item.status}`}
-                          >
-                            {getTurnItemStatusLabel(entry.item.status)}
-                          </span>
-                        </div>
-                        <span className="turn-item-preview">
-                          {truncateReviewPreview(entry.item.text)}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          );
-        }
-        if (entry.kind === 'reasoning') {
-          return (
-            <div
-              key={entry.key}
-              className="assistant-turn-node single-entry-node"
-            >
-              <div className="assistant-turn-node-rail" aria-hidden="true">
-                <span
-                  className={`assistant-turn-node-dot reasoning ${entry.item.status}`}
-                />
-                <span className="assistant-turn-node-line" />
-              </div>
-              <div className="assistant-turn-node-main">
-                <details className="assistant-turn-card turn-item assistant-reasoning-card">
-                  <summary className="turn-item-header turn-item-summary">
-                    <span
-                      className="turn-item-summary-icon reasoning"
-                      aria-hidden="true"
-                    />
-                    <div className="turn-item-summary-main">
-                      <div className="turn-item-summary-top">
-                        <span className="turn-item-kind reasoning">{t('timeline.thinking')}</span>
-                        <span className="turn-item-title">
-                          {entry.item.title || t('timeline.processing')}
-                        </span>
-                        <span
-                          className={`turn-item-status ${entry.item.status}`}
-                        >
-                          {getTurnItemStatusLabel(entry.item.status)}
-                        </span>
-                      </div>
-                      <span className="turn-item-preview assistant-reasoning-summary-text">
-                        {truncateReviewPreview(
-                          formatReviewReasoningText(
-                            entry.item.title,
-                            entry.item.text,
-                          ),
-                        )}
+                      ) : null}
+                      <span className="turn-item-title">
+                        {t('timeline.aiConclusion')}
+                      </span>
+                      <span className={`turn-item-status ${entry.item.status}`}>
+                        {getTurnItemStatusLabel(entry.item.status)}
                       </span>
                     </div>
-                  </summary>
-                  <div className="turn-item-body turn-item-body-reasoning">
-                    <div className="turn-item-section">
-                      <div className="turn-item-label">{t('timeline.content')}</div>
-                      <div className="assistant-activity-text assistant-activity-text-block">
-                        <span className="assistant-activity-body">
-                          {formatReviewReasoningText(
-                            entry.item.title,
-                            entry.item.text,
-                          )}
-                        </span>
-                      </div>
+                    <span className="turn-item-preview">
+                      {truncateReviewPreview(entry.item.text)}
+                    </span>
+                  </div>
+                </summary>
+                <div className="turn-item-body turn-item-body-response">
+                  <div className="turn-item-section">
+                    <div className="turn-item-label">{t('timeline.content')}</div>
+                    <div className="assistant-activity-text assistant-activity-text-block">
+                      <span className="assistant-activity-body">
+                        {entry.item.text}
+                      </span>
                     </div>
                   </div>
-                </details>
+                </div>
+              </details>
+            ) : (
+              <div className="assistant-turn-card turn-item">
+                <div className="turn-item-header">
+                  <div className="turn-item-summary-main">
+                    <div className="turn-item-summary-top">
+                      <span className="turn-item-kind response">
+                        {t('timeline.response')}
+                      </span>
+                      {phaseLabel ? (
+                        <span className="repo-review-progress-turn-tag">
+                          {phaseLabel}
+                        </span>
+                      ) : null}
+                      <span className="turn-item-title">
+                        {t('timeline.aiConclusion')}
+                      </span>
+                      <span className={`turn-item-status ${entry.item.status}`}>
+                        {getTurnItemStatusLabel(entry.item.status)}
+                      </span>
+                    </div>
+                    <span className="turn-item-preview">
+                      {truncateReviewPreview(entry.item.text)}
+                    </span>
+                  </div>
+                </div>
               </div>
-            </div>
-          );
-        }
-        if (entry.kind === 'tool_call') {
-          return renderToolCallNode({
-            key: entry.key,
-            item: entry.item,
-            kindLabel: t('timeline.tool'),
-            open: entry.item.status === 'failed',
-          });
+            )}
+          </div>
+        </div>
+      );
+    }
+    if (entry.kind === 'reasoning') {
+      return (
+        <div key={entry.key} className="assistant-turn-node single-entry-node">
+          <div className="assistant-turn-node-rail" aria-hidden="true">
+            <span
+              className={`assistant-turn-node-dot reasoning ${entry.item.status}`}
+            />
+            <span className="assistant-turn-node-line" />
+          </div>
+          <div className="assistant-turn-node-main">
+            <details className="assistant-turn-card turn-item assistant-reasoning-card">
+              <summary className="turn-item-header turn-item-summary">
+                <span
+                  className="turn-item-summary-icon reasoning"
+                  aria-hidden="true"
+                />
+                <div className="turn-item-summary-main">
+                  <div className="turn-item-summary-top">
+                    <span className="turn-item-kind reasoning">
+                      {t('timeline.thinking')}
+                    </span>
+                    {phaseLabel ? (
+                      <span className="repo-review-progress-turn-tag">
+                        {phaseLabel}
+                      </span>
+                    ) : null}
+                    <span className="turn-item-title">
+                      {entry.item.title || t('timeline.processing')}
+                    </span>
+                    <span className={`turn-item-status ${entry.item.status}`}>
+                      {getTurnItemStatusLabel(entry.item.status)}
+                    </span>
+                  </div>
+                  <span className="turn-item-preview assistant-reasoning-summary-text">
+                    {truncateReviewPreview(
+                      formatReviewReasoningText(entry.item.title, entry.item.text),
+                    )}
+                  </span>
+                </div>
+              </summary>
+              <div className="turn-item-body turn-item-body-reasoning">
+                <div className="turn-item-section">
+                  <div className="turn-item-label">{t('timeline.content')}</div>
+                  <div className="assistant-activity-text assistant-activity-text-block">
+                    <span className="assistant-activity-body">
+                      {formatReviewReasoningText(
+                        entry.item.title,
+                        entry.item.text,
+                      )}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </details>
+          </div>
+        </div>
+      );
+    }
+    if (entry.kind === 'tool_call') {
+      return renderToolCallNode({
+        key: entry.key,
+        item: entry.item,
+        kindLabel: t('timeline.tool'),
+        open: entry.item.status === 'failed',
+        phaseLabel,
+      });
+    }
+    return (
+      <div key={entry.key} className="repo-review-progress-error">
+        {phaseLabel ? `${phaseLabel} · ` : ''}
+        {entry.error}
+      </div>
+    );
+  };
+
+  const renderTurnGroup = (group: {
+    groupKey: string;
+    groupLabel: string;
+    phases: Set<string>;
+    entries: typeof turnEntries;
+  }) => {
+    const phaseLabels = Array.from(group.phases)
+      .map((phase) => getReviewTurnPhaseLabel(phase))
+      .filter(Boolean);
+    return (
+      <div
+        key={`group:${group.groupKey}`}
+        className="repo-review-progress-turn-group"
+      >
+        <div className="repo-review-progress-turn-group-header">
+          <div className="repo-review-progress-turn-group-title-row">
+            <span className="repo-review-progress-turn-group-title">
+              {group.groupLabel}
+            </span>
+            {phaseLabels.map((label) => (
+              <span
+                key={`${group.groupKey}:${label}`}
+                className="repo-review-progress-turn-tag"
+              >
+                {label}
+              </span>
+            ))}
+          </div>
+          <span className="repo-review-progress-turn-group-meta">
+            {group.entries.length}
+          </span>
+        </div>
+        <div className="repo-review-progress-turn-group-body">
+          {group.entries.map((entry) => renderTimelineEntry(entry))}
+        </div>
+      </div>
+    );
+  };
+
+  const usedGroupKeys = new Set<string>();
+  const remainingGroups = Array.from(turnGroups.values()).sort((left, right) =>
+    left.timestamp === right.timestamp
+      ? left.groupKey.localeCompare(right.groupKey)
+      : left.timestamp.localeCompare(right.timestamp),
+  );
+
+  return (
+    <div className="repo-review-progress-timeline">
+      {stepEntries.map((entry) => {
+        const matchingGroup = turnGroups.get(entry.groupKey);
+        if (matchingGroup) {
+          usedGroupKeys.add(entry.groupKey);
         }
         return (
-          <div key={entry.key} className="repo-review-progress-error">
-            {entry.error}
+          <div key={`step-group:${entry.key}`} className="repo-review-progress-step-group">
+            {renderToolCallNode({
+              key: entry.key,
+              item: buildProgressStepToolCallItem(entry.item),
+              kindLabel: getProgressStepKindLabel(entry.item),
+              open: entry.item.status === 'failed',
+            })}
+            {matchingGroup ? renderTurnGroup(matchingGroup) : null}
           </div>
         );
       })}
+      {remainingGroups
+        .filter((group) => !usedGroupKeys.has(group.groupKey))
+        .map((group) => renderTurnGroup(group))}
     </div>
   );
 }
