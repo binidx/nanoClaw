@@ -83,6 +83,9 @@ describe('codex-mcp-tools', () => {
       expect(servers.docs).toEqual({
         command: 'node',
         args: ['docs.js'],
+        transport: 'stdio',
+        url: undefined,
+        cwd: undefined,
         env: undefined,
       });
     });
