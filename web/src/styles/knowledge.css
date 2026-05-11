@@ -1,3 +1,13 @@
+.knowledge-page {
+  width: 100%;
+  max-width: 1360px;
+  margin: 0 auto;
+}
+
+.knowledge-page .page-header {
+  align-items: flex-start;
+}
+
 .knowledge-page-body {
   display: flex;
   flex-direction: column;
@@ -9,6 +19,55 @@
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+.knowledge-page .page-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.knowledge-hero-stats {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.knowledge-hero-chip {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 96px;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.94),
+    rgba(247, 250, 255, 0.88)
+  );
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.92),
+    0 10px 22px rgba(80, 101, 150, 0.06);
+}
+
+.knowledge-hero-chip span {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.knowledge-hero-chip strong {
+  font-size: 18px;
+  line-height: 1.2;
+  color: var(--text-primary);
+}
+
+.knowledge-page .btn-primary,
+.knowledge-page .btn-outline,
+.knowledge-page .btn-danger {
+  border-radius: 14px;
 }
 
 /* ── Inline messages ── */
@@ -62,7 +121,17 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
-  padding-bottom: 14px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 22px;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.94),
+    rgba(248, 251, 255, 0.9)
+  );
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.92),
+    0 12px 28px rgba(80, 101, 150, 0.08);
 }
 
 .knowledge-search-shell {
@@ -73,18 +142,30 @@
 
 .knowledge-search-filter-input {
   width: 100%;
-  padding: 8px 36px 8px 12px;
+  padding: 10px 36px 10px 14px;
   border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--surface-card);
+  border-radius: 999px;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.94),
+    rgba(247, 250, 255, 0.86)
+  );
   color: var(--text-primary);
   font-size: 13px;
   outline: none;
-  transition: border-color 0.15s;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.92),
+    0 8px 18px rgba(80, 101, 150, 0.06);
 }
 
 .knowledge-search-filter-input:focus {
   border-color: var(--accent);
+  box-shadow:
+    0 0 0 4px rgba(var(--accent-rgb), 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.94);
 }
 
 .knowledge-search-icon,
@@ -135,27 +216,38 @@
 .knowledge-category-chip {
   display: inline-flex;
   align-items: center;
-  padding: 3px 10px;
-  border-radius: var(--radius-lg);
+  padding: 7px 12px;
+  border-radius: 999px;
   font-size: 12px;
   font-weight: 500;
   cursor: pointer;
   border: 1px solid var(--border);
-  background: var(--surface-card);
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.92),
+    rgba(247, 250, 255, 0.84)
+  );
   color: var(--text-secondary);
-  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  transition:
+    background 0.15s,
+    color 0.15s,
+    border-color 0.15s,
+    box-shadow 0.15s;
   user-select: none;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.92),
+    0 8px 16px rgba(80, 101, 150, 0.04);
 }
 
 .knowledge-category-chip:hover {
-  border-color: var(--accent);
+  border-color: rgba(var(--accent-rgb), 0.22);
   color: var(--accent);
 }
 
 .knowledge-category-chip.active {
-  background: var(--accent);
-  color: #fff;
-  border-color: var(--accent);
+  background: rgba(var(--accent-rgb), 0.12);
+  color: var(--accent);
+  border-color: rgba(var(--accent-rgb), 0.22);
 }
 
 /* ── Status chip ── */
@@ -193,24 +285,41 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
-  padding: 14px 16px;
+  padding: 16px 18px;
   border: 1px solid var(--border);
-  border-radius: var(--radius-xl);
-  background: var(--surface-card-strong);
-  box-shadow: var(--shadow-sm);
+  border-radius: 22px;
+  background:
+    radial-gradient(
+      circle at top right,
+      rgba(var(--accent-rgb), 0.08),
+      transparent 34%
+    ),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(248, 251, 255, 0.9));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.92),
+    0 12px 28px rgba(80, 101, 150, 0.08);
   cursor: pointer;
   text-align: left;
-  transition: border-color 0.18s ease, transform 0.18s ease, box-shadow 0.18s ease, opacity 0.18s ease;
+  transition:
+    border-color 0.18s ease,
+    transform 0.18s ease,
+    box-shadow 0.18s ease,
+    opacity 0.18s ease;
 }
 
 .knowledge-base-card:hover {
-  border-color: rgba(79, 70, 229, 0.24);
+  border-color: rgba(var(--accent-rgb), 0.24);
   transform: translateY(-1px);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.94),
+    0 16px 32px rgba(80, 101, 150, 0.12);
 }
 
 .knowledge-base-card.active {
-  border-color: rgba(79, 70, 229, 0.32);
-  box-shadow: 0 8px 24px rgba(79, 70, 229, 0.12), inset 0 0 0 1px rgba(79, 70, 229, 0.08);
+  border-color: rgba(var(--accent-rgb), 0.3);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.94),
+    0 16px 32px rgba(var(--accent-rgb), 0.12);
 }
 
 .knowledge-base-card.is-disabled {
@@ -275,9 +384,16 @@
   justify-content: space-between;
   gap: 16px;
   padding: 16px;
-  border-radius: var(--radius-xl);
+  border-radius: 22px;
   border: 1px solid var(--border);
-  background: var(--surface-card-strong);
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.96),
+    rgba(248, 251, 255, 0.9)
+  );
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.92),
+    0 12px 28px rgba(80, 101, 150, 0.08);
 }
 
 .knowledge-overview-copy h3 {
@@ -304,9 +420,13 @@
   flex-direction: column;
   gap: 2px;
   padding: 10px 14px;
-  border-radius: var(--radius-lg);
+  border-radius: 18px;
   border: 1px solid var(--border);
-  background: var(--surface-card);
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.92),
+    rgba(247, 250, 255, 0.84)
+  );
 }
 
 .knowledge-overview-stat strong {
@@ -382,7 +502,10 @@
   color: var(--text-secondary);
   font-size: 13px;
   cursor: pointer;
-  transition: border-color 0.15s, background 0.15s, color 0.15s;
+  transition:
+    border-color 0.15s,
+    background 0.15s,
+    color 0.15s;
   max-width: 260px;
   min-width: 0;
   flex: 1 1 auto;
@@ -463,9 +586,16 @@
   justify-content: space-between;
   gap: 12px;
   padding: 12px 14px;
-  border-radius: var(--radius-xl);
+  border-radius: 20px;
   border: 1px solid var(--border);
-  background: var(--surface-card);
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.94),
+    rgba(248, 251, 255, 0.88)
+  );
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.92),
+    0 10px 22px rgba(80, 101, 150, 0.06);
 }
 
 .knowledge-document-main {
@@ -575,7 +705,7 @@
   font-size: 10px;
   font-weight: 600;
   border: 1px solid var(--border);
-  background: var(--surface-subtle);
+  background: rgba(var(--accent-rgb), 0.08);
   color: var(--text-secondary);
 }
 
@@ -703,7 +833,11 @@
   padding: 14px;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  background: linear-gradient(180deg, color-mix(in srgb, var(--surface-card) 92%, #0f766e 8%), var(--surface-card));
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--surface-card) 92%, #0f766e 8%),
+    var(--surface-card)
+  );
 }
 
 .knowledge-processing-head {
@@ -872,7 +1006,10 @@
 
 .knowledge-graph-filter-row {
   display: grid;
-  grid-template-columns: minmax(110px, 0.8fr) minmax(110px, 0.7fr) minmax(180px, 1.6fr);
+  grid-template-columns: minmax(110px, 0.8fr) minmax(110px, 0.7fr) minmax(
+      180px,
+      1.6fr
+    );
   gap: 8px;
 }
 
@@ -1215,7 +1352,9 @@
 }
 
 .knowledge-wiki-content.markdown-body code {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono',
+    'Courier New', monospace;
   font-size: 0.92em;
   padding: 0.1em 0.35em;
   border-radius: 4px;
@@ -1277,7 +1416,9 @@
 }
 
 .knowledge-wiki-edit-area textarea {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono',
+    'Courier New', monospace;
   font-size: 12px;
   line-height: 1.55;
   resize: vertical;
@@ -1553,7 +1694,9 @@
   }
 
   50% {
-    box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.45), 0 4px 18px rgba(79, 70, 229, 0.18);
+    box-shadow:
+      0 0 0 2px rgba(79, 70, 229, 0.45),
+      0 4px 18px rgba(79, 70, 229, 0.18);
   }
 }
 
@@ -1593,6 +1736,33 @@
   border-color: var(--border);
   background: rgba(15, 23, 42, 0.72);
   color: var(--text-secondary);
+}
+
+[data-theme='dark'] .knowledge-card-list-toolbar,
+[data-theme='dark'] .knowledge-base-card,
+[data-theme='dark'] .knowledge-overview-hero,
+[data-theme='dark'] .knowledge-overview-stat,
+[data-theme='dark'] .knowledge-document-row,
+[data-theme='dark'] .knowledge-hero-chip {
+  background: linear-gradient(
+    180deg,
+    rgba(15, 23, 42, 0.96) 0%,
+    rgba(17, 24, 39, 0.92) 100%
+  );
+  border-color: var(--border);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    0 12px 28px rgba(2, 6, 23, 0.24);
+}
+
+[data-theme='dark'] .knowledge-search-filter-input,
+[data-theme='dark'] .knowledge-category-chip {
+  background: linear-gradient(
+    180deg,
+    rgba(15, 23, 42, 0.96) 0%,
+    rgba(17, 24, 39, 0.92) 100%
+  );
+  border-color: var(--border);
 }
 
 [data-theme='dark'] .knowledge-base-card,
@@ -1679,6 +1849,15 @@
 @media (max-width: 768px) {
   .knowledge-page-actions {
     width: 100%;
+  }
+
+  .knowledge-hero-stats {
+    width: 100%;
+  }
+
+  .knowledge-hero-chip {
+    flex: 1 1 calc(50% - 4px);
+    min-width: 0;
   }
 
   .knowledge-base-grid {

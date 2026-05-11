@@ -3,29 +3,55 @@
   height: 100%;
   background:
     radial-gradient(circle at 8% 8%, rgba(99, 102, 241, 0.14), transparent 22%),
-    radial-gradient(circle at 90% 12%, rgba(56, 189, 248, 0.12), transparent 18%),
-    radial-gradient(circle at 82% 78%, rgba(16, 185, 129, 0.08), transparent 20%),
+    radial-gradient(
+      circle at 90% 12%,
+      rgba(56, 189, 248, 0.12),
+      transparent 18%
+    ),
+    radial-gradient(
+      circle at 82% 78%,
+      rgba(16, 185, 129, 0.08),
+      transparent 20%
+    ),
     var(--main-bg);
 }
 
 [data-theme='dark'] .workflow-page {
   background:
     radial-gradient(circle at 8% 8%, rgba(99, 102, 241, 0.18), transparent 20%),
-    radial-gradient(circle at 90% 12%, rgba(56, 189, 248, 0.12), transparent 16%),
-    radial-gradient(circle at 82% 78%, rgba(16, 185, 129, 0.08), transparent 18%),
+    radial-gradient(
+      circle at 90% 12%,
+      rgba(56, 189, 248, 0.12),
+      transparent 16%
+    ),
+    radial-gradient(
+      circle at 82% 78%,
+      rgba(16, 185, 129, 0.08),
+      transparent 18%
+    ),
     var(--main-bg);
 }
 
 .workflow-body {
   height: 100%;
-  padding: 4px 24px 24px;
+  padding: 18px 16px 20px;
 }
 
 .workflow-page .page-header {
-  padding: 28px 24px 18px;
-  background: transparent;
-  border-bottom: none;
+  margin: 16px 16px 0;
+  padding: 20px 22px 18px;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.9),
+    rgba(247, 250, 255, 0.84)
+  );
+  border: 1px solid var(--border);
+  border-radius: 28px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.92),
+    0 12px 28px rgba(80, 101, 150, 0.08);
   align-items: flex-start;
+  backdrop-filter: blur(18px);
 }
 
 .workflow-page .page-header-copy {
@@ -59,11 +85,15 @@
   gap: 10px;
   padding: 6px;
   border-radius: 18px;
-  border: 1px solid rgba(226, 232, 240, 0.86);
-  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid var(--border);
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.92),
+    rgba(247, 250, 255, 0.84)
+  );
   box-shadow:
-    0 12px 28px rgba(15, 23, 42, 0.07),
-    inset 0 1px 0 rgba(255, 255, 255, 0.82);
+    inset 0 1px 0 rgba(255, 255, 255, 0.92),
+    0 10px 22px rgba(80, 101, 150, 0.06);
   backdrop-filter: blur(18px);
 }
 
@@ -109,7 +139,9 @@
   border-radius: 18px;
   padding: 12px 16px;
   border: 1px solid var(--border);
-  box-shadow: var(--shadow-xs);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 10px 22px rgba(80, 101, 150, 0.06);
   backdrop-filter: blur(16px);
 }
 
@@ -139,11 +171,15 @@
 .workteam-section {
   border: 1px solid rgba(226, 232, 240, 0.92);
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0.72)),
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.96),
+      rgba(248, 251, 255, 0.84)
+    ),
     var(--surface-panel);
   box-shadow:
-    0 18px 48px rgba(15, 23, 42, 0.08),
-    inset 0 1px 0 rgba(255, 255, 255, 0.72);
+    0 18px 48px rgba(80, 101, 150, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.84);
   border-radius: 30px;
   backdrop-filter: blur(20px);
 }
@@ -170,8 +206,12 @@
 .workflow-sidebar-section {
   padding: 14px;
   border-radius: 24px;
-  background: rgba(248, 250, 252, 0.62);
-  border: 1px solid rgba(226, 232, 240, 0.72);
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.9),
+    rgba(247, 250, 255, 0.82)
+  );
+  border: 1px solid var(--border);
 }
 
 [data-theme='dark'] .workflow-sidebar-section {
@@ -262,7 +302,11 @@
   border: 1px solid rgba(226, 232, 240, 0.9);
   padding: 14px 14px 13px;
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.9)),
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.98),
+      rgba(248, 250, 252, 0.9)
+    ),
     var(--surface-card);
   color: var(--text-primary);
   box-shadow: 0 10px 24px rgba(15, 23, 42, 0.04);
@@ -282,13 +326,21 @@
 
 .workflow-template-card.task {
   background:
-    linear-gradient(180deg, rgba(240, 253, 250, 0.95), rgba(255, 255, 255, 0.92)),
+    linear-gradient(
+      180deg,
+      rgba(240, 253, 250, 0.95),
+      rgba(255, 255, 255, 0.92)
+    ),
     var(--surface-card);
 }
 
 .workflow-template-card.graph {
   background:
-    linear-gradient(180deg, rgba(239, 246, 255, 0.95), rgba(255, 255, 255, 0.92)),
+    linear-gradient(
+      180deg,
+      rgba(239, 246, 255, 0.95),
+      rgba(255, 255, 255, 0.92)
+    ),
     var(--surface-card);
 }
 
@@ -369,11 +421,11 @@
   border-radius: 28px;
   background:
     linear-gradient(135deg, rgba(79, 70, 229, 0.08), rgba(56, 189, 248, 0.04)),
-    rgba(255, 255, 255, 0.86);
-  border: 1px solid rgba(226, 232, 240, 0.88);
+    rgba(255, 255, 255, 0.92);
+  border: 1px solid var(--border);
   box-shadow:
-    0 16px 34px rgba(15, 23, 42, 0.06),
-    inset 0 1px 0 rgba(255, 255, 255, 0.7);
+    0 16px 34px rgba(80, 101, 150, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.8);
 }
 
 [data-theme='dark'] .workflow-toolbar {
@@ -444,6 +496,16 @@
   min-height: clamp(560px, 66vh, 920px);
   display: flex;
   flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: 28px;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.94),
+    rgba(248, 251, 255, 0.88)
+  );
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.92),
+    0 16px 34px rgba(80, 101, 150, 0.08);
 }
 
 .workflow-canvas-toolbar {
@@ -464,18 +526,43 @@
   background:
     linear-gradient(rgba(148, 163, 184, 0.1) 1px, transparent 1px),
     linear-gradient(90deg, rgba(148, 163, 184, 0.1) 1px, transparent 1px),
-    radial-gradient(circle at 30% 30%, rgba(79, 70, 229, 0.08), transparent 24%),
-    radial-gradient(circle at 70% 70%, rgba(56, 189, 248, 0.08), transparent 24%),
-    linear-gradient(135deg, rgba(255, 255, 255, 0.72), rgba(248, 250, 252, 0.92));
-  background-size: 28px 28px, 28px 28px, auto, auto, auto;
+    radial-gradient(
+      circle at 30% 30%,
+      rgba(79, 70, 229, 0.08),
+      transparent 24%
+    ),
+    radial-gradient(
+      circle at 70% 70%,
+      rgba(56, 189, 248, 0.08),
+      transparent 24%
+    ),
+    linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.78),
+      rgba(248, 250, 252, 0.94)
+    );
+  background-size:
+    28px 28px,
+    28px 28px,
+    auto,
+    auto,
+    auto;
 }
 
 [data-theme='dark'] .workflow-canvas {
   background:
     linear-gradient(rgba(71, 85, 105, 0.16) 1px, transparent 1px),
     linear-gradient(90deg, rgba(71, 85, 105, 0.16) 1px, transparent 1px),
-    radial-gradient(circle at 30% 30%, rgba(99, 102, 241, 0.12), transparent 24%),
-    radial-gradient(circle at 70% 70%, rgba(56, 189, 248, 0.1), transparent 24%),
+    radial-gradient(
+      circle at 30% 30%,
+      rgba(99, 102, 241, 0.12),
+      transparent 24%
+    ),
+    radial-gradient(
+      circle at 70% 70%,
+      rgba(56, 189, 248, 0.1),
+      transparent 24%
+    ),
     linear-gradient(135deg, rgba(15, 23, 42, 0.76), rgba(15, 23, 42, 0.94));
 }
 
@@ -515,9 +602,18 @@
   border: 1.5px solid;
   border-radius: 20px;
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(255, 255, 255, 0.82));
+    radial-gradient(
+      circle at top right,
+      rgba(var(--accent-rgb), 0.08),
+      transparent 32%
+    ),
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.98),
+      rgba(255, 255, 255, 0.84)
+    );
   box-shadow:
-    0 18px 34px rgba(15, 23, 42, 0.12),
+    0 18px 34px rgba(80, 101, 150, 0.12),
     inset 0 1px 0 rgba(255, 255, 255, 0.86);
   padding: 10px;
   text-align: left;
@@ -535,8 +631,11 @@
 
 [data-theme='dark'] .workflow-node {
   color: #e5eefc;
-  background:
-    linear-gradient(180deg, rgba(30, 41, 59, 0.96), rgba(15, 23, 42, 0.82));
+  background: linear-gradient(
+    180deg,
+    rgba(30, 41, 59, 0.96),
+    rgba(15, 23, 42, 0.82)
+  );
   box-shadow:
     0 18px 34px rgba(2, 6, 23, 0.32),
     inset 0 1px 0 rgba(148, 163, 184, 0.16);
@@ -619,6 +718,16 @@
 .workflow-run-panel {
   padding: 16px;
   min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 26px;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.94),
+    rgba(248, 251, 255, 0.88)
+  );
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.92),
+    0 12px 28px rgba(80, 101, 150, 0.08);
 }
 
 .workflow-detail-grid > .workflow-run-panel {
@@ -630,6 +739,16 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.94),
+    rgba(248, 251, 255, 0.88)
+  );
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.92),
+    0 12px 28px rgba(80, 101, 150, 0.08);
 }
 
 .workteam-section h3 {
@@ -657,9 +776,15 @@
   gap: 10px;
   padding: 12px 14px;
   border-radius: 18px;
-  border: 1px solid rgba(226, 232, 240, 0.86);
-  background: rgba(255, 255, 255, 0.78);
-  box-shadow: 0 10px 22px rgba(15, 23, 42, 0.04);
+  border: 1px solid var(--border);
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.92),
+    rgba(247, 250, 255, 0.84)
+  );
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.92),
+    0 10px 22px rgba(80, 101, 150, 0.06);
 }
 
 [data-theme='dark'] .assistant-validation-item {
@@ -712,6 +837,25 @@
   color: var(--error-text, #dc2626);
   padding: 10px 12px;
   font-size: 12px;
+}
+
+[data-theme='dark'] .workflow-page .page-header,
+[data-theme='dark'] .workflow-shell,
+[data-theme='dark'] .workflow-sidebar-section,
+[data-theme='dark'] .workflow-toolbar,
+[data-theme='dark'] .workflow-canvas-panel,
+[data-theme='dark'] .workflow-inspector,
+[data-theme='dark'] .workflow-run-panel,
+[data-theme='dark'] .workteam-section {
+  background: linear-gradient(
+    180deg,
+    rgba(15, 23, 42, 0.96),
+    rgba(17, 24, 39, 0.92)
+  );
+  border-color: var(--border);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    0 12px 28px rgba(2, 6, 23, 0.24);
 }
 
 .workflow-inspector-body label {
@@ -781,7 +925,11 @@
   border-radius: 18px;
   padding: 12px 14px;
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(248, 250, 252, 0.88)),
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.96),
+      rgba(248, 250, 252, 0.88)
+    ),
     var(--surface-card);
   display: flex;
   flex-direction: column;
@@ -1199,7 +1347,11 @@
   border-radius: 24px;
   border: 1px solid rgba(226, 232, 240, 0.9);
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0.68)),
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.9),
+      rgba(255, 255, 255, 0.68)
+    ),
     var(--surface-panel);
   box-shadow:
     0 18px 42px rgba(15, 23, 42, 0.08),
@@ -1245,7 +1397,11 @@
   border: 1px solid rgba(226, 232, 240, 0.88);
   border-radius: 24px;
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(248, 250, 252, 0.9)),
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.96),
+      rgba(248, 250, 252, 0.9)
+    ),
     var(--surface-card);
   box-shadow: 0 14px 32px rgba(15, 23, 42, 0.06);
   padding: 18px;
@@ -1434,11 +1590,12 @@ button {
 
 @media (max-width: 900px) {
   .workflow-page .page-header {
-    padding-inline: 16px;
+    margin: 12px 12px 0;
+    padding: 18px 18px 16px;
   }
 
   .workflow-body {
-    padding-inline: 12px;
+    padding: 14px 12px 16px;
   }
 
   .workflow-sidebar {
