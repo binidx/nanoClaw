@@ -49,11 +49,13 @@ import {
   IconChat,
   IconCheck,
   IconCheckSquare,
+  IconCopy,
   IconDownload,
   IconFolder,
   IconPin,
   IconSend,
   IconShare,
+  IconRefresh,
   IconSidebarToggle,
   IconStop,
   IconChevronDown,
@@ -322,12 +324,27 @@ function isOptimisticThinkingId(itemId: string) {
   return itemId.includes(':optimistic-thinking');
 }
 
+async function copyTextToClipboard(text: string): Promise<void> {
+  if (navigator.clipboard && window.isSecureContext) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+
+  const textarea = document.createElement('textarea');
+  textarea.value = text;
+  textarea.style.position = 'fixed';
+  textarea.style.opacity = '0';
+  document.body.appendChild(textarea);
+  textarea.select();
+  document.execCommand('copy');
+  document.body.removeChild(textarea);
+}
+
 // getStatusLabel moved inside ChatPage to access t()
 
 function ThinkingLoader() {
-  const { t } = useTranslation('chat');
   return (
-    <span className="thinking-loader" aria-label={t('status.processing')}>
+    <span className="thinking-loader" aria-label="处理中">
       <span />
       <span />
       <span />
@@ -342,27 +359,11 @@ interface InlineAssistantLoadingProps {
 }
 
 function InlineAssistantLoading({
-  onInterrupt,
-  interruptTitle = 'Stop current reply',
-  interrupting = false,
 }: InlineAssistantLoadingProps) {
-  const { t } = useTranslation('chat');
   return (
-    <div className="assistant-inline-loading" aria-label={t('status.processing')}>
-      <span className="assistant-inline-loading-label">{t('status.processing')}</span>
+    <div className="assistant-inline-loading" aria-label="处理中">
+      <span className="assistant-inline-loading-label">处理中</span>
       <ThinkingLoader />
-      {onInterrupt ? (
-        <button
-          type="button"
-          className="assistant-inline-loading-action"
-          onClick={() => void onInterrupt()}
-          title={interruptTitle}
-          aria-label={interruptTitle}
-          disabled={interrupting}
-        >
-          <IconStop />
-        </button>
-      ) : null}
     </div>
   );
 }
@@ -693,11 +694,21 @@ export function ChatPage({
   const prevFirstKeyRef = useRef<string | null>(null);
   const wasLoadingOlderRef = useRef(false);
   const atBottomRef = useRef(true);
+  const [copiedAssistantEntryKey, setCopiedAssistantEntryKey] = useState<string | null>(null);
+  const copiedAssistantEntryTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     setFirstItemIndex(VIRTUAL_START);
     prevFirstKeyRef.current = null;
   }, [activeJid]);
+
+  useEffect(() => {
+    return () => {
+      if (copiedAssistantEntryTimerRef.current !== null) {
+        window.clearTimeout(copiedAssistantEntryTimerRef.current);
+      }
+    };
+  }, []);
 
   const visibleTimelineItems = useMemo(
     () =>
@@ -775,6 +786,41 @@ export function ChatPage({
   const latestRegeneratableTurnId = useMemo(
     () => getLatestRegeneratableAssistantTurnId(timelineEntries),
     [timelineEntries],
+  );
+  const latestRetryableAssistantEntryKey = useMemo(() => {
+    for (let index = timelineEntries.length - 1; index >= 0; index -= 1) {
+      const entry = timelineEntries[index];
+      if (
+        entry.kind === 'assistant_message' &&
+        entry.status === 'completed' &&
+        entry.turnId &&
+        entry.turnId === latestRegeneratableTurnId &&
+        entry.text.trim()
+      ) {
+        return entry.key;
+      }
+    }
+    return null;
+  }, [latestRegeneratableTurnId, timelineEntries]);
+  const handleCopyAssistantMessage = useCallback(
+    async (entryKey: string, markdown: string) => {
+      const rawMarkdown = markdown.trim();
+      if (!rawMarkdown) return;
+      try {
+        await copyTextToClipboard(markdown);
+        setCopiedAssistantEntryKey(entryKey);
+        if (copiedAssistantEntryTimerRef.current !== null) {
+          window.clearTimeout(copiedAssistantEntryTimerRef.current);
+        }
+        copiedAssistantEntryTimerRef.current = window.setTimeout(() => {
+          setCopiedAssistantEntryKey(null);
+          copiedAssistantEntryTimerRef.current = null;
+        }, 1500);
+      } catch {
+        /* ignore clipboard failures */
+      }
+    },
+    [],
   );
   const currentAccessPolicy = conversationAccess?.policy;
   const accessPolicyLayers = conversationAccess?.policyLayers;
@@ -1285,13 +1331,6 @@ export function ChatPage({
                     <span className="assistant-turn-node-line" />
                   </div>
                   <div className="assistant-turn-node-main">
-                    {entry.status === 'in_progress' && !entry.text.trim() ? (
-                      <InlineAssistantLoading
-                        onInterrupt={handleInterruptReply}
-                        interruptTitle={interruptButtonTitle}
-                        interrupting={interruptingReply}
-                      />
-                    ) : (
                       <div
                         className={`assistant-turn-card assistant-response-card assistant-entry-card turn-item turn-item-response status-${entry.status}`}
                       >
@@ -1310,83 +1349,95 @@ export function ChatPage({
                                   ? t('chat.生成回复中')
                                   : t('assistant.aiReply')}
                               </span>
-                              <span
-                                className={`turn-item-status ${entry.status}`}
-                              >
+                              <span className={`turn-item-status ${entry.status}`}>
                                 {getStatusLabel(entry.status)}
                               </span>
                             </div>
                           </div>
-                          {entry.status === 'completed' &&
-                          entry.turnId &&
-                          latestRegeneratableTurnId === entry.turnId ? (
-                            <button
-                              type="button"
-                              className="assistant-response-interrupt assistant-response-retry"
-                              onClick={() => void regenerateReply(entry.turnId!)}
-                              title={regenerateButtonTitle}
-                              aria-label={regenerateButtonTitle}
-                              disabled={assistantBusy || regeneratingReply}
-                            >
-                              {t('assistant.retry')}
-                            </button>
-                          ) : null}
-                          {entry.status === 'in_progress' ? (
-                            <button
-                              type="button"
-                              className="assistant-response-interrupt"
-                              onClick={handleInterruptReply}
-                              title={interruptButtonTitle}
-                              aria-label={interruptButtonTitle}
-                              disabled={interruptingReply}
-                            >
-                              <IconStop />
-                            </button>
-                          ) : null}
                         </div>
                         <div className="turn-item-body turn-item-body-response">
-                          <MarkdownContent
-                            className="msg-text markdown assistant-turn-text"
-                            content={getDisplayContent(
-                              entry.text,
-                              true,
-                              activeConv?.channel,
-                              mentionCandidates,
-                            )}
-                          />
-                          {entry.status === 'completed' &&
-                          entry.text.trim() ? (
-                            <div className="msg-memory-actions">
-                              <button
-                                type="button"
-                                className="msg-memory-action-btn subtle"
-                                onClick={() =>
-                                  void shareConversationItems([entry.key], {
-                                    clearSelection: false,
-                                  })
-                                }
-                              >
-                                {t('chat.12500f')}
-                              </button>
-                              <button
-                                type="button"
-                                className="msg-memory-action-btn subtle"
-                                onClick={() =>
-                                  void exportConversationItemsAsMarkdown(
-                                    [entry.key],
-                                    {
+                          {entry.status === 'in_progress' && !entry.text.trim() ? (
+                            <InlineAssistantLoading />
+                          ) : (
+                            <MarkdownContent
+                              className="msg-text markdown assistant-turn-text"
+                              content={getDisplayContent(
+                                entry.text,
+                                true,
+                                activeConv?.channel,
+                                mentionCandidates,
+                              )}
+                            />
+                          )}
+                          {entry.status === 'completed' && entry.text.trim() ? (
+                            <div className="msg-memory-actions assistant-response-actions">
+                              {latestRetryableAssistantEntryKey === entry.key ? (
+                                <button
+                                  type="button"
+                                  className="msg-memory-action-btn subtle icon-only assistant-response-retry-inline"
+                                  onClick={() =>
+                                    void regenerateReply(entry.turnId!)
+                                  }
+                                  title={regenerateButtonTitle}
+                                  aria-label={regenerateButtonTitle}
+                                  disabled={assistantBusy || regeneratingReply}
+                                >
+                                  <IconRefresh />
+                                </button>
+                              ) : null}
+                              <div className="assistant-response-actions-trailing">
+                                <button
+                                  type="button"
+                                  className={`msg-memory-action-btn subtle icon-only${copiedAssistantEntryKey === entry.key ? ' copied' : ''}`}
+                                  onClick={() =>
+                                    void handleCopyAssistantMessage(
+                                      entry.key,
+                                      entry.text,
+                                    )
+                                  }
+                                  title={t('actions.copy')}
+                                  aria-label={t('actions.copy')}
+                                >
+                                  {copiedAssistantEntryKey === entry.key ? (
+                                    <IconCheck />
+                                  ) : (
+                                    <IconCopy />
+                                  )}
+                                </button>
+                                <button
+                                  type="button"
+                                  className="msg-memory-action-btn subtle icon-only"
+                                  onClick={() =>
+                                    void shareConversationItems([entry.key], {
                                       clearSelection: false,
-                                    },
-                                  )
-                                }
-                              >
-                                {t('chat.c75dd2')}
-                              </button>
+                                    })
+                                  }
+                                  title={t('chat.12500f')}
+                                  aria-label={t('chat.12500f')}
+                                >
+                                  <IconShare />
+                                </button>
+                                <button
+                                  type="button"
+                                  className="msg-memory-action-btn subtle icon-only"
+                                  onClick={() =>
+                                    void exportConversationItemsAsMarkdown(
+                                      [entry.key],
+                                      {
+                                        clearSelection: false,
+                                      },
+                                    )
+                                  }
+                                  title={t('chat.c75dd2')}
+                                  aria-label={t('chat.c75dd2')}
+                                >
+                                  <IconDownload />
+                                </button>
+                              </div>
                             </div>
                           ) : null}
                         </div>
                       </div>
-                    )}
                   </div>
                 </div>
               )}
@@ -1605,14 +1656,24 @@ export function ChatPage({
     },
     [
       activeConv?.channel,
+      assistantBusy,
       formatTime,
       getDisplayContent,
+      copiedAssistantEntryKey,
+      exportConversationItemsAsMarkdown,
       handleInterruptReply,
+      handleCopyAssistantMessage,
       interruptButtonTitle,
       interruptingReply,
       mentionCandidates,
       messageMemoryActionStateByMessageId,
       onMessageMemoryAction,
+      latestRegeneratableTurnId,
+      latestRetryableAssistantEntryKey,
+      regenerateButtonTitle,
+      regenerateReply,
+      regeneratingReply,
+      shareConversationItems,
       timelineEntries,
       toggleConversationItemSelection,
       truncatePreview,
@@ -1658,11 +1719,32 @@ export function ChatPage({
                       <span className="assistant-turn-node-line" />
                     </div>
                     <div className="assistant-turn-node-main">
-                      <InlineAssistantLoading
-                        onInterrupt={handleInterruptReply}
-                        interruptTitle={interruptButtonTitle}
-                        interrupting={interruptingReply}
-                      />
+                      <div
+                        className="assistant-turn-card assistant-response-card assistant-entry-card turn-item turn-item-response status-in_progress"
+                      >
+                        <div className="turn-item-header assistant-response-card-header">
+                          <span
+                            className="turn-item-summary-icon response"
+                            aria-hidden="true"
+                          />
+                          <div className="turn-item-summary-main">
+                            <div className="turn-item-summary-top">
+                              <span className="turn-item-kind response">
+                                {t('assistant.reply')}
+                              </span>
+                              <span className="turn-item-title">
+                                {t('chat.生成回复中')}
+                              </span>
+                              <span className="turn-item-status in_progress">
+                                {getStatusLabel('in_progress')}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="turn-item-body turn-item-body-response">
+                          <InlineAssistantLoading />
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>

@@ -115,12 +115,29 @@ export interface RenderMarkdownOptions {
 }
 
 const INLINE_PATTERN =
-  /(\[[^\]]+\]\([^)\s]+(?:\s+"[^"]*")?\)|`[^`]+`|\*\*[\s\S]+?\*\*|__[\s\S]+?__|~~[\s\S]+?~~|\*[^*\n]+\*|_[^_\n]+_)/g;
+  /(!\[[^\]]*\]\([^)\s]+(?:\s+"[^"]*")?\)|\[[^\]]+\]\([^)\s]+(?:\s+"[^"]*")?\)|`[^`]+`|\*\*[\s\S]+?\*\*|__[\s\S]+?__|~~[\s\S]+?~~|\*[^*\n]+\*|_[^_\n]+_)/g;
 
 function safeHref(href: string): string | null {
   if (/^(https?:\/\/|mailto:|tel:)/i.test(href)) return href;
   if (href.startsWith('/') && !href.startsWith('//')) return href;
   return null;
+}
+
+function parseInlineLinkToken(
+  token: string,
+): { label: string; href: string; isImage: boolean } | null {
+  const isImage = token.startsWith('!');
+  const match = token.match(
+    isImage
+      ? /^!\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)$/
+      : /^\[([^\]]+)\]\(([^)\s]+)(?:\s+"[^"]*")?\)$/,
+  );
+  if (!match) return null;
+  return {
+    label: match[1] || '',
+    href: match[2] || '',
+    isImage,
+  };
 }
 
 function renderInline(text: string, keyPrefix: string): ReactNode[] {
@@ -153,26 +170,42 @@ function renderInline(text: string, keyPrefix: string): ReactNode[] {
       nodes.push(<em key={`${keyPrefix}-${start}`}>{token.slice(1, -1)}</em>);
     } else if (token.startsWith('_') && token.endsWith('_')) {
       nodes.push(<em key={`${keyPrefix}-${start}`}>{token.slice(1, -1)}</em>);
-    } else if (token.startsWith('[')) {
-      const linkMatch = token.match(
-        /^\[([^\]]+)\]\(([^)\s]+)(?:\s+"[^"]*")?\)$/,
-      );
-      if (linkMatch) {
-        const [, label, href] = linkMatch;
-        const safe = safeHref(href);
+    } else if (token.startsWith('[') || token.startsWith('![')) {
+      const parsed = parseInlineLinkToken(token);
+      if (parsed) {
+        const safe = safeHref(parsed.href);
         if (safe) {
-          nodes.push(
-            <a
-              key={`${keyPrefix}-${start}`}
-              href={safe}
-              target="_blank"
-              rel="noreferrer"
-            >
-              {label}
-            </a>,
-          );
+          if (parsed.isImage) {
+            nodes.push(
+              <a
+                key={`${keyPrefix}-${start}`}
+                className="md-image-link"
+                href={safe}
+                target="_blank"
+                rel="noreferrer"
+              >
+                <img
+                  className="md-inline-image"
+                  src={safe}
+                  alt={parsed.label || 'image'}
+                  loading="lazy"
+                />
+              </a>,
+            );
+          } else {
+            nodes.push(
+              <a
+                key={`${keyPrefix}-${start}`}
+                href={safe}
+                target="_blank"
+                rel="noreferrer"
+              >
+                {parsed.label}
+              </a>,
+            );
+          }
         } else {
-          nodes.push(label);
+          nodes.push(parsed.label || token);
         }
       } else {
         nodes.push(token);

@@ -249,7 +249,7 @@
 
 .assistant-response-card {
   padding: 0;
-  border-radius: var(--radius-lg);
+  border-radius: 12px;
   border-color: #e2e8f0;
   background: #ffffff;
 }

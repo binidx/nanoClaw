@@ -139,11 +139,11 @@
 
 .assistant-turn-card {
   width: 100%;
-  padding: 8px 12px;
-  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  border-radius: 12px;
   border: 1px solid rgba(226, 232, 240, 0.96);
   background: rgba(255, 255, 255, 0.96);
-  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.03);
+  box-shadow: 0 2px 10px rgba(15, 23, 42, 0.04);
 }
 
 .tool-generated-image-grid {
@@ -174,8 +174,8 @@
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 6px;
-  margin-bottom: 6px;
+  gap: 8px;
+  margin-bottom: 10px;
 }
 
 .assistant-turn-card-label {
@@ -509,6 +509,13 @@
 
 .turn-item-body-response {
   background: #fafbfc;
+}
+
+.turn-item-body-response .assistant-inline-loading {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .turn-item-section + .turn-item-section {
@@ -892,6 +899,11 @@
 [data-theme='dark'] .turn-item-preview,
 [data-theme='dark'] .turn-item-body {
   color: var(--text-secondary);
+}
+
+[data-theme='dark'] .turn-item-body-response .assistant-inline-loading {
+  background: transparent;
+  border-color: transparent;
 }
 
 [data-theme='dark'] .turn-item-summary-icon {
