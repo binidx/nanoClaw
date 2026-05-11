@@ -2,25 +2,41 @@
    Ensures bare <input>, <textarea>, <select>, <button> never show
    browser-default chrome, even when not wrapped in Nc* components. */
 
-input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="hidden"]):not(.nc-input),
+input:not([type='checkbox']):not([type='radio']):not([type='range']):not(
+    [type='file']
+  ):not([type='hidden']):not(.nc-input),
 textarea:not(.nc-input),
 select:not(.nc-select) {
   box-sizing: border-box;
-  padding: 8px 10px;
-  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  border-radius: 14px;
   border: 1px solid var(--border);
-  background: var(--surface-card);
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.9),
+    rgba(248, 251, 255, 0.84)
+  );
   color: var(--text-primary);
   font-size: 14px;
   outline: none;
-  transition: border-color 0.15s ease;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
+    background-color 0.15s ease;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.8),
+    0 1px 2px rgba(80, 101, 150, 0.04);
 }
 
-input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="hidden"]):not(.nc-input):focus,
+input:not([type='checkbox']):not([type='radio']):not([type='range']):not(
+    [type='file']
+  ):not([type='hidden']):not(.nc-input):focus,
 textarea:not(.nc-input):focus,
 select:not(.nc-select):focus {
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.08);
+  box-shadow:
+    0 0 0 4px rgba(var(--accent-rgb), 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
 }
 
 textarea:not(.nc-input) {
@@ -38,19 +54,19 @@ select:not(.nc-select) {
   cursor: pointer;
 }
 
-input[type="checkbox"],
-input[type="radio"] {
+input[type='checkbox'],
+input[type='radio'] {
   accent-color: var(--accent, #6366f1);
   width: 16px;
   height: 16px;
   cursor: pointer;
 }
 
-input[type="file"] {
+input[type='file'] {
   padding: 6px 8px;
-  border: 1px dashed var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--surface-subtle, rgba(0, 0, 0, 0.02));
+  border: 1px dashed rgba(var(--accent-rgb), 0.18);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.7);
   color: var(--text-secondary);
   font-size: 13px;
   cursor: pointer;
@@ -106,18 +122,31 @@ select:disabled {
 .nc-input {
   width: 100%;
   box-sizing: border-box;
-  padding: 8px 10px;
-  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  border-radius: 14px;
   border: 1px solid var(--border);
-  background: var(--surface-card);
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.9),
+    rgba(248, 251, 255, 0.84)
+  );
   color: var(--text-primary);
   font-size: 14px;
   outline: none;
-  transition: border-color 0.15s ease;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
+    background-color 0.15s ease;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.8),
+    0 1px 2px rgba(80, 101, 150, 0.04);
 }
 
 .nc-input:focus {
   border-color: var(--accent);
+  box-shadow:
+    0 0 0 4px rgba(var(--accent-rgb), 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
 }
 
 .nc-input.nc-input-sm {
@@ -141,10 +170,14 @@ select:disabled {
 .btn-secondary {
   min-height: var(--control-height-md);
   padding: 10px 16px;
-  background: var(--surface-card-strong);
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.94),
+    rgba(246, 250, 255, 0.9)
+  );
   color: var(--text-primary);
   border: 1px solid var(--border);
-  border-radius: var(--radius-md);
+  border-radius: 14px;
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
@@ -152,15 +185,22 @@ select:disabled {
     border-color 0.15s ease,
     background-color 0.15s ease,
     color 0.15s ease,
+    box-shadow 0.15s ease,
     opacity 0.15s ease;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.84),
+    0 8px 20px rgba(80, 101, 150, 0.06);
 }
 
 .dir-add button:not([class]):hover,
 .settings-general-panel button:not([class]):hover,
 .btn-secondary:hover {
-  border-color: rgba(79, 70, 229, 0.24);
+  border-color: rgba(var(--accent-rgb), 0.26);
   color: var(--accent);
-  background: rgba(79, 70, 229, 0.03);
+  background: rgba(var(--accent-rgb), 0.04);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 12px 24px rgba(80, 101, 150, 0.1);
 }
 
 .dir-add button:not([class]):disabled,
@@ -173,20 +213,27 @@ select:disabled {
 .btn-primary {
   min-height: var(--control-height-md);
   padding: 10px 16px;
-  background: linear-gradient(135deg, #4f46e5 0%, #6366f1 100%);
+  background: linear-gradient(135deg, #5a6dff 0%, #66a6ff 100%);
   color: #fff;
   border: none;
-  border-radius: var(--radius-md);
+  border-radius: 14px;
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
   transition:
     transform 0.18s ease,
-    opacity 0.18s ease;
+    opacity 0.18s ease,
+    box-shadow 0.18s ease;
+  box-shadow:
+    0 14px 26px rgba(90, 109, 255, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18);
 }
 
 .btn-primary:hover {
   transform: translateY(-1px);
+  box-shadow:
+    0 18px 30px rgba(90, 109, 255, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
 }
 
 .btn-primary:disabled {
@@ -198,19 +245,31 @@ select:disabled {
 .btn-outline {
   min-height: var(--control-height-md);
   padding: 10px 16px;
-  background: var(--surface-card-strong);
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.94),
+    rgba(246, 250, 255, 0.9)
+  );
   color: var(--text-primary);
   border: 1px solid var(--border);
-  border-radius: var(--radius-md);
+  border-radius: 14px;
   font-size: 13px;
   cursor: pointer;
-  transition: all 0.15s;
+  transition:
+    all 0.15s,
+    box-shadow 0.15s ease;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.84),
+    0 8px 20px rgba(80, 101, 150, 0.06);
 }
 
 .btn-outline:hover {
-  border-color: rgba(79, 70, 229, 0.24);
+  border-color: rgba(var(--accent-rgb), 0.24);
   color: var(--accent);
-  background: rgba(79, 70, 229, 0.03);
+  background: rgba(var(--accent-rgb), 0.04);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.88),
+    0 12px 24px rgba(80, 101, 150, 0.1);
 }
 
 .btn-outline:disabled {
@@ -493,20 +552,20 @@ select:disabled {
 
 @media (max-width: 640px) {
   .browser-control-inline .btn-sm {
-      width: 100%;
-    }
+    width: 100%;
+  }
 
-    .dir-add,
-    .dir-add-row,
-    .modal-actions {
-      flex-direction: column;
-    }
+  .dir-add,
+  .dir-add-row,
+  .modal-actions {
+    flex-direction: column;
+  }
 
-    .dir-add > *,
-    .dir-add-row > *,
-    .modal-actions > * {
-      width: 100%;
-    }
+  .dir-add > *,
+  .dir-add-row > *,
+  .modal-actions > * {
+    width: 100%;
+  }
 }
 
 .form-group textarea,
@@ -791,7 +850,7 @@ select:disabled {
 [data-theme='dark'] .settings-tab:hover,
 [data-theme='dark'] .btn-outline:hover,
 [data-theme='dark'] .header-btn:hover {
-  background: rgba(99, 102, 241, 0.14);
+  background: rgba(120, 138, 255, 0.14);
 }
 
 [data-theme='dark'] .app-select-trigger {
@@ -816,6 +875,37 @@ select:disabled {
 
 [data-theme='dark'] .btn-danger:hover {
   background: rgba(239, 68, 68, 0.14);
+}
+
+[data-theme='dark'] .btn-secondary,
+[data-theme='dark'] .btn-outline,
+[data-theme='dark'] .dir-add button:not([class]),
+[data-theme='dark'] .settings-general-panel button:not([class]) {
+  background: linear-gradient(
+    180deg,
+    rgba(15, 23, 42, 0.96) 0%,
+    rgba(17, 24, 39, 0.92) 100%
+  );
+  border-color: var(--border);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    0 10px 22px rgba(2, 6, 23, 0.22);
+}
+
+[data-theme='dark'] .btn-secondary:hover,
+[data-theme='dark'] .btn-outline:hover,
+[data-theme='dark'] .dir-add button:not([class]):hover,
+[data-theme='dark'] .settings-general-panel button:not([class]):hover {
+  border-color: rgba(var(--accent-rgb), 0.26);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 14px 28px rgba(2, 6, 23, 0.28);
+}
+
+[data-theme='dark'] .btn-primary {
+  box-shadow:
+    0 14px 26px rgba(31, 41, 89, 0.42),
+    inset 0 1px 0 rgba(255, 255, 255, 0.16);
 }
 
 [data-theme='dark'] .btn-warning {
@@ -844,8 +934,15 @@ select:disabled {
 
 [data-theme='dark'] .nc-input {
   border-color: var(--border);
-  background: var(--input-bg);
+  background: linear-gradient(
+    180deg,
+    rgba(15, 23, 42, 0.96) 0%,
+    rgba(17, 24, 39, 0.92) 100%
+  );
   color: var(--text-primary);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    0 1px 2px rgba(2, 6, 23, 0.2);
 }
 
 [data-theme='dark'] .nc-hint {

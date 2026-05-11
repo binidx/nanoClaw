@@ -126,12 +126,33 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 24px;
-  background: linear-gradient(
-    180deg,
-    var(--surface-subtle) 0%,
-    var(--surface-card) 100%
-  );
+  padding: 18px 16px 20px;
+  background:
+    radial-gradient(
+      circle at top left,
+      rgba(var(--accent-rgb), 0.04),
+      transparent 28%
+    ),
+    linear-gradient(
+      180deg,
+      rgba(247, 250, 255, 0.58) 0%,
+      rgba(255, 255, 255, 0.7) 100%
+    );
+  backdrop-filter: blur(12px);
+}
+
+[data-theme='dark'] .page-body {
+  background:
+    radial-gradient(
+      circle at top left,
+      rgba(120, 138, 255, 0.08),
+      transparent 28%
+    ),
+    linear-gradient(
+      180deg,
+      rgba(7, 16, 29, 0.72) 0%,
+      rgba(9, 20, 35, 0.76) 100%
+    );
 }
 
 .card-grid {
@@ -1053,8 +1074,14 @@
 }
 
 @keyframes codemap-overlay-in {
-  from { opacity: 0; transform: translateY(12px); }
-  to   { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .repo-review-digest-weekday-select {
@@ -1696,24 +1723,24 @@
 
 @media (max-width: 900px) {
   .repo-review-mapping-row {
-      grid-template-columns: 1fr;
-    }
+    grid-template-columns: 1fr;
+  }
 
-    .repo-review-manual-branch-item {
-      flex-direction: column;
-    }
+  .repo-review-manual-branch-item {
+    flex-direction: column;
+  }
 
-    .repo-review-manual-branch-side {
-      min-width: 0;
-      width: 100%;
-      align-items: flex-start;
-    }
+  .repo-review-manual-branch-side {
+    min-width: 0;
+    width: 100%;
+    align-items: flex-start;
+  }
 
-    .repo-review-manual-branch-side .repo-review-inline-actions {
-      width: 100%;
-      justify-content: flex-start;
-      align-self: stretch;
-    }
+  .repo-review-manual-branch-side .repo-review-inline-actions {
+    width: 100%;
+    justify-content: flex-start;
+    align-self: stretch;
+  }
 }
 
 .repo-review-branch-pill {
@@ -1821,7 +1848,9 @@
   color: var(--text-primary, inherit);
   font-size: 13px;
   line-height: 1.5;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
 }
 
 .repo-review-search-shell .repo-review-search-input:focus {
@@ -2357,37 +2386,37 @@
 
 @media (max-width: 900px) {
   .repo-review-branch-status-layout {
-      grid-template-columns: 1fr;
-      overflow: auto;
-    }
+    grid-template-columns: 1fr;
+    overflow: auto;
+  }
 
-    .repo-review-branch-status-sidebar,
-    .repo-review-branch-status-main {
-      overflow: visible;
-    }
+  .repo-review-branch-status-sidebar,
+  .repo-review-branch-status-main {
+    overflow: visible;
+  }
 
-    .repo-review-branch-status-list {
-      grid-template-columns: 1fr;
-    }
+  .repo-review-branch-status-list {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 768px) {
   .repo-review-branch-status-modal {
-      width: min(100vw - 16px, 1480px);
-      padding: 16px 14px 18px;
-    }
+    width: min(100vw - 16px, 1480px);
+    padding: 16px 14px 18px;
+  }
 
-    .repo-review-history-actions,
-    .repo-review-branch-status-main .repo-review-inline-actions {
-      width: 100%;
-      justify-content: stretch;
-    }
+  .repo-review-history-actions,
+  .repo-review-branch-status-main .repo-review-inline-actions {
+    width: 100%;
+    justify-content: stretch;
+  }
 
-    .repo-review-history-actions .btn-outline,
-    .repo-review-branch-status-main .repo-review-inline-actions .btn-outline,
-    .repo-review-branch-status-main .repo-review-inline-actions .btn-primary {
-      flex: 1 1 0;
-    }
+  .repo-review-history-actions .btn-outline,
+  .repo-review-branch-status-main .repo-review-inline-actions .btn-outline,
+  .repo-review-branch-status-main .repo-review-inline-actions .btn-primary {
+    flex: 1 1 0;
+  }
 }
 
 .dir-list {
@@ -3735,80 +3764,80 @@
 
 @media (max-width: 900px) {
   .stock-analysis-summary-grid,
-    .stock-analysis-workflow-nav,
-    .stock-analysis-workspace {
-      grid-template-columns: 1fr;
-    }
+  .stock-analysis-workflow-nav,
+  .stock-analysis-workspace {
+    grid-template-columns: 1fr;
+  }
 
-    .stock-analysis-command-bar {
-      flex-direction: column;
-      align-items: stretch;
-      padding: 0;
-      border: 0;
-      background: transparent;
-    }
+  .stock-analysis-command-bar {
+    flex-direction: column;
+    align-items: stretch;
+    padding: 0;
+    border: 0;
+    background: transparent;
+  }
 
-    .stock-analysis-meta-strip {
-      gap: 6px;
-    }
+  .stock-analysis-meta-strip {
+    gap: 6px;
+  }
 
-    .stock-analysis-meta-chip {
-      font-size: 10px;
-      padding: 4px 8px;
-    }
+  .stock-analysis-meta-chip {
+    font-size: 10px;
+    padding: 4px 8px;
+  }
 
-    .stock-analysis-preset-form {
-      grid-template-columns: 1fr;
-    }
+  .stock-analysis-preset-form {
+    grid-template-columns: 1fr;
+  }
 
-    .stock-analysis-watchlist-item {
-      flex-direction: column;
-    }
+  .stock-analysis-watchlist-item {
+    flex-direction: column;
+  }
 
-    .stock-analysis-watchlist-actions {
-      width: 100%;
-      justify-content: flex-start;
-    }
+  .stock-analysis-watchlist-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
 
-    .stock-analysis-inline-actions {
-      flex-direction: column;
-    }
+  .stock-analysis-inline-actions {
+    flex-direction: column;
+  }
 
-    .stock-analysis-filter-strip {
-      width: 100%;
-      justify-content: flex-start;
-    }
+  .stock-analysis-filter-strip {
+    width: 100%;
+    justify-content: flex-start;
+  }
 
-    .stock-analysis-report-brief-grid,
-    .stock-analysis-report-hub-grid {
-      grid-template-columns: 1fr;
-    }
+  .stock-analysis-report-brief-grid,
+  .stock-analysis-report-hub-grid {
+    grid-template-columns: 1fr;
+  }
 
-    .stock-analysis-history-group-toggle,
-    .stock-analysis-report-headline {
-      flex-direction: column;
-    }
+  .stock-analysis-history-group-toggle,
+  .stock-analysis-report-headline {
+    flex-direction: column;
+  }
 
-    .stock-analysis-history-group-meta,
-    .stock-analysis-score-block {
-      justify-content: flex-start;
-      align-items: flex-start;
-    }
+  .stock-analysis-history-group-meta,
+  .stock-analysis-score-block {
+    justify-content: flex-start;
+    align-items: flex-start;
+  }
 
-    .stock-analysis-chart-header {
-      flex-direction: column;
-    }
+  .stock-analysis-chart-header {
+    flex-direction: column;
+  }
 
-    .stock-analysis-chart-canvas svg {
-      min-width: 520px;
-    }
+  .stock-analysis-chart-canvas svg {
+    min-width: 520px;
+  }
 
-    .stock-analysis-settings-modal,
-    .stock-analysis-report-modal {
-      width: min(100vw - 20px, 100%);
-      max-height: calc(100vh - 20px);
-      margin: 10px;
-    }
+  .stock-analysis-settings-modal,
+  .stock-analysis-report-modal {
+    width: min(100vw - 20px, 100%);
+    max-height: calc(100vh - 20px);
+    margin: 10px;
+  }
 }
 
 .delta-up {
@@ -3839,101 +3868,101 @@
 
 @media (max-width: 900px) {
   .header-menu-panel {
-      right: 0;
-      width: min(220px, calc(100vw - 48px));
-    }
+    right: 0;
+    width: min(220px, calc(100vw - 48px));
+  }
 
-    .terminal-page-terminal {
-      min-height: 320px;
-    }
+  .terminal-page-terminal {
+    min-height: 320px;
+  }
 
-    .repo-review-layout,
-    .repo-review-workspace-layout,
-    .repo-review-summary-grid,
-    .repo-review-form-grid,
-    .repo-review-toggle-grid,
-    .repo-review-toolbar,
-    .repo-review-runs-toolbar {
-      grid-template-columns: minmax(0, 1fr);
-    }
+  .repo-review-layout,
+  .repo-review-workspace-layout,
+  .repo-review-summary-grid,
+  .repo-review-form-grid,
+  .repo-review-toggle-grid,
+  .repo-review-toolbar,
+  .repo-review-runs-toolbar {
+    grid-template-columns: minmax(0, 1fr);
+  }
 
-    .repo-review-repo-list,
-    .repo-review-repository-list {
-      max-height: none;
-    }
+  .repo-review-repo-list,
+  .repo-review-repository-list {
+    max-height: none;
+  }
 
-    .repo-review-sidebar {
-      position: static;
-    }
+  .repo-review-sidebar {
+    position: static;
+  }
 
-    .repo-review-workspace-list,
-    .repo-review-workspace-detail {
-      position: static;
-      max-height: none;
-    }
+  .repo-review-workspace-list,
+  .repo-review-workspace-detail {
+    position: static;
+    max-height: none;
+  }
 
-    .repo-review-cards-grid {
-      grid-template-columns: minmax(0, 1fr);
-    }
+  .repo-review-cards-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
 
-    .repo-review-card-list-header {
-      flex-direction: column;
-      align-items: stretch;
-    }
+  .repo-review-card-list-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
 
-    .repo-review-overview-hero-top,
-    .repo-review-workspace-card-topline,
-    .repo-review-editor-stage-top,
-    .repo-review-spotlight-item {
-      flex-direction: column;
-    }
+  .repo-review-overview-hero-top,
+  .repo-review-workspace-card-topline,
+  .repo-review-editor-stage-top,
+  .repo-review-spotlight-item {
+    flex-direction: column;
+  }
 
-    .repo-review-overview-actions {
-      justify-content: flex-start;
-    }
+  .repo-review-overview-actions {
+    justify-content: flex-start;
+  }
 
-    .repo-review-overview-grid {
-      grid-template-columns: 1fr;
-    }
+  .repo-review-overview-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 640px) {
   .browser-control-toolbar,
-    .browser-control-action-grid,
-    .browser-control-summary-grid,
-    .browser-log-grid {
-      grid-template-columns: minmax(0, 1fr);
-    }
+  .browser-control-action-grid,
+  .browser-control-summary-grid,
+  .browser-log-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
 
-    .browser-control-inline {
-      flex-wrap: wrap;
-    }
+  .browser-control-inline {
+    flex-wrap: wrap;
+  }
 
-    .browser-control-header {
-      flex-direction: column;
-    }
+  .browser-control-header {
+    flex-direction: column;
+  }
 
-    .browser-tab-card {
-      flex-direction: column;
-    }
+  .browser-tab-card {
+    flex-direction: column;
+  }
 
-    .browser-tab-actions {
-      width: 100%;
-      justify-content: flex-end;
-      flex-wrap: wrap;
-    }
+  .browser-tab-actions {
+    width: 100%;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+  }
 
-    .browser-control-assets {
-      grid-template-columns: minmax(0, 1fr);
-    }
+  .browser-control-assets {
+    grid-template-columns: minmax(0, 1fr);
+  }
 
-    .browser-snapshot-meta {
-      grid-template-columns: minmax(0, 1fr);
-    }
+  .browser-snapshot-meta {
+    grid-template-columns: minmax(0, 1fr);
+  }
 
-    .browser-node-row {
-      grid-template-columns: minmax(0, 1fr);
-    }
+  .browser-node-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .page-error {
@@ -4026,23 +4055,23 @@
 
 @media (max-width: 1480px) {
   .modal.repo-review-run-detail-modal .status-detail-grid {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 900px) {
   .modal.repo-review-run-detail-modal {
-      width: calc(100vw - 8px);
-      max-width: calc(100vw - 8px);
-      height: calc(100vh - 8px);
-      max-height: calc(100vh - 8px);
-      padding: 14px 14px 16px;
-      border-radius: var(--radius-xl);
-    }
+    width: calc(100vw - 8px);
+    max-width: calc(100vw - 8px);
+    height: calc(100vh - 8px);
+    max-height: calc(100vh - 8px);
+    padding: 14px 14px 16px;
+    border-radius: var(--radius-xl);
+  }
 
-    .modal.repo-review-run-detail-modal .repo-review-run-detail-body {
-      padding-right: 2px;
-    }
+  .modal.repo-review-run-detail-modal .repo-review-run-detail-body {
+    padding-right: 2px;
+  }
 }
 
 [data-theme='dark'] .repo-review-branch-status-limit select {
@@ -4272,8 +4301,10 @@
   background-clip: padding-box;
 }
 
-[data-theme='dark'] .repo-review-branch-status-sidebar::-webkit-scrollbar-thumb:hover,
-[data-theme='dark'] .repo-review-branch-status-main::-webkit-scrollbar-thumb:hover {
+[data-theme='dark']
+  .repo-review-branch-status-sidebar::-webkit-scrollbar-thumb:hover,
+[data-theme='dark']
+  .repo-review-branch-status-main::-webkit-scrollbar-thumb:hover {
   background: rgba(148, 163, 184, 0.6);
   border: 2px solid transparent;
   background-clip: padding-box;
@@ -4336,7 +4367,11 @@
 [data-theme='dark'] .stock-analysis-summary-card {
   border-color: rgba(148, 163, 184, 0.12);
   background:
-    radial-gradient(circle at top right, rgba(20, 184, 166, 0.08), transparent 34%),
+    radial-gradient(
+      circle at top right,
+      rgba(20, 184, 166, 0.08),
+      transparent 34%
+    ),
     var(--surface-card);
   box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
 }
@@ -4415,7 +4450,9 @@
   background: var(--surface-card);
 }
 
-[data-theme='dark'] .stock-analysis-report-brief-grid .stock-analysis-detail-card {
+[data-theme='dark']
+  .stock-analysis-report-brief-grid
+  .stock-analysis-detail-card {
   background: var(--surface-card);
 }
 
@@ -4808,25 +4845,25 @@
 
 @media (max-width: 900px) {
   .users-workbench {
-      grid-template-columns: minmax(0, 1fr);
-    }
+    grid-template-columns: minmax(0, 1fr);
+  }
 
-    .users-detail-pane {
-      position: static;
-    }
+  .users-detail-pane {
+    position: static;
+  }
 
-    .users-filter-grid {
-      grid-template-columns: minmax(0, 1fr);
-    }
+  .users-filter-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
 
-    .users-pagination {
-      flex-direction: column;
-      align-items: flex-start;
-    }
+  .users-pagination {
+    flex-direction: column;
+    align-items: flex-start;
+  }
 
-    .users-perm-matrix {
-      font-size: 0.78em;
-    }
+  .users-perm-matrix {
+    font-size: 0.78em;
+  }
 }
 
 .users-tab-bar {
@@ -4843,7 +4880,9 @@
   cursor: pointer;
   font-size: 0.9em;
   font-weight: 500;
-  transition: opacity 0.15s, border-color 0.15s;
+  transition:
+    opacity 0.15s,
+    border-color 0.15s;
 }
 
 .users-tab:hover {
@@ -5069,7 +5108,7 @@
   background: rgba(34, 197, 94, 0.08);
 }
 
-.users-perm-item input[type="checkbox"] {
+.users-perm-item input[type='checkbox'] {
   accent-color: var(--color-success, #22c55e);
 }
 
@@ -5242,7 +5281,9 @@
   cursor: pointer;
   font-size: 14px;
   font-weight: 400;
-  transition: color 0.15s ease, border-color 0.15s ease;
+  transition:
+    color 0.15s ease,
+    border-color 0.15s ease;
   white-space: nowrap;
   flex-shrink: 0;
 }
@@ -6104,7 +6145,9 @@
   padding: 0;
 }
 
-.share-view-fullscreen .assistant-turn-card.assistant-response-card .turn-item-body {
+.share-view-fullscreen
+  .assistant-turn-card.assistant-response-card
+  .turn-item-body {
   padding: 0;
 }
 
@@ -6369,7 +6412,9 @@
   align-items: center;
   justify-content: center;
   color: var(--text-secondary, #666);
-  transition: background 0.12s, color 0.12s;
+  transition:
+    background 0.12s,
+    color 0.12s;
 }
 
 .share-history-btn:hover {
@@ -6934,8 +6979,12 @@
 }
 
 @keyframes im-message-highlight {
-  0% { background: color-mix(in srgb, var(--accent) 20%, transparent); }
-  100% { background: transparent; }
+  0% {
+    background: color-mix(in srgb, var(--accent) 20%, transparent);
+  }
+  100% {
+    background: transparent;
+  }
 }
 
 .im-msg-file-error {
@@ -7022,7 +7071,7 @@
   position: fixed;
   inset: 0;
   z-index: 9999;
-  background: rgba(0,0,0,0.75);
+  background: rgba(0, 0, 0, 0.75);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -7142,7 +7191,6 @@
     min-width: 0;
     max-width: none;
   }
-
 }
 
 [data-theme='dark'] .im-e2ee-chip.secure {
