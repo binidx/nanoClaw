@@ -459,6 +459,22 @@ describe('GroupQueue', () => {
     expect(started).toContain('group3@g.us');
   });
 
+  it('treats idle keepalive agents as not actively replying', async () => {
+    const queueAny = queue as unknown as { getGroup: (jid: string) => any };
+    const state = queueAny.getGroup('group1@g.us');
+    state.active = true;
+    state.isTaskAgent = false;
+    state.idleWaiting = false;
+
+    expect(queue.isMessageAgentActive('group1@g.us')).toBe(true);
+    expect(queue.isMessageAgentReplyInProgress('group1@g.us')).toBe(true);
+
+    queue.notifyIdle('group1@g.us');
+
+    expect(queue.isMessageAgentActive('group1@g.us')).toBe(true);
+    expect(queue.isMessageAgentReplyInProgress('group1@g.us')).toBe(false);
+  });
+
   it('sendMessage resets idleWaiting so a subsequent task enqueue does not preempt', async () => {
     const fs = await import('fs');
     let resolveProcess: () => void;

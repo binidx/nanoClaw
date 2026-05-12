@@ -109,6 +109,11 @@ export class GroupQueue {
     return !!state?.active && !state.isTaskAgent;
   }
 
+  isMessageAgentReplyInProgress(groupJid: string): boolean {
+    const state = this.groups.get(groupJid);
+    return !!state?.active && !state.isTaskAgent && !state.idleWaiting;
+  }
+
   enqueueMessageCheck(groupJid: string): void {
     if (this.shuttingDown) return;
 

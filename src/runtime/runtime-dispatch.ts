@@ -2001,6 +2001,27 @@ export async function processGroupMessages(
     persistedPrimaryReply = undefined;
   };
 
+  const persistDeliveredTurnSnapshot = async (input: {
+    messageId: string;
+    timestamp: string;
+    text: string;
+  }): Promise<void> => {
+    if (!liveTurnId) return;
+    const finalizedTurn = finalizePersistedTurnForMessage(
+      turnPersistenceDrafts.get(liveTurnId),
+      input.messageId,
+      input.timestamp,
+      input.text,
+    );
+    if (!finalizedTurn) return;
+    turnPersistenceDrafts.set(liveTurnId, finalizedTurn);
+    await storeAssistantTurnSnapshot(
+      chatJid,
+      finalizedTurn,
+      input.timestamp,
+    );
+  };
+
   const deliverVisibleErrorReply = async (visibleError: string) => {
     if (channel.name === 'web') {
       await channel.setTyping?.(chatJid, false);
@@ -2016,6 +2037,11 @@ export async function processGroupMessages(
       timestamp: delivered.timestamp,
       text: delivered.text,
     };
+    await persistDeliveredTurnSnapshot({
+      messageId: delivered.messageId,
+      timestamp: delivered.timestamp,
+      text: delivered.text,
+    });
     await channel.sendMessage(chatJid, delivered.text);
     outputSentToUser = true;
     primaryReplyCompleted = true;
@@ -2168,6 +2194,11 @@ export async function processGroupMessages(
           timestamp: delivered.timestamp,
           text: delivered.text,
         };
+        await persistDeliveredTurnSnapshot({
+          messageId: delivered.messageId,
+          timestamp: delivered.timestamp,
+          text: delivered.text,
+        });
 
         // Async emotion analysis — only for companion mode conversations
         (async () => {
@@ -2279,6 +2310,11 @@ export async function processGroupMessages(
       timestamp: delivered.timestamp,
       text: delivered.text,
     };
+    await persistDeliveredTurnSnapshot({
+      messageId: delivered.messageId,
+      timestamp: delivered.timestamp,
+      text: delivered.text,
+    });
     if (
       streamedToPrimaryChannel &&
       channel.name !== 'web' &&

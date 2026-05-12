@@ -655,7 +655,7 @@ describe('runtime dispatch web failure handling', () => {
     expect(enqueueMessageCheck).toHaveBeenCalledWith(chatJid);
   });
 
-  it('rejects regeneration while a live assistant turn still exists', async () => {
+  it('rejects regeneration while the agent is still actively replying', async () => {
     const chatJid = 'web:regenerate-live-turn';
     const group: RegisteredGroup = {
       name: 'Web Chat regenerate live turn',
@@ -685,25 +685,22 @@ describe('runtime dispatch web failure handling', () => {
       is_from_me: false,
       is_bot_message: false,
     });
-    await storeAssistantTurnSnapshot(
-      chatJid,
-      {
-        id: 'turn-live',
-        timestamp: '2026-04-16T03:24:12.000Z',
-        items: [
-          {
-            id: 'turn-live:assistant',
-            type: 'assistant_message',
-            status: 'in_progress',
-            text: '',
-            timestamp: '2026-04-16T03:24:12.000Z',
-          },
-        ],
-        isLive: true,
-        isCompleted: false,
-      },
-      '2026-04-16T03:24:12.000Z',
-    );
+
+    const queueAny = queue as unknown as {
+      getGroup: (jid: string) => {
+        active: boolean;
+        idleWaiting: boolean;
+        isTaskAgent: boolean;
+        process: unknown;
+        groupFolder: string | null;
+      };
+    };
+    const state = queueAny.getGroup(chatJid);
+    state.active = true;
+    state.isTaskAgent = false;
+    state.idleWaiting = false;
+    state.process = {} as any;
+    state.groupFolder = group.folder;
 
     await expect(
       regenerateConversationReply(chatJid, 'turn-live'),
