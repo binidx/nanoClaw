@@ -7,7 +7,10 @@ import { getNodeExecutable } from '../node-executable.js';
 import { deleteConfig, getConfig, setConfig } from '../db.js';
 import { saveDirectoryToFileStore } from '../web/file-store-service.js';
 import { logger } from '../logger.js';
-import { resolvePromptText } from '../prompt/prompt-service.js';
+import {
+  buildDirectProviderPromptEnvelope,
+  resolvePromptText,
+} from '../prompt/prompt-service.js';
 import { generateTextWithDefaultProvider } from '../provider/provider-api.js';
 import {
   CUSTOM_MCP_SERVERS_ROOT,
@@ -577,10 +580,21 @@ export async function createSkillWithAiFromInput(input: AiSkillCreateInput) {
     },
     fallbackText: creationPrompt,
   });
+  const directPrompt = buildDirectProviderPromptEnvelope({
+    userPrompt: resolvedPrompt.text,
+  });
   const raw = await generateTextWithDefaultProvider(resolvedPrompt.text, {
     promptTrace: {
       promptKey: 'runtime_customization.skill_create',
       featureScope: 'runtime_customization',
+      stableSystemPrompt: directPrompt.envelope.stableSystemPrompt,
+      volatileSystemPrompt: directPrompt.envelope.volatileSystemPrompt,
+      contextBlocks: directPrompt.envelope.contextBlocks,
+      userPromptText: directPrompt.envelope.userPrompt,
+      providerInputText: directPrompt.envelope.providerInputText,
+      segments: directPrompt.segments,
+      stablePrefixFingerprint: directPrompt.envelope.stablePrefixFingerprint || null,
+      cacheFingerprint: directPrompt.envelope.cacheFingerprint || null,
       metadata: {
         requestedSkillId: requestedSkillId || null,
         requestedName: requestedName || null,

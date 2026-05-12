@@ -1,5 +1,8 @@
 import { createModuleLogger } from '../logger.js';
-import { resolvePromptText } from './prompt-service.js';
+import {
+  buildDirectProviderPromptEnvelope,
+  resolvePromptText,
+} from './prompt-service.js';
 import { generateTextWithDefaultProvider } from '../provider/provider-api.js';
 import { extractJsonFromLlmText } from '../workteam/smart-creator.js';
 import { t } from '../i18n/index.js';
@@ -151,11 +154,22 @@ export async function parseRequirements(rawInput: string): Promise<RequirementPa
       actualPrompt = `${prompt}\n\n${retrySuffix.text}`;
     }
     try {
+      const directPrompt = buildDirectProviderPromptEnvelope({
+        userPrompt: actualPrompt,
+      });
       const raw = await generateTextWithDefaultProvider(actualPrompt, {
         temperature: PARSER_TEMPERATURE,
         promptTrace: {
           promptKey: 'requirement_parser.base',
           featureScope: 'requirement_parser',
+          stableSystemPrompt: directPrompt.envelope.stableSystemPrompt,
+          volatileSystemPrompt: directPrompt.envelope.volatileSystemPrompt,
+          contextBlocks: directPrompt.envelope.contextBlocks,
+          userPromptText: directPrompt.envelope.userPrompt,
+          providerInputText: directPrompt.envelope.providerInputText,
+          segments: directPrompt.segments,
+          stablePrefixFingerprint: directPrompt.envelope.stablePrefixFingerprint || null,
+          cacheFingerprint: directPrompt.envelope.cacheFingerprint || null,
           metadata: {
             attempt,
             inputLength: rawInput.length,

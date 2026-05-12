@@ -1,5 +1,8 @@
 import { logger } from '../logger.js';
-import { resolvePromptText } from '../prompt/prompt-service.js';
+import {
+  buildDirectProviderPromptEnvelope,
+  resolvePromptText,
+} from '../prompt/prompt-service.js';
 import {
   getUserMemories,
   updateUserMemory,
@@ -69,11 +72,22 @@ async function mergeOverlappingMemories(userId: string): Promise<number> {
     });
 
     try {
+      const directPrompt = buildDirectProviderPromptEnvelope({
+        userPrompt: resolvedPrompt.text,
+      });
       const raw = await generateTextWithDefaultProvider(resolvedPrompt.text, {
         promptTrace: {
           promptKey: 'memory.merge_similarity',
           featureScope: 'memory',
           targetUserId: userId,
+          stableSystemPrompt: directPrompt.envelope.stableSystemPrompt,
+          volatileSystemPrompt: directPrompt.envelope.volatileSystemPrompt,
+          contextBlocks: directPrompt.envelope.contextBlocks,
+          userPromptText: directPrompt.envelope.userPrompt,
+          providerInputText: directPrompt.envelope.providerInputText,
+          segments: directPrompt.segments,
+          stablePrefixFingerprint: directPrompt.envelope.stablePrefixFingerprint || null,
+          cacheFingerprint: directPrompt.envelope.cacheFingerprint || null,
           metadata: {
             category,
             batchSize: batch.length,

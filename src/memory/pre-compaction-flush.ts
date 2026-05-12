@@ -1,6 +1,9 @@
 import { generateTextWithDefaultProvider } from '../provider/provider-api.js';
 import { logger } from '../logger.js';
-import { resolvePromptText } from '../prompt/prompt-service.js';
+import {
+  buildDirectProviderPromptEnvelope,
+  resolvePromptText,
+} from '../prompt/prompt-service.js';
 import { getConfigValue } from '../config-store.js';
 import { isFeatureEnabled } from '../auth/web-security.js';
 import type { ContextEntryRecord, UserMemoryRecord, UserMemoryCategory } from '../types.js';
@@ -98,6 +101,9 @@ export async function runPreCompactionFlush(
   });
 
   try {
+    const directPrompt = buildDirectProviderPromptEnvelope({
+      userPrompt: resolvedPrompt.text,
+    });
     const raw = await Promise.race([
       generateTextWithDefaultProvider(resolvedPrompt.text, {
         promptTrace: {
@@ -105,6 +111,14 @@ export async function runPreCompactionFlush(
           featureScope: 'memory',
           targetUserId: userId,
           chatJid,
+          stableSystemPrompt: directPrompt.envelope.stableSystemPrompt,
+          volatileSystemPrompt: directPrompt.envelope.volatileSystemPrompt,
+          contextBlocks: directPrompt.envelope.contextBlocks,
+          userPromptText: directPrompt.envelope.userPrompt,
+          providerInputText: directPrompt.envelope.providerInputText,
+          segments: directPrompt.segments,
+          stablePrefixFingerprint: directPrompt.envelope.stablePrefixFingerprint || null,
+          cacheFingerprint: directPrompt.envelope.cacheFingerprint || null,
           metadata: {
             entryCount: entries.length,
           },

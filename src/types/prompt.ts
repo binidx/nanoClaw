@@ -144,3 +144,19 @@ export interface PromptPreviewEnvelope {
   stablePrefixFingerprint?: string | null;
   metadata?: Record<string, unknown>;
 }
+
+export interface PromptAuditSample {
+  traceId: string;
+  featureScope: string;
+  promptKey?: string | null;
+  chatJid?: string | null;
+  provider?: string | null;
+  model?: string | null;
+  createdAt: string;
+  stableSystemPromptChars: number;
+  volatileSystemPromptChars: number;
+  contextChars: number;
+  userPromptChars: number;
+  providerInputChars: number;
+  forbiddenMatches: string[];
+}

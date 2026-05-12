@@ -83,6 +83,7 @@ import {
   buildAiSummaryPrompt,
   buildMarketReviewPrompt,
 } from './stock-analysis-prompts.js';
+import { buildDirectProviderPromptEnvelope } from '../prompt/prompt-service.js';
 import type {
   PipelineStageLog,
   StockAnalysisBacktestRequest,
@@ -339,6 +340,9 @@ async function maybeGenerateAiSummary(
       tradePlan: base.tradePlan,
       newsIntel: base.newsIntel,
     });
+    const directPrompt = buildDirectProviderPromptEnvelope({
+      userPrompt: prompt,
+    });
 
     const raw = await (deps.generateText || generateTextWithDefaultProvider)(
       prompt,
@@ -348,6 +352,14 @@ async function maybeGenerateAiSummary(
             promptTrace: {
               promptKey: 'stock_analysis.ai_summary',
               featureScope: 'stock_analysis',
+              stableSystemPrompt: directPrompt.envelope.stableSystemPrompt,
+              volatileSystemPrompt: directPrompt.envelope.volatileSystemPrompt,
+              contextBlocks: directPrompt.envelope.contextBlocks,
+              userPromptText: directPrompt.envelope.userPrompt,
+              providerInputText: directPrompt.envelope.providerInputText,
+              segments: directPrompt.segments,
+              stablePrefixFingerprint: directPrompt.envelope.stablePrefixFingerprint || null,
+              cacheFingerprint: directPrompt.envelope.cacheFingerprint || null,
               metadata: {
                 stockCode: base.stockCode,
                 market: base.market,
@@ -1640,16 +1652,28 @@ export class StockAnalysisService {
 
     if (config.aiSummaryEnabled) {
       try {
+        const marketReviewPrompt = await buildMarketReviewPrompt({ reviewData: review });
+        const directPrompt = buildDirectProviderPromptEnvelope({
+          userPrompt: marketReviewPrompt,
+        });
         const raw = await (
           this.generateText || generateTextWithDefaultProvider
         )(
-          await buildMarketReviewPrompt({ reviewData: review }),
+          marketReviewPrompt,
           this.generateText
             ? undefined
             : {
                 promptTrace: {
                   promptKey: 'stock_analysis.market_review',
                   featureScope: 'stock_analysis',
+                  stableSystemPrompt: directPrompt.envelope.stableSystemPrompt,
+                  volatileSystemPrompt: directPrompt.envelope.volatileSystemPrompt,
+                  contextBlocks: directPrompt.envelope.contextBlocks,
+                  userPromptText: directPrompt.envelope.userPrompt,
+                  providerInputText: directPrompt.envelope.providerInputText,
+                  segments: directPrompt.segments,
+                  stablePrefixFingerprint: directPrompt.envelope.stablePrefixFingerprint || null,
+                  cacheFingerprint: directPrompt.envelope.cacheFingerprint || null,
                   metadata: {
                     marketScope,
                     tradeDate,

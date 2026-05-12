@@ -203,8 +203,12 @@ export async function generateTextWithDefaultProvider(
       volatileSystemPrompt?: string | null;
       contextBlocks?: PromptSegment[];
       systemPromptText?: string | null;
+      userPromptText?: string | null;
+      providerInputText?: string | null;
       segments?: PromptSegment[];
       resolution?: PromptSourceResolution[];
+      stablePrefixFingerprint?: string | null;
+      cacheFingerprint?: string | null;
       metadata?: Record<string, unknown>;
     };
   },
@@ -228,8 +232,8 @@ export async function generateTextWithDefaultProvider(
       stableSystemPrompt: opts.promptTrace.stableSystemPrompt ?? null,
       volatileSystemPrompt: opts.promptTrace.volatileSystemPrompt ?? null,
       systemPromptText: opts.promptTrace.systemPromptText ?? null,
-      userPromptText: prompt,
-      providerInputText: prompt,
+      userPromptText: opts.promptTrace.userPromptText ?? prompt,
+      providerInputText: opts.promptTrace.providerInputText ?? prompt,
       contextBlocks: opts.promptTrace.contextBlocks,
       segments: opts.promptTrace.segments,
       resolution: opts.promptTrace.resolution,
@@ -253,8 +257,12 @@ export async function generateTextStreamWithDefaultProvider(
       stableSystemPrompt?: string | null;
       volatileSystemPrompt?: string | null;
       contextBlocks?: PromptSegment[];
+      userPromptText?: string | null;
+      providerInputText?: string | null;
       segments?: PromptSegment[];
       resolution?: PromptSourceResolution[];
+      stablePrefixFingerprint?: string | null;
+      cacheFingerprint?: string | null;
       metadata?: Record<string, unknown>;
     };
   },
@@ -277,8 +285,8 @@ export async function generateTextStreamWithDefaultProvider(
       stableSystemPrompt: opts.promptTrace.stableSystemPrompt ?? null,
       volatileSystemPrompt: opts.promptTrace.volatileSystemPrompt ?? null,
       systemPromptText: opts.systemPrompt ?? null,
-      userPromptText: prompt,
-      providerInputText: prompt,
+      userPromptText: opts.promptTrace.userPromptText ?? prompt,
+      providerInputText: opts.promptTrace.providerInputText ?? prompt,
       contextBlocks: opts.promptTrace.contextBlocks,
       segments: opts.promptTrace.segments,
       resolution: opts.promptTrace.resolution,
@@ -301,8 +309,12 @@ export async function generateWebSearchTextWithDefaultProvider(
       stableSystemPrompt?: string | null;
       volatileSystemPrompt?: string | null;
       contextBlocks?: PromptSegment[];
+      userPromptText?: string | null;
+      providerInputText?: string | null;
       segments?: PromptSegment[];
       resolution?: PromptSourceResolution[];
+      stablePrefixFingerprint?: string | null;
+      cacheFingerprint?: string | null;
       metadata?: Record<string, unknown>;
     };
   } = {},
@@ -393,8 +405,8 @@ export async function generateWebSearchTextWithDefaultProvider(
       model: result.model || model,
       stableSystemPrompt: opts.promptTrace.stableSystemPrompt ?? null,
       volatileSystemPrompt: opts.promptTrace.volatileSystemPrompt ?? null,
-      userPromptText: prompt,
-      providerInputText: prompt,
+      userPromptText: opts.promptTrace.userPromptText ?? prompt,
+      providerInputText: opts.promptTrace.providerInputText ?? prompt,
       contextBlocks: opts.promptTrace.contextBlocks,
       segments: opts.promptTrace.segments,
       resolution: opts.promptTrace.resolution,

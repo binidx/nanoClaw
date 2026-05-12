@@ -1,5 +1,8 @@
 import { createModuleLogger } from '../logger.js';
-import { resolvePromptText } from '../prompt/prompt-service.js';
+import {
+  buildDirectProviderPromptEnvelope,
+  resolvePromptText,
+} from '../prompt/prompt-service.js';
 import { generateTextWithDefaultProvider } from '../provider/provider-api.js';
 import * as manager from './workteam-manager.js';
 import type {
@@ -267,11 +270,22 @@ export async function generateTeamConfig(request: SmartCreatorRequest): Promise<
     }
 
     try {
+      const directPrompt = buildDirectProviderPromptEnvelope({
+        userPrompt: actualPrompt,
+      });
       const raw = await generateTextWithDefaultProvider(actualPrompt, {
         temperature: SMART_CREATOR_TEMPERATURE,
         promptTrace: {
           promptKey: 'workteam.smart_creator',
           featureScope: 'workteam',
+          stableSystemPrompt: directPrompt.envelope.stableSystemPrompt,
+          volatileSystemPrompt: directPrompt.envelope.volatileSystemPrompt,
+          contextBlocks: directPrompt.envelope.contextBlocks,
+          userPromptText: directPrompt.envelope.userPrompt,
+          providerInputText: directPrompt.envelope.providerInputText,
+          segments: directPrompt.segments,
+          stablePrefixFingerprint: directPrompt.envelope.stablePrefixFingerprint || null,
+          cacheFingerprint: directPrompt.envelope.cacheFingerprint || null,
           metadata: {
             attempt,
             preferredProcessType: request.preferred_process_type || null,

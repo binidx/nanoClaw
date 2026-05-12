@@ -14,6 +14,7 @@ export {
   savePromptConfig,
   removePromptConfig,
   buildCompiledPromptEnvelope,
+  buildDirectProviderPromptEnvelope,
   buildPromptPreviewEnvelope,
   recordPromptTrace,
 } from './prompt-service.js';

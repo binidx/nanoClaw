@@ -17,7 +17,10 @@ import {
   recordMemoryEvent,
 } from '../db.js';
 import { logger } from '../logger.js';
-import { resolvePromptText } from '../prompt/prompt-service.js';
+import {
+  buildDirectProviderPromptEnvelope,
+  resolvePromptText,
+} from '../prompt/prompt-service.js';
 import type {
   UserMemoryRecord,
   UserMemoryCategory,
@@ -98,10 +101,21 @@ export async function extractFromMessages(
   });
 
   try {
+    const directPrompt = buildDirectProviderPromptEnvelope({
+      userPrompt: resolvedPrompt.text,
+    });
     const raw = await generateTextWithDefaultProvider(resolvedPrompt.text, {
       promptTrace: {
         promptKey: 'memory.extractor',
         featureScope: 'memory',
+        stableSystemPrompt: directPrompt.envelope.stableSystemPrompt,
+        volatileSystemPrompt: directPrompt.envelope.volatileSystemPrompt,
+        contextBlocks: directPrompt.envelope.contextBlocks,
+        userPromptText: directPrompt.envelope.userPrompt,
+        providerInputText: directPrompt.envelope.providerInputText,
+        segments: directPrompt.segments,
+        stablePrefixFingerprint: directPrompt.envelope.stablePrefixFingerprint || null,
+        cacheFingerprint: directPrompt.envelope.cacheFingerprint || null,
         metadata: {
           messageCount: messages.length,
         },

@@ -1,5 +1,8 @@
 import { createModuleLogger } from '../logger.js';
-import { resolvePromptText } from '../prompt/prompt-service.js';
+import {
+  buildDirectProviderPromptEnvelope,
+  resolvePromptText,
+} from '../prompt/prompt-service.js';
 import { generateTextWithDefaultProvider } from '../provider/provider-api.js';
 
 const logger = createModuleLogger('workteam');
@@ -105,11 +108,22 @@ export async function evaluateTaskOutput(
 
   let raw: string;
   try {
+    const directPrompt = buildDirectProviderPromptEnvelope({
+      userPrompt: resolvedPrompt.text,
+    });
     raw = await generateTextWithDefaultProvider(resolvedPrompt.text, {
       temperature: EVAL_TEMPERATURE,
       promptTrace: {
         promptKey: 'workteam.eval',
         featureScope: 'workteam',
+        stableSystemPrompt: directPrompt.envelope.stableSystemPrompt,
+        volatileSystemPrompt: directPrompt.envelope.volatileSystemPrompt,
+        contextBlocks: directPrompt.envelope.contextBlocks,
+        userPromptText: directPrompt.envelope.userPrompt,
+        providerInputText: directPrompt.envelope.providerInputText,
+        segments: directPrompt.segments,
+        stablePrefixFingerprint: directPrompt.envelope.stablePrefixFingerprint || null,
+        cacheFingerprint: directPrompt.envelope.cacheFingerprint || null,
         metadata: { taskName },
       },
     });

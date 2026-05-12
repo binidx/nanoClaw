@@ -7,6 +7,7 @@ import {
   buildPromptPreviewFromScenario,
   getPromptPreviewScenarios,
 } from '../prompt/prompt-preview-service.js';
+import { buildPromptAuditSample } from '../prompt/prompt-audit-service.js';
 import {
   buildPromptPreviewEnvelope,
   removePromptConfig,
@@ -343,6 +344,36 @@ export function registerPromptRoutes(app: Express, opts: PromptRouteOptions): vo
         return;
       }
       res.json({ ok: true, trace });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: String(err) });
+    }
+  });
+
+  app.get('/api/prompt-audit/recent', viewGuard, async (req, res) => {
+    try {
+      const limit =
+        typeof req.query.limit === 'string' ? Number.parseInt(req.query.limit, 10) : 20;
+      const traces = await listPromptTraces({
+        featureScope:
+          typeof req.query.featureScope === 'string'
+            ? req.query.featureScope.trim()
+            : undefined,
+        promptKey:
+          typeof req.query.promptKey === 'string'
+            ? req.query.promptKey.trim()
+            : undefined,
+        chatJid:
+          typeof req.query.chatJid === 'string'
+            ? req.query.chatJid.trim()
+            : undefined,
+        limit: Math.max(1, Math.min(limit, 100)),
+        offset: 0,
+      });
+      res.json({
+        ok: true,
+        items: traces.items.map(buildPromptAuditSample),
+        total: traces.total,
+      });
     } catch (err) {
       res.status(500).json({ ok: false, error: String(err) });
     }

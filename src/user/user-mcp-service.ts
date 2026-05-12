@@ -28,7 +28,10 @@ import {
   resolveInstallSourcePath,
   resolveMcpEntryFileFromDirectory,
 } from '../runtime/runtime-customization-service.js';
-import { resolvePromptText } from '../prompt/prompt-service.js';
+import {
+  buildDirectProviderPromptEnvelope,
+  resolvePromptText,
+} from '../prompt/prompt-service.js';
 import { SYSTEM_USER_ID } from '../tenant/tenant-context.js';
 import { t } from '../i18n/index.js';
 
@@ -812,11 +815,22 @@ export async function createUserMcpServerWithAi(
     },
     fallbackText: prompt,
   });
+  const directPrompt = buildDirectProviderPromptEnvelope({
+    userPrompt: resolvedPrompt.text,
+  });
   const raw = await generateTextWithDefaultProvider(resolvedPrompt.text, {
     promptTrace: {
       promptKey: 'user_mcp.ai_create',
       featureScope: 'user_mcp',
       targetUserId: userId,
+      stableSystemPrompt: directPrompt.envelope.stableSystemPrompt,
+      volatileSystemPrompt: directPrompt.envelope.volatileSystemPrompt,
+      contextBlocks: directPrompt.envelope.contextBlocks,
+      userPromptText: directPrompt.envelope.userPrompt,
+      providerInputText: directPrompt.envelope.providerInputText,
+      segments: directPrompt.segments,
+      stablePrefixFingerprint: directPrompt.envelope.stablePrefixFingerprint || null,
+      cacheFingerprint: directPrompt.envelope.cacheFingerprint || null,
       metadata: {
         requestedName: requestedName || null,
       },

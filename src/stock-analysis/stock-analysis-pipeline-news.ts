@@ -8,6 +8,7 @@ import {
   generateTextWithDefaultProvider,
   generateWebSearchTextWithDefaultProvider,
 } from '../provider/provider-api.js';
+import { buildDirectProviderPromptEnvelope } from '../prompt/prompt-service.js';
 import {
   buildNewsIntelPrompt,
   buildNewsIntelSnippetPrompt,
@@ -333,6 +334,9 @@ export async function maybeGenerateNewsIntel(
       );
 
       try {
+        const directPrompt = buildDirectProviderPromptEnvelope({
+          userPrompt: prompt,
+        });
         const raw = await (deps.generateNewsIntel
           ? deps.generateNewsIntel(prompt)
           : generateWebSearchTextWithDefaultProvider(prompt, {
@@ -344,6 +348,14 @@ export async function maybeGenerateNewsIntel(
               promptTrace: {
                 promptKey: 'stock_analysis.news_intel',
                 featureScope: 'stock_analysis',
+                stableSystemPrompt: directPrompt.envelope.stableSystemPrompt,
+                volatileSystemPrompt: directPrompt.envelope.volatileSystemPrompt,
+                contextBlocks: directPrompt.envelope.contextBlocks,
+                userPromptText: directPrompt.envelope.userPrompt,
+                providerInputText: directPrompt.envelope.providerInputText,
+                segments: directPrompt.segments,
+                stablePrefixFingerprint: directPrompt.envelope.stablePrefixFingerprint || null,
+                cacheFingerprint: directPrompt.envelope.cacheFingerprint || null,
                 metadata: {
                   stockCode: base.stockCode,
                   focus,
@@ -543,12 +555,23 @@ export async function maybeGenerateNewsIntel(
     });
 
     try {
+      const directPrompt = buildDirectProviderPromptEnvelope({
+        userPrompt: fallbackPrompt,
+      });
       const raw = await (deps.generateText
         ? deps.generateText(fallbackPrompt)
         : generateTextWithDefaultProvider(fallbackPrompt, {
             promptTrace: {
               promptKey: 'stock_analysis.news_intel_snippet',
               featureScope: 'stock_analysis',
+              stableSystemPrompt: directPrompt.envelope.stableSystemPrompt,
+              volatileSystemPrompt: directPrompt.envelope.volatileSystemPrompt,
+              contextBlocks: directPrompt.envelope.contextBlocks,
+              userPromptText: directPrompt.envelope.userPrompt,
+              providerInputText: directPrompt.envelope.providerInputText,
+              segments: directPrompt.segments,
+              stablePrefixFingerprint: directPrompt.envelope.stablePrefixFingerprint || null,
+              cacheFingerprint: directPrompt.envelope.cacheFingerprint || null,
               metadata: {
                 stockCode: base.stockCode,
                 sourceLabel: fallbackSource.sourceLabel,

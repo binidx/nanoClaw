@@ -172,6 +172,43 @@ export function buildCompiledPromptEnvelope(input: {
   };
 }
 
+export function buildDirectProviderPromptEnvelope(input: {
+  stableSystemPrompt?: string | null;
+  volatileSystemPrompt?: string | null;
+  contextBlocks?: PromptSegment[];
+  userPrompt: string;
+  providerInputText?: string | null;
+  taskSegments?: PromptSegment[];
+}): {
+  envelope: CompiledPromptEnvelope;
+  segments: PromptSegment[];
+} {
+  const contextBlocks = [...(input.contextBlocks || [])];
+  const userPromptSegment: PromptSegment = {
+    id: 'direct_provider.user_prompt',
+    label: 'Direct Provider User Prompt',
+    layer: 'user_input',
+    mutability: 'derived',
+    cacheSection: 'volatile',
+    source: 'conversation_context',
+    content: input.userPrompt,
+  };
+  const segments = [
+    ...(input.taskSegments || []),
+    ...contextBlocks,
+    userPromptSegment,
+  ];
+  const envelope = buildCompiledPromptEnvelope({
+    stableSystemPrompt: input.stableSystemPrompt,
+    volatileSystemPrompt: input.volatileSystemPrompt,
+    contextBlocks,
+    userPrompt: input.userPrompt,
+    providerInputText: input.providerInputText ?? input.userPrompt,
+    segments,
+  });
+  return { envelope, segments };
+}
+
 export function isPromptConfigTemplateCompatible(
   promptKey: string,
   template: string,
