@@ -1,6 +1,8 @@
 import type { AccessPolicy } from '../auth/access-policy.js';
 import type { AdditionalMount } from './mount.js';
 
+import type { PromptSegment } from './prompt.js';
+
 export interface AgentConfig {
   additionalMounts?: AdditionalMount[];
   accessPolicy?: AccessPolicy;
@@ -23,6 +25,13 @@ export interface AgentUploadedFile {
 export interface AgentPromptInput {
   text: string;
   uploadedFiles?: AgentUploadedFile[];
+  stableSystemPrompt?: string;
+  volatileSystemPrompt?: string;
+  userPrompt?: string;
+  contextBlocks?: PromptSegment[];
+  stablePrefixFingerprint?: string;
+  cacheFingerprint?: string;
+  historyBridgeNotice?: string;
 }
 
 export interface RegisteredGroup {

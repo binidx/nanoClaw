@@ -8,7 +8,9 @@ import {
 } from '../db/prompt-configs.js';
 import { getPromptDefinition } from './prompt-registry.js';
 import type {
+  CompiledPromptEnvelope,
   PromptConfigRecord,
+  PromptCacheSection,
   PromptLayer,
   PromptPreviewEnvelope,
   PromptScopeKind,
@@ -43,6 +45,11 @@ function normalizeFingerprintText(value: string | null | undefined): string {
 function inferSegmentLayer(segment: PromptSegment): PromptLayer {
   if (segment.layer) return segment.layer;
   if (segment.source === 'conversation_context') return 'context_runtime';
+  if (segment.source === 'context_summary') return 'context_runtime';
+  if (segment.source === 'context_recent') return 'context_runtime';
+  if (segment.source === 'upload_context') return 'context_runtime';
+  if (segment.source === 'memory_recall_tool') return 'context_memory';
+  if (segment.source === 'memory_recall_session') return 'context_memory';
   if (segment.source === 'memory') return 'context_memory';
   if (segment.source === 'assistant_config') return 'system_persona';
   if (segment.source === 'soul') return 'system_persona';
@@ -50,11 +57,26 @@ function inferSegmentLayer(segment: PromptSegment): PromptLayer {
   return 'system_base';
 }
 
+function inferSegmentCacheSection(segment: PromptSegment): PromptCacheSection {
+  if (segment.cacheSection) return segment.cacheSection;
+  const layer = inferSegmentLayer(segment);
+  if (
+    layer === 'system_base' ||
+    layer === 'system_persona' ||
+    layer === 'system_policy' ||
+    layer === 'system_tools'
+  ) {
+    return 'stable';
+  }
+  return 'volatile';
+}
+
 function normalizeSegmentsForFingerprint(segments: PromptSegment[] = []): string {
   return JSON.stringify(
     segments.map((segment) => ({
       id: segment.id,
       layer: inferSegmentLayer(segment),
+      cacheSection: inferSegmentCacheSection(segment),
       source: segment.source,
       promptKey: segment.promptKey || null,
       content: normalizeFingerprintText(segment.content),
@@ -62,7 +84,33 @@ function normalizeSegmentsForFingerprint(segments: PromptSegment[] = []): string
   );
 }
 
+function buildCombinedSystemPrompt(input: {
+  stableSystemPrompt?: string | null;
+  volatileSystemPrompt?: string | null;
+  systemPromptText?: string | null;
+}): {
+  stableSystemPrompt: string;
+  volatileSystemPrompt: string;
+  systemPromptText: string;
+} {
+  const stableSystemPrompt = normalizeFingerprintText(
+    input.stableSystemPrompt ?? input.systemPromptText,
+  );
+  const volatileSystemPrompt = normalizeFingerprintText(input.volatileSystemPrompt);
+  const systemPromptText =
+    input.systemPromptText !== undefined && input.systemPromptText !== null
+      ? normalizeFingerprintText(input.systemPromptText)
+      : [stableSystemPrompt, volatileSystemPrompt].filter(Boolean).join('\n\n');
+  return {
+    stableSystemPrompt,
+    volatileSystemPrompt,
+    systemPromptText,
+  };
+}
+
 export function buildPromptFingerprintMeta(input: {
+  stableSystemPrompt?: string | null;
+  volatileSystemPrompt?: string | null;
   systemPromptText?: string | null;
   userPromptText: string;
   providerInputText?: string | null;
@@ -71,17 +119,57 @@ export function buildPromptFingerprintMeta(input: {
   stablePrefixFingerprint: string;
   cacheFingerprint: string;
 } {
-  const systemPromptText = normalizeFingerprintText(input.systemPromptText);
+  const systemParts = buildCombinedSystemPrompt(input);
   const userPromptText = normalizeFingerprintText(input.userPromptText);
   const providerInputText = normalizeFingerprintText(input.providerInputText);
   const segments = normalizeSegmentsForFingerprint(input.segments || []);
-  const stablePrefixFingerprint = sha256(systemPromptText);
+  const stablePrefixFingerprint = sha256(systemParts.stableSystemPrompt);
   const cacheFingerprint = sha256(
-    [systemPromptText, providerInputText || userPromptText, userPromptText, segments].join(
-      '\n---\n',
-    ),
+    [
+      systemParts.stableSystemPrompt,
+      systemParts.volatileSystemPrompt,
+      providerInputText || userPromptText,
+      userPromptText,
+      segments,
+    ].join('\n---\n'),
   );
   return { stablePrefixFingerprint, cacheFingerprint };
+}
+
+export function buildCompiledPromptEnvelope(input: {
+  stableSystemPrompt?: string | null;
+  volatileSystemPrompt?: string | null;
+  contextBlocks?: PromptSegment[];
+  userPrompt: string;
+  providerInputText?: string | null;
+  segments?: PromptSegment[];
+}): CompiledPromptEnvelope {
+  const systemParts = buildCombinedSystemPrompt({
+    stableSystemPrompt: input.stableSystemPrompt,
+    volatileSystemPrompt: input.volatileSystemPrompt,
+  });
+  const contextBlocks = [...(input.contextBlocks || [])];
+  const providerInputText =
+    input.providerInputText != null
+      ? String(input.providerInputText)
+      : input.userPrompt;
+  const fingerprints = buildPromptFingerprintMeta({
+    stableSystemPrompt: systemParts.stableSystemPrompt,
+    volatileSystemPrompt: systemParts.volatileSystemPrompt,
+    userPromptText: input.userPrompt,
+    providerInputText,
+    segments: input.segments || contextBlocks,
+  });
+  return {
+    stableSystemPrompt: systemParts.stableSystemPrompt,
+    volatileSystemPrompt: systemParts.volatileSystemPrompt,
+    systemPromptText: systemParts.systemPromptText,
+    contextBlocks,
+    userPrompt: input.userPrompt,
+    providerInputText,
+    stablePrefixFingerprint: fingerprints.stablePrefixFingerprint,
+    cacheFingerprint: fingerprints.cacheFingerprint,
+  };
 }
 
 export function isPromptConfigTemplateCompatible(
@@ -211,33 +299,45 @@ export async function removePromptConfig(input: {
 }
 
 export function buildPromptPreviewEnvelope(input: PromptPreviewEnvelope): PromptPreviewEnvelope {
+  const systemParts = buildCombinedSystemPrompt(input);
   const fingerprints = buildPromptFingerprintMeta({
-    systemPromptText: input.systemPromptText ?? null,
+    stableSystemPrompt: systemParts.stableSystemPrompt,
+    volatileSystemPrompt: systemParts.volatileSystemPrompt,
     userPromptText: input.userPromptText,
     providerInputText: input.providerInputText ?? null,
     segments: input.segments,
   });
   return {
     ...input,
+    stableSystemPrompt: systemParts.stableSystemPrompt || null,
+    volatileSystemPrompt: systemParts.volatileSystemPrompt || null,
+    systemPromptText: systemParts.systemPromptText || null,
     stablePrefixFingerprint: input.stablePrefixFingerprint || fingerprints.stablePrefixFingerprint,
     cacheFingerprint: input.cacheFingerprint || fingerprints.cacheFingerprint,
   };
 }
 
 export async function recordPromptTrace(input: PromptTraceInput): Promise<void> {
+  const systemParts = buildCombinedSystemPrompt(input);
   const fingerprints = buildPromptFingerprintMeta({
-    systemPromptText: input.systemPromptText ?? null,
+    stableSystemPrompt: systemParts.stableSystemPrompt,
+    volatileSystemPrompt: systemParts.volatileSystemPrompt,
     userPromptText: input.userPromptText,
     providerInputText: input.providerInputText ?? null,
     segments: input.segments,
   });
   await persistPromptTrace({
     ...input,
+    stableSystemPrompt: systemParts.stableSystemPrompt || null,
+    volatileSystemPrompt: systemParts.volatileSystemPrompt || null,
+    systemPromptText: systemParts.systemPromptText || null,
     cacheFingerprint: input.cacheFingerprint || fingerprints.cacheFingerprint,
     stablePrefixFingerprint:
       input.stablePrefixFingerprint || fingerprints.stablePrefixFingerprint,
     metadata: {
       ...(input.metadata || {}),
+      stableSystemPrompt: systemParts.stableSystemPrompt || null,
+      volatileSystemPrompt: systemParts.volatileSystemPrompt || null,
       cacheFingerprint: input.cacheFingerprint || fingerprints.cacheFingerprint,
       stablePrefixFingerprint:
         input.stablePrefixFingerprint || fingerprints.stablePrefixFingerprint,

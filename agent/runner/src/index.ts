@@ -87,6 +87,21 @@ interface AgentPromptUploadedFile {
 interface AgentPromptPayload {
   text: string;
   uploadedFiles?: AgentPromptUploadedFile[];
+  stableSystemPrompt?: string;
+  volatileSystemPrompt?: string;
+  userPrompt?: string;
+  contextBlocks?: Array<{
+    id?: string;
+    label?: string;
+    promptKey?: string;
+    layer?: string;
+    source?: string;
+    content?: string;
+    cacheSection?: 'stable' | 'volatile';
+  }>;
+  stablePrefixFingerprint?: string;
+  cacheFingerprint?: string;
+  historyBridgeNotice?: string;
 }
 
 type AgentPromptInput = string | AgentPromptPayload;
@@ -484,9 +499,19 @@ function buildClaudeSystemPromptAppend(
   globalClaudeMd: string | undefined,
   defaultClaudeWebGuidance: string,
   agentInput?: AgentRunInput,
+  promptInput?: AgentPromptInput,
 ): string {
   if (agentInput?.suppressDefaultSystemPrompt) {
     return '';
+  }
+  const normalizedPrompt = promptInput ? normalizePromptInput(promptInput) : null;
+  if (normalizedPrompt?.stableSystemPrompt || normalizedPrompt?.volatileSystemPrompt) {
+    return [
+      normalizedPrompt.stableSystemPrompt,
+      normalizedPrompt.volatileSystemPrompt,
+    ]
+      .filter(Boolean)
+      .join('\n\n');
   }
   return buildClaudePromptAppend({
     globalClaudeMd,
@@ -1859,6 +1884,7 @@ async function runQuery(
               globalClaudeMd,
               defaultClaudeWebGuidance,
               agentInput,
+              prompt,
             ),
             defaultMemoryGuidance,
             subagentsEnabled
@@ -2763,9 +2789,19 @@ function buildSubagentPolicyPrompt(
 function buildResponsesInstructions(
   projectDir: string,
   agentInput?: AgentRunInput,
+  promptInput?: AgentPromptInput,
 ): string {
   if (agentInput?.suppressDefaultSystemPrompt) {
     return '';
+  }
+  const normalizedPrompt = promptInput ? normalizePromptInput(promptInput) : null;
+  if (normalizedPrompt?.stableSystemPrompt || normalizedPrompt?.volatileSystemPrompt) {
+    return [
+      normalizedPrompt.stableSystemPrompt,
+      normalizedPrompt.volatileSystemPrompt,
+    ]
+      .filter(Boolean)
+      .join('\n\n');
   }
   const subagentRuntime = getCodexSubagentRuntimeConfig();
   const memoryGuidance = buildMemoryPromptGuidance({ markdown: true });
@@ -2978,6 +3014,27 @@ function normalizePromptPayload(promptInput: AgentPromptInput): AgentPromptPaylo
     promptInput.uploadedFiles.length > 0
       ? { uploadedFiles: promptInput.uploadedFiles }
       : {}),
+    ...(typeof promptInput?.stableSystemPrompt === 'string'
+      ? { stableSystemPrompt: promptInput.stableSystemPrompt }
+      : {}),
+    ...(typeof promptInput?.volatileSystemPrompt === 'string'
+      ? { volatileSystemPrompt: promptInput.volatileSystemPrompt }
+      : {}),
+    ...(typeof promptInput?.userPrompt === 'string'
+      ? { userPrompt: promptInput.userPrompt }
+      : {}),
+    ...(Array.isArray(promptInput?.contextBlocks)
+      ? { contextBlocks: promptInput.contextBlocks }
+      : {}),
+    ...(typeof promptInput?.stablePrefixFingerprint === 'string'
+      ? { stablePrefixFingerprint: promptInput.stablePrefixFingerprint }
+      : {}),
+    ...(typeof promptInput?.cacheFingerprint === 'string'
+      ? { cacheFingerprint: promptInput.cacheFingerprint }
+      : {}),
+    ...(typeof promptInput?.historyBridgeNotice === 'string'
+      ? { historyBridgeNotice: promptInput.historyBridgeNotice }
+      : {}),
   };
 }
 
@@ -2985,6 +3042,9 @@ function normalizePromptInput(promptInput: AgentPromptInput): {
   cleanPrompt: string;
   files: UploadedPromptFile[];
   uploadPromptAppend: string;
+  stableSystemPrompt: string;
+  volatileSystemPrompt: string;
+  historyBridgeNotice: string;
 } {
   if (typeof promptInput === 'string') {
     const legacy = extractUploadContext(promptInput);
@@ -2992,6 +3052,9 @@ function normalizePromptInput(promptInput: AgentPromptInput): {
       cleanPrompt: legacy.cleanPrompt,
       files: legacy.files,
       uploadPromptAppend: buildUploadSystemPromptAppend(legacy.rawBlocks),
+      stableSystemPrompt: '',
+      volatileSystemPrompt: '',
+      historyBridgeNotice: '',
     };
   }
 
@@ -3002,6 +3065,18 @@ function normalizePromptInput(promptInput: AgentPromptInput): {
     cleanPrompt,
     files,
     uploadPromptAppend: buildStructuredUploadSystemPromptAppend(files),
+    stableSystemPrompt:
+      typeof promptInput?.stableSystemPrompt === 'string'
+        ? promptInput.stableSystemPrompt.trim()
+        : '',
+    volatileSystemPrompt:
+      typeof promptInput?.volatileSystemPrompt === 'string'
+        ? promptInput.volatileSystemPrompt.trim()
+        : '',
+    historyBridgeNotice:
+      typeof promptInput?.historyBridgeNotice === 'string'
+        ? promptInput.historyBridgeNotice.trim()
+        : '',
   };
 }
 
@@ -3144,6 +3219,9 @@ function buildClaudeUserMessageContent(
 function mergePromptInputs(inputs: AgentPromptInput[]): AgentPromptInput {
   const mergedFiles: AgentPromptUploadedFile[] = [];
   const textParts: string[] = [];
+  let stableSystemPrompt = '';
+  let volatileSystemPrompt = '';
+  let historyBridgeNotice = '';
 
   for (const input of inputs) {
     const normalized = normalizePromptPayload(input);
@@ -3153,11 +3231,23 @@ function mergePromptInputs(inputs: AgentPromptInput[]): AgentPromptInput {
     if (Array.isArray(normalized.uploadedFiles)) {
       mergedFiles.push(...normalized.uploadedFiles);
     }
+    if (normalized.stableSystemPrompt?.trim()) {
+      stableSystemPrompt = normalized.stableSystemPrompt.trim();
+    }
+    if (normalized.volatileSystemPrompt?.trim()) {
+      volatileSystemPrompt = normalized.volatileSystemPrompt.trim();
+    }
+    if (normalized.historyBridgeNotice?.trim()) {
+      historyBridgeNotice = normalized.historyBridgeNotice.trim();
+    }
   }
 
   return {
     text: textParts.join('\n'),
     ...(mergedFiles.length > 0 ? { uploadedFiles: mergedFiles } : {}),
+    ...(stableSystemPrompt ? { stableSystemPrompt } : {}),
+    ...(volatileSystemPrompt ? { volatileSystemPrompt } : {}),
+    ...(historyBridgeNotice ? { historyBridgeNotice } : {}),
   };
 }
 
@@ -3685,7 +3775,7 @@ async function runCodexChatCompletionsQuery(
   const apiBase = normalizeCodexApiBase(secrets.CODEX_BASE_URL || '');
   const apiKey = secrets.CODEX_API_KEY || '';
   const model = secrets.CODEX_MODEL || 'gpt-5.4';
-  const instructions = buildResponsesInstructions(cwd, agentInput);
+  const instructions = buildResponsesInstructions(cwd, agentInput, prompt);
   const openAiTools = await buildCodexOpenAiTools();
   const historyScope = options?.historyScope || 'shared';
   const history = historyScope === 'ephemeral'
@@ -3907,7 +3997,7 @@ async function runCodexQuery(
   const apiBase = normalizeCodexApiBase(secrets.CODEX_BASE_URL || '');
   const apiKey = secrets.CODEX_API_KEY || '';
   const model = secrets.CODEX_MODEL || 'gpt-5.4';
-  const instructions = buildResponsesInstructions(cwd, agentInput);
+  const instructions = buildResponsesInstructions(cwd, agentInput, prompt);
   const responsesTools = await buildCodexResponsesTools();
   const historyScope = options?.historyScope || 'shared';
   const sharedHistory =
@@ -3917,10 +4007,16 @@ async function runCodexQuery(
     normalizedPrompt.cleanPrompt,
     normalizedPrompt.files,
   );
+  const shouldBridgeHistory =
+    historyScope === 'ephemeral' ||
+    !previousResponseId ||
+    Boolean(normalizedPrompt.historyBridgeNotice);
 
   let inputItems: ResponsesInputItem[] = [
     buildUserMessageInput(
-      buildResponsesHistoryBridgePrompt(sharedHistory, promptText),
+      shouldBridgeHistory
+        ? buildResponsesHistoryBridgePrompt(sharedHistory, promptText)
+        : promptText,
     ),
   ];
   let latestResponseId = previousResponseId;

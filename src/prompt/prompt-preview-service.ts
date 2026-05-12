@@ -10,7 +10,7 @@ import {
   resolveReviewPrompt,
   resolveSupplementalFileReviewPrompt,
 } from '../repo-review/repo-review-run-executor.js';
-import { resolvePromptText } from './prompt-service.js';
+import { renderPromptTemplate, resolvePromptText } from './prompt-service.js';
 import type {
   RepoReviewEvent,
   RepoReviewProfile,
@@ -34,8 +34,10 @@ import { buildSoulPrompt } from '../soul/soul-service.js';
 import { buildTaskPrompt } from '../workteam/agent-adapter.js';
 import { buildEvalPrompt } from '../workteam/evaluation-engine.js';
 import { buildSmartCreatorPrompt } from '../workteam/smart-creator.js';
+import { buildRunnerPromptPreview } from './runner-prompt-runtime.js';
 import type { PromptLayer, PromptPreviewEnvelope, PromptSegment } from '../types/prompt.js';
 import { t } from '../i18n/index.js';
+import { getPromptDefinition } from './prompt-registry.js';
 
 export interface PromptPreviewScenario {
   id: string;
@@ -250,6 +252,30 @@ const PROMPT_PREVIEW_SCENARIOS: PromptPreviewScenario[] = [
     defaultVariables: {
       chatJid: 'web:preview',
       currentMessages: t('errors.auto_69da9d', {}, undefined),
+    },
+  },
+  {
+    id: 'runner.codex_runtime',
+    title: 'Runner Codex runtime',
+    description: 'Codex runner stable system prompt preview.',
+    featureScope: 'runner',
+    promptKey: 'runner.preview.codex_runtime',
+    kind: 'runtime_prompt',
+    defaultVariables: {
+      projectDir: '/workspace/group',
+      managedSkillIds: ['imagegen'],
+    },
+  },
+  {
+    id: 'runner.claude_runtime',
+    title: 'Runner Claude runtime',
+    description: 'Claude runner stable system prompt preview.',
+    featureScope: 'runner',
+    promptKey: 'runner.preview.claude_runtime',
+    kind: 'runtime_prompt',
+    defaultVariables: {
+      projectDir: '/workspace/group',
+      managedSkillIds: ['imagegen'],
     },
   },
   {
@@ -765,6 +791,29 @@ export async function buildPromptPreviewFromRuntime(input: {
     });
   }
 
+  if (
+    promptKey === 'runner.preview.codex_runtime' ||
+    promptKey === 'runner.preview.claude_runtime'
+  ) {
+    return buildRunnerPromptPreview({
+      providerType:
+        promptKey === 'runner.preview.codex_runtime' ? 'codex' : 'claude',
+      targetUserId: input.targetUserId || null,
+      projectDir: asString(vars.projectDir, '/workspace/group'),
+      managedSkillIds: asStringArray(vars.managedSkillIds),
+      userSkillIds: asStringArray(vars.userSkillIds),
+      extraDirectories: Array.isArray(vars.extraDirectories)
+        ? vars.extraDirectories
+            .map((entry) => asRecord(entry))
+            .map((entry, index) => ({
+              label: asString(entry.label, `extra-${index + 1}`),
+              hostPath: asString(entry.hostPath, ''),
+            }))
+            .filter((entry) => entry.hostPath)
+        : [],
+    });
+  }
+
   if (promptKey === 'requirement_parser.base') {
     const text = buildParserPrompt(
       asString(vars.rawInput, t('errors.auto_cdaf62', {}, undefined)),
@@ -849,6 +898,30 @@ export async function buildPromptPreviewFromRuntime(input: {
       userPromptText: text,
       providerInputText: text,
       segments: [segmentForPrompt(promptKey, t('errors.auto_881330', {}, undefined), text)],
+      resolution: [],
+    });
+  }
+
+  if (promptKey === 'im.ai_invocation') {
+    const text = renderPromptTemplate(
+      getPromptDefinition(promptKey)?.defaultTemplate || '',
+      {
+        transcript: asString(
+          vars.transcript,
+          'Alice: 先看一下今天的异常\nBot: 已记录\nAlice: 帮我总结重点',
+        ),
+        requestedBy: asString(vars.requestedBy, 'alice'),
+        request: asString(vars.request, '帮我总结重点'),
+      },
+    );
+    return buildPromptPreviewEnvelope({
+      traceKind: 'direct_provider',
+      featureScope: 'im',
+      promptKey,
+      targetUserId: input.targetUserId || null,
+      userPromptText: asString(vars.request, '帮我总结重点'),
+      providerInputText: text,
+      segments: [segmentForPrompt(promptKey, 'IM AI invocation', text)],
       resolution: [],
     });
   }

@@ -1,4 +1,5 @@
 export type PromptScopeKind = 'system' | 'user';
+export type PromptCacheSection = 'stable' | 'volatile';
 export type PromptLayer =
   | 'system_base'
   | 'system_persona'
@@ -48,16 +49,34 @@ export interface PromptSegment {
   label: string;
   promptKey?: string;
   layer?: PromptLayer;
+  mutability?: PromptMutability;
+  cacheSection?: PromptCacheSection;
   source:
     | 'builtin'
     | 'system_default'
     | 'user_override'
     | 'assistant_config'
     | 'conversation_context'
+    | 'context_summary'
+    | 'context_recent'
+    | 'memory_recall_tool'
+    | 'memory_recall_session'
+    | 'upload_context'
     | 'soul'
     | 'memory'
     | 'custom';
   content: string;
+}
+
+export interface CompiledPromptEnvelope {
+  stableSystemPrompt: string;
+  volatileSystemPrompt: string;
+  contextBlocks: PromptSegment[];
+  userPrompt: string;
+  systemPromptText?: string | null;
+  providerInputText?: string | null;
+  stablePrefixFingerprint?: string | null;
+  cacheFingerprint?: string | null;
 }
 
 export interface PromptSourceResolution {
@@ -94,9 +113,12 @@ export interface PromptTraceInput {
   chatJid?: string | null;
   provider?: string | null;
   model?: string | null;
+  stableSystemPrompt?: string | null;
+  volatileSystemPrompt?: string | null;
   systemPromptText?: string | null;
   userPromptText: string;
   providerInputText?: string | null;
+  contextBlocks?: PromptSegment[];
   segments?: PromptSegment[];
   resolution?: PromptSourceResolution[];
   cacheFingerprint?: string | null;
@@ -110,9 +132,12 @@ export interface PromptPreviewEnvelope {
   promptKey?: string | null;
   targetUserId?: string | null;
   chatJid?: string | null;
+  stableSystemPrompt?: string | null;
+  volatileSystemPrompt?: string | null;
   systemPromptText?: string | null;
   userPromptText: string;
   providerInputText?: string | null;
+  contextBlocks?: PromptSegment[];
   segments: PromptSegment[];
   resolution: PromptSourceResolution[];
   cacheFingerprint?: string | null;

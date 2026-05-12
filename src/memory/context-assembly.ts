@@ -20,6 +20,7 @@ import type {
   MemoryDocumentRecord,
   NewMessage,
 } from '../types.js';
+import type { PromptSegment } from '../types/prompt.js';
 
 import { getMemoryContextConfig } from './context-config.js';
 import { applyTemporalDecay } from './temporal-decay.js';
@@ -67,22 +68,6 @@ function shouldIncludePromptContextEntry(
   );
 }
 
-function formatPromptContextEntries(entries: ContextEntryRecord[]): string {
-  if (entries.length === 0) return '';
-  const lines = entries.map((entry) => {
-    const text = truncatePromptContextTextForSource(
-      entry.content_text,
-      entry.source_type,
-    );
-    return `<entry role="${escapePromptAttr(entry.role)}" source="${escapePromptAttr(
-      entry.source_type,
-    )}" memory_source="${escapePromptAttr(
-      inferPromptMemorySource(entry),
-    )}" time="${escapePromptAttr(entry.created_at)}">${escapeXml(text)}</entry>`;
-  });
-  return `<recent_context>\n${lines.join('\n')}\n</recent_context>`;
-}
-
 function parseEntryJson(entry: ContextEntryRecord): Record<string, unknown> {
   try {
     const parsed = entry.content_json ? JSON.parse(entry.content_json) : null;
@@ -110,6 +95,65 @@ function inferPromptMemorySource(entry: ContextEntryRecord): string {
   }
   if (entry.source_type === 'compaction_summary') return 'compaction_summary';
   return 'recent_context';
+}
+
+function formatPromptContextEntry(entry: ContextEntryRecord): string {
+  const text = truncatePromptContextTextForSource(
+    entry.content_text,
+    entry.source_type,
+  );
+  return `<entry role="${escapePromptAttr(entry.role)}" source="${escapePromptAttr(
+    entry.source_type,
+  )}" memory_source="${escapePromptAttr(
+    inferPromptMemorySource(entry),
+  )}" time="${escapePromptAttr(entry.created_at)}">${escapeXml(text)}</entry>`;
+}
+
+function formatPromptContextEntries(entries: ContextEntryRecord[]): string {
+  if (entries.length === 0) return '';
+  const lines = entries.map((entry) => formatPromptContextEntry(entry));
+  return `<recent_context>\n${lines.join('\n')}\n</recent_context>`;
+}
+
+function derivePromptSegmentSource(entry: ContextEntryRecord): PromptSegment['source'] {
+  if (entry.source_type === 'compaction_summary') return 'context_summary';
+  if (entry.source_type === 'memory_recall') return 'memory_recall_tool';
+  if (entry.source_type === 'post_compaction_context') {
+    const parsed = parseEntryJson(entry);
+    return parsed.visibility === 'session_only'
+      ? 'memory_recall_session'
+      : 'context_recent';
+  }
+  return 'context_recent';
+}
+
+function derivePromptSegmentLabel(entry: ContextEntryRecord): string {
+  if (entry.source_type === 'compaction_summary') return 'Compaction Summary';
+  if (entry.source_type === 'memory_recall') return 'Memory Recall';
+  if (entry.source_type === 'post_compaction_context') {
+    const parsed = parseEntryJson(entry);
+    return parsed.visibility === 'session_only'
+      ? 'Session Memory'
+      : 'Recent Context';
+  }
+  return 'Recent Context';
+}
+
+function buildPromptContextSegments(entries: ContextEntryRecord[]): PromptSegment[] {
+  return entries.map((entry) => ({
+    id: `prompt-context:${entry.id}`,
+    label: derivePromptSegmentLabel(entry),
+    layer:
+      entry.source_type === 'memory_recall' ||
+      (entry.source_type === 'post_compaction_context' &&
+        parseEntryJson(entry).visibility === 'session_only')
+        ? 'context_memory'
+        : 'context_runtime',
+    mutability: 'derived',
+    cacheSection: 'volatile',
+    source: derivePromptSegmentSource(entry),
+    content: formatPromptContextEntry(entry),
+  }));
 }
 
 function parseCompactedSourceEntryIds(
@@ -674,21 +718,35 @@ async function collectDurablePromptEntries(input: {
   return dedupeRecallEntries(entries).slice(0, input.maxEntries);
 }
 
-export async function assembleAgentContext(
+export interface AssembledAgentContext {
+  text: string;
+  userPrompt: string;
+  contextBlocks: PromptSegment[];
+}
+
+export async function assembleAgentContextEnvelope(
   chatJid: string,
   sourceMessages: NewMessage[],
-): Promise<string> {
+): Promise<AssembledAgentContext> {
   const memoryConfig = await getMemoryContextConfig();
+  const currentMessages = formatMessages(sourceMessages);
   if (!memoryConfig.memoryEnabled || !memoryConfig.memoryReadEnabled) {
-    return formatMessages(sourceMessages);
+    return {
+      text: currentMessages,
+      userPrompt: currentMessages,
+      contextBlocks: [],
+    };
   }
 
-  const currentMessages = formatMessages(sourceMessages);
   if (
     !memoryConfig.promptInjectionEnabled ||
     memoryConfig.promptMaxSnippets <= 0
   ) {
-    return currentMessages;
+    return {
+      text: currentMessages,
+      userPrompt: currentMessages,
+      contextBlocks: [],
+    };
   }
 
   const currentMessageIds = new Set(sourceMessages.map((message) => message.id));
@@ -770,8 +828,21 @@ export async function assembleAgentContext(
   } catch {
     /* observability writeback must not block prompt assembly */
   }
+  const contextBlocks = buildPromptContextSegments(promptEntries);
   const recentContext = formatPromptContextEntries(promptEntries);
-  return recentContext ? `${recentContext}\n\n${currentMessages}` : currentMessages;
+  return {
+    text: recentContext ? `${recentContext}\n\n${currentMessages}` : currentMessages,
+    userPrompt: currentMessages,
+    contextBlocks,
+  };
+}
+
+export async function assembleAgentContext(
+  chatJid: string,
+  sourceMessages: NewMessage[],
+): Promise<string> {
+  const assembled = await assembleAgentContextEnvelope(chatJid, sourceMessages);
+  return assembled.text;
 }
 
 export const __testing = {

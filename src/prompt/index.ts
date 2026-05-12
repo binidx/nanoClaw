@@ -13,6 +13,7 @@ export {
   resolvePromptText,
   savePromptConfig,
   removePromptConfig,
+  buildCompiledPromptEnvelope,
   buildPromptPreviewEnvelope,
   recordPromptTrace,
 } from './prompt-service.js';

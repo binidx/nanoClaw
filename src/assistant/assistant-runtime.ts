@@ -49,6 +49,7 @@ export interface ResolvedAssistantRuntimeConfig {
   projectRootOverride?: string;
   providerOverrideId?: string;
   modelOverride?: string;
+  providerType?: AiProvider['type'] | null;
   soulSystemPrompt?: string;
   instructionsAppend?: string;
   instructionsMode?: AssistantRuleMode;
@@ -151,6 +152,7 @@ export async function resolveAssistantRuntimeConfig(
       assistantName: null,
       providerOverrideId: convProvider?.id || convProviderId || undefined,
       modelOverride: convModel || convProvider?.model || undefined,
+      providerType: convProvider?.type || null,
       soulSystemPrompt: soulOnly || undefined,
       instructionsAppend: customInstructions || undefined,
       instructionsMode: customInstructions ? 'append' : undefined,
@@ -185,6 +187,7 @@ export async function resolveAssistantRuntimeConfig(
     return {
       assistantId,
       assistantName: null,
+      providerType: null,
       soulSystemPrompt: soulFallback || undefined,
       instructionsAppend: customInstructions || undefined,
       instructionsMode: 'append',
@@ -262,6 +265,7 @@ export async function resolveAssistantRuntimeConfig(
     projectRootOverride: repoProjectRoot,
     providerOverrideId: provider?.id || effectiveProviderId || undefined,
     modelOverride: effectiveModel,
+    providerType: provider?.type || null,
     soulSystemPrompt:
       await buildConversationSoulSystemPrompt(options.soulPrompt) || undefined,
     instructionsAppend: await buildResolvedAssistantInstructionsAppend({

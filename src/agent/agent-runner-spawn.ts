@@ -53,6 +53,9 @@ import {
 import { getProfileForChat } from '../workteam/runner-profile-registry.js';
 import { mergeProfileEnv } from '../workteam/runner-profiles.js';
 import { t } from '../i18n/index.js';
+import {
+  buildUserMcpRuntimeAlias,
+} from './agent-runner-mcp-alias.js';
 
 const isWin = os.platform() === 'win32';
 
@@ -627,11 +630,11 @@ export async function spawnAgent(
           )
         : null;
       for (const srv of userServers) {
-        if (seen.has(srv.id)) continue;
         if (allowedUserMcp && !allowedUserMcp.has(srv.id)) continue;
-        seen.add(srv.id);
+        const runtimeAlias = buildUserMcpRuntimeAlias(srv, seen);
+        seen.add(runtimeAlias);
         const resolved = resolveUserMcpRuntimeConfig(srv);
-        base[srv.id] = {
+        base[runtimeAlias] = {
           transport: resolved.transport,
           ...(resolved.transport === 'stdio'
             ? {

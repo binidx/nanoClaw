@@ -43,16 +43,30 @@ type PromptPreview = {
   promptKey?: string | null;
   targetUserId?: string | null;
   chatJid?: string | null;
+  stableSystemPrompt?: string | null;
+  volatileSystemPrompt?: string | null;
   systemPromptText?: string | null;
   userPromptText: string;
   providerInputText?: string | null;
   cacheFingerprint?: string | null;
   stablePrefixFingerprint?: string | null;
+  contextBlocks?: Array<{
+    id: string;
+    label: string;
+    promptKey?: string;
+    layer?: string;
+    mutability?: string;
+    cacheSection?: 'stable' | 'volatile';
+    source: string;
+    content: string;
+  }>;
   segments: Array<{
     id: string;
     label: string;
     promptKey?: string;
     layer?: string;
+    mutability?: string;
+    cacheSection?: 'stable' | 'volatile';
     source: string;
     content: string;
   }>;
@@ -128,11 +142,13 @@ function getFeatureScopeLabels(t: (key: string) => string): Record<string, strin
   return {
     assistant: t('settings.prompt.助手'),
     conversation: t('settings.prompt.会话'),
+    im: 'IM',
     soul: t('settings.prompt.Soul_人格'),
     requirement_parser: t('settings.prompt.需求解析'),
     memory: t('settings.prompt.记忆'),
     runtime_customization: t('settings.prompt.运行时定制'),
     code_map: 'CodeMap',
+    runner: 'Runner',
     user_mcp: t('settings.prompt.用户_MCP'),
     stock_analysis: t('settings.prompt.股票分析'),
     repo_review: t('settings.prompt.仓库审查'),
@@ -172,6 +188,13 @@ function getPromptMutabilityLabels(): Record<string, string> {
   };
 }
 
+function getCacheSectionLabels(): Record<string, string> {
+  return {
+    stable: 'Stable Prefix',
+    volatile: 'Volatile Suffix',
+  };
+}
+
 function getSourceLabels(t: (key: string) => string): Record<string, string> {
   return {
     builtin: t('settings.prompt.内置默认'),
@@ -179,6 +202,11 @@ function getSourceLabels(t: (key: string) => string): Record<string, string> {
     user_override: t('settings.prompt.用户覆盖'),
     assistant_config: t('settings.prompt.助手配置'),
     conversation_context: t('settings.prompt.会话上下文'),
+    context_summary: 'Context Summary',
+    context_recent: 'Recent Context',
+    memory_recall_tool: 'Memory Recall Tool',
+    memory_recall_session: 'Session Memory',
+    upload_context: 'Upload Context',
     soul: t('settings.prompt.Soul_人格'),
     memory: t('settings.prompt.记忆'),
     custom: t('settings.prompt.自定义'),
@@ -196,6 +224,8 @@ function getScenarioTitleLabels(t: (key: string) => string): Record<string, stri
   return {
     'conversation.runtime': t('settings.prompt.会话运行时'),
     'soul.runtime': t('settings.prompt.Soul_运行时'),
+    'runner.codex_runtime': 'Runner Codex Runtime',
+    'runner.claude_runtime': 'Runner Claude Runtime',
     'repo_review.primary': t('settings.prompt.仓库审查主提示词'),
     'repo_review.worker': t('settings.prompt.仓库审查_Worker'),
     'repo_review.reducer': t('settings.prompt.仓库审查_Reducer'),
@@ -233,6 +263,10 @@ function formatPromptMutability(value?: string | null): string {
   return labelOrRaw(getPromptMutabilityLabels(), value);
 }
 
+function formatCacheSection(value?: string | null): string {
+  return labelOrRaw(getCacheSectionLabels(), value);
+}
+
 function formatSource(t: (key: string) => string, value?: string | null): string {
   return labelOrRaw(getSourceLabels(t), value);
 }
@@ -258,6 +292,9 @@ function formatScenarioDescription(t: (key: string) => string, scenario: PromptP
   }
   if (scenario.featureScope === 'workteam') {
     return t('settings.prompt.工作流_模块真实运行时提示词预览');
+  }
+  if (scenario.featureScope === 'runner') {
+    return 'Runner 稳定系统提示前缀预览。';
   }
   return scenario.description;
 }
@@ -459,8 +496,18 @@ export function SettingsPromptTab({ apiBase }: { apiBase: string }) {
     () => new Map(definitions.map((definition) => [definition.key, definition.title])),
     [definitions],
   );
+  const promptDefinitionByKey = useMemo(
+    () => new Map(definitions.map((definition) => [definition.key, definition])),
+    [definitions],
+  );
   const formatPromptLabel = (promptKey?: string | null, fallbackScope?: string | null): string => {
-    if (promptKey) return promptTitleByKey.get(promptKey) || promptKey;
+    if (promptKey) {
+      return (
+        promptTitleByKey.get(promptKey) ||
+        getScenarioTitleLabels(t)[promptKey] ||
+        promptKey
+      );
+    }
     return fallbackScope ? formatFeatureScope(t, fallbackScope) : t('settings.prompt.运行时');
   };
 
@@ -503,9 +550,18 @@ export function SettingsPromptTab({ apiBase }: { apiBase: string }) {
       promptKey: trace.prompt_key,
       targetUserId: trace.target_user_id || null,
       chatJid: trace.chat_jid || null,
+      stableSystemPrompt:
+        metadata && typeof metadata.stableSystemPrompt === 'string'
+          ? metadata.stableSystemPrompt
+          : trace.system_prompt_text || null,
+      volatileSystemPrompt:
+        metadata && typeof metadata.volatileSystemPrompt === 'string'
+          ? metadata.volatileSystemPrompt
+          : null,
       systemPromptText: trace.system_prompt_text || null,
       userPromptText: trace.user_prompt_text,
       providerInputText: trace.provider_input_text || null,
+      contextBlocks: segments.filter((segment) => segment.layer?.startsWith('context_')),
       cacheFingerprint:
         metadata && typeof metadata.cacheFingerprint === 'string'
           ? metadata.cacheFingerprint
@@ -932,20 +988,34 @@ export function SettingsPromptTab({ apiBase }: { apiBase: string }) {
               {previewResult.cacheFingerprint ? `full ${previewResult.cacheFingerprint.slice(0, 16)}…` : ''}
             </div>
           )}
-          {previewResult.systemPromptText && (
+          {previewResult.stableSystemPrompt && (
             <label className="config-field" style={{ marginTop: 12 }}>
-              <span>{t('settings.prompt.系统提示词')}</span>
-              <textarea className="nc-input" rows={8} readOnly value={previewResult.systemPromptText} />
+              <span>Stable System Prompt</span>
+              <textarea className="nc-input" rows={8} readOnly value={previewResult.stableSystemPrompt} />
+            </label>
+          )}
+          {previewResult.volatileSystemPrompt && (
+            <label className="config-field" style={{ marginTop: 12 }}>
+              <span>Volatile System Prompt</span>
+              <textarea className="nc-input" rows={8} readOnly value={previewResult.volatileSystemPrompt} />
             </label>
           )}
           <label className="config-field" style={{ marginTop: 12 }}>
-            <span>{t('settings.prompt.用户提示词_请求载荷')}</span>
+            <span>User Prompt</span>
             <textarea className="nc-input" rows={12} readOnly value={previewResult.userPromptText} />
           </label>
+          {previewResult.providerInputText && previewResult.providerInputText !== previewResult.userPromptText && (
+            <label className="config-field" style={{ marginTop: 12 }}>
+              <span>Provider Input</span>
+              <textarea className="nc-input" rows={10} readOnly value={previewResult.providerInputText} />
+            </label>
+          )}
           <div style={{ display: 'grid', gap: 8, marginTop: 12 }}>
             {previewResult.segments.map((segment) => (
               <details key={segment.id} open>
-                <summary>{segment.label} · {formatSource(t, segment.source)} · {formatPromptLayer(segment.layer)}</summary>
+                <summary>
+                  {segment.label} · {formatSource(t, segment.source)} · {formatPromptLayer(segment.layer)} · {formatPromptMutability(segment.mutability || promptDefinitionByKey.get(segment.promptKey || '')?.mutability)} · {formatCacheSection(segment.cacheSection || 'volatile')}
+                </summary>
                 <textarea className="nc-input" rows={6} readOnly value={segment.content} />
               </details>
             ))}

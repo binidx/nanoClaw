@@ -141,6 +141,7 @@ describe('assistant runtime resolution', () => {
       constraints: '',
     });
     expect(resolved.providerOverrideId).toBe('provider-ops');
+    expect(resolved.providerType).toBe('codex');
     expect(resolved.modelOverride).toBe('gpt-5.4-mini');
     expect(resolved.instructionsMode).toBe('locked');
     expect(resolved.providerAlias).toBe('Ops GPT');

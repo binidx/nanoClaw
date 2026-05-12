@@ -283,6 +283,12 @@ describe('agent context assembly', () => {
     expect(recentContextIndex).toBeGreaterThanOrEqual(0);
     expect(recallIndex).toBeGreaterThan(recentContextIndex);
     expect(rawIndex).toBeGreaterThan(recallIndex);
+    expect(prompt.contextBlocks?.some((entry) => entry.source === 'memory_recall_tool')).toBe(
+      true,
+    );
+    expect(prompt.contextBlocks?.some((entry) => entry.source === 'context_recent')).toBe(
+      true,
+    );
   });
 
   it('does not auto-inject bound identity memory without an explicit memory recall entry', async () => {

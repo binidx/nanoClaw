@@ -12,6 +12,7 @@ vi.mock('../db/prompt-configs.js', () => ({
 }));
 
 import {
+  buildCompiledPromptEnvelope,
   buildPromptFingerprintMeta,
   isPromptConfigTemplateCompatible,
   resolvePromptText,
@@ -162,5 +163,49 @@ describe('prompt service config compatibility', () => {
     expect(first.stablePrefixFingerprint).toHaveLength(64);
     expect(first.cacheFingerprint).toHaveLength(64);
     expect(second).toEqual(first);
+  });
+
+  it('changes only the full fingerprint when volatile prompt content changes', () => {
+    const first = buildPromptFingerprintMeta({
+      stableSystemPrompt: 'stable block',
+      volatileSystemPrompt: 'volatile A',
+      userPromptText: 'user block',
+      providerInputText: 'provider block',
+    });
+    const second = buildPromptFingerprintMeta({
+      stableSystemPrompt: 'stable block',
+      volatileSystemPrompt: 'volatile B',
+      userPromptText: 'user block',
+      providerInputText: 'provider block',
+    });
+
+    expect(second.stablePrefixFingerprint).toBe(first.stablePrefixFingerprint);
+    expect(second.cacheFingerprint).not.toBe(first.cacheFingerprint);
+  });
+
+  it('builds a compiled prompt envelope with stable and volatile sections', () => {
+    const envelope = buildCompiledPromptEnvelope({
+      stableSystemPrompt: 'stable block',
+      volatileSystemPrompt: 'volatile block',
+      contextBlocks: [
+        {
+          id: 'ctx',
+          label: 'Context',
+          layer: 'context_runtime',
+          cacheSection: 'volatile',
+          source: 'context_recent',
+          content: '<entry>context</entry>',
+        },
+      ],
+      userPrompt: '<messages>user</messages>',
+      providerInputText: '<recent_context>...</recent_context>\n\n<messages>user</messages>',
+    });
+
+    expect(envelope.stableSystemPrompt).toBe('stable block');
+    expect(envelope.volatileSystemPrompt).toBe('volatile block');
+    expect(envelope.userPrompt).toContain('<messages>user</messages>');
+    expect(envelope.contextBlocks).toHaveLength(1);
+    expect(envelope.stablePrefixFingerprint).toHaveLength(64);
+    expect(envelope.cacheFingerprint).toHaveLength(64);
   });
 });
