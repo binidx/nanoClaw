@@ -62,6 +62,16 @@ function countTurnItems(turns: AssistantTurn[]): number {
   return turns.reduce((total, turn) => total + turn.items.length, 0);
 }
 
+function countTurnContextRichness(turns: AssistantTurn[]): number {
+  let total = 0;
+  for (const turn of turns) {
+    if (turn.groupKey) total += 1;
+    if (turn.groupLabel) total += 1;
+    if (turn.phase) total += 1;
+  }
+  return total;
+}
+
 function pickRicherTurns(
   preferred: AssistantTurn[],
   fallback: AssistantTurn[],
@@ -89,6 +99,14 @@ function pickRicherTurns(
   const fallbackItemCount = countTurnItems(fallback);
   if (preferredItemCount !== fallbackItemCount) {
     return preferredItemCount > fallbackItemCount ? preferred : fallback;
+  }
+
+  const preferredContextRichness = countTurnContextRichness(preferred);
+  const fallbackContextRichness = countTurnContextRichness(fallback);
+  if (preferredContextRichness !== fallbackContextRichness) {
+    return preferredContextRichness > fallbackContextRichness
+      ? preferred
+      : fallback;
   }
 
   return preferred.length >= fallback.length ? preferred : fallback;

@@ -341,4 +341,62 @@ describe('repo review run list helpers', () => {
       text: 'live body',
     });
   });
+
+  it('prefers richer turn context when timestamps and item counts tie', () => {
+    const merged = mergeFetchedRepoReviewRunSnapshot(
+      makeRun({
+        id: 'run-context',
+        status: 'running',
+        updatedAt: '2026-03-24T10:00:05.000Z',
+        reviewTurns: [
+          {
+            id: 'turn-local',
+            timestamp: '2026-03-24T10:00:05.000Z',
+            items: [
+              {
+                id: 'msg-local',
+                type: 'assistant_message',
+                status: 'in_progress',
+                text: 'live body',
+                timestamp: '2026-03-24T10:00:05.000Z',
+              },
+            ],
+            isLive: true,
+            isCompleted: false,
+          },
+        ],
+      }),
+      makeRun({
+        id: 'run-context',
+        status: 'running',
+        updatedAt: '2026-03-24T10:00:05.000Z',
+        reviewTurns: [
+          {
+            id: 'turn-local',
+            groupKey: 'agentic_main_summary',
+            groupLabel: '主代理直接审查',
+            phase: 'main_agent_review',
+            timestamp: '2026-03-24T10:00:05.000Z',
+            items: [
+              {
+                id: 'msg-local',
+                type: 'assistant_message',
+                status: 'in_progress',
+                text: 'live body',
+                timestamp: '2026-03-24T10:00:05.000Z',
+              },
+            ],
+            isLive: true,
+            isCompleted: false,
+          },
+        ],
+      }),
+    );
+
+    expect(merged?.reviewTurns[0]).toMatchObject({
+      groupKey: 'agentic_main_summary',
+      groupLabel: '主代理直接审查',
+      phase: 'main_agent_review',
+    });
+  });
 });

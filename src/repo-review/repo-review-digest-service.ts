@@ -18,6 +18,7 @@ import { recordPromptTrace, resolvePromptText } from '../prompt/prompt-service.j
 import { getAssistantName } from '../config-store.js';
 import type { RegisteredGroup, StructuredOutboundMessage } from '../types.js';
 import { REPO_REVIEW_DIGEST_TEMPLATE } from './repo-review-prompt-templates.js';
+import { buildRepoReviewReadOnlyAllowedDirectories } from './repo-review-model.js';
 import path from 'path';
 import os from 'os';
 import fs from 'fs';
@@ -641,11 +642,15 @@ async function runDigestAgent(
     suppressScheduledTaskPreamble: true,
   };
   if (repoPath) {
+    const allowedDirectories = buildRepoReviewReadOnlyAllowedDirectories(
+      repoPath,
+      repository.local_repo_path,
+    );
     agentInput.extraMounts = [
       { hostPath: repoPath, targetPath: '/workspace/extra', readonly: true },
     ];
     agentInput.accessModeOverride = 'readonly';
-    agentInput.allowedDirectoriesOverride = [repoPath];
+    agentInput.allowedDirectoriesOverride = allowedDirectories;
     agentInput.workingDirectory = '/workspace/extra';
   }
 

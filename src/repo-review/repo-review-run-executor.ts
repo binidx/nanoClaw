@@ -80,7 +80,10 @@ import {
 import { listFeishuChatMembersByJid } from '../channels/feishu.js';
 import { getWebChannel } from '../channels/web.js';
 import { logger } from '../logger.js';
-import { recordPromptTrace, resolvePromptText } from '../prompt/prompt-service.js';
+import {
+  recordPromptTrace,
+  resolvePromptText,
+} from '../prompt/prompt-service.js';
 import {
   REPO_REVIEW_AGENTIC_EXTRACTOR_TEMPLATE,
   REPO_REVIEW_AGENTIC_FINAL_TEMPLATE,
@@ -184,6 +187,7 @@ import type {
 import {
   asRecord,
   buildActorMentionLookupKeys,
+  buildRepoReviewReadOnlyAllowedDirectories,
   buildManualReviewKey,
   compareRepoReviewBranchSummaries,
   HOOK_MARKER_END,
@@ -262,13 +266,9 @@ async function normalizeReviewChatJidInput(value: unknown): Promise<string> {
     return buildFeishuJid(feishuInstances[0]!.id, raw);
   }
   if (feishuInstances.length === 0) {
-    throw new Error(
-      t('repoReview.auto_b5bd8e', {}, undefined),
-    );
+    throw new Error(t('repoReview.auto_b5bd8e', {}, undefined));
   }
-  throw new Error(
-    t('repoReview.auto_1cf9c9', {}, undefined),
-  );
+  throw new Error(t('repoReview.auto_1cf9c9', {}, undefined));
 }
 
 const STALE_REVIEW_RUN_GRACE_MS = Math.max(
@@ -327,7 +327,8 @@ const REPO_REVIEW_SUBAGENT_RESULT_MAX_CHARS = Math.max(
 );
 const REPO_REVIEW_SUBAGENT_PROMPT_PREVIEW_MAX_CHARS = Math.max(
   800,
-  Number(process.env.NANOCLAW_REVIEW_SUBAGENT_PROMPT_PREVIEW_MAX_CHARS) || 2_400,
+  Number(process.env.NANOCLAW_REVIEW_SUBAGENT_PROMPT_PREVIEW_MAX_CHARS) ||
+    2_400,
 );
 const REPO_REVIEW_AGENTIC_SUBAGENT_DIFF_MAX_CHARS = Math.max(
   8_000,
@@ -366,7 +367,9 @@ function normalizeLegacyRepoReviewText(value: unknown): string {
 async function resolveRepoReviewMaxSubagents(): Promise<number> {
   const raw = await getConfigValue(WEB_SUBAGENTS_CONFIG_KEY);
   const config = parseSubagentsConfig(raw ?? undefined);
-  const base = config.enabled ? config.maxActive : REPO_REVIEW_GROUP_DEFAULT_MAX_COUNT;
+  const base = config.enabled
+    ? config.maxActive
+    : REPO_REVIEW_GROUP_DEFAULT_MAX_COUNT;
   // When an operator has set NANOCLAW_REPO_REVIEW_MAX_SUBAGENTS, clamp the
   // review-specific fan-out below the global subagent budget without
   // lowering it for non-review flows.
@@ -442,7 +445,8 @@ function buildInitialRepoReviewExecutionStats(input: {
     delegatedSubagentCount: 0,
     plannedSubagentCount: 0,
     totalReadBudgetBytes: REPO_REVIEW_AGENTIC_DEFAULT_MAX_TOTAL_READ_BYTES,
-    maxFullFileBytesPerFile: REPO_REVIEW_AGENTIC_DEFAULT_MAX_FULL_FILE_BYTES_PER_FILE,
+    maxFullFileBytesPerFile:
+      REPO_REVIEW_AGENTIC_DEFAULT_MAX_FULL_FILE_BYTES_PER_FILE,
     extractorAttempts: 0,
     timeoutFollowupCount: 0,
     partialWorkerResultCount: 0,
@@ -481,7 +485,10 @@ function countRepoReviewToolCalls(
 }
 
 function normalizeRepoReviewPathValue(value: string): string {
-  return value.replace(/\\/g, '/').replace(/^\.\/+/, '').trim();
+  return value
+    .replace(/\\/g, '/')
+    .replace(/^\.\/+/, '')
+    .trim();
 }
 
 function extractRepoReviewReadTargetsFromToolCall(
@@ -503,7 +510,10 @@ function extractRepoReviewReadTargetsFromToolCall(
   };
   if (title === 'read_file') {
     try {
-      const parsed = JSON.parse(extractJsonObject(rawArgs)) as Record<string, unknown>;
+      const parsed = JSON.parse(extractJsonObject(rawArgs)) as Record<
+        string,
+        unknown
+      >;
       return [
         ...toPaths(parsed.path),
         ...toPaths(parsed.file),
@@ -542,10 +552,9 @@ function countRepoReviewOutOfScopeReads(
   return count;
 }
 
-function recordRepoReviewFullFileBatchStats<T extends { estimatedBytes: number }>(
-  stats: RepoReviewExecutionStats | undefined,
-  taskGroups: T[][],
-): void {
+function recordRepoReviewFullFileBatchStats<
+  T extends { estimatedBytes: number },
+>(stats: RepoReviewExecutionStats | undefined, taskGroups: T[][]): void {
   if (!stats || taskGroups.length === 0) return;
   const batchBytes = taskGroups.map((group) =>
     group.reduce((total, task) => total + Math.max(0, task.estimatedBytes), 0),
@@ -561,7 +570,9 @@ function normalizeRepoReviewExecutionStats(
 ): RepoReviewExecutionStats | undefined {
   const record = asRecord(value);
   if (Object.keys(record).length === 0) return undefined;
-  const fullFileBatchReservedBytes = Array.isArray(record.fullFileBatchReservedBytes)
+  const fullFileBatchReservedBytes = Array.isArray(
+    record.fullFileBatchReservedBytes,
+  )
     ? record.fullFileBatchReservedBytes
         .map((entry) => Number(entry))
         .filter((entry) => Number.isFinite(entry) && entry >= 0)
@@ -584,35 +595,20 @@ function normalizeRepoReviewExecutionStats(
       0,
       Number(record.delegatedSubagentCount) || 0,
     ),
-    plannedSubagentCount: Math.max(
-      0,
-      Number(record.plannedSubagentCount) || 0,
-    ),
-    totalReadBudgetBytes: Math.max(
-      0,
-      Number(record.totalReadBudgetBytes) || 0,
-    ),
+    plannedSubagentCount: Math.max(0, Number(record.plannedSubagentCount) || 0),
+    totalReadBudgetBytes: Math.max(0, Number(record.totalReadBudgetBytes) || 0),
     maxFullFileBytesPerFile: Math.max(
       0,
       Number(record.maxFullFileBytesPerFile) || 0,
     ),
     extractorAttempts: Math.max(0, Number(record.extractorAttempts) || 0),
     workerCount: Math.max(0, Number(record.workerCount) || 0),
-    completedWorkerCount: Math.max(
-      0,
-      Number(record.completedWorkerCount) || 0,
-    ),
+    completedWorkerCount: Math.max(0, Number(record.completedWorkerCount) || 0),
     failedWorkerCount: Math.max(0, Number(record.failedWorkerCount) || 0),
-    timedOutWorkerCount: Math.max(
-      0,
-      Number(record.timedOutWorkerCount) || 0,
-    ),
+    timedOutWorkerCount: Math.max(0, Number(record.timedOutWorkerCount) || 0),
     reducerCallCount: Math.max(0, Number(record.reducerCallCount) || 0),
     evidenceBundleBytes: Math.max(0, Number(record.evidenceBundleBytes) || 0),
-    timeoutFollowupCount: Math.max(
-      0,
-      Number(record.timeoutFollowupCount) || 0,
-    ),
+    timeoutFollowupCount: Math.max(0, Number(record.timeoutFollowupCount) || 0),
     partialWorkerResultCount: Math.max(
       0,
       Number(record.partialWorkerResultCount) || 0,
@@ -715,7 +711,9 @@ function normalizeRepoReviewProgressSteps(
       ...(stringValue(record.metadataText)
         ? { metadataText: stringValue(record.metadataText) }
         : {}),
-      ...(stringValue(record.error) ? { error: stringValue(record.error) } : {}),
+      ...(stringValue(record.error)
+        ? { error: stringValue(record.error) }
+        : {}),
     });
   }
   return steps;
@@ -724,7 +722,8 @@ function normalizeRepoReviewProgressSteps(
 let repoReviewMessageSender:
   | ((jid: string, message: StructuredOutboundMessage) => Promise<void>)
   | null = null;
-let repoReviewCloudDocHandlersForTests: RepoReviewCloudDocHandlers | null = null;
+let repoReviewCloudDocHandlersForTests: RepoReviewCloudDocHandlers | null =
+  null;
 let repoReviewAutoSyncLoopStarted = false;
 let repoReviewAutoSyncTimerHandle: ReturnType<typeof setTimeout> | null = null;
 let repoReviewStartupRecoveryApplied = false;
@@ -770,7 +769,9 @@ function normalizeCommitInfoArray(value: unknown): RepoReviewCommitInfo[] {
       return {
         commit: shortSha(stringValue(entry.commit || sha)),
         sha: sha || undefined,
-        title: stringValue(entry.title) || t('repoReview.auto_f38c68', {}, undefined),
+        title:
+          stringValue(entry.title) ||
+          t('repoReview.auto_f38c68', {}, undefined),
         author: stringValue(entry.author),
         message: stringValue(entry.message),
         url: stringValue(entry.url) || undefined,
@@ -830,7 +831,6 @@ function normalizeInteger(
   return Math.min(max, Math.max(min, parsed));
 }
 
-
 function buildRepositoryRemoteOption(
   repoPath: string,
   remote: RepoRemoteCandidate,
@@ -868,7 +868,9 @@ function readLocalRepositoryDetection(input: {
     throw new Error(t('repoReview.auto_2faa3c', {}, undefined));
   }
   if (!fs.existsSync(repoPath) || !fs.statSync(repoPath).isDirectory()) {
-    throw new Error(t('repoReview.localRepoPathNotFound', { repoPath }, undefined));
+    throw new Error(
+      t('repoReview.localRepoPathNotFound', { repoPath }, undefined),
+    );
   }
 
   const remotesText = runGitCommand(repoPath, ['remote', '-v'], true);
@@ -883,9 +885,7 @@ function readLocalRepositoryDetection(input: {
     explicitRemote ||
     pickBestRemoteCandidate(remoteCandidates, input.providerHint);
   if (!remote) {
-    throw new Error(
-      t('repoReview.auto_bcfadf', {}, undefined),
-    );
+    throw new Error(t('repoReview.auto_bcfadf', {}, undefined));
   }
   const remoteOptions = remoteCandidates
     .map((candidate) => buildRepositoryRemoteOption(repoPath, candidate))
@@ -923,12 +923,14 @@ function readLocalRepositoryDetection(input: {
       warnings: [
         ...(selectedRemote.provider || input.providerHint
           ? []
-          : [
-              t('repoReview.auto_b58d2c', {}, undefined),
-            ]),
+          : [t('repoReview.auto_b58d2c', {}, undefined)]),
         ...(multipleRemotes && !explicitRemote
           ? [
-              t('repoReview.multipleGitRemotesHint', { remoteName: remote.name }, undefined),
+              t(
+                'repoReview.multipleGitRemotesHint',
+                { remoteName: remote.name },
+                undefined,
+              ),
             ]
           : []),
       ],
@@ -954,9 +956,7 @@ function inferDetectionWarnings(input: {
     warnings.push(t('repoReview.auto_67b495', {}, undefined));
   }
   if (/^[^@]+@[^:]+:.+/i.test(input.cloneUrl.trim())) {
-    warnings.push(
-      t('repoReview.auto_dd0ec9', {}, undefined),
-    );
+    warnings.push(t('repoReview.auto_dd0ec9', {}, undefined));
   }
   return warnings;
 }
@@ -970,9 +970,7 @@ function detectRepositoryFromRemoteUrl(input: {
     input.providerHint,
   );
   if (!parsed) {
-    throw new Error(
-      t('repoReview.auto_badad6', {}, undefined),
-    );
+    throw new Error(t('repoReview.auto_badad6', {}, undefined));
   }
   return {
     provider: parsed.provider || input.providerHint || '',
@@ -1024,9 +1022,7 @@ function sanitizeDetectedRemoteFields(input: {
     }
     remoteBaseUrl = parsedFromBase.remoteBaseUrl;
     provider = provider || parsedFromBase.provider;
-    warnings.push(
-      t('repoReview.auto_3134d3', {}, undefined),
-    );
+    warnings.push(t('repoReview.auto_3134d3', {}, undefined));
   }
 
   const parsedFromClone = parseRepositoryUrlCandidate(cloneUrl, provider);
@@ -1192,13 +1188,14 @@ async function resolveReviewProviderOverrideId(input: {
   }
   if (profileProviderId) return profileProviderId;
 
-  const moduleProvider = await getProviderForModule('code_review', input.userId);
+  const moduleProvider = await getProviderForModule(
+    'code_review',
+    input.userId,
+  );
   return stringValue(moduleProvider?.id) || undefined;
 }
 
-function normalizeReviewOutputMode(
-  value: unknown,
-): 'message' | 'share_link' {
+function normalizeReviewOutputMode(value: unknown): 'message' | 'share_link' {
   const str = String(value || '').trim();
   if (str === 'message') return 'message';
   return 'share_link';
@@ -1348,7 +1345,8 @@ function normalizeReviewTurnItem(item: unknown): AgentTurnItemPayload | null {
       id,
       type,
       status,
-      title: stringValue(record.title) || t('repoReview.auto_5d459d', {}, undefined),
+      title:
+        stringValue(record.title) || t('repoReview.auto_5d459d', {}, undefined),
       text: stringValue(record.text),
       timestamp,
     };
@@ -1369,7 +1367,9 @@ function normalizeReviewTurnItem(item: unknown): AgentTurnItemPayload | null {
         subagentStatus === 'stopped')
     ) {
       subagentInfo = {
-        agentName: stringValue(rawSubagentInfo.agentName) || t('errors.auto_6cb1ed', {}, undefined),
+        agentName:
+          stringValue(rawSubagentInfo.agentName) ||
+          t('errors.auto_6cb1ed', {}, undefined),
         runtimeId: stringValue(rawSubagentInfo.runtimeId),
         provider: stringValue(rawSubagentInfo.provider),
         mode:
@@ -1427,9 +1427,7 @@ function normalizeReviewTurnItem(item: unknown): AgentTurnItemPayload | null {
         controlScope:
           stringValue(rawSubagentInfo.controlScope) === 'children' ||
           stringValue(rawSubagentInfo.controlScope) === 'none'
-            ? (stringValue(rawSubagentInfo.controlScope) as
-                | 'children'
-                | 'none')
+            ? (stringValue(rawSubagentInfo.controlScope) as 'children' | 'none')
             : undefined,
         depth:
           typeof rawSubagentInfo.depth === 'number' &&
@@ -1454,7 +1452,8 @@ function normalizeReviewTurnItem(item: unknown): AgentTurnItemPayload | null {
       id,
       type,
       status,
-      title: stringValue(record.title) || t('repoReview.auto_850b4e', {}, undefined),
+      title:
+        stringValue(record.title) || t('repoReview.auto_850b4e', {}, undefined),
       argumentsText: stringValue(record.argumentsText),
       resultText: stringValue(record.resultText),
       errorText: stringValue(record.errorText),
@@ -1518,6 +1517,7 @@ function upsertReviewTurn(
   turns: RepoReviewAssistantTurn[],
   turnId: string,
   timestamp: string,
+  context?: RepoReviewTurnContext,
 ): RepoReviewAssistantTurn[] {
   const index = turns.findIndex((turn) => turn.id === turnId);
   if (index === -1) {
@@ -1530,6 +1530,13 @@ function upsertReviewTurn(
         items: [],
         isLive: true,
         isCompleted: false,
+        ...(context
+          ? {
+              groupKey: context.groupKey,
+              groupLabel: context.groupLabel,
+              phase: context.phase,
+            }
+          : {}),
       },
     ];
   }
@@ -1538,6 +1545,13 @@ function upsertReviewTurn(
     ...next[index],
     timestamp,
     isLive: true,
+    ...(context
+      ? {
+          groupKey: next[index]?.groupKey || context.groupKey,
+          groupLabel: next[index]?.groupLabel || context.groupLabel,
+          phase: next[index]?.phase || context.phase,
+        }
+      : {}),
   };
   return next;
 }
@@ -1548,8 +1562,9 @@ function upsertReviewTurnItem(
     AgentTurnEventPayload,
     { type: 'item.started' | 'item.updated' | 'item.completed' }
   >,
+  context?: RepoReviewTurnContext,
 ): RepoReviewAssistantTurn[] {
-  const next = upsertReviewTurn(turns, event.turnId, event.timestamp);
+  const next = upsertReviewTurn(turns, event.turnId, event.timestamp, context);
   const index = next.findIndex((turn) => turn.id === event.turnId);
   if (index < 0) return next;
   const turn = next[index];
@@ -1568,6 +1583,13 @@ function upsertReviewTurnItem(
       event.type !== 'item.completed' ||
       event.item.type !== 'assistant_message' ||
       event.item.status === 'in_progress',
+    ...(context
+      ? {
+          groupKey: turn.groupKey || context.groupKey,
+          groupLabel: turn.groupLabel || context.groupLabel,
+          phase: turn.phase || context.phase,
+        }
+      : {}),
   };
   return next;
 }
@@ -1577,8 +1599,9 @@ function markReviewTurnCompleted(
   turnId: string,
   timestamp: string,
   error?: string,
+  context?: RepoReviewTurnContext,
 ): RepoReviewAssistantTurn[] {
-  const next = upsertReviewTurn(turns, turnId, timestamp);
+  const next = upsertReviewTurn(turns, turnId, timestamp, context);
   const index = next.findIndex((turn) => turn.id === turnId);
   if (index < 0) return next;
   next[index] = {
@@ -1587,6 +1610,13 @@ function markReviewTurnCompleted(
     isLive: false,
     isCompleted: true,
     error,
+    ...(context
+      ? {
+          groupKey: next[index]?.groupKey || context.groupKey,
+          groupLabel: next[index]?.groupLabel || context.groupLabel,
+          phase: next[index]?.phase || context.phase,
+        }
+      : {}),
   };
   return next;
 }
@@ -1646,7 +1676,9 @@ function buildRepoReviewProgressSnapshot(
       : '',
     latestErrorText: extractLatestRepoReviewTurnErrorText(turns),
     hasTerminalOutput: turns.some((turn) =>
-      turn.items.some((item) => item.status === 'completed' || item.status === 'failed'),
+      turn.items.some(
+        (item) => item.status === 'completed' || item.status === 'failed',
+      ),
     ),
     ...(steps.length > 0 ? { steps } : {}),
   };
@@ -1672,8 +1704,7 @@ function upsertRepoReviewProgressStep(
   const existing = existingIndex >= 0 ? steps[existingIndex]! : null;
   const startedAt = existing?.startedAt || now;
   const activeStartedAt =
-    existing?.activeStartedAt ||
-    (input.status === 'running' ? now : undefined);
+    existing?.activeStartedAt || (input.status === 'running' ? now : undefined);
   const terminal =
     input.status === 'completed' ||
     input.status === 'failed' ||
@@ -1722,14 +1753,14 @@ function formatProgressKeyValues(
   entries: Array<[string, string | number | boolean | null | undefined]>,
 ): string {
   return entries
-    .filter(([, value]) => value !== undefined && value !== null && `${value}`.trim())
+    .filter(
+      ([, value]) => value !== undefined && value !== null && `${value}`.trim(),
+    )
     .map(([key, value]) => `${key}: ${value}`)
     .join('\n');
 }
 
-function formatRepoReviewAgentStatusText(
-  event: AgentEventPayload,
-): string {
+function formatRepoReviewAgentStatusText(event: AgentEventPayload): string {
   const title = event.title.trim();
   const body = event.body?.trim();
   return body ? `${title}\n${body}` : title;
@@ -1793,7 +1824,9 @@ function buildRepoReviewAgentStatusProgressHandler(input: {
   };
 }
 
-function capRepoReviewSyntheticToolText(value: string | undefined): string | undefined {
+function capRepoReviewSyntheticToolText(
+  value: string | undefined,
+): string | undefined {
   if (!value) return value;
   if (value.length <= REPO_REVIEW_SUBAGENT_RESULT_MAX_CHARS) return value;
   return `${value.slice(0, REPO_REVIEW_SUBAGENT_RESULT_MAX_CHARS)}\n...(truncated)`;
@@ -1849,7 +1882,10 @@ function hasUsableRepoReviewFinalResult(text: string): boolean {
 }
 
 function normalizeRepoReviewMarkdownHeading(line: string): string {
-  return line.trim().replace(/^#{1,6}\s*/, '').trim();
+  return line
+    .trim()
+    .replace(/^#{1,6}\s*/, '')
+    .trim();
 }
 
 function isRepoReviewMarkdownSectionHeading(
@@ -1860,9 +1896,7 @@ function isRepoReviewMarkdownSectionHeading(
   const normalized = normalizeRepoReviewMarkdownHeading(line);
   const escapedTitle = title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const titlePattern =
-    title === '低风险问题'
-      ? `${escapedTitle}(?:\\s*[/／].*)?`
-      : escapedTitle;
+    title === '低风险问题' ? `${escapedTitle}(?:\\s*[/／].*)?` : escapedTitle;
   return new RegExp(
     `^(?:${sectionNumber}[、.：:]|${sectionNumber})\\s*${titlePattern}$`,
   ).test(normalized);
@@ -1884,8 +1918,12 @@ function findRepoReviewMarkdownSection(
         normalizeRepoReviewMarkdownHeading(line),
       ),
   );
-  const endIndex = nextSectionIndex > startIndex ? nextSectionIndex : lines.length;
-  return lines.slice(startIndex + 1, endIndex).join('\n').trim();
+  const endIndex =
+    nextSectionIndex > startIndex ? nextSectionIndex : lines.length;
+  return lines
+    .slice(startIndex + 1, endIndex)
+    .join('\n')
+    .trim();
 }
 
 function parseRepoReviewMarkdownFindingBlock(
@@ -1898,14 +1936,20 @@ function parseRepoReviewMarkdownFindingBlock(
     .filter((line) => line.trim().length > 0);
   if (lines.length === 0) return null;
   const titleLine = lines[0]!;
-  const inlineFileTitle = titleLine.match(/^[-*]\s*`?([^`：:\s]+)`?\s*[:：]\s*(.+)$/);
+  const inlineFileTitle = titleLine.match(
+    /^[-*]\s*`?([^`：:\s]+)`?\s*[:：]\s*(.+)$/,
+  );
   const title = (inlineFileTitle?.[2] || titleLine)
     .replace(/^[-*]\s*/, '')
     .replace(/^[🔴🟡🔵]\s*/, '')
     .replace(/^\[[^\]]+\]\s*/, '')
     .trim();
   const normalizeLabelLine = (line: string) =>
-    line.trim().replace(/^[-*]\s*/, '').replace(/\*\*/g, '').trim();
+    line
+      .trim()
+      .replace(/^[-*]\s*/, '')
+      .replace(/\*\*/g, '')
+      .trim();
   const labelValue = (line: string, label: string) => {
     const normalized = normalizeLabelLine(line);
     const match = normalized.match(new RegExp(`^${label}[:：]\\s*(.*)$`));
@@ -1913,7 +1957,9 @@ function parseRepoReviewMarkdownFindingBlock(
   };
   const isLabelLine = (line: string, labels: string[]) => {
     const normalized = normalizeLabelLine(line);
-    return labels.some((label) => new RegExp(`^${label}[:：]`).test(normalized));
+    return labels.some((label) =>
+      new RegExp(`^${label}[:：]`).test(normalized),
+    );
   };
   const fileLine = lines.find((line) => isLabelLine(line, ['文件']));
   const suggestionLineIndex = lines.findIndex((line) =>
@@ -1922,29 +1968,31 @@ function parseRepoReviewMarkdownFindingBlock(
   const detailEndIndex =
     suggestionLineIndex >= 0 ? suggestionLineIndex : lines.length;
   const detailLines = lines.slice(1, detailEndIndex).filter((line) => {
-    return (
-      !isLabelLine(line, ['文件', '风险等级'])
-    );
+    return !isLabelLine(line, ['文件', '风险等级']);
   });
   const suggestionEndIndex =
     suggestionLineIndex >= 0
       ? lines.findIndex(
-          (line, index) => index > suggestionLineIndex && isLabelLine(line, ['风险等级']),
+          (line, index) =>
+            index > suggestionLineIndex && isLabelLine(line, ['风险等级']),
         )
       : -1;
-  const suggestion = suggestionLineIndex >= 0
-    ? lines
-        .slice(
-          suggestionLineIndex,
-          suggestionEndIndex > suggestionLineIndex ? suggestionEndIndex : lines.length,
-        )
-        .join('\n')
-        .replace(/^[-*]\s*(?:\*\*)?修复建议[:：](?:\*\*)?\s*/m, '')
-        .split(/\r?\n/)
-        .map((line) => line.trim())
-        .filter(Boolean)
-        .join('\n')
-    : '';
+  const suggestion =
+    suggestionLineIndex >= 0
+      ? lines
+          .slice(
+            suggestionLineIndex,
+            suggestionEndIndex > suggestionLineIndex
+              ? suggestionEndIndex
+              : lines.length,
+          )
+          .join('\n')
+          .replace(/^[-*]\s*(?:\*\*)?修复建议[:：](?:\*\*)?\s*/m, '')
+          .split(/\r?\n/)
+          .map((line) => line.trim())
+          .filter(Boolean)
+          .join('\n')
+      : '';
   const detail = detailLines.join('\n').trim();
   return {
     severity,
@@ -2020,7 +2068,11 @@ function parseRepoReviewMarkdownResult(text: string): {
   const highBlock = findRepoReviewMarkdownSection(lines, '二', '高风险问题');
   const mediumBlock = findRepoReviewMarkdownSection(lines, '三', '中风险问题');
   const lowBlock = findRepoReviewMarkdownSection(lines, '四', '低风险问题');
-  const highlightsBlock = findRepoReviewMarkdownSection(lines, '五', '代码亮点');
+  const highlightsBlock = findRepoReviewMarkdownSection(
+    lines,
+    '五',
+    '代码亮点',
+  );
   const summaryTail = findRepoReviewMarkdownSection(lines, '六', '总结');
 
   const summaryLine = summaryBlock
@@ -2058,7 +2110,12 @@ function parseRepoReviewMarkdownResult(text: string): {
     const suggestionLine = lines.find((line) => /^修复建议[:：]/.test(line));
     const detail = lines
       .slice(1)
-      .filter((line) => !/^文件[:：]/.test(line) && !/^修复建议[:：]/.test(line) && !/^风险等级[:：]/.test(line))
+      .filter(
+        (line) =>
+          !/^文件[:：]/.test(line) &&
+          !/^修复建议[:：]/.test(line) &&
+          !/^风险等级[:：]/.test(line),
+      )
       .join('\n')
       .trim();
     result.push({
@@ -2083,8 +2140,10 @@ function parseRepoReviewMarkdownResult(text: string): {
     const summaryHint = `${summaryBlock}\n${summaryTail}`.toLowerCase();
     if (/不通过|阻塞|fail/.test(summaryHint)) return 'fail' as const;
     if (/需要关注|warn|中风险/.test(summaryHint)) return 'warn' as const;
-    if (findings.some((finding) => finding.severity === 'high')) return 'fail' as const;
-    if (findings.some((finding) => finding.severity === 'medium')) return 'warn' as const;
+    if (findings.some((finding) => finding.severity === 'high'))
+      return 'fail' as const;
+    if (findings.some((finding) => finding.severity === 'medium'))
+      return 'warn' as const;
     return 'pass' as const;
   })();
 
@@ -2130,7 +2189,8 @@ function parseRepoReviewMarkdownResult(text: string): {
     commitReviews,
     suggestions,
     recommendedBlock:
-      overall === 'fail' || findings.some((finding) => finding.severity === 'high'),
+      overall === 'fail' ||
+      findings.some((finding) => finding.severity === 'high'),
     markdownBody: trimmed,
     rawModelOutput: text,
   };
@@ -2167,13 +2227,18 @@ function formatVisibleRepoReviewAssistantMessage(text: string): string {
       );
       return [
         '主代理审查计划',
-        shouldDelegate ? `计划委派 ${tasks} 个子代理任务` : '计划由主代理独立审查',
+        shouldDelegate
+          ? `计划委派 ${tasks} 个子代理任务`
+          : '计划由主代理独立审查',
         stringValue(plan.delegation_reason || plan.delegationReason),
       ]
         .filter(Boolean)
         .join('\n');
     }
-    if (Array.isArray(parsed.checked_files) || Array.isArray(parsed.checkedFiles)) {
+    if (
+      Array.isArray(parsed.checked_files) ||
+      Array.isArray(parsed.checkedFiles)
+    ) {
       const checkedFiles = normalizeStringArray(
         parsed.checked_files || parsed.checkedFiles,
       );
@@ -2190,7 +2255,9 @@ function formatVisibleRepoReviewAssistantMessage(text: string): string {
     }
     const overall = overallLabel(stringValue(parsed.overall) || 'warn');
     const summary = stringValue(parsed.summary) || '模型未返回摘要。';
-    const findingsCount = Array.isArray(parsed.findings) ? parsed.findings.length : 0;
+    const findingsCount = Array.isArray(parsed.findings)
+      ? parsed.findings.length
+      : 0;
     const lines = [
       'AI 审查阶段结果',
       `结论: ${overall}`,
@@ -2230,8 +2297,13 @@ function sanitizeReviewTurnEventForWeb(
   ) {
     return null;
   }
-  if (visible.type === 'item.completed' && visible.item.type === 'assistant_message') {
-    const renderedText = formatVisibleRepoReviewAssistantMessage(visible.item.text);
+  if (
+    visible.type === 'item.completed' &&
+    visible.item.type === 'assistant_message'
+  ) {
+    const renderedText = formatVisibleRepoReviewAssistantMessage(
+      visible.item.text,
+    );
     if (!renderedText) return null;
     return {
       ...visible,
@@ -2260,22 +2332,29 @@ function shouldCloseReviewAgentForTurnEvent(
   return event.type === 'turn.completed' || event.type === 'turn.failed';
 }
 
+interface RepoReviewTurnContext {
+  groupKey: string;
+  groupLabel: string;
+  phase: NonNullable<RepoReviewAssistantTurn['phase']>;
+}
+
 function applyReviewTurnEvent(
   turns: RepoReviewAssistantTurn[],
   event: AgentTurnEventPayload,
+  context?: RepoReviewTurnContext,
 ): RepoReviewAssistantTurn[] {
   if (event.type === 'turn.started') {
-    return upsertReviewTurn(turns, event.turnId, event.timestamp);
+    return upsertReviewTurn(turns, event.turnId, event.timestamp, context);
   }
   if (
     event.type === 'item.started' ||
     event.type === 'item.updated' ||
     event.type === 'item.completed'
   ) {
-    return upsertReviewTurnItem(turns, event);
+    return upsertReviewTurnItem(turns, event, context);
   }
   if (event.type === 'turn.completed') {
-    return markReviewTurnCompleted(turns, event.turnId, event.timestamp);
+    return markReviewTurnCompleted(turns, event.turnId, event.timestamp, undefined, context);
   }
   if (event.type === 'turn.failed') {
     return markReviewTurnCompleted(
@@ -2283,6 +2362,7 @@ function applyReviewTurnEvent(
       event.turnId,
       event.timestamp,
       event.error,
+      context,
     );
   }
   return turns;
@@ -2319,7 +2399,14 @@ function normalizeSensitiveValueMode(
 async function normalizeRepositoryInput(
   payload: Record<string, unknown>,
   existing?: ReviewRepositoryRecord,
-): Promise<{ input: ReviewRepositoryUpsertInput; warnings: string[]; sensitiveValueModes: { webhookSecret: "replace" | "preserve" | "clear"; platformToken: "replace" | "preserve" | "clear"; }; }> {
+): Promise<{
+  input: ReviewRepositoryUpsertInput;
+  warnings: string[];
+  sensitiveValueModes: {
+    webhookSecret: 'replace' | 'preserve' | 'clear';
+    platformToken: 'replace' | 'preserve' | 'clear';
+  };
+}> {
   const suggestedId = stringValue(payload.id);
   const id =
     suggestedId ||
@@ -2496,16 +2583,28 @@ async function normalizeRepositoryInput(
         existing?.digest_weekly_enabled === 1,
       ),
       digest_daily_hour: normalizeInteger(
-        payload.digestDailyHour ?? payload.digest_daily_hour ?? existing?.digest_daily_hour,
-        18, 0, 23,
+        payload.digestDailyHour ??
+          payload.digest_daily_hour ??
+          existing?.digest_daily_hour,
+        18,
+        0,
+        23,
       ),
       digest_weekly_day: normalizeInteger(
-        payload.digestWeeklyDay ?? payload.digest_weekly_day ?? existing?.digest_weekly_day,
-        5, 1, 7,
+        payload.digestWeeklyDay ??
+          payload.digest_weekly_day ??
+          existing?.digest_weekly_day,
+        5,
+        1,
+        7,
       ),
       digest_weekly_hour: normalizeInteger(
-        payload.digestWeeklyHour ?? payload.digest_weekly_hour ?? existing?.digest_weekly_hour,
-        18, 0, 23,
+        payload.digestWeeklyHour ??
+          payload.digest_weekly_hour ??
+          existing?.digest_weekly_hour,
+        18,
+        0,
+        23,
       ),
       enabled: normalizeBoolean(payload.enabled, existing?.enabled !== 0),
       allow_ai_fix: normalizeBoolean(
@@ -2559,25 +2658,17 @@ function validateRepositoryInput(
 
   if (provider) {
     if (!remoteSlug && !hasLocalRemoteAccess) {
-      throw new Error(
-        t('repoReview.auto_d24a27', {}, undefined),
-      );
+      throw new Error(t('repoReview.auto_d24a27', {}, undefined));
     }
     if (autoSyncEnabled && !hasPlatformToken && !hasLocalRemoteAccess) {
       if (provider === 'gitlab') {
-        throw new Error(
-          t('repoReview.auto_c8ad4a', {}, undefined),
-        );
+        throw new Error(t('repoReview.auto_c8ad4a', {}, undefined));
       }
       if (provider === 'github') {
-        throw new Error(
-          t('repoReview.auto_cc6338', {}, undefined),
-        );
+        throw new Error(t('repoReview.auto_cc6338', {}, undefined));
       }
       if (provider === 'gitea') {
-        throw new Error(
-          t('repoReview.auto_906c15', {}, undefined),
-        );
+        throw new Error(t('repoReview.auto_906c15', {}, undefined));
       }
     }
     if (
@@ -2588,15 +2679,17 @@ function validateRepositoryInput(
       !cloneUrl &&
       !hasLocalRemoteAccess
     ) {
-      throw new Error(
-        t('repoReview.auto_ac5d39', {}, undefined),
-      );
+      throw new Error(t('repoReview.auto_ac5d39', {}, undefined));
     }
     if (remoteBaseUrl) {
       const parsed = parseRepositoryUrlCandidate(remoteBaseUrl, provider);
       if (parsed?.remoteRepoSlug && parsed.remoteRepoSlug === remoteSlug) {
         throw new Error(
-          t('repoReview.remoteBaseUrlLooksLikeRepoPage', { remoteBaseUrl: parsed.remoteBaseUrl, remoteSlug }, undefined),
+          t(
+            'repoReview.remoteBaseUrlLooksLikeRepoPage',
+            { remoteBaseUrl: parsed.remoteBaseUrl, remoteSlug },
+            undefined,
+          ),
         );
       }
     }
@@ -2619,7 +2712,8 @@ async function recoverStaleRepoReviewRuns(
   const nowMs = now.getTime();
   for (const run of await listActiveReviewRuns(repositoryId)) {
     if (run.status === 'queued') {
-      const replayableEvent = await buildRepoReviewEventFromQueuedRunRecord(run);
+      const replayableEvent =
+        await buildRepoReviewEventFromQueuedRunRecord(run);
       if (replayableEvent) {
         await enqueueQueuedRepoReviewRun(run);
         continue;
@@ -2642,7 +2736,9 @@ async function recoverStaleRepoReviewRuns(
   }
 }
 
-async function recoverInterruptedRepoReviewRuns(now = new Date()): Promise<void> {
+async function recoverInterruptedRepoReviewRuns(
+  now = new Date(),
+): Promise<void> {
   const processStartedMs = Date.parse(REPO_REVIEW_PROCESS_STARTED_AT);
   for (const run of await listActiveReviewRuns()) {
     const activityAt = stringValue(
@@ -2657,7 +2753,8 @@ async function recoverInterruptedRepoReviewRuns(now = new Date()): Promise<void>
       continue;
     }
     if (run.status === 'queued') {
-      const replayableEvent = await buildRepoReviewEventFromQueuedRunRecord(run);
+      const replayableEvent =
+        await buildRepoReviewEventFromQueuedRunRecord(run);
       if (replayableEvent) {
         await enqueueQueuedRepoReviewRun(run);
         continue;
@@ -2668,7 +2765,8 @@ async function recoverInterruptedRepoReviewRuns(now = new Date()): Promise<void>
       result_state: 'error',
       overall: 'error',
       summary: '服务重启前存在未完成的审查运行，已标记为失败。',
-      error: '该审查运行因 NanoClaw 重启而被中断，无法安全恢复，请重新触发审查。',
+      error:
+        '该审查运行因 NanoClaw 重启而被中断，无法安全恢复，请重新触发审查。',
       completed_at: now.toISOString(),
     });
     updateBranchStateFromRun(await normalizeRunRecord(updated));
@@ -2682,14 +2780,18 @@ function ensureRepoReviewStartupRecovery(): void {
   repoReviewStartupRecoveryApplied = true;
   repoReviewStartupRecoveryPromise = recoverInterruptedRepoReviewRuns()
     .catch((err) => logger.error({ err }, 'Startup recovery failed'))
-    .finally(() => { repoReviewStartupRecoveryPromise = null; });
+    .finally(() => {
+      repoReviewStartupRecoveryPromise = null;
+    });
 }
 
 export function getStartupRecoveryPromise(): Promise<void> | null {
   return repoReviewStartupRecoveryPromise;
 }
 
-async function executeQueuedRepoReviewRun(runId: string): Promise<RepoReviewExecutionSummary> {
+async function executeQueuedRepoReviewRun(
+  runId: string,
+): Promise<RepoReviewExecutionSummary> {
   const runRecord = await getReviewRunById(runId);
   if (!runRecord) {
     throw new Error(`Queued review run not found: ${runId}`);
@@ -2752,7 +2854,10 @@ async function executeQueuedRepoReviewRun(runId: string): Promise<RepoReviewExec
   return await executeRepoReviewEvent(event, runId);
 }
 
-async function failQueuedRepoReviewRun(runId: string, errorMessage: string): Promise<void> {
+async function failQueuedRepoReviewRun(
+  runId: string,
+  errorMessage: string,
+): Promise<void> {
   const runRecord = await getReviewRunById(runId);
   if (!runRecord) return;
   const updated = await updateReviewRun(runId, {
@@ -2804,7 +2909,11 @@ function summarizeAutoSyncResult(input: {
         : 'idle';
   return {
     status,
-    message: t('repoReview.pollCompleted', { triggered, skipped, failed }, undefined),
+    message: t(
+      'repoReview.pollCompleted',
+      { triggered, skipped, failed },
+      undefined,
+    ),
   };
 }
 
@@ -2862,7 +2971,7 @@ async function normalizeProfileInput(
   ) as ReviewScope;
   const providerIdRaw =
     payload.providerId !== undefined || payload.provider_id !== undefined
-      ? payload.providerId ?? payload.provider_id
+      ? (payload.providerId ?? payload.provider_id)
       : existing?.provider_id;
   const providerId = stringValue(providerIdRaw) || null;
   return {
@@ -2927,7 +3036,9 @@ async function normalizeProfileInput(
     ),
     provider_id: providerId,
     review_output_mode: normalizeReviewOutputMode(
-      payload.reviewOutputMode ?? payload.review_output_mode ?? existing?.review_output_mode,
+      payload.reviewOutputMode ??
+        payload.review_output_mode ??
+        existing?.review_output_mode,
     ),
     diff_subagent_threshold: normalizeInteger(
       payload.diffSubagentThreshold ?? payload.diff_subagent_threshold,
@@ -2947,9 +3058,18 @@ function extractBalancedJson(source: string): string | null {
   let escaped = false;
   for (let i = start; i < source.length; i++) {
     const ch = source[i]!;
-    if (escaped) { escaped = false; continue; }
-    if (ch === '\\' && inString) { escaped = true; continue; }
-    if (ch === '"') { inString = !inString; continue; }
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (ch === '\\' && inString) {
+      escaped = true;
+      continue;
+    }
+    if (ch === '"') {
+      inString = !inString;
+      continue;
+    }
     if (inString) continue;
     if (ch === '{') depth++;
     if (ch === '}' && --depth === 0) return source.slice(start, i + 1);
@@ -3008,9 +3128,7 @@ function isScopeLimitationText(value: string): boolean {
 function getScopeLimitationKey(value: string): string {
   const normalized = value.trim().toLowerCase();
   if (
-    /当前分支总 diff|merge commit|父提交差异|冲突取舍|覆盖上游/.test(
-      normalized,
-    )
+    /当前分支总 diff|merge commit|父提交差异|冲突取舍|覆盖上游/.test(normalized)
   ) {
     return 'merge-context';
   }
@@ -3162,34 +3280,45 @@ function parseReviewResult(text: string): {
         ? parsed.fileReviews
         : [];
     const fileReviews: RepoReviewFileReview[] = fileReviewEntries
-          .filter(
-            (entry): entry is Record<string, unknown> =>
-              !!entry && typeof entry === 'object' && !Array.isArray(entry),
-          )
-          .map((entry) => {
-            const positives = normalizeStringArray(entry.positives).slice(0, 5);
-            const risks = normalizeStringArray(entry.risks).slice(0, 5);
-            const suggestions = normalizeStringArray(entry.suggestions).slice(
-              0,
-              5,
-            );
-            const summaryParts = [
-              stringValue(entry.summary),
-              positives.length > 0
-                ? t('repoReview.positivesHighlight', { positives: positives.join('；') }, undefined)
-                : '',
-              risks.length > 0 ? t('repoReview.risksToWatch', { risks: risks.join('；') }, undefined) : '',
-              suggestions.length > 0
-                ? t('repoReview.suggestionsPriority', { suggestions: suggestions.join('；') }, undefined)
-                : '',
-            ].filter(Boolean);
-            return {
-              file: stringValue(entry.file),
-              summary: summaryParts.join('\n\n') || t('errors.auto_3766f4', {}, undefined),
-            };
-          })
-          .filter((entry) => entry.file)
-      ;
+      .filter(
+        (entry): entry is Record<string, unknown> =>
+          !!entry && typeof entry === 'object' && !Array.isArray(entry),
+      )
+      .map((entry) => {
+        const positives = normalizeStringArray(entry.positives).slice(0, 5);
+        const risks = normalizeStringArray(entry.risks).slice(0, 5);
+        const suggestions = normalizeStringArray(entry.suggestions).slice(0, 5);
+        const summaryParts = [
+          stringValue(entry.summary),
+          positives.length > 0
+            ? t(
+                'repoReview.positivesHighlight',
+                { positives: positives.join('；') },
+                undefined,
+              )
+            : '',
+          risks.length > 0
+            ? t(
+                'repoReview.risksToWatch',
+                { risks: risks.join('；') },
+                undefined,
+              )
+            : '',
+          suggestions.length > 0
+            ? t(
+                'repoReview.suggestionsPriority',
+                { suggestions: suggestions.join('；') },
+                undefined,
+              )
+            : '',
+        ].filter(Boolean);
+        return {
+          file: stringValue(entry.file),
+          summary:
+            summaryParts.join('\n\n') || t('errors.auto_3766f4', {}, undefined),
+        };
+      })
+      .filter((entry) => entry.file);
     const scopeLimitations = normalizeReviewScopeLimitations(
       parsed.scope_limitations || parsed.scopeLimitations,
     );
@@ -3199,18 +3328,20 @@ function parseReviewResult(text: string): {
         ? parsed.commitReviews
         : [];
     const commitReviews: RepoReviewCommitReview[] = commitReviewEntries
-          .filter(
-            (entry): entry is Record<string, unknown> =>
-              !!entry && typeof entry === 'object' && !Array.isArray(entry),
-          )
-          .map((entry) => ({
-            commit: shortSha(stringValue(entry.commit || entry.sha)),
-            title: stringValue(entry.title) || t('repoReview.auto_f38c68', {}, undefined),
-            author: stringValue(entry.author),
-            positives: normalizeStringArray(entry.positives).slice(0, 5),
-            issues: normalizeStringArray(entry.issues).slice(0, 5),
-          }))
-          .filter((entry) => entry.commit || entry.title);
+      .filter(
+        (entry): entry is Record<string, unknown> =>
+          !!entry && typeof entry === 'object' && !Array.isArray(entry),
+      )
+      .map((entry) => ({
+        commit: shortSha(stringValue(entry.commit || entry.sha)),
+        title:
+          stringValue(entry.title) ||
+          t('repoReview.auto_f38c68', {}, undefined),
+        author: stringValue(entry.author),
+        positives: normalizeStringArray(entry.positives).slice(0, 5),
+        issues: normalizeStringArray(entry.issues).slice(0, 5),
+      }))
+      .filter((entry) => entry.commit || entry.title);
     const extracted = extractScopeLimitations({
       findings,
       commitReviews,
@@ -3272,7 +3403,8 @@ function parseReviewResult(text: string): {
 }
 
 function normalizeSupplementalFindingTitle(title: string): string {
-  const normalized = stringValue(title) || t('repoReview.auto_ea04ef', {}, undefined);
+  const normalized =
+    stringValue(title) || t('repoReview.auto_ea04ef', {}, undefined);
   return normalized.startsWith(t('errors.auto_fce2f8', {}, undefined))
     ? normalized
     : t('repoReview.fullFilePrefix', { title: normalized }, undefined);
@@ -3302,7 +3434,8 @@ function mergeRepoReviewSummaryWithSupplementalFindings(input: {
   supplementalReviewCompleted: boolean;
   supplementalReviewFailed: boolean;
 }): string {
-  const summary = stringValue(input.summary) || t('errors.auto_39dc7e', {}, undefined);
+  const summary =
+    stringValue(input.summary) || t('errors.auto_39dc7e', {}, undefined);
   if (input.supplementalFindings.length > 0) {
     let high = 0;
     let medium = 0;
@@ -3316,7 +3449,11 @@ function mergeRepoReviewSummaryWithSupplementalFindings(input: {
         medium += 1;
       }
     }
-    const note = t('repoReview.supplementalFindingsNote', { total: input.supplementalFindings.length, high, medium, low }, undefined);
+    const note = t(
+      'repoReview.supplementalFindingsNote',
+      { total: input.supplementalFindings.length, high, medium, low },
+      undefined,
+    );
     return summary.includes(note) ? summary : `${summary}\n\n${note}`;
   }
   if (input.supplementalReviewFailed) {
@@ -3335,11 +3472,7 @@ function mergeRepoReviewOverallWithSupplementalFindings(
   supplementalFindings: RepoReviewRunFinding[],
   overallImpact: 'none' | 'warn' | 'fail',
 ): ReviewOverall {
-  if (
-    overall === 'error' ||
-    overall === 'skipped' ||
-    overall === 'fail'
-  ) {
+  if (overall === 'error' || overall === 'skipped' || overall === 'fail') {
     return overall;
   }
   if (overallImpact === 'fail') return 'fail';
@@ -3383,7 +3516,9 @@ function buildFallbackRepoReviewFileReviews(input: {
         stringValue(entry.file),
         {
           file: stringValue(entry.file),
-          summary: stringValue(entry.summary) || t('errors.auto_3766f4', {}, undefined),
+          summary:
+            stringValue(entry.summary) ||
+            t('errors.auto_3766f4', {}, undefined),
         },
       ]),
   );
@@ -3399,8 +3534,9 @@ function buildFallbackRepoReviewFileReviews(input: {
       (finding) => stringValue(finding.file) === normalizedFile,
     );
     const risks = relatedFindings
-      .map((finding) =>
-        `[${finding.severity.toUpperCase()}] ${stringValue(finding.title)}`,
+      .map(
+        (finding) =>
+          `[${finding.severity.toUpperCase()}] ${stringValue(finding.title)}`,
       )
       .filter(Boolean)
       .slice(0, 5);
@@ -3409,7 +3545,9 @@ function buildFallbackRepoReviewFileReviews(input: {
       .filter(Boolean)
       .slice(0, 5);
     const hasSupplementalFinding = relatedFindings.some((finding) =>
-      stringValue(finding.title).replace(/\s+/g, ' ').startsWith(t('errors.auto_fce2f8', {}, undefined)),
+      stringValue(finding.title)
+        .replace(/\s+/g, ' ')
+        .startsWith(t('errors.auto_fce2f8', {}, undefined)),
     );
 
     return {
@@ -3418,9 +3556,19 @@ function buildFallbackRepoReviewFileReviews(input: {
         hasSupplementalFinding || risks.length > 0
           ? [
               t('repoReview.auto_5a900d', {}, undefined),
-              risks.length > 0 ? t('repoReview.risksToWatch', { risks: risks.join('；') }, undefined) : '',
+              risks.length > 0
+                ? t(
+                    'repoReview.risksToWatch',
+                    { risks: risks.join('；') },
+                    undefined,
+                  )
+                : '',
               suggestions.length > 0
-                ? t('repoReview.suggestionsPriority', { suggestions: suggestions.join('；') }, undefined)
+                ? t(
+                    'repoReview.suggestionsPriority',
+                    { suggestions: suggestions.join('；') },
+                    undefined,
+                  )
                 : '',
             ]
               .filter(Boolean)
@@ -3453,8 +3601,11 @@ function parseSupplementalFileReviewResult(
                   ? 'low'
                   : 'medium') as RepoReviewRunFinding['severity'],
               file: filePath,
-              title: normalizeSupplementalFindingTitle(stringValue(entry.title)),
-              detail: stringValue(entry.detail) || stringValue(entry.description),
+              title: normalizeSupplementalFindingTitle(
+                stringValue(entry.title),
+              ),
+              detail:
+                stringValue(entry.detail) || stringValue(entry.description),
               suggestion: stringValue(entry.suggestion) || undefined,
             };
           })
@@ -3489,39 +3640,51 @@ function parseSupplementalFileReviewResult(
       '需要主代理继续确认',
       '需要主代理确认',
     ]);
-    const findings: RepoReviewRunFinding[] = splitRepoReviewMarkdownFindingBlocks(findingsSection).flatMap(
-      (block) => {
+    const findings: RepoReviewRunFinding[] =
+      splitRepoReviewMarkdownFindingBlocks(findingsSection).flatMap((block) => {
         const severity: RepoReviewRunFinding['severity'] = block.includes('🔴')
           ? 'high'
           : block.includes('🔵')
             ? 'low'
             : 'medium';
-        const parsedFinding = parseRepoReviewMarkdownFindingBlock(block, severity);
+        const parsedFinding = parseRepoReviewMarkdownFindingBlock(
+          block,
+          severity,
+        );
         if (!parsedFinding) return [];
-        return [{
-          ...parsedFinding,
-          file: filePath,
-        } as RepoReviewRunFinding];
-      },
-    );
+        return [
+          {
+            ...parsedFinding,
+            file: filePath,
+          } as RepoReviewRunFinding,
+        ];
+      });
     const summary =
       conclusionSection ||
       markdownLines.find((line) => normalizeRepoReviewMarkdownHeading(line)) ||
       t('repoReview.auto_e2c4df', {}, undefined);
     const confidence = parseRepoReviewSubagentConfidence(trimmed);
-    const overallImpact =
-      findings.some((finding) => finding.severity === 'high')
-        ? 'fail'
-        : findings.some((finding) => finding.severity === 'medium')
-          ? 'warn'
-          : 'none';
+    const overallImpact = findings.some(
+      (finding) => finding.severity === 'high',
+    )
+      ? 'fail'
+      : findings.some((finding) => finding.severity === 'medium')
+        ? 'warn'
+        : 'none';
     return {
       summary,
       findings,
       suggestions: extractMarkdownBulletValues(remainingSection),
       scopeLimitations: normalizeReviewScopeLimitations([
         remainingSection || '',
-        t('repoReview.fullFileReviewParseFailed', { file: filePath, error: err instanceof Error ? err.message : String(err) }, undefined),
+        t(
+          'repoReview.fullFileReviewParseFailed',
+          {
+            file: filePath,
+            error: err instanceof Error ? err.message : String(err),
+          },
+          undefined,
+        ),
         `置信度：${confidence}`,
       ]),
       overallImpact,
@@ -3565,8 +3728,7 @@ function buildSupplementalUnreadableFileResult(
   return {
     fileReview: {
       file: filePath,
-      summary:
-        t('repoReview.auto_d6c4a0', {}, undefined),
+      summary: t('repoReview.auto_d6c4a0', {}, undefined),
     },
     findings: [],
     scopeLimitations: [
@@ -3607,7 +3769,10 @@ function parseSupplementalBatchFileReviewResults(
       : Array.isArray(parsed.results)
         ? parsed.results
         : [];
-    const resultsByFile = new Map<string, RepoReviewSupplementalExecutionResult>();
+    const resultsByFile = new Map<
+      string,
+      RepoReviewSupplementalExecutionResult
+    >();
     for (const entry of entries) {
       if (!entry || typeof entry !== 'object' || Array.isArray(entry)) continue;
       const record = entry as Record<string, unknown>;
@@ -3615,7 +3780,11 @@ function parseSupplementalBatchFileReviewResults(
         stringValue(record.file) ||
         stringValue(record.file_path) ||
         stringValue(record.path);
-      if (!filePath || !expectedFilePaths.has(filePath) || resultsByFile.has(filePath)) {
+      if (
+        !filePath ||
+        !expectedFilePaths.has(filePath) ||
+        resultsByFile.has(filePath)
+      ) {
         continue;
       }
       const parsedFileReview = parseSupplementalFileReviewResult(
@@ -3637,12 +3806,15 @@ function parseSupplementalBatchFileReviewResults(
     return {
       resultsByFile: new Map<string, RepoReviewSupplementalExecutionResult>(),
       scopeLimitations: [
-        t('repoReview.orchestratorParseFailed', { error: err instanceof Error ? err.message : String(err) }, undefined),
+        t(
+          'repoReview.orchestratorParseFailed',
+          { error: err instanceof Error ? err.message : String(err) },
+          undefined,
+        ),
       ],
     };
   }
 }
-
 
 function buildRemoteTrackingRef(remoteName: string, branch: string): string {
   return `refs/remotes/${remoteName}/${normalizeBranchName(branch)}`;
@@ -3860,7 +4032,11 @@ async function resolveLocalRemoteReviewContext(
       true,
     ),
     changedFiles: (
-      await runGitCommandAsync(repoPath, ['diff', '--name-only', diffRange], true)
+      await runGitCommandAsync(
+        repoPath,
+        ['diff', '--name-only', diffRange],
+        true,
+      )
     )
       .split('\n')
       .map((entry) => entry.trim())
@@ -3870,9 +4046,7 @@ async function resolveLocalRemoteReviewContext(
     branch,
     ref: event.ref || `refs/heads/${branch}`,
     actor:
-      stringValue(event.actor) ||
-      commitDetails[0]?.author ||
-      branchHead.actor,
+      stringValue(event.actor) || commitDetails[0]?.author || branchHead.actor,
     commitSummaryLines,
     commitDetails,
     projectContextBlocks: [],
@@ -3931,6 +4105,27 @@ function mergeCallbackContext(
     ...(original || {}),
     ...patch,
   };
+}
+
+const REPO_REVIEW_RERUN_RESET_KEYS = new Set([
+  'commitSummaryLines',
+  'commitDetails',
+  'reviewTurns',
+  'reviewProgress',
+  'scopeLimitations',
+  'fileReviews',
+  'commitReviews',
+  'executionStats',
+]);
+
+export function stripRepoReviewExecutionContext(
+  callbackContext: Record<string, unknown> | null | undefined,
+): Record<string, unknown> {
+  const next = { ...(callbackContext || {}) };
+  for (const key of REPO_REVIEW_RERUN_RESET_KEYS) {
+    delete next[key];
+  }
+  return next;
 }
 
 async function persistRepoReviewRunProgressStep(input: {
@@ -4025,7 +4220,8 @@ function parseQueuedRemoteReviewContext(
   replayEligible: boolean;
   blockingExpected: boolean;
 } | null {
-  const queuedContext = asRecord(callbackContext)[QUEUED_REMOTE_REVIEW_CONTEXT_KEY];
+  const queuedContext =
+    asRecord(callbackContext)[QUEUED_REMOTE_REVIEW_CONTEXT_KEY];
   const record = asRecord(queuedContext);
   if (!normalizeBoolean(record.replayEligible)) return null;
   return {
@@ -4213,28 +4409,28 @@ async function selectMatchingProfileRecord(
       })),
     )
   ).sort((left, right) => {
-      const leftSpecific = left.profile.targetBranches.length > 0 ? 1 : 0;
-      const rightSpecific = right.profile.targetBranches.length > 0 ? 1 : 0;
-      if (rightSpecific !== leftSpecific) {
-        return rightSpecific - leftSpecific;
-      }
-      const leftGenerated =
-        left.record.name === 'Commit Local Default' ||
-        left.record.name === 'Push Remote Default';
-      const rightGenerated =
-        right.record.name === 'Commit Local Default' ||
-        right.record.name === 'Push Remote Default';
-      if (leftGenerated !== rightGenerated) {
-        return leftGenerated ? 1 : -1;
-      }
-      const updatedAtDelta = right.record.updated_at.localeCompare(
-        left.record.updated_at,
-      );
-      if (updatedAtDelta !== 0) {
-        return updatedAtDelta;
-      }
-      return right.record.created_at.localeCompare(left.record.created_at);
-    });
+    const leftSpecific = left.profile.targetBranches.length > 0 ? 1 : 0;
+    const rightSpecific = right.profile.targetBranches.length > 0 ? 1 : 0;
+    if (rightSpecific !== leftSpecific) {
+      return rightSpecific - leftSpecific;
+    }
+    const leftGenerated =
+      left.record.name === 'Commit Local Default' ||
+      left.record.name === 'Push Remote Default';
+    const rightGenerated =
+      right.record.name === 'Commit Local Default' ||
+      right.record.name === 'Push Remote Default';
+    if (leftGenerated !== rightGenerated) {
+      return leftGenerated ? 1 : -1;
+    }
+    const updatedAtDelta = right.record.updated_at.localeCompare(
+      left.record.updated_at,
+    );
+    if (updatedAtDelta !== 0) {
+      return updatedAtDelta;
+    }
+    return right.record.created_at.localeCompare(left.record.created_at);
+  });
   const matching = candidates.filter(({ profile }) =>
     branchMatchesProfile(profile, branch),
   );
@@ -4287,7 +4483,13 @@ async function resolveLocalReviewContext(
         ])),
       changedFiles:
         event.changedFiles ||
-        (await runGitCommandAsync(repoPath, ['diff', '--cached', '--name-only']))
+        (
+          await runGitCommandAsync(repoPath, [
+            'diff',
+            '--cached',
+            '--name-only',
+          ])
+        )
           .split('\n')
           .map((entry) => entry.trim())
           .filter(Boolean),
@@ -4316,7 +4518,11 @@ async function resolveLocalReviewContext(
     const candidates = [`origin/${fallbackBranch}`, fallbackBranch];
     for (const entry of candidates) {
       if (
-        await runGitCommandAsync(repoPath, ['rev-parse', '--verify', entry], true)
+        await runGitCommandAsync(
+          repoPath,
+          ['rev-parse', '--verify', entry],
+          true,
+        )
       ) {
         upstream = entry;
         break;
@@ -4331,7 +4537,11 @@ async function resolveLocalReviewContext(
   }
   const baseSha =
     event.baseSha ||
-    (await runGitCommandAsync(repoPath, ['merge-base', 'HEAD', upstream], true)) ||
+    (await runGitCommandAsync(
+      repoPath,
+      ['merge-base', 'HEAD', upstream],
+      true,
+    )) ||
     upstream;
   const diffRange = baseSha ? `${baseSha}..HEAD` : 'HEAD';
   const eventCommitSummaryLines = readEventCommitSummaryLines(event);
@@ -4472,8 +4682,7 @@ interface RepoReviewFullFileTaskManifest {
   relatedFindings: RepoReviewRunFinding[];
 }
 
-interface RepoReviewHydratedFullFileTask
-  extends RepoReviewSupplementalPreparedFileTask {
+interface RepoReviewHydratedFullFileTask extends RepoReviewSupplementalPreparedFileTask {
   stepIndex: number;
   estimatedBytes: number;
   scopeLimitations: string[];
@@ -4550,8 +4759,13 @@ function buildRepoReviewFindingSearchTerms(
     terms.add(stem.toLowerCase());
   }
 
-  for (const value of [finding.title, finding.detail, finding.suggestion || '']) {
-    const matches = String(value || '').match(/[A-Za-z_][A-Za-z0-9_]{2,}/g) || [];
+  for (const value of [
+    finding.title,
+    finding.detail,
+    finding.suggestion || '',
+  ]) {
+    const matches =
+      String(value || '').match(/[A-Za-z_][A-Za-z0-9_]{2,}/g) || [];
     for (const match of matches) {
       terms.add(match.toLowerCase());
     }
@@ -4694,9 +4908,15 @@ function extractRepoReviewFinalCodeSnippet(
     anchorLine - REPO_REVIEW_EVIDENCE_CONTEXT_BEFORE,
   );
   const estimatedEnd =
-    anchorLine + Math.max(hunk.newLineCount, 1) + REPO_REVIEW_EVIDENCE_CONTEXT_AFTER - 1;
+    anchorLine +
+    Math.max(hunk.newLineCount, 1) +
+    REPO_REVIEW_EVIDENCE_CONTEXT_AFTER -
+    1;
   const endLine = Math.min(lines.length, estimatedEnd);
-  const snippet = lines.slice(startLine - 1, endLine).join('\n').trim();
+  const snippet = lines
+    .slice(startLine - 1, endLine)
+    .join('\n')
+    .trim();
   return trimRepoReviewEvidenceSnippet(snippet);
 }
 
@@ -4727,9 +4947,7 @@ function splitDiffByFile(diffText: string): Map<string, string> {
   const result = new Map<string, string>();
   const parts = diffText.split(/(?=^diff --git )/m);
   for (const part of parts) {
-    const fileMatch = part.match(
-      /^diff --git a\/(.+?) b\/(.+)/m,
-    );
+    const fileMatch = part.match(/^diff --git a\/(.+?) b\/(.+)/m);
     if (!fileMatch) continue;
     const filePath = fileMatch[2]!;
     result.set(filePath, part);
@@ -4743,15 +4961,18 @@ async function buildRepoReviewFindingEvidence(input: {
   diffText?: string;
 }): Promise<Record<string, string>> {
   const evidence: Record<string, string> = {};
-  const hasLocalRepo = !!(input.repository.localRepoPath && input.run.baseSha && input.run.headSha);
-  const hasDiffText = !!(input.diffText?.trim());
+  const hasLocalRepo = !!(
+    input.repository.localRepoPath &&
+    input.run.baseSha &&
+    input.run.headSha
+  );
+  const hasDiffText = !!input.diffText?.trim();
   if (!hasLocalRepo && !hasDiffText) {
     return evidence;
   }
 
-  const diffByFile = hasDiffText && !hasLocalRepo
-    ? splitDiffByFile(input.diffText!)
-    : null;
+  const diffByFile =
+    hasDiffText && !hasLocalRepo ? splitDiffByFile(input.diffText!) : null;
 
   if (hasLocalRepo) {
     const refsToFetch = [input.run.baseSha, input.run.headSha].filter(Boolean);
@@ -4780,7 +5001,14 @@ async function buildRepoReviewFindingEvidence(input: {
       if (hasLocalRepo) {
         fileDiff = await runGitCommandAsync(
           input.repository.localRepoPath,
-          ['diff', '--unified=3', input.run.baseSha, input.run.headSha, '--', filePath],
+          [
+            'diff',
+            '--unified=3',
+            input.run.baseSha,
+            input.run.headSha,
+            '--',
+            filePath,
+          ],
           true,
         );
         if (!fileDiff.trim()) continue;
@@ -4833,7 +5061,9 @@ async function buildRepoReviewFindingEvidence(input: {
       }
       if (bestHunkText) {
         evidence[buildRepoReviewFindingEvidenceKey(finding)] =
-          trimRepoReviewEvidenceSnippet(extractAfterStateFromDiffHunk(bestHunkText));
+          trimRepoReviewEvidenceSnippet(
+            extractAfterStateFromDiffHunk(bestHunkText),
+          );
       }
     } catch {
       continue;
@@ -4855,10 +5085,15 @@ function sanitizePreparedContext(
   );
 
   if (filteredFiles.length === 0) {
-    const parts = [t('repoReview.noFilesMatchProfile', { total: totalFiles }, undefined)];
-    if (profile.includeGlobs.length > 0) parts.push(`include: [${profile.includeGlobs.join(', ')}]`);
-    if (profile.excludeGlobs.length > 0) parts.push(`exclude: [${profile.excludeGlobs.join(', ')}]`);
-    if (totalFiles === 0) parts.push(t('repoReview.auto_44b087', {}, undefined));
+    const parts = [
+      t('repoReview.noFilesMatchProfile', { total: totalFiles }, undefined),
+    ];
+    if (profile.includeGlobs.length > 0)
+      parts.push(`include: [${profile.includeGlobs.join(', ')}]`);
+    if (profile.excludeGlobs.length > 0)
+      parts.push(`exclude: [${profile.excludeGlobs.join(', ')}]`);
+    if (totalFiles === 0)
+      parts.push(t('repoReview.auto_44b087', {}, undefined));
     return {
       ...prepared,
       changedFiles: [],
@@ -4872,7 +5107,11 @@ function sanitizePreparedContext(
     profile.includeGlobs.length > 0 || profile.excludeGlobs.length > 0;
   const effectiveFiles = filteredFiles;
   const filteredDiff = needsGlobFilter
-    ? buildFilteredDiff(prepared.diffText, new Set(effectiveFiles), prepared.diffIndex)
+    ? buildFilteredDiff(
+        prepared.diffText,
+        new Set(effectiveFiles),
+        prepared.diffIndex,
+      )
     : prepared.diffText;
 
   if (!filteredDiff.trim()) {
@@ -4881,7 +5120,11 @@ function sanitizePreparedContext(
       changedFiles: [],
       diffText: '',
       overall: 'skipped',
-      summary: t('repoReview.diffFilteredEmpty', { total: totalFiles, filtered: filteredFiles.length }, undefined),
+      summary: t(
+        'repoReview.diffFilteredEmpty',
+        { total: totalFiles, filtered: filteredFiles.length },
+        undefined,
+      ),
     };
   }
 
@@ -4891,7 +5134,11 @@ function sanitizePreparedContext(
       changedFiles: effectiveFiles,
       diffText: filteredDiff.slice(0, profile.maxDiffBytes),
       overall: 'warn',
-      summary: t('repoReview.diffSizeTruncated', { max: profile.maxDiffBytes }, undefined),
+      summary: t(
+        'repoReview.diffSizeTruncated',
+        { max: profile.maxDiffBytes },
+        undefined,
+      ),
     };
   }
 
@@ -4932,7 +5179,10 @@ function formatRepoReviewCustomPromptBlock(customPrompt: string): string {
 }
 
 function normalizeMarkdownSectionHeading(line: string): string {
-  return line.trim().replace(/^#{1,6}\s*/, '').trim();
+  return line
+    .trim()
+    .replace(/^#{1,6}\s*/, '')
+    .trim();
 }
 
 function findMarkdownSectionByTitles(text: string, titles: string[]): string {
@@ -4943,9 +5193,7 @@ function findMarkdownSectionByTitles(text: string, titles: string[]): string {
   );
   if (startIndex < 0) return '';
   const endIndex = lines.findIndex(
-    (line, index) =>
-      index > startIndex &&
-      /^#{1,6}\s+\S/.test(line.trim()),
+    (line, index) => index > startIndex && /^#{1,6}\s+\S/.test(line.trim()),
   );
   const slice = lines.slice(
     startIndex + 1,
@@ -4959,7 +5207,12 @@ function extractMarkdownBulletValues(section: string): string[] {
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter(Boolean)
-    .map((line) => line.replace(/^[-*]\s+/, '').replace(/^`|`$/g, '').trim())
+    .map((line) =>
+      line
+        .replace(/^[-*]\s+/, '')
+        .replace(/^`|`$/g, '')
+        .trim(),
+    )
     .filter(Boolean);
 }
 
@@ -5014,7 +5267,9 @@ function buildRepoReviewSubagentTimeoutFollowupPrompt(input: {
   ].join('\n');
 }
 
-function formatRepoReviewFindingForPrompt(finding: RepoReviewRunFinding): string {
+function formatRepoReviewFindingForPrompt(
+  finding: RepoReviewRunFinding,
+): string {
   const parts = [`- [${finding.severity}] ${finding.title || '未命名问题'}`];
   if (finding.file) {
     parts.push(`  文件：${finding.file}`);
@@ -5083,7 +5338,10 @@ export async function resolveSplitDiffMainPrompt(
   const findingsText =
     input.workerFindings.length > 0
       ? input.workerFindings
-          .map((finding, i) => `${i + 1}. ${formatRepoReviewFindingForPrompt(finding)}`)
+          .map(
+            (finding, i) =>
+              `${i + 1}. ${formatRepoReviewFindingForPrompt(finding)}`,
+          )
           .join('\n')
       : '暂无子代理发现。';
   const diffRange = buildRepoReviewDiffRange({
@@ -5120,7 +5378,13 @@ export async function buildSplitDiffMainPrompt(
   return resolved.text;
 }
 
-const REVIEW_OVERALL_RANK: Record<string, number> = { fail: 3, error: 2, warn: 1, pass: 0, skipped: -1 };
+const REVIEW_OVERALL_RANK: Record<string, number> = {
+  fail: 3,
+  error: 2,
+  warn: 1,
+  pass: 0,
+  skipped: -1,
+};
 
 function mergeReviewResults(
   mainResult: ParsedReviewResult,
@@ -5132,7 +5396,10 @@ function mergeReviewResults(
   ];
   let worstOverall = mainResult.overall;
   for (const r of workerResults) {
-    if ((REVIEW_OVERALL_RANK[r.overall] ?? 0) > (REVIEW_OVERALL_RANK[worstOverall] ?? 0)) {
+    if (
+      (REVIEW_OVERALL_RANK[r.overall] ?? 0) >
+      (REVIEW_OVERALL_RANK[worstOverall] ?? 0)
+    ) {
       worstOverall = r.overall;
     }
   }
@@ -5144,16 +5411,20 @@ function mergeReviewResults(
       ...workerResults.flatMap((r) => r.fileReviews),
       ...mainResult.fileReviews,
     ],
-    scopeLimitations: [...new Set([
-      ...mainResult.scopeLimitations,
-      ...workerResults.flatMap((r) => r.scopeLimitations),
-    ])],
+    scopeLimitations: [
+      ...new Set([
+        ...mainResult.scopeLimitations,
+        ...workerResults.flatMap((r) => r.scopeLimitations),
+      ]),
+    ],
     commitReviews: mainResult.commitReviews,
     suggestions: [
       ...mainResult.suggestions,
       ...workerResults.flatMap((r) => r.suggestions),
     ],
-    recommendedBlock: mainResult.recommendedBlock || workerResults.some((r) => r.recommendedBlock),
+    recommendedBlock:
+      mainResult.recommendedBlock ||
+      workerResults.some((r) => r.recommendedBlock),
     markdownBody: mainResult.markdownBody,
     rawModelOutput: mainResult.rawModelOutput,
   };
@@ -5181,20 +5452,22 @@ async function runSplitDiffReview(input: {
   }) => Promise<void>;
   executionStats?: RepoReviewExecutionStats;
 }): Promise<ParsedReviewResult> {
-  const { repository, profile, event, prepared, runId, workspacePath, userId } = input;
+  const { repository, profile, event, prepared, runId, workspacePath, userId } =
+    input;
   const maxSubagents = await resolveRepoReviewMaxSubagents();
   const customPrompt = profile.promptTemplate.trim();
   // Step A: build tasks and groups for worker subagents
-  const tasks: RepoReviewSupplementalPreparedFileTask[] = prepared.changedFiles.map((f) => ({
-    filePath: f,
-    fileDiff: buildFilteredDiff(
-      prepared.diffText,
-      new Set([f]),
-      prepared.diffIndex,
-    ),
-    fileContent: '',
-    relatedFindings: [],
-  }));
+  const tasks: RepoReviewSupplementalPreparedFileTask[] =
+    prepared.changedFiles.map((f) => ({
+      filePath: f,
+      fileDiff: buildFilteredDiff(
+        prepared.diffText,
+        new Set([f]),
+        prepared.diffIndex,
+      ),
+      fileContent: '',
+      relatedFindings: [],
+    }));
   const taskGroups = groupFilesForReview(tasks, maxSubagents);
   if (input.executionStats) {
     input.executionStats.splitGroups = Math.max(
@@ -5237,10 +5510,7 @@ async function runSplitDiffReview(input: {
       );
   };
   const emitMergedPhase1Progress = async () => {
-    const mergedTurns = [
-      ...workerTurnsByGroup.flat(),
-      ...mainTurns,
-    ];
+    const mergedTurns = [...workerTurnsByGroup.flat(), ...mainTurns];
     updateExtraRepoReadCount();
     await input.onPhase1Progress(mergedTurns);
   };
@@ -5464,14 +5734,19 @@ export async function resolveReviewPrompt(
         input.prepared.changedFiles.length > 0
           ? input.prepared.changedFiles.map((file) => `- ${file}`).join('\n')
           : '- (none)',
-      diffText: trimContextBlock(input.prepared.diffText || '(empty diff)', 120_000),
+      diffText: trimContextBlock(
+        input.prepared.diffText || '(empty diff)',
+        120_000,
+      ),
       customPromptBlock: formatRepoReviewCustomPromptBlock(customPrompt),
     },
     fallbackText: REPO_REVIEW_PRIMARY_TEMPLATE,
   });
 }
 
-export async function buildReviewPrompt(input: ReviewPromptInput): Promise<string> {
+export async function buildReviewPrompt(
+  input: ReviewPromptInput,
+): Promise<string> {
   const resolved = await resolveReviewPrompt(input);
   return resolved.text;
 }
@@ -5535,7 +5810,9 @@ function buildRepoReviewAgenticBudget(input: {
       1,
       Math.min(
         REPO_REVIEW_AGENTIC_DEFAULT_MAX_SUBAGENTS,
-        Math.trunc(input.maxSubagents || REPO_REVIEW_AGENTIC_DEFAULT_MAX_SUBAGENTS),
+        Math.trunc(
+          input.maxSubagents || REPO_REVIEW_AGENTIC_DEFAULT_MAX_SUBAGENTS,
+        ),
       ),
     ),
     delegationFileThreshold: Math.max(
@@ -5543,7 +5820,8 @@ function buildRepoReviewAgenticBudget(input: {
       Math.trunc(input.profile.diffSubagentThreshold ?? 15),
     ),
     fullFileReviewEnabled: input.profile.includeFullFileContext,
-    maxFullFileBytesPerFile: REPO_REVIEW_AGENTIC_DEFAULT_MAX_FULL_FILE_BYTES_PER_FILE,
+    maxFullFileBytesPerFile:
+      REPO_REVIEW_AGENTIC_DEFAULT_MAX_FULL_FILE_BYTES_PER_FILE,
     maxTotalReadBytes: REPO_REVIEW_AGENTIC_DEFAULT_MAX_TOTAL_READ_BYTES,
     maxReviewRounds: REPO_REVIEW_AGENTIC_MAX_REVIEW_ROUNDS,
     extractorEnabled: true,
@@ -5603,7 +5881,9 @@ function buildRepoReviewAgenticPromptVariables(input: {
     diffBytes: Buffer.byteLength(input.prepared.diffText || '', 'utf8'),
     delegationFileThreshold: input.budget.delegationFileThreshold,
     maxSubagents: input.budget.maxSubagents,
-    fullFileReviewEnabled: input.budget.fullFileReviewEnabled ? 'enabled' : 'disabled',
+    fullFileReviewEnabled: input.budget.fullFileReviewEnabled
+      ? 'enabled'
+      : 'disabled',
     maxFullFileBytesPerFile: input.budget.maxFullFileBytesPerFile,
     maxTotalReadBytes: input.budget.maxTotalReadBytes,
     maxReviewRounds: input.budget.maxReviewRounds,
@@ -5650,7 +5930,8 @@ export async function resolveRepoReviewAgenticPlanPrompt(input: {
   targetUserId?: string;
 }): Promise<ResolvedRepoReviewPrompt> {
   const variables = buildRepoReviewAgenticPromptVariables(input);
-  const planOnlyInstructions = buildRepoReviewAgenticPlanOnlyInstructions(input);
+  const planOnlyInstructions =
+    buildRepoReviewAgenticPlanOnlyInstructions(input);
   return resolvePromptText({
     promptKey: 'repo_review.agentic_plan',
     targetUserId: input.targetUserId,
@@ -5660,7 +5941,9 @@ export async function resolveRepoReviewAgenticPlanPrompt(input: {
       customPromptBlock: [
         stringValue(variables.customPromptBlock),
         input.correction ? `\n## 计划修正要求\n${input.correction}` : '',
-      ].filter(Boolean).join('\n'),
+      ]
+        .filter(Boolean)
+        .join('\n'),
     },
     fallbackText: REPO_REVIEW_AGENTIC_PLAN_TEMPLATE,
   });
@@ -5675,7 +5958,9 @@ function normalizeRepoReviewAgenticPlanTask(
   const id = stringValue(record.id) || `task-${index + 1}`;
   const title = stringValue(record.title) || `子审查任务 ${index + 1}`;
   const objective = stringValue(record.objective || record.goal) || title;
-  const focus = stringValue(record.focus || record.riskTheme || record.risk_theme);
+  const focus = stringValue(
+    record.focus || record.riskTheme || record.risk_theme,
+  );
   const fullFileFiles = normalizeStringArray(
     record.full_file_files || record.fullFileFiles,
   );
@@ -5700,8 +5985,7 @@ function sanitizeRepoReviewAgenticPlanForBudget(input: {
     plan.shouldDelegate &&
     input.changedFileCount <= input.budget.delegationFileThreshold
   ) {
-    const reason =
-      `变更文件数 ${input.changedFileCount} 未超过委派阈值 ${input.budget.delegationFileThreshold}，主代理独立审查。`;
+    const reason = `变更文件数 ${input.changedFileCount} 未超过委派阈值 ${input.budget.delegationFileThreshold}，主代理独立审查。`;
     plan = {
       ...plan,
       shouldDelegate: false,
@@ -5745,7 +6029,11 @@ function sanitizeRepoReviewAgenticPlanForBudget(input: {
 
 function parseRepoReviewAgenticPlan(text: string): RepoReviewAgenticPlan {
   const parsed = JSON.parse(extractJsonObject(text)) as Record<string, unknown>;
-  if (!parsed.review_plan && !parsed.reviewPlan && stringValue(parsed.overall)) {
+  if (
+    !parsed.review_plan &&
+    !parsed.reviewPlan &&
+    stringValue(parsed.overall)
+  ) {
     return {
       shouldDelegate: false,
       delegationReason:
@@ -5776,7 +6064,9 @@ function parseRepoReviewAgenticPlan(text: string): RepoReviewAgenticPlan {
     ),
     delegationReason:
       stringValue(root.delegation_reason || root.delegationReason) ||
-      (tasks.length > 0 ? '主代理选择委派局部审查任务。' : '主代理选择独立完成审查。'),
+      (tasks.length > 0
+        ? '主代理选择委派局部审查任务。'
+        : '主代理选择独立完成审查。'),
     tasks,
     fullFileReviewFiles: normalizeStringArray(
       root.full_file_review_files || root.fullFileReviewFiles,
@@ -5815,7 +6105,9 @@ function validateRepoReviewAgenticPlan(input: {
     (file) => !changed.has(file),
   );
   if (invalidFullFile.length > 0) {
-    errors.push(`主计划全文读取列表包含非变更范围文件：${invalidFullFile.join(', ')}`);
+    errors.push(
+      `主计划全文读取列表包含非变更范围文件：${invalidFullFile.join(', ')}`,
+    );
   }
   return errors;
 }
@@ -5846,7 +6138,9 @@ function compactJsonForPrompt(value: unknown, maxChars = 60_000): string {
   } catch {
     text = String(value);
   }
-  return text.length > maxChars ? `${text.slice(0, maxChars)}\n...(truncated)` : text;
+  return text.length > maxChars
+    ? `${text.slice(0, maxChars)}\n...(truncated)`
+    : text;
 }
 
 async function runRepoReviewMainPlan(input: {
@@ -5897,7 +6191,9 @@ async function runRepoReviewMainPlan(input: {
       targetUserId: input.userId,
     });
     recordRepoReviewPromptBytes(input.executionStats, resolved.text);
-    input.executionStats && (input.executionStats.modelCallCount = (input.executionStats.modelCallCount || 0) + 1);
+    input.executionStats &&
+      (input.executionStats.modelCallCount =
+        (input.executionStats.modelCallCount || 0) + 1);
     await recordPromptTrace({
       traceKind: 'direct_provider',
       promptKey: 'repo_review.agentic_plan',
@@ -5919,10 +6215,10 @@ async function runRepoReviewMainPlan(input: {
           repository: input.repository,
           profile: input.profile,
           prompt: resolved.text,
-        runId: input.runId,
-        runtimeNamespace: `${input.runId}:main-plan:${attempt + 1}`,
-        workspacePath: input.workspacePath,
-        userId: input.userId,
+          runId: input.runId,
+          runtimeNamespace: `${input.runId}:main-plan:${attempt + 1}`,
+          workspacePath: input.workspacePath,
+          userId: input.userId,
           onTurnProgress: input.onTurnProgress,
           onStatusEvent: buildRepoReviewAgentStatusProgressHandler({
             id: 'agentic_main_plan',
@@ -5934,15 +6230,15 @@ async function runRepoReviewMainPlan(input: {
       ).outputText;
     } catch (err) {
       lastErrors = [errorMessageForProgress(err)];
-        await input.onProgressStep?.({
-          id: 'agentic_main_plan',
-          label: '主代理制定审查计划',
-          status: 'running',
-          detail: '计划代理未按时返回，要求主代理修正一次',
-          kind: 'main',
-          error: lastErrors.join('；'),
-          outputText: '计划代理未返回有效 review_plan，进入修正重试。',
-        });
+      await input.onProgressStep?.({
+        id: 'agentic_main_plan',
+        label: '主代理制定审查计划',
+        status: 'running',
+        detail: '计划代理未按时返回，要求主代理修正一次',
+        kind: 'main',
+        error: lastErrors.join('；'),
+        outputText: '计划代理未返回有效 review_plan，进入修正重试。',
+      });
       correction = [
         '上一次计划代理调用未成功完成，请严格按协议只输出 review_plan JSON。',
         `调用错误：${errorMessageForProgress(err)}`,
@@ -6028,8 +6324,13 @@ export async function resolveRepoReviewAgenticSubagentPrompt(input: {
   targetUserId?: string;
 }): Promise<ResolvedRepoReviewPrompt> {
   const base = buildRepoReviewAgenticPromptVariables(input);
-  const diffSlice = getRepoReviewDiffSlice(input.prepared.diffIndex!, input.task.files) ||
-    buildFilteredDiff(input.prepared.diffText, new Set(input.task.files), input.prepared.diffIndex);
+  const diffSlice =
+    getRepoReviewDiffSlice(input.prepared.diffIndex!, input.task.files) ||
+    buildFilteredDiff(
+      input.prepared.diffText,
+      new Set(input.task.files),
+      input.prepared.diffIndex,
+    );
   return resolvePromptText({
     promptKey: 'repo_review.agentic_subagent',
     targetUserId: input.targetUserId,
@@ -6060,9 +6361,13 @@ function parseRepoReviewAgenticSubagentResult(
 ): RepoReviewAgenticSubagentResult {
   const allowedFiles = new Set(task.files);
   try {
-    const parsed = JSON.parse(extractJsonObject(output)) as Record<string, unknown>;
-    const checkedFiles = normalizeStringArray(parsed.checked_files || parsed.checkedFiles)
-      .filter((file) => allowedFiles.has(file));
+    const parsed = JSON.parse(extractJsonObject(output)) as Record<
+      string,
+      unknown
+    >;
+    const checkedFiles = normalizeStringArray(
+      parsed.checked_files || parsed.checkedFiles,
+    ).filter((file) => allowedFiles.has(file));
     const rawReadEvidence = parsed.read_evidence || parsed.readEvidence;
     const readEvidence = Array.isArray(rawReadEvidence)
       ? rawReadEvidence
@@ -6073,10 +6378,17 @@ function parseRepoReviewAgenticSubagentResult(
             return {
               file,
               evidence: stringValue(record.evidence || record.summary),
-              ...(stringValue(record.lines) ? { lines: stringValue(record.lines) } : {}),
+              ...(stringValue(record.lines)
+                ? { lines: stringValue(record.lines) }
+                : {}),
             };
           })
-          .filter((entry): entry is { file: string; evidence: string; lines?: string } => Boolean(entry))
+          .filter(
+            (
+              entry,
+            ): entry is { file: string; evidence: string; lines?: string } =>
+              Boolean(entry),
+          )
       : [];
     const result = parseReviewResult(
       JSON.stringify({
@@ -6104,17 +6416,23 @@ function parseRepoReviewAgenticSubagentResult(
       findings: result.findings.filter(
         (finding) => !finding.file || allowedFiles.has(finding.file),
       ),
-      fileReviews: result.fileReviews.filter((entry) => allowedFiles.has(entry.file)),
+      fileReviews: result.fileReviews.filter((entry) =>
+        allowedFiles.has(entry.file),
+      ),
       scopeLimitations: normalizeReviewScopeLimitations([
         ...result.scopeLimitations,
         ...(outOfScopeFindingCount > 0
-          ? [`子代理 ${task.id} 返回了 ${outOfScopeFindingCount} 条越权文件发现，已忽略。`]
+          ? [
+              `子代理 ${task.id} 返回了 ${outOfScopeFindingCount} 条越权文件发现，已忽略。`,
+            ]
           : []),
       ]),
       confidence,
       failed: false,
       timedOut: normalizeBoolean(parsed.timed_out ?? parsed.timedOut, false),
-      progressSummary: stringValue(parsed.progress_summary || parsed.progressSummary),
+      progressSummary: stringValue(
+        parsed.progress_summary || parsed.progressSummary,
+      ),
       remainingChecks: normalizeStringArray(
         parsed.remaining_checks || parsed.remainingChecks,
       ),
@@ -6140,11 +6458,12 @@ function parseRepoReviewAgenticSubagentResult(
         );
       })
       .filter((file): file is string => Boolean(file));
-    const findings = parseRepoReviewSubagentFindingBlocks(findingsSection).filter(
-      (finding) => !finding.file || allowedFiles.has(finding.file),
-    );
+    const findings = parseRepoReviewSubagentFindingBlocks(
+      findingsSection,
+    ).filter((finding) => !finding.file || allowedFiles.has(finding.file));
     const scopeLimitations = normalizeReviewScopeLimitations(
-      remainingSection || '子代理返回了 Markdown 结果，主代理需要结合原文继续判断。',
+      remainingSection ||
+        '子代理返回了 Markdown 结果，主代理需要结合原文继续判断。',
     );
     const progressSummary =
       conclusionSection ||
@@ -6160,7 +6479,9 @@ function parseRepoReviewAgenticSubagentResult(
       findings,
       fileReviews: [],
       scopeLimitations,
-      confidence: parseRepoReviewSubagentConfidence(conclusionSection || output),
+      confidence: parseRepoReviewSubagentConfidence(
+        conclusionSection || output,
+      ),
       failed: false,
       timedOut: /超时前|当前进度总结/.test(conclusionSection || output),
       progressSummary,
@@ -6255,7 +6576,9 @@ async function runRepoReviewAgenticSubagents(input: {
         });
         resolvedPromptText = resolved.text;
         recordRepoReviewPromptBytes(input.executionStats, resolved.text);
-        input.executionStats && (input.executionStats.modelCallCount = (input.executionStats.modelCallCount || 0) + 1);
+        input.executionStats &&
+          (input.executionStats.modelCallCount =
+            (input.executionStats.modelCallCount || 0) + 1);
         await recordPromptTrace({
           traceKind: 'direct_provider',
           promptKey: 'repo_review.agentic_subagent',
@@ -6336,7 +6659,9 @@ async function runRepoReviewAgenticSubagents(input: {
         const augmentedScopeLimitations = normalizeReviewScopeLimitations([
           ...parsed.scopeLimitations,
           ...(outOfScopeReadCount > 0
-            ? [`子代理 ${task.id} 发生 ${outOfScopeReadCount} 次越权读取，仅作为低置信度参考。`]
+            ? [
+                `子代理 ${task.id} 发生 ${outOfScopeReadCount} 次越权读取，仅作为低置信度参考。`,
+              ]
             : []),
         ]);
         syntheticToolTurn = buildRepoReviewSyntheticSubagentToolTurn({
@@ -6504,7 +6829,9 @@ export async function resolveRepoReviewAgenticFinalPrompt(input: {
     variables: {
       ...variables,
       reviewPlan: compactJsonForPrompt(input.plan.rawPlan),
-      subagentResults: buildRepoReviewSubagentResultsPrompt(input.subagentResults),
+      subagentResults: buildRepoReviewSubagentResultsPrompt(
+        input.subagentResults,
+      ),
     },
     fallbackText: REPO_REVIEW_AGENTIC_FINAL_TEMPLATE,
   });
@@ -6585,8 +6912,10 @@ async function extractRepoReviewStructuredResult(input: {
     });
     recordRepoReviewPromptBytes(input.executionStats, resolved.text);
     if (input.executionStats) {
-      input.executionStats.modelCallCount = (input.executionStats.modelCallCount || 0) + 1;
-      input.executionStats.extractorAttempts = (input.executionStats.extractorAttempts || 0) + 1;
+      input.executionStats.modelCallCount =
+        (input.executionStats.modelCallCount || 0) + 1;
+      input.executionStats.extractorAttempts =
+        (input.executionStats.extractorAttempts || 0) + 1;
     }
     await recordPromptTrace({
       traceKind: 'direct_provider',
@@ -6603,14 +6932,14 @@ async function extractRepoReviewStructuredResult(input: {
     });
     try {
       const output = (
-      await runReviewAgent({
+        await runReviewAgent({
           repository: input.repository,
           profile: input.profile,
           prompt: resolved.text,
-        runId: input.runId,
-        runtimeNamespace: `${input.runId}:extractor:${attempt + 1}`,
-        workspacePath: input.workspacePath,
-        userId: input.userId,
+          runId: input.runId,
+          runtimeNamespace: `${input.runId}:extractor:${attempt + 1}`,
+          workspacePath: input.workspacePath,
+          userId: input.userId,
           attachWorkspace: false,
           onTurnProgress: input.onTurnProgress,
           onStatusEvent: buildRepoReviewAgentStatusProgressHandler({
@@ -6668,7 +6997,9 @@ async function runRepoReviewAgenticReview(input: {
   plan: RepoReviewAgenticPlan;
   subagentResults: RepoReviewAgenticSubagentResult[];
 }> {
-  if (input.prepared.changedFiles.length <= input.budget.delegationFileThreshold) {
+  if (
+    input.prepared.changedFiles.length <= input.budget.delegationFileThreshold
+  ) {
     const reason = `变更文件数 ${input.prepared.changedFiles.length} 未超过委派阈值 ${input.budget.delegationFileThreshold}，主代理直接审查。`;
     await input.onProgressStep?.({
       id: 'agentic_main_summary',
@@ -6719,6 +7050,11 @@ async function runRepoReviewAgenticReview(input: {
       runtimeNamespace: `${input.runId}:main-direct`,
       workspacePath: input.workspacePath,
       userId: input.userId,
+      turnContext: {
+        groupKey: 'agentic_main_summary',
+        groupLabel: '主代理直接审查',
+        phase: 'main_agent_review',
+      },
       onTurnProgress: async (turns) => {
         directTurns = turns;
         await input.onPhaseProgress({
@@ -6829,7 +7165,11 @@ async function runRepoReviewAgenticReview(input: {
       subagentResults: [],
     };
   }
-  if (plan.shouldDelegate && plan.tasks.length > 0 && !input.prepared.diffIndex) {
+  if (
+    plan.shouldDelegate &&
+    plan.tasks.length > 0 &&
+    !input.prepared.diffIndex
+  ) {
     await input.onProgressStep?.({
       id: 'build_diff_index',
       label: '构建 Diff Index',
@@ -6838,10 +7178,15 @@ async function runRepoReviewAgenticReview(input: {
       kind: 'stage',
       inputText: formatProgressKeyValues([
         ['changed_files', input.prepared.changedFiles.join(', ') || '-'],
-        ['diff_bytes', Buffer.byteLength(input.prepared.diffText || '', 'utf8')],
+        [
+          'diff_bytes',
+          Buffer.byteLength(input.prepared.diffText || '', 'utf8'),
+        ],
       ]),
     });
-    input.prepared.diffIndex = buildRepoReviewDiffIndex(input.prepared.diffText);
+    input.prepared.diffIndex = buildRepoReviewDiffIndex(
+      input.prepared.diffText,
+    );
     await input.onProgressStep?.({
       id: 'build_diff_index',
       label: '构建 Diff Index',
@@ -6851,7 +7196,10 @@ async function runRepoReviewAgenticReview(input: {
       outputText: formatProgressKeyValues([
         ['files_indexed', input.prepared.diffIndex.files.length],
         ['diff_entries', input.prepared.diffIndex.entries.length],
-        ['diff_bytes', Buffer.byteLength(input.prepared.diffText || '', 'utf8')],
+        [
+          'diff_bytes',
+          Buffer.byteLength(input.prepared.diffText || '', 'utf8'),
+        ],
       ]),
       metadataText: formatProgressKeyValues([
         ['indexed_files', input.prepared.diffIndex.files.join(', ') || '-'],
@@ -6896,7 +7244,10 @@ async function runRepoReviewAgenticReview(input: {
       detail: `完成 ${subagentResults.filter((result) => !result.failed).length}/${effectiveTasks.length} 个子代理任务`,
       kind: 'main',
       outputText: formatProgressKeyValues([
-        ['completed', subagentResults.filter((result) => !result.failed).length],
+        [
+          'completed',
+          subagentResults.filter((result) => !result.failed).length,
+        ],
         ['failed', subagentResults.filter((result) => result.failed).length],
       ]),
     });
@@ -6915,9 +7266,10 @@ async function runRepoReviewAgenticReview(input: {
     id: 'agentic_main_summary',
     label: '主代理汇总结论',
     status: 'running',
-    detail: subagentResults.length > 0
-      ? `汇总 ${subagentResults.length} 个子代理结果`
-      : '主代理基于自身取证汇总结论',
+    detail:
+      subagentResults.length > 0
+        ? `汇总 ${subagentResults.length} 个子代理结果`
+        : '主代理基于自身取证汇总结论',
     kind: 'main',
     inputText: formatProgressKeyValues([
       ['plan_should_delegate', plan.shouldDelegate],
@@ -6936,7 +7288,9 @@ async function runRepoReviewAgenticReview(input: {
     targetUserId: input.userId,
   });
   recordRepoReviewPromptBytes(input.executionStats, finalPrompt.text);
-  input.executionStats && (input.executionStats.modelCallCount = (input.executionStats.modelCallCount || 0) + 1);
+  input.executionStats &&
+    (input.executionStats.modelCallCount =
+      (input.executionStats.modelCallCount || 0) + 1);
   await recordPromptTrace({
     traceKind: 'direct_provider',
     promptKey: 'repo_review.agentic_final',
@@ -6958,6 +7312,11 @@ async function runRepoReviewAgenticReview(input: {
     runtimeNamespace: `${input.runId}:main-final`,
     workspacePath: input.workspacePath,
     userId: input.userId,
+    turnContext: {
+      groupKey: 'agentic_main_summary',
+      groupLabel: '主代理汇总结论',
+      phase: 'main_agent_fallback_review',
+    },
     onTurnProgress: async (turns) => {
       finalTurns = turns;
       await emitProgress();
@@ -7127,8 +7486,7 @@ export async function resolveSupplementalFullFileReviewOrchestratorPrompt(
 ): Promise<ResolvedRepoReviewPrompt> {
   const customPrompt = input.profile.promptTemplate.trim();
   const useGrouped =
-    input.taskGroups.length > 0 &&
-    input.taskGroups.length < input.tasks.length;
+    input.taskGroups.length > 0 && input.taskGroups.length < input.tasks.length;
   const taskBlocks = useGrouped
     ? input.taskGroups
         .map((group, gi) =>
@@ -7149,7 +7507,7 @@ export async function resolveSupplementalFullFileReviewOrchestratorPrompt(
         )
         .join('\n\n');
   const dispatchInstruction = useGrouped
-    ? `1. \u6309\u7167\u4ee5\u4e0b\u5206\u7ec4\u521b\u5efa Agent \u5b50\u4ee3\u7406\uff0c\u6bcf\u4e2a\u5b50\u4ee3\u7406\u8d1f\u8d23\u4e00\u4e2a\u5206\u7ec4\u4e2d\u7684\u6240\u6709\u6587\u4ef6\u3002\u5171 ${input.taskGroups.length} \u4e2a\u5206\u7ec4\uff0c\u8bf7\u5c3d\u91cf\u540c\u65f6\u5e76\u884c\u521b\u5efa\u5168\u90e8\u5b50\u4ee3\u7406\u3002`
+    ? `1. \u6309\u7167\u4ee5\u4e0b\u5206\u7ec4\u521b\u5efa Agent \u5b50\u4ee3\u7406\uff0c\u6bcf\u4e2a\u5b50\u4ee3\u7406\u8d1f\u8d23\u4e00\u4e2a\u5206\u7ec4\u4e2d\u7684\u6240\u6709\u6587\u4ef6\u3002\u5171 ${input.taskGroups.length} \u4e2a\u5206\u7ec4\uff0c\u4f46\u4e0d\u8981\u4e3a\u4e86\u7528\u6ee1\u4e0a\u9650\u800c\u4e00\u6b21\u6027\u5206\u914d\u5168\u90e8\u5b50\u4ee3\u7406\uff1b\u5e94\u8be5\u6839\u636e\u5206\u7ec4\u7684\u91cd\u8981\u6027\u548c\u4f9d\u8d56\u5173\u7cfb\u5148\u540e\u6d3e\u53d1\u3002`
     : '1. \u4e3a\u4e0b\u9762\u6bcf\u4e2a\u6587\u4ef6\u4efb\u52a1\u521b\u5efa\u4e00\u4e2a Agent \u5b50\u4ee3\u7406\uff0c\u4f18\u5148\u5728\u540c\u4e00\u8f6e\u4e2d\u5e76\u884c\u521b\u5efa\u591a\u4e2a\u5b50\u4ee3\u7406\uff1b\u5982\u679c\u53d7\u6d3b\u8dc3\u5b50\u4ee3\u7406\u6570\u91cf\u9650\u5236\uff0c\u5219\u5206\u6279\u5b8c\u6210\uff0c\u4f46\u5fc5\u987b\u8986\u76d6\u5168\u90e8\u6587\u4ef6\u4efb\u52a1\u3002';
   const perAgentSchema = useGrouped
     ? '2. \u6bcf\u4e2a\u5b50\u4ee3\u7406\u8d1f\u8d23\u5176\u5206\u7ec4\u5185\u7684\u6240\u6709\u6587\u4ef6\uff0c\u8f93\u51fa\u4e14\u53ea\u8f93\u51fa\u4e00\u4e2a JSON \u5bf9\u8c61\uff0c\u5b57\u6bb5\u5fc5\u987b\u4e3a\uff1a{"files":[{"file":"\u6587\u4ef6\u8def\u5f84","summary":"\u4e2d\u6587\u6587\u4ef6\u7ea7\u5b8c\u6574\u5ba1\u67e5\u7ed3\u8bba","findings":[{"severity":"high|medium|low","title":"\u4e2d\u6587\u95ee\u9898\u6807\u9898","detail":"\u4e2d\u6587\u95ee\u9898\u8bf4\u660e","suggestion":"\u4e2d\u6587\u4fee\u590d\u5efa\u8bae"}],"suggestions":["\u4e2d\u6587\u5efa\u8bae"],"scope_limitations":["\u4e2d\u6587\u9650\u5236\u8bf4\u660e"],"overall_impact":"none|warn|fail","recommended_block":false}]}'
@@ -7186,7 +7544,8 @@ export async function resolveSupplementalFullFileReviewOrchestratorPrompt(
 export async function buildSupplementalFullFileReviewOrchestratorPrompt(
   input: SupplementalFullFileReviewOrchestratorPromptInput,
 ): Promise<string> {
-  const resolved = await resolveSupplementalFullFileReviewOrchestratorPrompt(input);
+  const resolved =
+    await resolveSupplementalFullFileReviewOrchestratorPrompt(input);
   return resolved.text;
 }
 
@@ -7244,7 +7603,9 @@ async function loadRepoReviewCloudDocHandlers(): Promise<RepoReviewCloudDocHandl
   }
   const modulePath = './feishu-doc-service.js';
   try {
-    const loaded = (await import(modulePath)) as Partial<RepoReviewCloudDocHandlers>;
+    const loaded = (await import(
+      modulePath
+    )) as Partial<RepoReviewCloudDocHandlers>;
     if (
       typeof loaded.prepareFeishuCloudDoc === 'function' &&
       typeof loaded.continueFeishuCloudDocProvision === 'function'
@@ -7276,7 +7637,8 @@ async function resolveRepoReviewFeishuConversationType(
   if (lastColon > 0) {
     const feishuChatId = chatJid.slice(lastColon + 1);
     if (feishuChatId.startsWith('oc_')) return 'group';
-    if (feishuChatId.startsWith('ou_') || feishuChatId.startsWith('p2p')) return 'dm';
+    if (feishuChatId.startsWith('ou_') || feishuChatId.startsWith('p2p'))
+      return 'dm';
   }
   return null;
 }
@@ -7289,7 +7651,8 @@ async function maybeProvisionRepoReviewCloudDoc(input: {
   run: RepoReviewRun;
   result: RepoReviewCloudDocResult | null;
 }> {
-  const chatJid = input.repository.reviewChatJid || `repo-review:${input.repository.id}`;
+  const chatJid =
+    input.repository.reviewChatJid || `repo-review:${input.repository.id}`;
   if (!chatJid.startsWith('feishu:')) {
     return { run: input.run, result: null };
   }
@@ -7297,7 +7660,8 @@ async function maybeProvisionRepoReviewCloudDoc(input: {
   if (!handlers) {
     return { run: input.run, result: null };
   }
-  const conversationType = await resolveRepoReviewFeishuConversationType(chatJid);
+  const conversationType =
+    await resolveRepoReviewFeishuConversationType(chatJid);
   if (!conversationType) {
     logger.warn(
       { chatJid, repositoryId: input.repository.id, runId: input.run.id },
@@ -7347,7 +7711,9 @@ async function maybeProvisionRepoReviewCloudDoc(input: {
     }
 
     if (!documentId) {
-      throw new Error('Feishu cloud doc prepare step did not return a documentId');
+      throw new Error(
+        'Feishu cloud doc prepare step did not return a documentId',
+      );
     }
 
     const result = await handlers.continueFeishuCloudDocProvision({
@@ -7370,7 +7736,9 @@ async function maybeProvisionRepoReviewCloudDoc(input: {
     const updatedRecord = await updateReviewRun(currentRun.id, {
       cloud_doc_token: documentId || null,
       cloud_doc_title: title || null,
-      cloud_doc_status: currentRun.cloudDocToken ? 'continuation_failed' : 'creation_failed',
+      cloud_doc_status: currentRun.cloudDocToken
+        ? 'continuation_failed'
+        : 'creation_failed',
       cloud_doc_last_error: normalizeCloudDocErrorMessage(error),
     });
     logger.warn(
@@ -7429,11 +7797,9 @@ async function publishRepoReviewCompletionMessage(input: {
     }
   }
 
-  const content = formatRepoReviewMarkdownMessage(
-    input.repository,
-    run,
-    { skipActorMention: hasStructuredMentions },
-  );
+  const content = formatRepoReviewMarkdownMessage(input.repository, run, {
+    skipActorMention: hasStructuredMentions,
+  });
   return await applyRunChatDeliveryResult(
     run,
     await publishReviewMessage({
@@ -7468,11 +7834,11 @@ async function createRepoReviewShareLink(input: {
     `AI 审查完成 · ${repository.name}`,
     `结论: ${overallLabel(run.overall || run.status)} | 风险: 高 ${high} / 中 ${medium} / 低 ${low}`,
     branchConclusionLine(run.summary),
-  ].filter(Boolean).join('\n');
+  ]
+    .filter(Boolean)
+    .join('\n');
   const body = resolveRepoReviewVisibleBody(run);
-  const fullContent = body
-    ? `${summaryHeader}\n\n${body}`
-    : summaryHeader;
+  const fullContent = body ? `${summaryHeader}\n\n${body}` : summaryHeader;
   const entries = [
     {
       key: `review_${run.id}`,
@@ -7482,7 +7848,15 @@ async function createRepoReviewShareLink(input: {
   ];
   const chatJid = repository.reviewChatJid || `repo-review:${repository.id}`;
   const ownerId = await resolveRepoOwnerUserId(repository.id);
-  await createShare(shareId, chatJid, title, JSON.stringify(entries), null, ownerId, ownerId);
+  await createShare(
+    shareId,
+    chatJid,
+    title,
+    JSON.stringify(entries),
+    null,
+    ownerId,
+    ownerId,
+  );
   const base = await getShareBaseUrl();
   return `${base}/share/${shareId}`;
 }
@@ -7758,7 +8132,10 @@ function estimateChangedFileBytesForReview(input: {
   estimatedDiffBytes: number;
 }): number {
   const normalizedPath = input.filePath.replace(/\\/g, '/');
-  if (input.event.source === 'local-hook' || hasLocalGitRemoteAccess(input.repository)) {
+  if (
+    input.event.source === 'local-hook' ||
+    hasLocalGitRemoteAccess(input.repository)
+  ) {
     const repoPath = resolveRepositoryLocalRepoPath(input.repository);
     if (repoPath) {
       const absolutePath = path.join(repoPath, ...normalizedPath.split('/'));
@@ -7819,7 +8196,9 @@ async function hydrateRepoReviewFullFileTaskManifest(input: {
   prepared: ReviewPreparedContext;
   manifest: RepoReviewFullFileTaskManifest;
   executionStats?: RepoReviewExecutionStats;
-}): Promise<RepoReviewHydratedFullFileTask | RepoReviewSupplementalExecutionResult> {
+}): Promise<
+  RepoReviewHydratedFullFileTask | RepoReviewSupplementalExecutionResult
+> {
   const fileContent = await fetchChangedFileContentForReview({
     repository: input.repository,
     event: input.event,
@@ -7830,7 +8209,8 @@ async function hydrateRepoReviewFullFileTaskManifest(input: {
     return buildSupplementalUnreadableFileResult(input.manifest.filePath);
   }
   input.executionStats &&
-    (input.executionStats.fullFileBytesLoaded += getRepoReviewUtf8Bytes(fileContent));
+    (input.executionStats.fullFileBytesLoaded +=
+      getRepoReviewUtf8Bytes(fileContent));
   const trimmedFileContent = trimContextBlock(
     fileContent,
     FULL_FILE_CONTEXT_MAX_CHARS_PER_FILE,
@@ -7838,7 +8218,14 @@ async function hydrateRepoReviewFullFileTaskManifest(input: {
   const scopeLimitations: string[] = [];
   if (trimmedFileContent.length < fileContent.length) {
     scopeLimitations.push(
-      t('repoReview.fullFileContentTooLarge', { file: input.manifest.filePath, maxChars: FULL_FILE_CONTEXT_MAX_CHARS_PER_FILE }, undefined),
+      t(
+        'repoReview.fullFileContentTooLarge',
+        {
+          file: input.manifest.filePath,
+          maxChars: FULL_FILE_CONTEXT_MAX_CHARS_PER_FILE,
+        },
+        undefined,
+      ),
     );
   }
   const fileDiff = buildFilteredDiff(
@@ -7950,7 +8337,8 @@ async function fetchChangedFileContentForReview(input: {
     }
   }
 
-  const ref = stringValue(input.prepared.headSha) || stringValue(input.prepared.branch);
+  const ref =
+    stringValue(input.prepared.headSha) || stringValue(input.prepared.branch);
   if (!ref) return null;
   if (hasLocalGitRemoteAccess(input.repository)) {
     const repoPath = resolveRepositoryLocalRepoPath(input.repository);
@@ -7974,7 +8362,11 @@ async function fetchChangedFileContentForReview(input: {
   }
 
   try {
-    return await fetchRemoteFileContentAtRef(input.repository, normalizedPath, ref);
+    return await fetchRemoteFileContentAtRef(
+      input.repository,
+      normalizedPath,
+      ref,
+    );
   } catch (err) {
     logger.warn(
       { err, repositoryId: input.repository.id, filePath: normalizedPath, ref },
@@ -8223,10 +8615,10 @@ async function runSupplementalFullFileReviewWithOrchestrator(input: {
         repository: input.repository,
         profile: input.profile,
         prompt,
-      runId: input.runId,
-      runtimeNamespace: `${input.runId}:full-file-orchestrator`,
-      workspacePath: input.workspacePath,
-      userId: input.userId,
+        runId: input.runId,
+        runtimeNamespace: `${input.runId}:full-file-orchestrator`,
+        workspacePath: input.workspacePath,
+        userId: input.userId,
         onTurnProgress: async (turns) => {
           reviewTurns = turns;
           await input.onTurnProgress?.(turns);
@@ -8249,13 +8641,14 @@ async function runSupplementalFullFileReviewWithOrchestrator(input: {
     );
     return {
       resultsByFile: new Map<string, RepoReviewSupplementalExecutionResult>(),
-      scopeLimitations: [
-        t('repoReview.auto_e3e3fa', {}, undefined),
-      ],
+      scopeLimitations: [t('repoReview.auto_e3e3fa', {}, undefined)],
     };
   }
 
-  const parsed = parseSupplementalBatchFileReviewResults(output, expectedFilePaths);
+  const parsed = parseSupplementalBatchFileReviewResults(
+    output,
+    expectedFilePaths,
+  );
   return parsed.resultsByFile.size > 0
     ? parsed
     : {
@@ -8423,13 +8816,13 @@ async function runSupplementalFullFileReviewBatchWorkers(input: {
       try {
         const output = (
           await runReviewAgent({
-          repository: input.repository,
-          profile: input.profile,
-          prompt,
-          runId: input.runId,
-          runtimeNamespace,
-          workspacePath: input.workspacePath,
-          userId: input.userId,
+            repository: input.repository,
+            profile: input.profile,
+            prompt,
+            runId: input.runId,
+            runtimeNamespace,
+            workspacePath: input.workspacePath,
+            userId: input.userId,
             attachWorkspace: false,
             onTurnProgress: async (turns) => {
               childTurns = turns;
@@ -8442,15 +8835,19 @@ async function runSupplementalFullFileReviewBatchWorkers(input: {
             }),
           })
         ).outputText;
-        const parsed = parseSupplementalFileReviewResult(output, hydrated.filePath);
-        const outOfScopeReadCount = countRepoReviewOutOfScopeReads(
-          childTurns,
-          [hydrated.filePath],
+        const parsed = parseSupplementalFileReviewResult(
+          output,
+          hydrated.filePath,
         );
+        const outOfScopeReadCount = countRepoReviewOutOfScopeReads(childTurns, [
+          hydrated.filePath,
+        ]);
         const supplementalScopeLimitations = [
           ...hydrated.scopeLimitations,
           ...(outOfScopeReadCount > 0
-            ? [`全文补充子代理 ${hydrated.filePath} 发生 ${outOfScopeReadCount} 次越权读取，仅作为低置信度参考。`]
+            ? [
+                `全文补充子代理 ${hydrated.filePath} 发生 ${outOfScopeReadCount} 次越权读取，仅作为低置信度参考。`,
+              ]
             : []),
         ];
         syntheticToolTurn = buildRepoReviewSyntheticSubagentToolTurn({
@@ -8509,7 +8906,10 @@ async function runSupplementalFullFileReviewBatchWorkers(input: {
           status: 'failed',
           detail: hydrated.filePath,
           metadataText: formatProgressKeyValues([
-            ['out_of_scope_reads', countRepoReviewOutOfScopeReads(childTurns, [hydrated.filePath])],
+            [
+              'out_of_scope_reads',
+              countRepoReviewOutOfScopeReads(childTurns, [hydrated.filePath]),
+            ],
           ]),
           error,
         });
@@ -8528,8 +8928,12 @@ async function runSupplementalFullFileReviewBatchWorkers(input: {
           true,
           [
             ...hydrated.scopeLimitations,
-            ...(countRepoReviewOutOfScopeReads(childTurns, [hydrated.filePath]) > 0
-              ? [`全文补充子代理 ${hydrated.filePath} 存在越权读取，请主代理谨慎采信。`]
+            ...(countRepoReviewOutOfScopeReads(childTurns, [
+              hydrated.filePath,
+            ]) > 0
+              ? [
+                  `全文补充子代理 ${hydrated.filePath} 存在越权读取，请主代理谨慎采信。`,
+                ]
               : []),
           ],
         );
@@ -8668,8 +9072,7 @@ function normalizeGitLabBranchSummary(
     latestCommitAt: stringValue(
       commit.created_at || commit.authored_date || commit.committed_date,
     ),
-    defaultBranch:
-      Boolean(entry.default) || name === normalizedDefaultBranch,
+    defaultBranch: Boolean(entry.default) || name === normalizedDefaultBranch,
   };
 }
 
@@ -8781,12 +9184,15 @@ async function fetchGitHubRemoteBranchEntries(
 ): Promise<Record<string, unknown>[]> {
   const scm = getScmConfig(repository);
   if (!scm || scm.provider !== 'github') return [];
-  return fetchJsonArray(`${scm.apiBase}/repos/${scm.slug}/branches?per_page=100`, {
-    headers: {
-      Authorization: `Bearer ${scm.token}`,
-      Accept: 'application/vnd.github+json',
+  return fetchJsonArray(
+    `${scm.apiBase}/repos/${scm.slug}/branches?per_page=100`,
+    {
+      headers: {
+        Authorization: `Bearer ${scm.token}`,
+        Accept: 'application/vnd.github+json',
+      },
     },
-  });
+  );
 }
 
 async function fetchGiteaRemoteBranchEntries(
@@ -8818,8 +9224,7 @@ function normalizeGitHubLikeBranchSummary(
   return {
     name,
     headSha: stringValue(commit.sha || commit.id),
-    parentSha:
-      stringValue(parents[0]?.sha) || stringValue(parentIds[0]) || '',
+    parentSha: stringValue(parents[0]?.sha) || stringValue(parentIds[0]) || '',
     actor:
       stringValue(asRecord(commit.author).login) ||
       stringValue(commit.author_name || commit.committer_name) ||
@@ -8834,8 +9239,7 @@ function normalizeGitHubLikeBranchSummary(
         commit.authored_date ||
         commit.committed_date,
     ),
-    defaultBranch:
-      Boolean(entry.default) || name === normalizedDefaultBranch,
+    defaultBranch: Boolean(entry.default) || name === normalizedDefaultBranch,
   };
 }
 
@@ -9052,7 +9456,6 @@ async function fetchRemoteBranchCommitDetails(
   }));
 }
 
-
 async function resolveRemoteReviewContext(
   repository: ReviewRepositoryRecord,
   event: RepoReviewEvent,
@@ -9069,7 +9472,10 @@ async function resolveRemoteReviewContext(
   }
 
   if (localAccessible) {
-    const localContext = await resolveLocalRemoteReviewContext(repository, event);
+    const localContext = await resolveLocalRemoteReviewContext(
+      repository,
+      event,
+    );
     if (localContext.changedFiles.length > 0 && localContext.diffText.trim()) {
       return localContext;
     }
@@ -9716,8 +10122,13 @@ async function buildRepoReviewConversationAgentConfig(
       }
     }
 
-    const fixLabel = repo.allowAiFix ? t('errors.auto_0a60ac', {}, undefined) : t('repoReview.auto_c9744f', {}, undefined);
-    instructionSections.push('', t('repoReview.repoFixLabel', { name: repo.name, fixLabel }, undefined));
+    const fixLabel = repo.allowAiFix
+      ? t('errors.auto_0a60ac', {}, undefined)
+      : t('repoReview.auto_c9744f', {}, undefined);
+    instructionSections.push(
+      '',
+      t('repoReview.repoFixLabel', { name: repo.name, fixLabel }, undefined),
+    );
 
     if (worktrees.length > 0) {
       instructionSections.push(t('repoReview.auto_5a4d64', {}, undefined));
@@ -9746,19 +10157,13 @@ async function buildRepoReviewConversationAgentConfig(
   );
 
   if (anyAiFix) {
-    instructionSections.push(
-      t('repoReview.auto_78c610', {}, undefined),
-    );
+    instructionSections.push(t('repoReview.auto_78c610', {}, undefined));
     for (const d of writableDirNames) {
       instructionSections.push(`  - ${d}`);
     }
-    instructionSections.push(
-      t('repoReview.auto_3665a7', {}, undefined),
-    );
+    instructionSections.push(t('repoReview.auto_3665a7', {}, undefined));
     if (readonlyDirNames.length > 0) {
-      instructionSections.push(
-        t('repoReview.auto_1c144b', {}, undefined),
-      );
+      instructionSections.push(t('repoReview.auto_1c144b', {}, undefined));
       for (const d of readonlyDirNames) {
         instructionSections.push(`  - ${d}`);
       }
@@ -9776,7 +10181,9 @@ async function buildRepoReviewConversationAgentConfig(
 
   const accessMode = anyAiFix ? 'allowlist' : 'readonly';
   const effectiveRoot =
-    latestWorktreePath || (repositories[0] ? stringValue(repositories[0].localRepoPath) : '') || existing?.agentConfig?.projectRoot;
+    latestWorktreePath ||
+    (repositories[0] ? stringValue(repositories[0].localRepoPath) : '') ||
+    existing?.agentConfig?.projectRoot;
 
   return {
     ...existing?.agentConfig,
@@ -9793,18 +10200,25 @@ async function buildRepoReviewConversationAgentConfig(
   };
 }
 
-export async function getRepoReviewConversationBinding(chatJid: string): Promise<{ repositoryId: string; repositoryIds: string[]; group: RegisteredGroup; } | null> {
+export async function getRepoReviewConversationBinding(
+  chatJid: string,
+): Promise<{
+  repositoryId: string;
+  repositoryIds: string[];
+  group: RegisteredGroup;
+} | null> {
   const normalizedChatJid = stringValue(chatJid);
   if (!normalizedChatJid) return null;
 
-  const bindings = await listReviewConversationBindingsByChatJid(normalizedChatJid);
+  const bindings =
+    await listReviewConversationBindingsByChatJid(normalizedChatJid);
 
   if (bindings.length === 0) {
-    const binding = await getReviewConversationBindingByChatJid(normalizedChatJid);
+    const binding =
+      await getReviewConversationBindingByChatJid(normalizedChatJid);
     if (!binding) {
       const fallbackRecord = (await listReviewRepositories()).find((entry) => {
-        const boundChatJid =
-          entry.review_chat_jid || `repo-review:${entry.id}`;
+        const boundChatJid = entry.review_chat_jid || `repo-review:${entry.id}`;
         return boundChatJid === normalizedChatJid;
       });
       if (!fallbackRecord) return null;
@@ -9869,6 +10283,7 @@ async function runReviewAgent(input: {
   onTimeoutFollowupDispatched?: () => void | Promise<void>;
   onStatusEvent?: (event: AgentEventPayload) => Promise<void>;
   attachWorkspace?: boolean;
+  turnContext?: RepoReviewTurnContext;
 }): Promise<{
   outputText: string;
   timedOut: boolean;
@@ -9907,6 +10322,10 @@ async function runReviewAgent(input: {
   const reviewWorkspacePath =
     input.workspacePath || input.repository.localRepoPath;
   if (input.attachWorkspace !== false && reviewWorkspacePath) {
+    const allowedDirectories = buildRepoReviewReadOnlyAllowedDirectories(
+      reviewWorkspacePath,
+      input.repository.localRepoPath,
+    );
     agentInput.extraMounts = [
       {
         hostPath: reviewWorkspacePath,
@@ -9915,7 +10334,7 @@ async function runReviewAgent(input: {
       },
     ];
     agentInput.accessModeOverride = 'readonly';
-    agentInput.allowedDirectoriesOverride = [reviewWorkspacePath];
+    agentInput.allowedDirectoriesOverride = allowedDirectories;
     agentInput.workingDirectory = '/workspace/extra';
   }
   let agentProcess: ChildProcess | null = null;
@@ -9981,15 +10400,15 @@ async function runReviewAgent(input: {
         while (latestTurnsForProgressPersist) {
           const snapshot = latestTurnsForProgressPersist;
           latestTurnsForProgressPersist = null;
-        try {
-          await input.onTurnProgress?.(snapshot);
-        } catch (err) {
-          logger.warn(
-            { err, repositoryId: input.repository.id, runId: input.runId },
-            'Failed to persist intermediate repo review turn progress',
-          );
+          try {
+            await input.onTurnProgress?.(snapshot);
+          } catch (err) {
+            logger.warn(
+              { err, repositoryId: input.repository.id, runId: input.runId },
+              'Failed to persist intermediate repo review turn progress',
+            );
+          }
         }
-      }
         progressPersistScheduled = false;
         progressPersistTimer = null;
         if (latestTurnsForProgressPersist) {
@@ -10065,7 +10484,11 @@ async function runReviewAgent(input: {
         }
         if (output.turnEvent) {
           sawTurnEvent = true;
-          const nextTurns = applyReviewTurnEvent(reviewTurns, output.turnEvent);
+          const nextTurns = applyReviewTurnEvent(
+            reviewTurns,
+            output.turnEvent,
+            input.turnContext,
+          );
           if (nextTurns !== reviewTurns) {
             reviewTurns = nextTurns;
             latestCompletedAssistantMessageText =
@@ -10193,14 +10616,13 @@ async function runReviewAgent(input: {
             },
           )
         : null;
-    result =
-      timeoutPromise
-        ? await Promise.race([
-            processPromise,
-            earlyCompletionPromise,
-            timeoutPromise,
-          ])
-        : await Promise.race([processPromise, earlyCompletionPromise]);
+    result = timeoutPromise
+      ? await Promise.race([
+          processPromise,
+          earlyCompletionPromise,
+          timeoutPromise,
+        ])
+      : await Promise.race([processPromise, earlyCompletionPromise]);
     if (earlyFinalResolved) {
       forceStopAgentProcess();
     }
@@ -10289,7 +10711,10 @@ async function prepareReviewContext(
     );
   }
   return sanitizePreparedContext(
-    await resolveRemoteReviewContext(await requireRepository(repository.id), event),
+    await resolveRemoteReviewContext(
+      await requireRepository(repository.id),
+      event,
+    ),
     profile,
   );
 }
@@ -10500,7 +10925,11 @@ async function resolveRemoteReviewBaseline(input: {
       baselineSource: 'event-base-sha',
       baseBranch: input.branch,
       baselineRef: shortSha(eventBaseSha),
-      baselineLabel: t('repoReview.explicitBaseline', { sha: shortSha(eventBaseSha) }, undefined),
+      baselineLabel: t(
+        'repoReview.explicitBaseline',
+        { sha: shortSha(eventBaseSha) },
+        undefined,
+      ),
       branchState,
     };
   }
@@ -10514,7 +10943,11 @@ async function resolveRemoteReviewBaseline(input: {
       baselineSource: 'manual-history-run-head',
       baseBranch: input.branch,
       baselineRef: shortSha(input.selectedBaselineRun.head_sha),
-      baselineLabel: t('repoReview.historicalReviewPoint', { sha: shortSha(input.selectedBaselineRun.head_sha) }, undefined),
+      baselineLabel: t(
+        'repoReview.historicalReviewPoint',
+        { sha: shortSha(input.selectedBaselineRun.head_sha) },
+        undefined,
+      ),
       branchState,
     };
   }
@@ -10528,7 +10961,11 @@ async function resolveRemoteReviewBaseline(input: {
       baselineSource: 'manual-selected-commit',
       baseBranch: input.branch,
       baselineRef: shortSha(stringValue(manualReview.baselineSha)),
-      baselineLabel: t('repoReview.specifiedCommit', { sha: shortSha(stringValue(manualReview.baselineSha)) }, undefined),
+      baselineLabel: t(
+        'repoReview.specifiedCommit',
+        { sha: shortSha(stringValue(manualReview.baselineSha)) },
+        undefined,
+      ),
       branchState,
     };
   }
@@ -10542,7 +10979,11 @@ async function resolveRemoteReviewBaseline(input: {
       baselineSource: 'manual-last-baseline',
       baseBranch: input.branch,
       baselineRef: shortSha(branchState.baseline_sha),
-      baselineLabel: t('repoReview.lastBaseline', { sha: shortSha(branchState.baseline_sha) }, undefined),
+      baselineLabel: t(
+        'repoReview.lastBaseline',
+        { sha: shortSha(branchState.baseline_sha) },
+        undefined,
+      ),
       branchState,
     };
   }
@@ -10560,7 +11001,11 @@ async function resolveRemoteReviewBaseline(input: {
       baselineSource: 'branch-last-reviewed-head',
       baseBranch: input.branch,
       baselineRef: shortSha(branchState.head_sha),
-      baselineLabel: t('repoReview.recentlyReviewedCommit', { sha: shortSha(branchState.head_sha) }, undefined),
+      baselineLabel: t(
+        'repoReview.recentlyReviewedCommit',
+        { sha: shortSha(branchState.head_sha) },
+        undefined,
+      ),
       branchState,
     };
   }
@@ -10593,7 +11038,11 @@ async function resolveRemoteReviewBaseline(input: {
         baselineRef: shortSha(defaultHead.headSha),
         baselineLabel:
           reviewMode === 'full'
-            ? t('repoReview.overallBaselineLabel', { branch: defaultBranch, sha: shortSha(defaultHead.headSha) }, undefined)
+            ? t(
+                'repoReview.overallBaselineLabel',
+                { branch: defaultBranch, sha: shortSha(defaultHead.headSha) },
+                undefined,
+              )
             : `${defaultBranch}@${shortSha(defaultHead.headSha)}`,
         branchState,
       };
@@ -10613,7 +11062,11 @@ async function resolveRemoteReviewBaseline(input: {
           : 'parent-commit',
       baseBranch: input.branch,
       baselineRef: shortSha(parentSha),
-      baselineLabel: t('repoReview.parentCommit', { sha: shortSha(parentSha) }, undefined),
+      baselineLabel: t(
+        'repoReview.parentCommit',
+        { sha: shortSha(parentSha) },
+        undefined,
+      ),
       branchState,
     };
   }
@@ -10758,546 +11211,837 @@ async function executeRepoReviewEvent(
 ): Promise<RepoReviewExecutionSummary> {
   const tenantUserId = resolveReviewRunUserId(event) ?? SYSTEM_USER_ID;
   return runWithTenant({ userId: tenantUserId }, async () => {
-  const repositoryRecord = await requireRepository(event.repositoryId);
-  if (repositoryRecord.enabled !== 1) {
-    throw new Error(`Review repository is disabled: ${event.repositoryId}`);
-  }
-  const repository = await normalizeRepositoryRecord(repositoryRecord);
-  const profileRecord = await selectMatchingProfileRecord(repositoryRecord, event);
-  const candidateProfile = profileRecord
-    ? profileRecord.enabled === 1
-      ? await normalizeProfileRecord(profileRecord)
-      : null
-    : null;
-  const idempotencyKey = computeReviewIdempotencyKey(
-    event.repositoryId,
-    profileRecord?.id || stringValue(event.profileId),
-    event,
-  );
-  const existingRunRecord = await getReviewRunByIdempotencyKey({
-    repositoryId: event.repositoryId,
-    idempotencyKey,
-  });
-  if (
-    idempotencyKey &&
-    existingRunRecord &&
-    existingRunRecord.id !== existingRunId &&
-    !options.skipIdempotencyReuse
-  ) {
-    if (!shouldReuseIdempotentRun(existingRunRecord)) {
-      await updateReviewRun(existingRunRecord.id, {
-        idempotency_key: null,
-      });
-    } else {
-      const existingRun = await normalizeRunRecord(existingRunRecord);
-      return buildRepoReviewExecutionSummary(existingRun, {
-        reused: true,
-        reuseReason: '相同提交范围的审查已存在，本次复用已有运行。',
-      });
+    const repositoryRecord = await requireRepository(event.repositoryId);
+    if (repositoryRecord.enabled !== 1) {
+      throw new Error(`Review repository is disabled: ${event.repositoryId}`);
     }
-  }
-  const baselineSource = await resolveBaselineSource(event, candidateProfile);
-  const effectiveRules = candidateProfile
-    ? buildEffectiveRulesSnapshot(repository, candidateProfile)
-    : {};
-  const shouldWriteToChat = Boolean(candidateProfile?.writeToChat);
-  const shouldWriteToPlatform =
-    Boolean(candidateProfile?.writeToPlatform) &&
-    event.source !== 'local-hook' &&
-    Boolean(repositoryRecord.remote_provider);
-
-  let runRecord: ReviewRunRecord;
-  if (existingRunId) {
-    const existingRunRecord = await getReviewRunById(existingRunId);
-    if (!existingRunRecord) {
-      throw new Error(`Queued review run not found: ${existingRunId}`);
-    }
-    runRecord = existingRunRecord;
-  } else {
-    try {
-      runRecord = await createReviewRun({
-        id: `review-run-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`,
-        repository_id: event.repositoryId,
-        profile_id: profileRecord?.id || null,
-        idempotency_key: idempotencyKey,
-        source: event.source,
-        stage: event.stage,
-        status: 'queued',
-        baseline_source: baselineSource || null,
-        result_state: 'queued',
-        ref: event.ref || null,
-        branch: event.branch || null,
-        base_sha: event.baseSha || null,
-        head_sha: event.headSha || null,
-        pr_mr_number: event.prMrNumber || null,
-        actor: event.actor || null,
-        effective_rules: effectiveRules,
-        userId: resolveReviewRunUserId(event),
-        callback_context: event.callbackContext || null,
-      });
-    } catch (err) {
-      if (
-        idempotencyKey &&
-        isDuplicateKeyError(err) &&
-        !options.skipIdempotencyReuse
-      ) {
-        const raceRecord = await getReviewRunByIdempotencyKey({
-          repositoryId: event.repositoryId,
-          idempotencyKey,
+    const repository = await normalizeRepositoryRecord(repositoryRecord);
+    const profileRecord = await selectMatchingProfileRecord(
+      repositoryRecord,
+      event,
+    );
+    const candidateProfile = profileRecord
+      ? profileRecord.enabled === 1
+        ? await normalizeProfileRecord(profileRecord)
+        : null
+      : null;
+    const idempotencyKey = computeReviewIdempotencyKey(
+      event.repositoryId,
+      profileRecord?.id || stringValue(event.profileId),
+      event,
+    );
+    const existingRunRecord = await getReviewRunByIdempotencyKey({
+      repositoryId: event.repositoryId,
+      idempotencyKey,
+    });
+    if (
+      idempotencyKey &&
+      existingRunRecord &&
+      existingRunRecord.id !== existingRunId &&
+      !options.skipIdempotencyReuse
+    ) {
+      if (!shouldReuseIdempotentRun(existingRunRecord)) {
+        await updateReviewRun(existingRunRecord.id, {
+          idempotency_key: null,
         });
-        if (raceRecord && shouldReuseIdempotentRun(raceRecord)) {
-          const raceRun = await normalizeRunRecord(raceRecord);
-          return buildRepoReviewExecutionSummary(raceRun, {
-            reused: true,
-            reuseReason: '相同提交范围的审查已存在，本次复用已有运行。',
-          });
-        }
+      } else {
+        const existingRun = await normalizeRunRecord(existingRunRecord);
+        return buildRepoReviewExecutionSummary(existingRun, {
+          reused: true,
+          reuseReason: '相同提交范围的审查已存在，本次复用已有运行。',
+        });
       }
-      throw err;
     }
-  }
-  let reviewTurns: RepoReviewAssistantTurn[] = [];
-  let executionStats: RepoReviewExecutionStats | undefined;
-  let runCallbackContext = asRecord((await parseReviewRunRecord(runRecord)).callbackContext);
-  let progressSteps = normalizeRepoReviewProgressSnapshot(
-    asRecord(runCallbackContext).reviewProgress,
-  )?.steps || [];
-  let persistReviewProgressQueue: Promise<void> = Promise.resolve();
-  const persistReviewProgressNow = async (
-    patch: Record<string, unknown> = {},
-  ): Promise<void> => {
-    const reviewProgress = buildRepoReviewProgressSnapshot(
-      reviewTurns,
-      progressSteps,
+    const baselineSource = await resolveBaselineSource(event, candidateProfile);
+    const effectiveRules = candidateProfile
+      ? buildEffectiveRulesSnapshot(repository, candidateProfile)
+      : {};
+    const shouldWriteToChat = Boolean(candidateProfile?.writeToChat);
+    const shouldWriteToPlatform =
+      Boolean(candidateProfile?.writeToPlatform) &&
+      event.source !== 'local-hook' &&
+      Boolean(repositoryRecord.remote_provider);
+
+    let runRecord: ReviewRunRecord;
+    if (existingRunId) {
+      const existingRunRecord = await getReviewRunById(existingRunId);
+      if (!existingRunRecord) {
+        throw new Error(`Queued review run not found: ${existingRunId}`);
+      }
+      runRecord = existingRunRecord;
+    } else {
+      try {
+        runRecord = await createReviewRun({
+          id: `review-run-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`,
+          repository_id: event.repositoryId,
+          profile_id: profileRecord?.id || null,
+          idempotency_key: idempotencyKey,
+          source: event.source,
+          stage: event.stage,
+          status: 'queued',
+          baseline_source: baselineSource || null,
+          result_state: 'queued',
+          ref: event.ref || null,
+          branch: event.branch || null,
+          base_sha: event.baseSha || null,
+          head_sha: event.headSha || null,
+          pr_mr_number: event.prMrNumber || null,
+          actor: event.actor || null,
+          effective_rules: effectiveRules,
+          userId: resolveReviewRunUserId(event),
+          callback_context: event.callbackContext || null,
+        });
+      } catch (err) {
+        if (
+          idempotencyKey &&
+          isDuplicateKeyError(err) &&
+          !options.skipIdempotencyReuse
+        ) {
+          const raceRecord = await getReviewRunByIdempotencyKey({
+            repositoryId: event.repositoryId,
+            idempotencyKey,
+          });
+          if (raceRecord && shouldReuseIdempotentRun(raceRecord)) {
+            const raceRun = await normalizeRunRecord(raceRecord);
+            return buildRepoReviewExecutionSummary(raceRun, {
+              reused: true,
+              reuseReason: '相同提交范围的审查已存在，本次复用已有运行。',
+            });
+          }
+        }
+        throw err;
+      }
+    }
+    let reviewTurns: RepoReviewAssistantTurn[] = [];
+    let executionStats: RepoReviewExecutionStats | undefined;
+    let runCallbackContext = asRecord(
+      (await parseReviewRunRecord(runRecord)).callbackContext,
     );
-    runCallbackContext = mergeCallbackContext(runCallbackContext, {
-      ...patch,
-      reviewTurns,
-      reviewProgress,
-      ...(executionStats ? { executionStats } : {}),
-    });
-    if (executionStats) {
-      executionStats.progressSnapshotBytes = Math.max(
-        executionStats.progressSnapshotBytes,
-        getRepoReviewJsonBytes(runCallbackContext),
+    let progressSteps =
+      normalizeRepoReviewProgressSnapshot(
+        asRecord(runCallbackContext).reviewProgress,
+      )?.steps || [];
+    let persistReviewProgressQueue: Promise<void> = Promise.resolve();
+    const persistReviewProgressNow = async (
+      patch: Record<string, unknown> = {},
+    ): Promise<void> => {
+      const reviewProgress = buildRepoReviewProgressSnapshot(
+        reviewTurns,
+        progressSteps,
       );
-    }
-    await updateReviewRun(runRecord.id, {
-      callback_context: runCallbackContext,
-    });
-  };
-  const persistReviewProgress = async (
-    patch: Record<string, unknown> = {},
-  ): Promise<void> => {
-    const nextPersist = persistReviewProgressQueue.then(() =>
-      persistReviewProgressNow(patch),
-    );
-    persistReviewProgressQueue = nextPersist.catch(() => undefined);
-    await nextPersist;
-  };
-  const setProgressStep = async (
-    id: string,
-    label: string,
-    status: RepoReviewProgressStep['status'],
-    detail?: string,
-    error?: string,
-    extra?: {
-      kind?: RepoReviewProgressStepKind;
-      inputText?: string;
-      outputText?: string;
-      metadataText?: string;
-    },
-  ): Promise<void> => {
-    progressSteps = upsertRepoReviewProgressStep(progressSteps, {
-      id,
-      label,
-      kind: extra?.kind,
-      status,
-      detail,
-      inputText: extra?.inputText,
-      outputText: extra?.outputText,
-      metadataText: extra?.metadataText,
-      error,
-    });
-    await persistReviewProgress();
-  };
-  const failPendingProgressSteps = async (error: string): Promise<void> => {
-    const pendingSteps = progressSteps.filter(
-      (step) => step.status === 'running' || step.status === 'queued',
-    );
-    if (pendingSteps.length === 0) return;
-    for (const step of pendingSteps) {
+      runCallbackContext = mergeCallbackContext(runCallbackContext, {
+        ...patch,
+        reviewTurns: undefined,
+        reviewProgress,
+        ...(executionStats ? { executionStats } : {}),
+      });
+      if (executionStats) {
+        executionStats.progressSnapshotBytes = Math.max(
+          executionStats.progressSnapshotBytes,
+          getRepoReviewJsonBytes(runCallbackContext),
+        );
+      }
+      await updateReviewRun(runRecord.id, {
+        callback_context: runCallbackContext,
+      });
+    };
+    const persistReviewProgress = async (
+      patch: Record<string, unknown> = {},
+    ): Promise<void> => {
+      const nextPersist = persistReviewProgressQueue.then(() =>
+        persistReviewProgressNow(patch),
+      );
+      persistReviewProgressQueue = nextPersist.catch(() => undefined);
+      await nextPersist;
+    };
+    const setProgressStep = async (
+      id: string,
+      label: string,
+      status: RepoReviewProgressStep['status'],
+      detail?: string,
+      error?: string,
+      extra?: {
+        kind?: RepoReviewProgressStepKind;
+        inputText?: string;
+        outputText?: string;
+        metadataText?: string;
+      },
+    ): Promise<void> => {
       progressSteps = upsertRepoReviewProgressStep(progressSteps, {
-        id: step.id,
-        label: step.label,
-        kind: step.kind,
-        status: 'failed',
-        detail: step.detail,
-        inputText: step.inputText,
-        outputText: step.outputText,
-        metadataText: step.metadataText,
+        id,
+        label,
+        kind: extra?.kind,
+        status,
+        detail,
+        inputText: extra?.inputText,
+        outputText: extra?.outputText,
+        metadataText: extra?.metadataText,
         error,
       });
-    }
-    await persistReviewProgress();
-  };
-  await setProgressStep(
-    'queued',
-    '任务已入队',
-    'completed',
-    existingRunId ? '复用已入队的远端审查运行' : '已创建审查运行记录',
-    undefined,
-    {
-      kind: 'stage',
-      inputText: formatProgressKeyValues([
-        ['repository_id', repositoryRecord.id],
-        ['stage', event.stage],
-        ['source', event.source],
-        ['branch', event.branch || '-'],
-        ['head_sha', stringValue(event.headSha) || '-'],
-      ]),
-      outputText: existingRunId
-        ? '复用已存在的远端审查运行。'
-        : '已创建新的审查运行记录。',
-      metadataText: idempotencyKey
-        ? formatProgressKeyValues([['idempotency_key', idempotencyKey]])
-        : undefined,
-    },
-  );
-  const queuedRun = await normalizeRunRecord(runRecord);
-  await updateBranchStateFromRun(queuedRun);
-  await updateReviewRun(runRecord.id, {
-    chat_delivery_status: shouldWriteToChat ? 'pending' : 'skipped',
-    platform_status_delivery_status: shouldWriteToPlatform
-      ? 'pending'
-      : 'skipped',
-    platform_comment_delivery_status:
-      shouldWriteToPlatform && event.prMrNumber ? 'pending' : 'skipped',
-  });
-  const startedAtIso = new Date().toISOString();
+      await persistReviewProgress();
+    };
+    const failPendingProgressSteps = async (error: string): Promise<void> => {
+      const pendingSteps = progressSteps.filter(
+        (step) => step.status === 'running' || step.status === 'queued',
+      );
+      if (pendingSteps.length === 0) return;
+      for (const step of pendingSteps) {
+        progressSteps = upsertRepoReviewProgressStep(progressSteps, {
+          id: step.id,
+          label: step.label,
+          kind: step.kind,
+          status: 'failed',
+          detail: step.detail,
+          inputText: step.inputText,
+          outputText: step.outputText,
+          metadataText: step.metadataText,
+          error,
+        });
+      }
+      await persistReviewProgress();
+    };
+    await setProgressStep(
+      'queued',
+      '任务已入队',
+      'completed',
+      existingRunId ? '复用已入队的远端审查运行' : '已创建审查运行记录',
+      undefined,
+      {
+        kind: 'stage',
+        inputText: formatProgressKeyValues([
+          ['repository_id', repositoryRecord.id],
+          ['stage', event.stage],
+          ['source', event.source],
+          ['branch', event.branch || '-'],
+          ['head_sha', stringValue(event.headSha) || '-'],
+        ]),
+        outputText: existingRunId
+          ? '复用已存在的远端审查运行。'
+          : '已创建新的审查运行记录。',
+        metadataText: idempotencyKey
+          ? formatProgressKeyValues([['idempotency_key', idempotencyKey]])
+          : undefined,
+      },
+    );
+    const queuedRun = await normalizeRunRecord(runRecord);
+    await updateBranchStateFromRun(queuedRun);
+    await updateReviewRun(runRecord.id, {
+      chat_delivery_status: shouldWriteToChat ? 'pending' : 'skipped',
+      platform_status_delivery_status: shouldWriteToPlatform
+        ? 'pending'
+        : 'skipped',
+      platform_comment_delivery_status:
+        shouldWriteToPlatform && event.prMrNumber ? 'pending' : 'skipped',
+    });
+    const startedAtIso = new Date().toISOString();
 
-  if (!profileRecord || profileRecord.enabled !== 1) {
+    if (!profileRecord || profileRecord.enabled !== 1) {
+      await setProgressStep(
+        'select_profile',
+        '匹配审查 Profile',
+        'skipped',
+        '没有启用的审查 profile 匹配此事件',
+      );
+      const updated = await updateReviewRun(runRecord.id, {
+        status: 'skipped',
+        result_state: 'skipped',
+        overall: 'skipped',
+        summary: '没有启用的审查 profile 匹配此事件，已跳过审查。',
+        callback_context: runCallbackContext,
+        completed_at: startedAtIso,
+      });
+      const normalized = await normalizeRunRecord(updated);
+      await updateBranchStateFromRun(normalized);
+      return buildRepoReviewExecutionSummary(normalized);
+    }
+
+    const profile = await normalizeProfileRecord(profileRecord);
+    const reviewUserId = resolveReviewRunUserId(event);
     await setProgressStep(
       'select_profile',
       '匹配审查 Profile',
-      'skipped',
-      '没有启用的审查 profile 匹配此事件',
-    );
-    const updated = await updateReviewRun(runRecord.id, {
-      status: 'skipped',
-      result_state: 'skipped',
-      overall: 'skipped',
-      summary: '没有启用的审查 profile 匹配此事件，已跳过审查。',
-      callback_context: runCallbackContext,
-      completed_at: startedAtIso,
-    });
-    const normalized = await normalizeRunRecord(updated);
-    await updateBranchStateFromRun(normalized);
-    return buildRepoReviewExecutionSummary(normalized);
-  }
-
-  const profile = await normalizeProfileRecord(profileRecord);
-  const reviewUserId = resolveReviewRunUserId(event);
-  await setProgressStep(
-    'select_profile',
-    '匹配审查 Profile',
-    'completed',
-    profile.name,
-    undefined,
-    {
-      kind: 'stage',
-      inputText: formatProgressKeyValues([
-        ['stage', event.stage],
-        ['source', event.source],
-        ['branch', event.branch || '-'],
-      ]),
-      outputText: formatProgressKeyValues([
-        ['profile', profile.name],
-        ['review_scope', profile.reviewScope],
-        ['blocking_mode', profile.blockingMode],
-      ]),
-    },
-  );
-  await setProgressStep(
-    'mark_running',
-    '运行状态落库',
-    'running',
-    undefined,
-    undefined,
-    {
-      kind: 'stage',
-      inputText: formatProgressKeyValues([
-        ['run_id', runRecord.id],
-        ['next_status', 'running'],
-        ['started_at', startedAtIso],
-      ]),
-    },
-  );
-  await updateReviewRun(runRecord.id, {
-    status: 'running',
-    result_state: 'running',
-    started_at: startedAtIso,
-  });
-  await setProgressStep(
-    'mark_running',
-    '运行状态落库',
-    'completed',
-    undefined,
-    undefined,
-    {
-      kind: 'stage',
-      outputText: formatProgressKeyValues([
-        ['status', 'running'],
-        ['result_state', 'running'],
-      ]),
-    },
-  );
-  {
-    const runningRecord = await getReviewRunById(runRecord.id);
-    if (!runningRecord) {
-      throw new Error(`Review run missing after status update: ${runRecord.id}`);
-    }
-    await updateBranchStateFromRun(await normalizeRunRecord(runningRecord));
-  }
-  let remoteWorkspacePath: string | null = null;
-  let reviewWorkspacePath: string | null =
-    event.source === 'local-hook'
-      ? repositoryRecord.local_repo_path || null
-      : null;
-  const wtBranch = normalizeBranchName(event.branch || '');
-  if (event.source === 'local-hook') {
-    await setProgressStep(
-      'acquire_worktree',
-      '准备 Review Worktree',
-      'skipped',
-      '本地 hook 审查直接使用本地仓库，以保留暂存区状态',
+      'completed',
+      profile.name,
       undefined,
       {
         kind: 'stage',
         inputText: formatProgressKeyValues([
+          ['stage', event.stage],
           ['source', event.source],
-          ['local_repo_path', repositoryRecord.local_repo_path || '-'],
+          ['branch', event.branch || '-'],
         ]),
-        outputText: '本地 hook 审查直接复用本地仓库工作区。',
+        outputText: formatProgressKeyValues([
+          ['profile', profile.name],
+          ['review_scope', profile.reviewScope],
+          ['blocking_mode', profile.blockingMode],
+        ]),
       },
     );
-  } else if (wtBranch) {
     await setProgressStep(
-      'acquire_worktree',
-      '准备 Review Worktree',
+      'mark_running',
+      '运行状态落库',
       'running',
-      `分支 ${wtBranch}`,
+      undefined,
       undefined,
       {
         kind: 'stage',
         inputText: formatProgressKeyValues([
-          ['branch', wtBranch],
-          ['checkout_ref', stringValue(event.headSha) || '-'],
-          ['clone_url', repositoryRecord.clone_url || '-'],
-          ['purpose', 'review'],
+          ['run_id', runRecord.id],
+          ['next_status', 'running'],
+          ['started_at', startedAtIso],
         ]),
       },
     );
-    try {
-      const acquiredWorktreePath = await acquireWorktree({
-        repositoryId: repositoryRecord.id,
-        branch: wtBranch,
-        cloneUrl: repositoryRecord.clone_url || undefined,
-        checkoutRef: stringValue(event.headSha) || undefined,
-        purpose: 'review',
-      });
-      reviewWorkspacePath = acquiredWorktreePath || null;
+    await updateReviewRun(runRecord.id, {
+      status: 'running',
+      result_state: 'running',
+      started_at: startedAtIso,
+    });
+    await setProgressStep(
+      'mark_running',
+      '运行状态落库',
+      'completed',
+      undefined,
+      undefined,
+      {
+        kind: 'stage',
+        outputText: formatProgressKeyValues([
+          ['status', 'running'],
+          ['result_state', 'running'],
+        ]),
+      },
+    );
+    {
+      const runningRecord = await getReviewRunById(runRecord.id);
+      if (!runningRecord) {
+        throw new Error(
+          `Review run missing after status update: ${runRecord.id}`,
+        );
+      }
+      await updateBranchStateFromRun(await normalizeRunRecord(runningRecord));
+    }
+    let remoteWorkspacePath: string | null = null;
+    let reviewWorkspacePath: string | null =
+      event.source === 'local-hook'
+        ? repositoryRecord.local_repo_path || null
+        : null;
+    const wtBranch = normalizeBranchName(event.branch || '');
+    if (event.source === 'local-hook') {
       await setProgressStep(
         'acquire_worktree',
         '准备 Review Worktree',
-        acquiredWorktreePath ? 'completed' : 'skipped',
-        acquiredWorktreePath
-          ? `复用持久 worktree：${acquiredWorktreePath}`
-          : '持久 worktree 不可用，将尝试临时工作区兜底',
+        'skipped',
+        '本地 hook 审查直接使用本地仓库，以保留暂存区状态',
         undefined,
         {
           kind: 'stage',
-          outputText: acquiredWorktreePath
-            ? formatProgressKeyValues([
-                ['workspace_path', acquiredWorktreePath],
-                ['mode', 'persistent_worktree'],
-              ])
-            : '持久 Review Worktree 不可用，转入临时远端工作区兜底。',
+          inputText: formatProgressKeyValues([
+            ['source', event.source],
+            ['local_repo_path', repositoryRecord.local_repo_path || '-'],
+          ]),
+          outputText: '本地 hook 审查直接复用本地仓库工作区。',
         },
       );
-    } catch (err) {
+    } else if (wtBranch) {
       await setProgressStep(
         'acquire_worktree',
         '准备 Review Worktree',
-        'failed',
+        'running',
         `分支 ${wtBranch}`,
-        errorMessageForProgress(err),
+        undefined,
         {
           kind: 'stage',
-          outputText: '持久 Review Worktree 获取失败。',
+          inputText: formatProgressKeyValues([
+            ['branch', wtBranch],
+            ['checkout_ref', stringValue(event.headSha) || '-'],
+            ['clone_url', repositoryRecord.clone_url || '-'],
+            ['purpose', 'review'],
+          ]),
         },
       );
-      logger.warn(
-        { err, repositoryId: repositoryRecord.id, branch: wtBranch },
-        'Failed to create review worktree before review start',
+      try {
+        const acquiredWorktreePath = await acquireWorktree({
+          repositoryId: repositoryRecord.id,
+          branch: wtBranch,
+          cloneUrl: repositoryRecord.clone_url || undefined,
+          checkoutRef: stringValue(event.headSha) || undefined,
+          purpose: 'review',
+        });
+        reviewWorkspacePath = acquiredWorktreePath || null;
+        await setProgressStep(
+          'acquire_worktree',
+          '准备 Review Worktree',
+          acquiredWorktreePath ? 'completed' : 'skipped',
+          acquiredWorktreePath
+            ? `复用持久 worktree：${acquiredWorktreePath}`
+            : '持久 worktree 不可用，将尝试临时工作区兜底',
+          undefined,
+          {
+            kind: 'stage',
+            outputText: acquiredWorktreePath
+              ? formatProgressKeyValues([
+                  ['workspace_path', acquiredWorktreePath],
+                  ['mode', 'persistent_worktree'],
+                ])
+              : '持久 Review Worktree 不可用，转入临时远端工作区兜底。',
+          },
+        );
+      } catch (err) {
+        await setProgressStep(
+          'acquire_worktree',
+          '准备 Review Worktree',
+          'failed',
+          `分支 ${wtBranch}`,
+          errorMessageForProgress(err),
+          {
+            kind: 'stage',
+            outputText: '持久 Review Worktree 获取失败。',
+          },
+        );
+        logger.warn(
+          { err, repositoryId: repositoryRecord.id, branch: wtBranch },
+          'Failed to create review worktree before review start',
+        );
+      }
+    } else {
+      await setProgressStep(
+        'acquire_worktree',
+        '准备 Review Worktree',
+        'skipped',
+        '没有可用分支名',
+        undefined,
+        {
+          kind: 'stage',
+          outputText: '当前事件未提供可用分支名，跳过持久 worktree 获取。',
+        },
       );
     }
-  } else {
-    await setProgressStep(
-      'acquire_worktree',
-      '准备 Review Worktree',
-      'skipped',
-      '没有可用分支名',
-      undefined,
-      {
-        kind: 'stage',
-        outputText: '当前事件未提供可用分支名，跳过持久 worktree 获取。',
-      },
-    );
-  }
 
-  if (event.source === 'local-hook') {
-    await setProgressStep(
-      'prepare_remote_workspace',
-      '准备临时远端工作区',
-      'skipped',
-      '本地 hook 审查直接使用本地仓库',
-      undefined,
-      {
-        kind: 'stage',
-        outputText: '本地 hook 场景不创建临时远端工作区。',
-      },
-    );
-  } else if (reviewWorkspacePath) {
-    await setProgressStep(
-      'prepare_remote_workspace',
-      '准备临时远端工作区',
-      'skipped',
-      '已复用持久 Review Worktree',
-      undefined,
-      {
-        kind: 'stage',
-        outputText: formatProgressKeyValues([
-          ['workspace_path', reviewWorkspacePath],
-          ['mode', 'persistent_worktree_reused'],
-        ]),
-      },
-    );
-  } else {
-    await setProgressStep(
-      'prepare_remote_workspace',
-      '准备临时远端工作区',
-      'running',
-      `分支 ${wtBranch || '-'}`,
-      undefined,
-      {
-        kind: 'stage',
-        inputText: formatProgressKeyValues([
-          ['branch', wtBranch || '-'],
-          ['base_sha', stringValue(event.baseSha) || '-'],
-          ['head_sha', stringValue(event.headSha) || '-'],
-        ]),
-      },
-    );
-    remoteWorkspacePath = await prepareRemoteWorkspace(
-      repositoryRecord,
-      wtBranch,
-      stringValue(event.headSha),
-      stringValue(event.baseSha),
-    );
-    reviewWorkspacePath = remoteWorkspacePath;
-    await setProgressStep(
-      'prepare_remote_workspace',
-      '准备临时远端工作区',
-      remoteWorkspacePath ? 'completed' : 'skipped',
-      remoteWorkspacePath
-        ? '临时远端工作区已准备完成'
-        : '远端工作区不可用，回退为 diff-only 审查',
-      undefined,
-      {
-        kind: 'stage',
-        outputText: remoteWorkspacePath
-          ? formatProgressKeyValues([
-              ['workspace_path', remoteWorkspacePath],
-              ['mode', 'temporary_remote_workspace'],
-            ])
-          : '远端工作区不可用，将仅基于 diff 和上下文继续审查。',
-      },
-    );
-  }
+    if (event.source === 'local-hook') {
+      await setProgressStep(
+        'prepare_remote_workspace',
+        '准备临时远端工作区',
+        'skipped',
+        '本地 hook 审查直接使用本地仓库',
+        undefined,
+        {
+          kind: 'stage',
+          outputText: '本地 hook 场景不创建临时远端工作区。',
+        },
+      );
+    } else if (reviewWorkspacePath) {
+      await setProgressStep(
+        'prepare_remote_workspace',
+        '准备临时远端工作区',
+        'skipped',
+        '已复用持久 Review Worktree',
+        undefined,
+        {
+          kind: 'stage',
+          outputText: formatProgressKeyValues([
+            ['workspace_path', reviewWorkspacePath],
+            ['mode', 'persistent_worktree_reused'],
+          ]),
+        },
+      );
+    } else {
+      await setProgressStep(
+        'prepare_remote_workspace',
+        '准备临时远端工作区',
+        'running',
+        `分支 ${wtBranch || '-'}`,
+        undefined,
+        {
+          kind: 'stage',
+          inputText: formatProgressKeyValues([
+            ['branch', wtBranch || '-'],
+            ['base_sha', stringValue(event.baseSha) || '-'],
+            ['head_sha', stringValue(event.headSha) || '-'],
+          ]),
+        },
+      );
+      remoteWorkspacePath = await prepareRemoteWorkspace(
+        repositoryRecord,
+        wtBranch,
+        stringValue(event.headSha),
+        stringValue(event.baseSha),
+      );
+      reviewWorkspacePath = remoteWorkspacePath;
+      await setProgressStep(
+        'prepare_remote_workspace',
+        '准备临时远端工作区',
+        remoteWorkspacePath ? 'completed' : 'skipped',
+        remoteWorkspacePath
+          ? '临时远端工作区已准备完成'
+          : '远端工作区不可用，回退为 diff-only 审查',
+        undefined,
+        {
+          kind: 'stage',
+          outputText: remoteWorkspacePath
+            ? formatProgressKeyValues([
+                ['workspace_path', remoteWorkspacePath],
+                ['mode', 'temporary_remote_workspace'],
+              ])
+            : '远端工作区不可用，将仅基于 diff 和上下文继续审查。',
+        },
+      );
+    }
 
-  try {
-    throwIfRepoReviewRunCancelled(runRecord.id);
-    await setProgressStep(
-      'prepare_context',
-      '解析 Diff 与提交上下文',
-      'running',
-      undefined,
-      undefined,
-      {
-        kind: 'stage',
-        inputText: formatProgressKeyValues([
-          ['base_sha', stringValue(event.baseSha) || '-'],
-          ['head_sha', stringValue(event.headSha) || '-'],
-          ['branch', event.branch || '-'],
-          ['source', event.source],
-        ]),
-      },
-    );
-    const prepared = await prepareReviewContext(repository, profile, event);
-    await setProgressStep(
-      'prepare_context',
-      '解析 Diff 与提交上下文',
-      'completed',
-      `${prepared.changedFiles.length} 个变更文件`,
-      undefined,
-      {
-        kind: 'stage',
-        outputText: formatProgressKeyValues([
-          ['changed_files', prepared.changedFiles.length],
-          ['commit_summary_lines', prepared.commitSummaryLines.length],
-          ['commit_details', prepared.commitDetails.length],
-        ]),
-        metadataText: formatProgressKeyValues([
-          ['changed_files', prepared.changedFiles.join(', ') || '-'],
-        ]),
-      },
-    );
-    throwIfRepoReviewRunCancelled(runRecord.id);
-    const runDurationMs = () => Date.now() - Date.parse(startedAtIso);
-    if (prepared.overall && prepared.summary) {
+    try {
       throwIfRepoReviewRunCancelled(runRecord.id);
       await setProgressStep(
-        'persist_result',
-        '保存审查结果',
+        'prepare_context',
+        '解析 Diff 与提交上下文',
         'running',
-        '无需 AI 审查的快速结果',
+        undefined,
+        undefined,
+        {
+          kind: 'stage',
+          inputText: formatProgressKeyValues([
+            ['base_sha', stringValue(event.baseSha) || '-'],
+            ['head_sha', stringValue(event.headSha) || '-'],
+            ['branch', event.branch || '-'],
+            ['source', event.source],
+          ]),
+        },
       );
-      const resultState = computeRunResultState({
-        profile,
-        status: prepared.overall === 'skipped' ? 'skipped' : 'completed',
-        overall: prepared.overall,
-        blocking: false,
-      });
+      const prepared = await prepareReviewContext(repository, profile, event);
+      await setProgressStep(
+        'prepare_context',
+        '解析 Diff 与提交上下文',
+        'completed',
+        `${prepared.changedFiles.length} 个变更文件`,
+        undefined,
+        {
+          kind: 'stage',
+          outputText: formatProgressKeyValues([
+            ['changed_files', prepared.changedFiles.length],
+            ['commit_summary_lines', prepared.commitSummaryLines.length],
+            ['commit_details', prepared.commitDetails.length],
+          ]),
+          metadataText: formatProgressKeyValues([
+            ['changed_files', prepared.changedFiles.join(', ') || '-'],
+          ]),
+        },
+      );
+      throwIfRepoReviewRunCancelled(runRecord.id);
+      const runDurationMs = () => Date.now() - Date.parse(startedAtIso);
+      if (prepared.overall && prepared.summary) {
+        throwIfRepoReviewRunCancelled(runRecord.id);
+        await setProgressStep(
+          'persist_result',
+          '保存审查结果',
+          'running',
+          '无需 AI 审查的快速结果',
+        );
+        const resultState = computeRunResultState({
+          profile,
+          status: prepared.overall === 'skipped' ? 'skipped' : 'completed',
+          overall: prepared.overall,
+          blocking: false,
+        });
+        runCallbackContext = mergeCallbackContext(runCallbackContext, {
+          commitSummaryLines: prepared.commitSummaryLines,
+          commitDetails: prepared.commitDetails,
+        });
+        const updated = await updateReviewRun(runRecord.id, {
+          status: prepared.overall === 'skipped' ? 'skipped' : 'completed',
+          baseline_source: baselineSource || null,
+          result_state: resultState,
+          overall: prepared.overall,
+          actor: prepared.actor,
+          summary: prepared.summary,
+          changed_files: prepared.changedFiles,
+          diff_bytes: Buffer.byteLength(prepared.diffText || '', 'utf8'),
+          duration_ms: runDurationMs(),
+          callback_context: runCallbackContext,
+          completed_at: new Date().toISOString(),
+        });
+        let normalized = await normalizeRunRecord(updated);
+        if (profile.writeToChat) {
+          normalized = await publishRepoReviewCompletionMessage({
+            repository,
+            run: normalized,
+            decisionMode: profile.passDecisionMode,
+            diffText: prepared.diffText,
+            reviewOutputMode: profile.reviewOutputMode,
+          });
+        }
+        await updateBranchStateFromRun(normalized);
+        await setProgressStep('persist_result', '保存审查结果', 'completed');
+        return {
+          run: normalized,
+          allowed: true,
+          blocking: false,
+        };
+      }
+
       runCallbackContext = mergeCallbackContext(runCallbackContext, {
         commitSummaryLines: prepared.commitSummaryLines,
         commitDetails: prepared.commitDetails,
       });
+      await updateReviewRun(runRecord.id, {
+        actor: prepared.actor,
+        changed_files: prepared.changedFiles,
+        diff_bytes: Buffer.byteLength(prepared.diffText, 'utf8'),
+        callback_context: runCallbackContext,
+      });
+      if (
+        profile.writeToChat &&
+        shouldPublishRepoReviewStartedMessage(repository)
+      ) {
+        await setProgressStep(
+          'publish_started_message',
+          '发送开始通知',
+          'running',
+          undefined,
+          undefined,
+          {
+            kind: 'stage',
+            inputText: formatProgressKeyValues([
+              ['write_to_chat', profile.writeToChat],
+              ['stage', profile.stage],
+              ['source', event.source],
+            ]),
+          },
+        );
+        const startedRunRecord = await getReviewRunById(runRecord.id);
+        if (!startedRunRecord) {
+          throw new Error(`Review run missing after start: ${runRecord.id}`);
+        }
+        applyRunChatDeliveryResult(
+          await normalizeRunRecord(startedRunRecord),
+          await publishReviewMessage({
+            repository,
+            runId: runRecord.id,
+            content: formatRepoReviewStartedMessage({
+              repository,
+              profile,
+              event,
+              prepared,
+            }),
+          }),
+        );
+        await setProgressStep(
+          'publish_started_message',
+          '发送开始通知',
+          'completed',
+          undefined,
+          undefined,
+          {
+            kind: 'stage',
+            outputText: '开始通知已发送。',
+          },
+        );
+      } else {
+        await setProgressStep(
+          'publish_started_message',
+          '发送开始通知',
+          'skipped',
+          'Profile 未启用开始通知',
+          undefined,
+          {
+            kind: 'stage',
+            outputText: '当前 Profile 未启用开始通知。',
+          },
+        );
+      }
+    executionStats = buildInitialRepoReviewExecutionStats({
+      diffText: prepared.diffText,
+      changedFiles: prepared.changedFiles,
+    });
+    const activeExecutionStats = executionStats;
+    const maxWorkerCount = await resolveRepoReviewMaxSubagents();
+    await persistReviewProgress();
+    activeExecutionStats.totalReadBudgetBytes =
+      REPO_REVIEW_AGENTIC_DEFAULT_MAX_TOTAL_READ_BYTES;
+      activeExecutionStats.maxFullFileBytesPerFile =
+        REPO_REVIEW_AGENTIC_DEFAULT_MAX_FULL_FILE_BYTES_PER_FILE;
+      await setProgressStep(
+        'prepare_review_evidence',
+        '准备 Review Evidence',
+        'completed',
+        `${prepared.changedFiles.length} 个文件，diff ${Buffer.byteLength(prepared.diffText, 'utf8')} bytes`,
+        undefined,
+        {
+          kind: 'stage',
+          inputText: formatProgressKeyValues([
+            ['changed_files', prepared.changedFiles.join(', ') || '-'],
+            ['diff_bytes', Buffer.byteLength(prepared.diffText, 'utf8')],
+            ['workspace_path', reviewWorkspacePath || '-'],
+            ['total_budget', REPO_REVIEW_AGENTIC_DEFAULT_MAX_TOTAL_READ_BYTES],
+          ]),
+          outputText: formatProgressKeyValues([
+            ['prepared_files', prepared.changedFiles.length],
+            ['diff_bytes', Buffer.byteLength(prepared.diffText, 'utf8')],
+          ]),
+        },
+      );
+      let parsed: ParsedReviewResult | null = null;
+      let finalReview: {
+        overall: ReviewOverall;
+        summary: string;
+        findings: RepoReviewRunFinding[];
+        fileReviews: RepoReviewFileReview[];
+        scopeLimitations: string[];
+        suggestions: string[];
+        recommendedBlock: boolean;
+      } | null = null;
+      const coordinatedReview = await runRepoReviewCoordinatedReview({
+        repository,
+        profile,
+        event,
+      prepared,
+      runId: runRecord.id,
+      workspacePath: reviewWorkspacePath,
+      maxWorkerCount,
+      userId: reviewUserId,
+      executionStats: activeExecutionStats,
+        onTurnProgress: async (turnsByWorker) => {
+          reviewTurns = turnsByWorker.flat();
+          activeExecutionStats.extraRepoReadCount = countRepoReviewToolCalls(
+            reviewTurns,
+            'read_file',
+          );
+          await persistReviewProgress();
+        },
+        onProgressStep: async (step) => {
+          await setProgressStep(
+            step.id,
+            step.label,
+            step.status,
+            step.detail,
+            step.error,
+            {
+              kind: step.kind,
+              inputText: step.inputText,
+              outputText: step.outputText,
+              metadataText: step.metadataText,
+            },
+          );
+        },
+      });
+      throwIfRepoReviewRunCancelled(runRecord.id);
+      parsed = coordinatedReview.parsed as unknown as ParsedReviewResult;
+      finalReview = {
+        overall: parsed.overall,
+        summary: parsed.summary,
+        findings: parsed.findings,
+        fileReviews: parsed.fileReviews,
+        scopeLimitations: parsed.scopeLimitations,
+        suggestions: parsed.suggestions,
+        recommendedBlock: parsed.recommendedBlock,
+      };
+      const finalMarkdownBody = buildStructuredRepoReviewMarkdown(
+        {
+          summary: finalReview.summary,
+          findings: finalReview.findings,
+          fileReviews: finalReview.fileReviews,
+          commitReviews: parsed.commitReviews,
+          suggestions: finalReview.suggestions,
+        } as unknown as Pick<
+          RepoReviewRun,
+          'summary' | 'findings' | 'commitReviews' | 'suggestions'
+        >,
+        {
+          repositoryName: repository.name,
+          branch: prepared.branch,
+          baseSha: prepared.baseSha,
+          headSha: prepared.headSha,
+          actor: prepared.actor,
+          stage: event.stage,
+          prMrNumber: event.prMrNumber,
+          scopeLimitations: finalReview.scopeLimitations,
+        },
+      );
+      const blocking = computeBlocking(
+        profile,
+        finalReview.overall,
+        finalReview.recommendedBlock,
+      );
+      const resultState = computeRunResultState({
+        profile,
+        status: 'completed',
+        overall: finalReview.overall,
+        blocking,
+      });
+      await setProgressStep('persist_result', '保存审查结果', 'running');
+      progressSteps = upsertRepoReviewProgressStep(progressSteps, {
+        id: 'persist_result',
+        label: '保存审查结果',
+        status: 'completed',
+      });
       const updated = await updateReviewRun(runRecord.id, {
-        status: prepared.overall === 'skipped' ? 'skipped' : 'completed',
+        status: 'completed',
         baseline_source: baselineSource || null,
         result_state: resultState,
-        overall: prepared.overall,
-        actor: prepared.actor,
-        summary: prepared.summary,
+        overall: finalReview.overall,
+        recommended_block: finalReview.recommendedBlock,
+        blocking_enforced: blocking,
+        summary: finalReview.summary,
+        findings: finalReview.findings,
+        file_reviews: finalReview.fileReviews,
+        commit_reviews: parsed.commitReviews,
+        suggestions: finalReview.suggestions,
         changed_files: prepared.changedFiles,
-        diff_bytes: Buffer.byteLength(prepared.diffText || '', 'utf8'),
+        markdown_body: finalMarkdownBody,
+        raw_model_output: parsed.rawModelOutput || null,
+        diff_bytes: Buffer.byteLength(prepared.diffText, 'utf8'),
         duration_ms: runDurationMs(),
-        callback_context: runCallbackContext,
+        callback_context: (() => {
+          const reviewProgress = buildRepoReviewProgressSnapshot(
+            reviewTurns,
+            progressSteps,
+          );
+          runCallbackContext = mergeCallbackContext(runCallbackContext, {
+            commitSummaryLines: prepared.commitSummaryLines,
+            commitDetails: prepared.commitDetails,
+            reviewTurns,
+            reviewProgress,
+            scopeLimitations: finalReview.scopeLimitations,
+            fileReviews: finalReview.fileReviews,
+            commitReviews: parsed.commitReviews,
+            executionStats: activeExecutionStats,
+          });
+          return runCallbackContext;
+        })(),
         completed_at: new Date().toISOString(),
       });
       let normalized = await normalizeRunRecord(updated);
+      await setProgressStep(
+        'persist_result',
+        '保存审查结果',
+        'completed',
+        undefined,
+        undefined,
+        {
+          kind: 'stage',
+          inputText: formatProgressKeyValues([
+            ['overall', finalReview.overall],
+            ['blocking', blocking],
+            ['changed_files', prepared.changedFiles.length],
+          ]),
+          outputText: formatProgressKeyValues([
+            ['result_state', resultState],
+            ['summary', finalReview.summary],
+          ]),
+        },
+      );
       if (profile.writeToChat) {
+        await setProgressStep(
+          'publish_completion',
+          '发送完成通知',
+          'running',
+          undefined,
+          undefined,
+          {
+            kind: 'stage',
+            inputText: formatProgressKeyValues([
+              ['write_to_chat', profile.writeToChat],
+              ['review_output_mode', profile.reviewOutputMode],
+            ]),
+          },
+        );
         normalized = await publishRepoReviewCompletionMessage({
           repository,
           run: normalized,
@@ -11305,522 +12049,248 @@ async function executeRepoReviewEvent(
           diffText: prepared.diffText,
           reviewOutputMode: profile.reviewOutputMode,
         });
-      }
-      await updateBranchStateFromRun(normalized);
-      await setProgressStep('persist_result', '保存审查结果', 'completed');
-      return {
-        run: normalized,
-        allowed: true,
-        blocking: false,
-      };
-    }
-
-    runCallbackContext = mergeCallbackContext(runCallbackContext, {
-      commitSummaryLines: prepared.commitSummaryLines,
-      commitDetails: prepared.commitDetails,
-    });
-    await updateReviewRun(runRecord.id, {
-      actor: prepared.actor,
-      changed_files: prepared.changedFiles,
-      diff_bytes: Buffer.byteLength(prepared.diffText, 'utf8'),
-      callback_context: runCallbackContext,
-    });
-    if (
-      profile.writeToChat &&
-      shouldPublishRepoReviewStartedMessage(repository)
-    ) {
-      await setProgressStep(
-        'publish_started_message',
-        '发送开始通知',
-        'running',
-        undefined,
-        undefined,
-        {
-          kind: 'stage',
-          inputText: formatProgressKeyValues([
-            ['write_to_chat', profile.writeToChat],
-            ['stage', profile.stage],
-            ['source', event.source],
-          ]),
-        },
-      );
-      const startedRunRecord = await getReviewRunById(runRecord.id);
-      if (!startedRunRecord) {
-        throw new Error(`Review run missing after start: ${runRecord.id}`);
-      }
-      applyRunChatDeliveryResult(
-        await normalizeRunRecord(startedRunRecord),
-        await publishReviewMessage({
-          repository,
-          runId: runRecord.id,
-          content: formatRepoReviewStartedMessage({
-            repository,
-            profile,
-            event,
-            prepared,
-          }),
-        }),
-      );
-      await setProgressStep(
-        'publish_started_message',
-        '发送开始通知',
-        'completed',
-        undefined,
-        undefined,
-        {
-          kind: 'stage',
-          outputText: '开始通知已发送。',
-        },
-      );
-    } else {
-      await setProgressStep(
-        'publish_started_message',
-        '发送开始通知',
-        'skipped',
-        'Profile 未启用开始通知',
-        undefined,
-        {
-          kind: 'stage',
-          outputText: '当前 Profile 未启用开始通知。',
-        },
-      );
-    }
-    executionStats = buildInitialRepoReviewExecutionStats({
-      diffText: prepared.diffText,
-      changedFiles: prepared.changedFiles,
-    });
-    const activeExecutionStats = executionStats;
-    await persistReviewProgress();
-    activeExecutionStats.totalReadBudgetBytes =
-      REPO_REVIEW_AGENTIC_DEFAULT_MAX_TOTAL_READ_BYTES;
-    activeExecutionStats.maxFullFileBytesPerFile =
-      REPO_REVIEW_AGENTIC_DEFAULT_MAX_FULL_FILE_BYTES_PER_FILE;
-    await setProgressStep(
-      'prepare_review_evidence',
-      '准备 Review Evidence',
-      'completed',
-      `${prepared.changedFiles.length} 个文件，diff ${Buffer.byteLength(prepared.diffText, 'utf8')} bytes`,
-      undefined,
-      {
-        kind: 'stage',
-        inputText: formatProgressKeyValues([
-          ['changed_files', prepared.changedFiles.join(', ') || '-'],
-          ['diff_bytes', Buffer.byteLength(prepared.diffText, 'utf8')],
-          ['workspace_path', reviewWorkspacePath || '-'],
-          ['total_budget', REPO_REVIEW_AGENTIC_DEFAULT_MAX_TOTAL_READ_BYTES],
-        ]),
-      outputText: formatProgressKeyValues([
-        ['prepared_files', prepared.changedFiles.length],
-        ['diff_bytes', Buffer.byteLength(prepared.diffText, 'utf8')],
-      ]),
-      },
-    );
-    let parsed: ParsedReviewResult | null = null;
-    let finalReview: {
-      overall: ReviewOverall;
-      summary: string;
-      findings: RepoReviewRunFinding[];
-      fileReviews: RepoReviewFileReview[];
-      scopeLimitations: string[];
-      suggestions: string[];
-      recommendedBlock: boolean;
-    } | null = null;
-    const coordinatedReview = await runRepoReviewCoordinatedReview({
-      repository,
-      profile,
-      event,
-      prepared,
-      runId: runRecord.id,
-      workspacePath: reviewWorkspacePath,
-      userId: reviewUserId,
-      executionStats: activeExecutionStats,
-      onTurnProgress: async (turnsByWorker) => {
-        reviewTurns = turnsByWorker.flat();
-        activeExecutionStats.extraRepoReadCount = countRepoReviewToolCalls(
-          reviewTurns,
-          'read_file',
-        );
-        await persistReviewProgress();
-      },
-      onProgressStep: async (step) => {
         await setProgressStep(
-          step.id,
-          step.label,
-          step.status,
-          step.detail,
-          step.error,
-          {
-            kind: step.kind,
-            inputText: step.inputText,
-            outputText: step.outputText,
-            metadataText: step.metadataText,
-          },
-        );
-      },
-    });
-    throwIfRepoReviewRunCancelled(runRecord.id);
-    parsed = coordinatedReview.parsed as unknown as ParsedReviewResult;
-    finalReview = {
-      overall: parsed.overall,
-      summary: parsed.summary,
-      findings: parsed.findings,
-      fileReviews: parsed.fileReviews,
-      scopeLimitations: parsed.scopeLimitations,
-      suggestions: parsed.suggestions,
-      recommendedBlock: parsed.recommendedBlock,
-    };
-    const finalMarkdownBody = buildStructuredRepoReviewMarkdown(
-      {
-        summary: finalReview.summary,
-        findings: finalReview.findings,
-        fileReviews: finalReview.fileReviews,
-        commitReviews: parsed.commitReviews,
-        suggestions: finalReview.suggestions,
-      } as unknown as Pick<
-        RepoReviewRun,
-        'summary' | 'findings' | 'commitReviews' | 'suggestions'
-      >,
-      {
-        repositoryName: repository.name,
-        branch: prepared.branch,
-        baseSha: prepared.baseSha,
-        headSha: prepared.headSha,
-        actor: prepared.actor,
-        stage: event.stage,
-        prMrNumber: event.prMrNumber,
-        scopeLimitations: finalReview.scopeLimitations,
-      },
-    );
-    const blocking = computeBlocking(
-      profile,
-      finalReview.overall,
-      finalReview.recommendedBlock,
-    );
-    const resultState = computeRunResultState({
-      profile,
-      status: 'completed',
-      overall: finalReview.overall,
-      blocking,
-    });
-    await setProgressStep('persist_result', '保存审查结果', 'running');
-    progressSteps = upsertRepoReviewProgressStep(progressSteps, {
-      id: 'persist_result',
-      label: '保存审查结果',
-      status: 'completed',
-    });
-    const updated = await updateReviewRun(runRecord.id, {
-      status: 'completed',
-      baseline_source: baselineSource || null,
-      result_state: resultState,
-      overall: finalReview.overall,
-      recommended_block: finalReview.recommendedBlock,
-      blocking_enforced: blocking,
-      summary: finalReview.summary,
-      findings: finalReview.findings,
-      file_reviews: finalReview.fileReviews,
-      commit_reviews: parsed.commitReviews,
-      suggestions: finalReview.suggestions,
-      changed_files: prepared.changedFiles,
-      markdown_body: finalMarkdownBody,
-      raw_model_output: parsed.rawModelOutput || null,
-      diff_bytes: Buffer.byteLength(prepared.diffText, 'utf8'),
-      duration_ms: runDurationMs(),
-      callback_context: (() => {
-        const reviewProgress = buildRepoReviewProgressSnapshot(
-          reviewTurns,
-          progressSteps,
-        );
-        runCallbackContext = mergeCallbackContext(runCallbackContext, {
-          commitSummaryLines: prepared.commitSummaryLines,
-          commitDetails: prepared.commitDetails,
-          reviewTurns,
-          reviewProgress,
-          scopeLimitations: finalReview.scopeLimitations,
-          fileReviews: finalReview.fileReviews,
-          commitReviews: parsed.commitReviews,
-          executionStats: activeExecutionStats,
-        });
-        return runCallbackContext;
-      })(),
-      completed_at: new Date().toISOString(),
-    });
-    let normalized = await normalizeRunRecord(updated);
-    await setProgressStep(
-      'persist_result',
-      '保存审查结果',
-      'completed',
-      undefined,
-      undefined,
-      {
-        kind: 'stage',
-        inputText: formatProgressKeyValues([
-          ['overall', finalReview.overall],
-          ['blocking', blocking],
-          ['changed_files', prepared.changedFiles.length],
-        ]),
-        outputText: formatProgressKeyValues([
-          ['result_state', resultState],
-          ['summary', finalReview.summary],
-        ]),
-      },
-    );
-    if (profile.writeToChat) {
-      await setProgressStep(
-        'publish_completion',
-        '发送完成通知',
-        'running',
-        undefined,
-        undefined,
-        {
-          kind: 'stage',
-          inputText: formatProgressKeyValues([
-            ['write_to_chat', profile.writeToChat],
-            ['review_output_mode', profile.reviewOutputMode],
-          ]),
-        },
-      );
-      normalized = await publishRepoReviewCompletionMessage({
-        repository,
-        run: normalized,
-        decisionMode: profile.passDecisionMode,
-        diffText: prepared.diffText,
-        reviewOutputMode: profile.reviewOutputMode,
-      });
-      await setProgressStep(
-        'publish_completion',
-        '发送完成通知',
-        'completed',
-        undefined,
-        undefined,
-        {
-          kind: 'stage',
-          outputText: '完成通知已发送。',
-        },
-      );
-    } else {
-      await setProgressStep(
-        'publish_completion',
-        '发送完成通知',
-        'skipped',
-        'Profile 未启用结果通知',
-        undefined,
-        {
-          kind: 'stage',
-          outputText: '当前 Profile 未启用结果通知。',
-        },
-      );
-    }
-    if (
-      profile.writeToPlatform &&
-      event.source !== 'local-hook' &&
-      repositoryRecord.remote_provider
-    ) {
-      await setProgressStep(
-        'platform_writeback',
-        '平台状态/评论回写',
-        'running',
-        undefined,
-        undefined,
-        {
-          kind: 'stage',
-          inputText: formatProgressKeyValues([
-            ['remote_provider', repositoryRecord.remote_provider || '-'],
-            ['write_to_platform', profile.writeToPlatform],
-          ]),
-        },
-      );
-      try {
-        const publish = await publishPlatformResult(
-          repositoryRecord,
-          normalized,
-          profile,
-        );
-        if (publish.statusDeliveryStatus === 'not_configured') {
-          logger.info(
-            { repositoryId: repositoryRecord.id, runId: normalized.id },
-            'Platform token not configured, skipping platform delivery',
-          );
-        }
-        normalized = await applyRunPlatformDeliveryResult(normalized, {
-          status: publish.status,
-          statusDeliveryStatus: publish.statusDeliveryStatus,
-          commentDeliveryStatus: publish.commentDeliveryStatus,
-          commentId: publish.commentId || undefined,
-          commentUrl: publish.commentUrl || undefined,
-        });
-        await setProgressStep(
-          'platform_writeback',
-          '平台状态/评论回写',
+          'publish_completion',
+          '发送完成通知',
           'completed',
           undefined,
           undefined,
           {
             kind: 'stage',
-            outputText: formatProgressKeyValues([
-              ['status_delivery', publish.statusDeliveryStatus],
-              ['comment_delivery', publish.commentDeliveryStatus],
-            ]),
+            outputText: '完成通知已发送。',
           },
         );
-      } catch (publishErr) {
-        const error =
-          publishErr instanceof Error ? publishErr.message : String(publishErr);
-        normalized = await applyRunPlatformDeliveryResult(normalized, {
-          status: `error: ${error}`,
-          statusDeliveryStatus: 'failed',
-          commentDeliveryStatus:
-            event.prMrNumber || repositoryRecord.remote_provider === 'gitlab'
-              ? 'failed'
-              : 'skipped',
-          error,
-        });
+      } else {
         await setProgressStep(
-          'platform_writeback',
-          '平台状态/评论回写',
-          'failed',
+          'publish_completion',
+          '发送完成通知',
+          'skipped',
+          'Profile 未启用结果通知',
           undefined,
-          error,
           {
             kind: 'stage',
-            outputText: '平台回写失败。',
+            outputText: '当前 Profile 未启用结果通知。',
           },
         );
       }
-    } else {
-      await setProgressStep(
-        'platform_writeback',
-        '平台状态/评论回写',
-        'skipped',
-        'Profile 未启用平台回写或本次不是远端审查',
-        undefined,
-        {
-          kind: 'stage',
-          outputText: '当前 Profile 未启用平台回写，或本次不是远端审查。',
-        },
-      );
-    }
-    await setProgressStep(
-      'branch_state_update',
-      '更新分支状态',
-      'running',
-      undefined,
-      undefined,
-      {
-        kind: 'stage',
-        inputText: formatProgressKeyValues([
-          ['branch', normalized.branch || event.branch || '-'],
-          ['stage', normalized.stage || event.stage],
-        ]),
-      },
-    );
-    await updateBranchStateFromRun(normalized);
-    await setProgressStep(
-      'branch_state_update',
-      '更新分支状态',
-      'completed',
-      undefined,
-      undefined,
-      {
-        kind: 'stage',
-        outputText: '分支状态已更新。',
-      },
-    );
-    return {
-      run: normalized,
-      allowed: !blocking,
-      blocking,
-    };
-  } catch (err) {
-    try {
-      await setProgressStep(
-        'run_failed',
-        '审查运行失败',
-        'failed',
-        undefined,
-        errorMessageForProgress(err),
-        {
-          kind: 'stage',
-          outputText: errorMessageForProgress(err),
-        },
-      );
-      await failPendingProgressSteps(errorMessageForProgress(err));
-    } catch (progressErr) {
-      logger.warn(
-        { err: progressErr, runId: runRecord.id },
-        'Failed to persist repo review failure progress',
-      );
-    }
-    const errorRunRecord = await getReviewRunById(runRecord.id);
-    const cancelled =
-      isRepoReviewCancellationError(err) ||
-      repoReviewCancellationRequestedRunIds.has(runRecord.id);
-    repoReviewCancellationRequestedRunIds.delete(runRecord.id);
-    const durationMs = Date.now() - Date.parse(startedAtIso);
-    const persistedReviewTurns = normalizeReviewTurns(
-      asRecord(
-        errorRunRecord
-          ? (await parseReviewRunRecord(errorRunRecord)).callbackContext
-          : null,
-      ).reviewTurns,
-    );
-    runCallbackContext = mergeCallbackContext(runCallbackContext, {
-      reviewTurns: persistedReviewTurns,
-      reviewProgress: buildRepoReviewProgressSnapshot(
-        persistedReviewTurns,
-        progressSteps,
-      ),
-    });
-    const updated = await updateReviewRun(runRecord.id, {
-      status: 'error',
-      result_state: 'error',
-      overall: 'error',
-      actor: event.actor || null,
-      error: cancelled
-        ? 'Review task was cancelled by user.'
-        : err instanceof Error
-          ? err.message
-          : String(err),
-      summary: cancelled
-        ? REPO_REVIEW_CANCELLED_SUMMARY
-        : 'Review execution failed.',
-      duration_ms: durationMs,
-      callback_context: runCallbackContext,
-      completed_at: new Date().toISOString(),
-    });
-    let normalized = await normalizeRunRecord(updated);
-    if (profile.writeToChat) {
-      const completionMentions = resolveRepoReviewMentions(repository, normalized.actor);
-      normalized = await applyRunChatDeliveryResult(
-        normalized,
-        await publishReviewMessage({
-          repository,
-          runId: normalized.id,
-          content: formatRepoReviewCompletedMessage(
-            repository,
+      if (
+        profile.writeToPlatform &&
+        event.source !== 'local-hook' &&
+        repositoryRecord.remote_provider
+      ) {
+        await setProgressStep(
+          'platform_writeback',
+          '平台状态/评论回写',
+          'running',
+          undefined,
+          undefined,
+          {
+            kind: 'stage',
+            inputText: formatProgressKeyValues([
+              ['remote_provider', repositoryRecord.remote_provider || '-'],
+              ['write_to_platform', profile.writeToPlatform],
+            ]),
+          },
+        );
+        try {
+          const publish = await publishPlatformResult(
+            repositoryRecord,
             normalized,
-            profile.passDecisionMode,
-            { skipActorMention: (completionMentions ?? []).length > 0 },
-          ),
-          mentions: completionMentions,
-        }),
+            profile,
+          );
+          if (publish.statusDeliveryStatus === 'not_configured') {
+            logger.info(
+              { repositoryId: repositoryRecord.id, runId: normalized.id },
+              'Platform token not configured, skipping platform delivery',
+            );
+          }
+          normalized = await applyRunPlatformDeliveryResult(normalized, {
+            status: publish.status,
+            statusDeliveryStatus: publish.statusDeliveryStatus,
+            commentDeliveryStatus: publish.commentDeliveryStatus,
+            commentId: publish.commentId || undefined,
+            commentUrl: publish.commentUrl || undefined,
+          });
+          await setProgressStep(
+            'platform_writeback',
+            '平台状态/评论回写',
+            'completed',
+            undefined,
+            undefined,
+            {
+              kind: 'stage',
+              outputText: formatProgressKeyValues([
+                ['status_delivery', publish.statusDeliveryStatus],
+                ['comment_delivery', publish.commentDeliveryStatus],
+              ]),
+            },
+          );
+        } catch (publishErr) {
+          const error =
+            publishErr instanceof Error
+              ? publishErr.message
+              : String(publishErr);
+          normalized = await applyRunPlatformDeliveryResult(normalized, {
+            status: `error: ${error}`,
+            statusDeliveryStatus: 'failed',
+            commentDeliveryStatus:
+              event.prMrNumber || repositoryRecord.remote_provider === 'gitlab'
+                ? 'failed'
+                : 'skipped',
+            error,
+          });
+          await setProgressStep(
+            'platform_writeback',
+            '平台状态/评论回写',
+            'failed',
+            undefined,
+            error,
+            {
+              kind: 'stage',
+              outputText: '平台回写失败。',
+            },
+          );
+        }
+      } else {
+        await setProgressStep(
+          'platform_writeback',
+          '平台状态/评论回写',
+          'skipped',
+          'Profile 未启用平台回写或本次不是远端审查',
+          undefined,
+          {
+            kind: 'stage',
+            outputText: '当前 Profile 未启用平台回写，或本次不是远端审查。',
+          },
+        );
+      }
+      await setProgressStep(
+        'branch_state_update',
+        '更新分支状态',
+        'running',
+        undefined,
+        undefined,
+        {
+          kind: 'stage',
+          inputText: formatProgressKeyValues([
+            ['branch', normalized.branch || event.branch || '-'],
+            ['stage', normalized.stage || event.stage],
+          ]),
+        },
       );
+      await updateBranchStateFromRun(normalized);
+      await setProgressStep(
+        'branch_state_update',
+        '更新分支状态',
+        'completed',
+        undefined,
+        undefined,
+        {
+          kind: 'stage',
+          outputText: '分支状态已更新。',
+        },
+      );
+      return {
+        run: normalized,
+        allowed: !blocking,
+        blocking,
+      };
+    } catch (err) {
+      try {
+        await setProgressStep(
+          'run_failed',
+          '审查运行失败',
+          'failed',
+          undefined,
+          errorMessageForProgress(err),
+          {
+            kind: 'stage',
+            outputText: errorMessageForProgress(err),
+          },
+        );
+        await failPendingProgressSteps(errorMessageForProgress(err));
+      } catch (progressErr) {
+        logger.warn(
+          { err: progressErr, runId: runRecord.id },
+          'Failed to persist repo review failure progress',
+        );
+      }
+      const errorRunRecord = await getReviewRunById(runRecord.id);
+      const cancelled =
+        isRepoReviewCancellationError(err) ||
+        repoReviewCancellationRequestedRunIds.has(runRecord.id);
+      repoReviewCancellationRequestedRunIds.delete(runRecord.id);
+      const durationMs = Date.now() - Date.parse(startedAtIso);
+      const persistedReviewTurns = normalizeReviewTurns(
+        asRecord(
+          errorRunRecord
+            ? (await parseReviewRunRecord(errorRunRecord)).callbackContext
+            : null,
+        ).reviewTurns,
+      );
+      runCallbackContext = mergeCallbackContext(runCallbackContext, {
+        reviewTurns: persistedReviewTurns,
+        reviewProgress: buildRepoReviewProgressSnapshot(
+          persistedReviewTurns,
+          progressSteps,
+        ),
+      });
+      const updated = await updateReviewRun(runRecord.id, {
+        status: 'error',
+        result_state: 'error',
+        overall: 'error',
+        actor: event.actor || null,
+        error: cancelled
+          ? 'Review task was cancelled by user.'
+          : err instanceof Error
+            ? err.message
+            : String(err),
+        summary: cancelled
+          ? REPO_REVIEW_CANCELLED_SUMMARY
+          : 'Review execution failed.',
+        duration_ms: durationMs,
+        callback_context: runCallbackContext,
+        completed_at: new Date().toISOString(),
+      });
+      let normalized = await normalizeRunRecord(updated);
+      if (profile.writeToChat) {
+        const completionMentions = resolveRepoReviewMentions(
+          repository,
+          normalized.actor,
+        );
+        normalized = await applyRunChatDeliveryResult(
+          normalized,
+          await publishReviewMessage({
+            repository,
+            runId: normalized.id,
+            content: formatRepoReviewCompletedMessage(
+              repository,
+              normalized,
+              profile.passDecisionMode,
+              { skipActorMention: (completionMentions ?? []).length > 0 },
+            ),
+            mentions: completionMentions,
+          }),
+        );
+      }
+      await updateBranchStateFromRun(normalized);
+      return {
+        run: normalized,
+        allowed: profile.blockingMode !== 'hard_fail',
+        blocking: profile.blockingMode === 'hard_fail',
+      };
+    } finally {
+      repoReviewCancellationRequestedRunIds.delete(runRecord.id);
+      if (remoteWorkspacePath) {
+        fs.rmSync(remoteWorkspacePath, { recursive: true, force: true });
+      }
     }
-    await updateBranchStateFromRun(normalized);
-    return {
-      run: normalized,
-      allowed: profile.blockingMode !== 'hard_fail',
-      blocking: profile.blockingMode === 'hard_fail',
-    };
-  } finally {
-    repoReviewCancellationRequestedRunIds.delete(runRecord.id);
-    if (remoteWorkspacePath) {
-      fs.rmSync(remoteWorkspacePath, { recursive: true, force: true });
-    }
-  }
   });
 }
 
-export async function listRepoReviewRepositories(): Promise<RepoReviewRepository[]> {
+export async function listRepoReviewRepositories(): Promise<
+  RepoReviewRepository[]
+> {
   return await Promise.all(
     (await listReviewRepositories()).map((record) =>
       normalizeRepositoryRecord(record),
@@ -11838,7 +12308,9 @@ export async function listRepoReviewProfiles(
   );
 }
 
-export async function listRepoReviewRuns(repositoryId?: string): Promise<RepoReviewRun[]> {
+export async function listRepoReviewRuns(
+  repositoryId?: string,
+): Promise<RepoReviewRun[]> {
   return await Promise.all(
     (await listReviewRuns(repositoryId)).map((r) => normalizeRunRecord(r)),
   );
@@ -11870,28 +12342,30 @@ export async function listRepoReviewRunsSummary(
       runs.map((record) =>
         normalizeRunRecord(
           record,
-          record.profile_id ? (profileMap.get(record.profile_id) ?? null) : null,
+          record.profile_id
+            ? (profileMap.get(record.profile_id) ?? null)
+            : null,
         ),
       ),
     )
   ).filter((run) => {
-      if (statusFilter && (run.overall || run.status) !== statusFilter) {
-        return false;
-      }
-      if (!keyword) return true;
-      return [
-        run.summary,
-        run.actor,
-        run.branch,
-        run.ref,
-        run.headSha,
-        run.baseSha,
-        run.prMrNumber,
-      ]
-        .join(' ')
-        .toLowerCase()
-        .includes(keyword);
-    });
+    if (statusFilter && (run.overall || run.status) !== statusFilter) {
+      return false;
+    }
+    if (!keyword) return true;
+    return [
+      run.summary,
+      run.actor,
+      run.branch,
+      run.ref,
+      run.headSha,
+      run.baseSha,
+      run.prMrNumber,
+    ]
+      .join(' ')
+      .toLowerCase()
+      .includes(keyword);
+  });
   return normalized.slice(0, limit);
 }
 
@@ -12010,13 +12484,11 @@ export async function saveRepoReviewRepositoryConfig(
     existing,
     normalized.sensitiveValueModes,
   );
-  if (
-    !normalized.input.local_repo_path &&
-    normalized.input.clone_url
-  ) {
-    const httpsUrl = buildHttpsCloneUrl(
-      normalized.input as unknown as ReviewRepositoryRecord,
-    ) || undefined;
+  if (!normalized.input.local_repo_path && normalized.input.clone_url) {
+    const httpsUrl =
+      buildHttpsCloneUrl(
+        normalized.input as unknown as ReviewRepositoryRecord,
+      ) || undefined;
     const mirrorPath = await ensureRepositoryMirror(
       normalized.input.clone_url,
       normalized.input.id,
@@ -12114,12 +12586,17 @@ export async function getRepoReviewOverview(
 
 async function createQueuedReviewRunForEvent(
   event: RepoReviewEvent,
-): Promise<{ runRecord: ReviewRunRecord; } | { summary: RepoReviewExecutionSummary; }> {
+): Promise<
+  { runRecord: ReviewRunRecord } | { summary: RepoReviewExecutionSummary }
+> {
   const repositoryRecord = await requireRepository(event.repositoryId);
   if (repositoryRecord.enabled !== 1) {
     throw new Error(`Review repository is disabled: ${event.repositoryId}`);
   }
-  const profileRecord = await selectMatchingProfileRecord(repositoryRecord, event);
+  const profileRecord = await selectMatchingProfileRecord(
+    repositoryRecord,
+    event,
+  );
   const candidateProfile = profileRecord
     ? profileRecord.enabled === 1
       ? await normalizeProfileRecord(profileRecord)
@@ -12134,10 +12611,7 @@ async function createQueuedReviewRunForEvent(
     repositoryId: event.repositoryId,
     idempotencyKey,
   });
-  if (
-    idempotencyKey &&
-    existingRunRecord
-  ) {
+  if (idempotencyKey && existingRunRecord) {
     if (!shouldReuseIdempotentRun(existingRunRecord)) {
       await updateReviewRun(existingRunRecord.id, {
         idempotency_key: null,
@@ -12200,10 +12674,13 @@ async function createQueuedReviewRunForEvent(
       });
       if (raceRecord && shouldReuseIdempotentRun(raceRecord)) {
         return {
-          summary: buildRepoReviewExecutionSummary(await normalizeRunRecord(raceRecord), {
-            reused: true,
-            reuseReason: '相同提交范围的审查已存在，本次复用已有运行。',
-          }),
+          summary: buildRepoReviewExecutionSummary(
+            await normalizeRunRecord(raceRecord),
+            {
+              reused: true,
+              reuseReason: '相同提交范围的审查已存在，本次复用已有运行。',
+            },
+          ),
         };
       }
     }
@@ -12211,14 +12688,17 @@ async function createQueuedReviewRunForEvent(
   }
 }
 
-async function buildQueueItemFromRunRecord(runRecord: ReviewRunRecord): Promise<RepoReviewQueueItem> {
+async function buildQueueItemFromRunRecord(
+  runRecord: ReviewRunRecord,
+): Promise<RepoReviewQueueItem> {
   const parsed = await parseReviewRunRecord(runRecord);
   const callbackContext = asRecord(parsed.callbackContext);
   return {
     runId: runRecord.id,
     repositoryId: runRecord.repository_id,
     stage: runRecord.stage,
-    branch: normalizeBranchName(runRecord.branch || '') || runRecord.branch || '',
+    branch:
+      normalizeBranchName(runRecord.branch || '') || runRecord.branch || '',
     headSha: stringValue(runRecord.head_sha),
     baseSha: stringValue(runRecord.base_sha),
     manualReviewKey: buildManualReviewKey(
@@ -12310,7 +12790,10 @@ export async function listRepoReviewChatMembers(
     }
   }
 
-  await backfillConversationParticipantsFromMessages(normalizedChatJid, channel);
+  await backfillConversationParticipantsFromMessages(
+    normalizedChatJid,
+    channel,
+  );
   return (await listConversationParticipants(normalizedChatJid))
     .map((participant) => ({
       id: stringValue(participant.member_id),
@@ -12324,7 +12807,9 @@ export async function listRepoReviewChatMembers(
     .sort((left, right) => left.name.localeCompare(right.name, 'zh-Hans-CN'));
 }
 
-export async function getRepoReviewRun(runId: string): Promise<RepoReviewRun | null> {
+export async function getRepoReviewRun(
+  runId: string,
+): Promise<RepoReviewRun | null> {
   const record = await getReviewRunById(runId);
   return record ? await normalizeRunRecord(record) : null;
 }
@@ -12411,9 +12896,12 @@ export async function rerunRepoReviewRun(input: {
   if (input.userId) {
     event.userId = input.userId;
   }
-  event.callbackContext = mergeCallbackContext(event.callbackContext, {
-    rerunOfRunId: runRecord.id,
-  });
+  event.callbackContext = mergeCallbackContext(
+    stripRepoReviewExecutionContext(event.callbackContext),
+    {
+      rerunOfRunId: runRecord.id,
+    },
+  );
   return executeRepoReviewEvent(event, undefined, {
     skipIdempotencyReuse: true,
   });
@@ -12485,7 +12973,10 @@ export async function decideRepoReviewRunByHuman(input: {
   }
   let normalized = await normalizeRunRecord(updatedRecord);
 
-  const manualMentions = resolveRepoReviewMentions(repository, normalized.actor);
+  const manualMentions = resolveRepoReviewMentions(
+    repository,
+    normalized.actor,
+  );
   const manualMessage = formatRepoReviewManualDecisionMessage({
     repository,
     run: normalized,
@@ -12524,8 +13015,24 @@ export async function decideRepoReviewRunByHuman(input: {
           ),
           description: shortDescription(
             decision === 'pass'
-              ? t('repoReview.manualReviewPass', { summary: normalized.summary || t('repoReview.manualReviewPassFallback', {}, undefined) }, undefined)
-              : t('repoReview.manualReviewFail', { summary: normalized.summary || t('repoReview.manualReviewFailFallback', {}, undefined) }, undefined),
+              ? t(
+                  'repoReview.manualReviewPass',
+                  {
+                    summary:
+                      normalized.summary ||
+                      t('repoReview.manualReviewPassFallback', {}, undefined),
+                  },
+                  undefined,
+                )
+              : t(
+                  'repoReview.manualReviewFail',
+                  {
+                    summary:
+                      normalized.summary ||
+                      t('repoReview.manualReviewFailFallback', {}, undefined),
+                  },
+                  undefined,
+                ),
           ),
           body: manualMessage,
         },
@@ -12544,7 +13051,8 @@ export async function decideRepoReviewRunByHuman(input: {
         status: `error: ${error}`,
         statusDeliveryStatus: 'failed',
         commentDeliveryStatus:
-          runRecord.pr_mr_number || repositoryRecord.remote_provider === 'gitlab'
+          runRecord.pr_mr_number ||
+          repositoryRecord.remote_provider === 'gitlab'
             ? 'failed'
             : 'skipped',
         error,
@@ -12601,7 +13109,10 @@ async function listRemoteBranchSummaries(
     for (const entry of baseSummaries) {
       const ref = entry.headSha || entry.name;
       if (!ref || detailPromiseByRef.has(ref)) continue;
-      detailPromiseByRef.set(ref, fetchRemoteCommitSummaryByRef(repository, ref));
+      detailPromiseByRef.set(
+        ref,
+        fetchRemoteCommitSummaryByRef(repository, ref),
+      );
     }
     const detailByRef = new Map<
       string,
@@ -12647,8 +13158,6 @@ async function listRemoteBranchSummaries(
   }
   return listBranchesViaLsRemote(repository);
 }
-
-
 
 const REMOTE_BRANCH_SUMMARY_CACHE_TTL_MS = 90_000;
 const remoteBranchSummaryCache = new Map<
@@ -12715,7 +13224,9 @@ function seedRemoteBranchSummariesCache(
   });
 }
 
-async function clearRemoteBranchSummariesCache(repositoryId: string): Promise<void> {
+async function clearRemoteBranchSummariesCache(
+  repositoryId: string,
+): Promise<void> {
   remoteBranchSummaryCache.delete(repositoryId);
   await deleteReviewRemoteBranchCache(repositoryId);
 }
@@ -12809,24 +13320,24 @@ export async function listRepoReviewRemoteBranches(
   if (cached && cached.fetchedAt > 0) {
     const ageMs = Date.now() - cached.fetchedAt;
     if (ageMs >= REMOTE_BRANCH_SUMMARY_CACHE_TTL_MS) {
-      void await refreshRemoteBranchSummariesCache(repository).catch((err) => {
+      void (await refreshRemoteBranchSummariesCache(repository).catch((err) => {
         logger.warn(
           { err, repositoryId: repository.id },
           'Failed to refresh cached repo review remote branches',
         );
-      });
+      }));
     }
     return cached.branches;
   }
 
   if (cached?.branches.length) {
     if (!cached.refreshPromise) {
-      void await refreshRemoteBranchSummariesCache(repository).catch((err) => {
+      void (await refreshRemoteBranchSummariesCache(repository).catch((err) => {
         logger.warn(
           { err, repositoryId: repository.id },
           'Failed to refresh provisional repo review remote branches cache',
         );
-      });
+      }));
     }
     return cached.branches;
   }
@@ -12842,12 +13353,14 @@ export async function listRepoReviewRemoteBranches(
         fetchedAt: fetchedAtMs,
       });
       if (Date.now() - fetchedAtMs >= REMOTE_BRANCH_SUMMARY_CACHE_TTL_MS) {
-        void await refreshRemoteBranchSummariesCache(repository).catch((err) => {
-          logger.warn(
-            { err, repositoryId: repository.id },
-            'Failed to refresh persisted repo review remote branches cache',
-          );
-        });
+        void (await refreshRemoteBranchSummariesCache(repository).catch(
+          (err) => {
+            logger.warn(
+              { err, repositoryId: repository.id },
+              'Failed to refresh persisted repo review remote branches cache',
+            );
+          },
+        ));
       }
       return branches;
     }
@@ -12857,12 +13370,12 @@ export async function listRepoReviewRemoteBranches(
     const localBranches = listLocalRemoteBranchSummaries(repository);
     if (localBranches.length > 0) {
       seedRemoteBranchSummariesCache(repository.id, localBranches);
-      void await refreshRemoteBranchSummariesCache(repository).catch((err) => {
+      void (await refreshRemoteBranchSummariesCache(repository).catch((err) => {
         logger.warn(
           { err, repositoryId: repository.id },
           'Failed to refresh local repo review remote branches after seeding',
         );
-      });
+      }));
       return localBranches;
     }
   }
@@ -12904,7 +13417,11 @@ export async function listRepoReviewRemoteBranchCommits(
       );
     }
   }
-  return await fetchRemoteBranchCommitDetails(repository, normalizedBranch, limit);
+  return await fetchRemoteBranchCommitDetails(
+    repository,
+    normalizedBranch,
+    limit,
+  );
 }
 
 function hasPendingQueuedRepoReviewEvent(event: RepoReviewEvent): boolean {
@@ -12998,7 +13515,9 @@ async function buildQueuedRemoteBranchResult(input: {
 
   let selectedBaselineRun: ReviewRunRecord | null = null;
   if (stringValue(manualReview.baselineRunId)) {
-    const runRecord = await getReviewRunById(stringValue(manualReview.baselineRunId));
+    const runRecord = await getReviewRunById(
+      stringValue(manualReview.baselineRunId),
+    );
     if (!runRecord) {
       return {
         branch,
@@ -13093,7 +13612,9 @@ async function buildQueuedRemoteBranchResult(input: {
       branch,
       headSha,
       status: 'skipped',
-      reason: queued.summary.reuseReason || '相同提交范围的审查已存在，本次复用已有运行。',
+      reason:
+        queued.summary.reuseReason ||
+        '相同提交范围的审查已存在，本次复用已有运行。',
       runId: queued.summary.run.id,
       usedCachedBranchSummary: input.usedCachedBranchSummary,
     };
@@ -13131,7 +13652,10 @@ export async function queueRemoteBranchReview(input: {
 
   await recoverStaleRepoReviewRuns(repository.id);
 
-  const cachedBranchSummary = getCachedRemoteBranchSummary(repository.id, branch);
+  const cachedBranchSummary = getCachedRemoteBranchSummary(
+    repository.id,
+    branch,
+  );
   const usedCachedBranchSummary = Boolean(cachedBranchSummary);
   if (!cachedBranchSummary && hasLocalGitRemoteAccess(repository)) {
     await refreshRepositoryRemoteRefs(repository);
@@ -13272,7 +13796,11 @@ export async function queueRemoteRepoReview(input: {
           branch,
           headSha: head.headSha,
           status: 'skipped',
-          reason: t('repoReview.branchNotInActiveWindow', { days: activeWindowDays }, undefined),
+          reason: t(
+            'repoReview.branchNotInActiveWindow',
+            { days: activeWindowDays },
+            undefined,
+          ),
         } satisfies QueuedRepoReviewBranchResult;
       }
 
@@ -13316,7 +13844,10 @@ export async function triggerRemoteBranchReview(input: {
 
   await recoverStaleRepoReviewRuns(repository.id);
 
-  const cachedBranchSummary = getCachedRemoteBranchSummary(repository.id, branch);
+  const cachedBranchSummary = getCachedRemoteBranchSummary(
+    repository.id,
+    branch,
+  );
   const usedCachedBranchSummary = Boolean(cachedBranchSummary);
   if (!cachedBranchSummary && hasLocalGitRemoteAccess(repository)) {
     await refreshRepositoryRemoteRefs(repository);
@@ -13348,13 +13879,18 @@ export async function triggerRemoteBranchReview(input: {
       activeBranchState.status === 'running') &&
     activeBranchState.last_run_id
   ) {
-    const activeRunRecord = await getReviewRunById(activeBranchState.last_run_id);
+    const activeRunRecord = await getReviewRunById(
+      activeBranchState.last_run_id,
+    );
     if (activeRunRecord) {
-      return buildRepoReviewExecutionSummary(await normalizeRunRecord(activeRunRecord), {
-        reused: true,
-        reuseReason: '该分支已有审查任务执行中，重复点击已忽略。',
-        usedCachedBranchSummary,
-      });
+      return buildRepoReviewExecutionSummary(
+        await normalizeRunRecord(activeRunRecord),
+        {
+          reused: true,
+          reuseReason: '该分支已有审查任务执行中，重复点击已忽略。',
+          usedCachedBranchSummary,
+        },
+      );
     }
   }
   const baseline = await resolveRemoteReviewBaseline({
@@ -13396,7 +13932,9 @@ export async function upsertRepoReviewRepository(
   return (await saveRepoReviewRepositoryConfig(payload)).repository;
 }
 
-export async function removeRepoReviewRepository(repositoryId: string): Promise<void> {
+export async function removeRepoReviewRepository(
+  repositoryId: string,
+): Promise<void> {
   clearLocalGitRemoteMetadataCache();
   clearRemoteBranchSummariesCache(repositoryId);
   repoReviewAutoSyncInFlight.delete(repositoryId);
@@ -13431,7 +13969,9 @@ export async function upsertRepoReviewProfile(
   return await normalizeProfileRecord(saved);
 }
 
-export async function removeRepoReviewProfile(profileId: string): Promise<void> {
+export async function removeRepoReviewProfile(
+  profileId: string,
+): Promise<void> {
   await deleteReviewProfile(profileId);
 }
 
@@ -13858,19 +14398,27 @@ const REVIEW_QUEUE_MAX_CONCURRENCY = Math.max(
   1,
   Number(process.env.NANOCLAW_REVIEW_QUEUE_CONCURRENCY) || 2,
 );
-const reviewExecutionQueue = createRepoReviewExecutionQueue<RepoReviewQueueItem>({
-  concurrency: REVIEW_QUEUE_MAX_CONCURRENCY,
-  execute: (item) => executeQueuedRepoReviewRun(item.runId),
-  onError: (err, item) => {
-    failQueuedRepoReviewRun(
-      item.runId,
-      err instanceof Error ? err.message : String(err),
-    );
-    logger.error({ err, item }, 'Failed to execute queued repo review');
-  },
-});
+const reviewExecutionQueue =
+  createRepoReviewExecutionQueue<RepoReviewQueueItem>({
+    concurrency: REVIEW_QUEUE_MAX_CONCURRENCY,
+    execute: (item) => executeQueuedRepoReviewRun(item.runId),
+    onError: (err, item) => {
+      failQueuedRepoReviewRun(
+        item.runId,
+        err instanceof Error ? err.message : String(err),
+      );
+      logger.error({ err, item }, 'Failed to execute queued repo review');
+    },
+  });
 
-export async function enqueueRemoteRepoReview(event: RepoReviewEvent): Promise<{ queued: boolean; reused: boolean; runId?: string | undefined; reason?: string | undefined; }> {
+export async function enqueueRemoteRepoReview(
+  event: RepoReviewEvent,
+): Promise<{
+  queued: boolean;
+  reused: boolean;
+  runId?: string | undefined;
+  reason?: string | undefined;
+}> {
   const queued = await createQueuedReviewRunForEvent(event);
   if ('runRecord' in queued) {
     await enqueueQueuedRepoReviewRun(queued.runRecord);
@@ -13893,7 +14441,10 @@ function buildHookBody(
   stage: ReviewStage,
   nanoclawRoot: string,
 ): string {
-  const stageLabel = stage === 'commit' ? t('repoReview.auto_fed3f9', {}, undefined) : t('repoReview.auto_b65fc9', {}, undefined);
+  const stageLabel =
+    stage === 'commit'
+      ? t('repoReview.auto_fed3f9', {}, undefined)
+      : t('repoReview.auto_b65fc9', {}, undefined);
   return [
     HOOK_MARKER_START,
     'if [ -n "$SKIP_NANOCLAW_REVIEW" ]; then',
@@ -13961,7 +14512,11 @@ function removeHookSnippet(filePath: string): void {
 export async function installRepoReviewHooks(input: {
   repositoryId: string;
   nanoclawRoot: string;
-}): Promise<{ repository: RepoReviewRepository; hooksPath: string; hooks: string[]; }> {
+}): Promise<{
+  repository: RepoReviewRepository;
+  hooksPath: string;
+  hooks: string[];
+}> {
   const repository = await requireRepository(input.repositoryId);
   const repoPath = stringValue(repository.local_repo_path);
   if (!repoPath) {
@@ -13985,7 +14540,13 @@ export async function installRepoReviewHooks(input: {
   };
 }
 
-export async function uninstallRepoReviewHooks(input: { repositoryId: string }): Promise<{ repository: RepoReviewRepository; hooksPath: string; hooks: string[]; }> {
+export async function uninstallRepoReviewHooks(input: {
+  repositoryId: string;
+}): Promise<{
+  repository: RepoReviewRepository;
+  hooksPath: string;
+  hooks: string[];
+}> {
   const repository = await requireRepository(input.repositoryId);
   const repoPath = stringValue(repository.local_repo_path);
   if (!repoPath) {

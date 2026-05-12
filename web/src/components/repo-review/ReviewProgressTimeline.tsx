@@ -127,6 +127,15 @@ function getReviewTurnPhaseLabel(phase?: string) {
   return '';
 }
 
+function shouldCollapseTurnGroup(groupKey: string): boolean {
+  return (
+    groupKey.startsWith('worker_chunk_') ||
+    groupKey.startsWith('split_diff_worker_') ||
+    groupKey.startsWith('agentic_subagent_') ||
+    groupKey.startsWith('full_file_subagent_')
+  );
+}
+
 function buildProgressStepToolCallItem(
   step: RepoReviewProgressStep,
 ): ToolCallTurnItem {
@@ -679,12 +688,14 @@ export function ReviewProgressTimeline({
     const phaseLabels = Array.from(group.phases)
       .map((phase) => getReviewTurnPhaseLabel(phase))
       .filter(Boolean);
+    const defaultOpen = !shouldCollapseTurnGroup(group.groupKey);
     return (
-      <div
+      <details
         key={`group:${group.groupKey}`}
         className="repo-review-progress-turn-group"
+        open={defaultOpen}
       >
-        <div className="repo-review-progress-turn-group-header">
+        <summary className="repo-review-progress-turn-group-header">
           <div className="repo-review-progress-turn-group-title-row">
             <span className="repo-review-progress-turn-group-title">
               {group.groupLabel}
@@ -701,11 +712,11 @@ export function ReviewProgressTimeline({
           <span className="repo-review-progress-turn-group-meta">
             {group.entries.length}
           </span>
-        </div>
+        </summary>
         <div className="repo-review-progress-turn-group-body">
           {group.entries.map((entry) => renderTimelineEntry(entry))}
         </div>
-      </div>
+      </details>
     );
   };
 

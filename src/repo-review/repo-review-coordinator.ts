@@ -22,6 +22,7 @@ import { buildRepoReviewFindingEvidenceKey } from './repo-review-doc-render.js';
 import { buildStructuredRepoReviewMarkdown } from './repo-review-messages.js';
 import { mapWithConcurrencyLimit } from './repo-review-sync-service.js';
 import {
+  buildRepoReviewReadOnlyAllowedDirectories,
   stringValue,
   type RepoReviewCommitReview,
   type RepoReviewEvent,
@@ -48,6 +49,8 @@ const MAX_FULL_FILE_BYTES_PER_FILE = 64 * 1024;
 const MAX_TOTAL_FULL_FILE_BYTES = 240 * 1024;
 const MAX_WORKER_CHUNK_BYTES = 60 * 1024;
 const MAX_WORKER_CHUNK_FILE_COUNT = 8;
+const MAX_WORKER_CHUNK_MERGE_PROMPT_BYTES = 96 * 1024;
+const MAX_WORKER_CHUNK_MERGE_FILE_COUNT = 12;
 const DIRECT_MAIN_AGENT_MAX_TOTAL_PROMPT_BYTES = MAX_TOTAL_FULL_FILE_BYTES;
 const WORKER_TIMEOUT_MS = 300_000;
 const WORKER_TIMEOUT_GRACE_MS = Math.max(
@@ -350,6 +353,10 @@ function buildAgentRunInput(input: {
   };
   const reviewWorkspacePath = input.workspacePath || input.repository.localRepoPath;
   if (reviewWorkspacePath) {
+    const allowedDirectories = buildRepoReviewReadOnlyAllowedDirectories(
+      reviewWorkspacePath,
+      input.repository.localRepoPath,
+    );
     agentInput.extraMounts = [
       {
         hostPath: reviewWorkspacePath,
@@ -358,7 +365,7 @@ function buildAgentRunInput(input: {
       },
     ];
     agentInput.accessModeOverride = 'readonly';
-    agentInput.allowedDirectoriesOverride = [reviewWorkspacePath];
+    agentInput.allowedDirectoriesOverride = allowedDirectories;
     agentInput.workingDirectory = '/workspace/extra';
   }
   return agentInput;
@@ -881,39 +888,44 @@ async function runBoundedReviewAgent(input: {
         error: `Review agent timed out after ${Math.round(timeoutMs / 1000)}s`,
       };
     };
-    const timeoutPromise = new Promise<AgentRunOutput>((resolve) => {
-      timeoutTimer = setTimeout(() => {
-        if (
-          input.timeoutFollowupPrompt &&
-          !timeoutFollowupSent &&
-          !closeRequested
-        ) {
-          timeoutFollowupSent = true;
-          timeoutFollowupTurnBoundary = reviewTurns.length;
-          currentPhase = 'timeout_followup';
-          void input.onTimeoutFollowupDispatched?.();
-          try {
-            sendAgentPrompt(
-              group.folder,
-              input.runtimeNamespace || input.runId,
-              { text: input.timeoutFollowupPrompt },
-              `${input.runId}-timeout-followup`,
-            );
-          } catch {
-            resolve(resolveTimeout());
-            return;
-          }
-          timeoutGraceTimer = setTimeout(() => {
-            resolve(resolveTimeout());
-          }, timeoutGraceMs);
-          timeoutGraceTimer.unref?.();
-          return;
-        }
-        resolve(resolveTimeout());
-      }, timeoutMs);
-    });
+    const timeoutPromise =
+      timeoutMs > 0
+        ? new Promise<AgentRunOutput>((resolve) => {
+            timeoutTimer = setTimeout(() => {
+              if (
+                input.timeoutFollowupPrompt &&
+                !timeoutFollowupSent &&
+                !closeRequested
+              ) {
+                timeoutFollowupSent = true;
+                timeoutFollowupTurnBoundary = reviewTurns.length;
+                currentPhase = 'timeout_followup';
+                void input.onTimeoutFollowupDispatched?.();
+                try {
+                  sendAgentPrompt(
+                    group.folder,
+                    input.runtimeNamespace || input.runId,
+                    { text: input.timeoutFollowupPrompt },
+                    `${input.runId}-timeout-followup`,
+                  );
+                } catch {
+                  resolve(resolveTimeout());
+                  return;
+                }
+                timeoutGraceTimer = setTimeout(() => {
+                  resolve(resolveTimeout());
+                }, timeoutGraceMs);
+                timeoutGraceTimer.unref?.();
+                return;
+              }
+              resolve(resolveTimeout());
+            }, timeoutMs);
+          })
+        : null;
 
-    const result = await Promise.race([processPromise, timeoutPromise]);
+    const result = timeoutPromise
+      ? await Promise.race([processPromise, timeoutPromise])
+      : await processPromise;
     if (result.status !== 'success' && !timedOut) {
       throw new Error(result.error || 'Review agent did not return a result');
     }
@@ -1709,8 +1721,55 @@ export async function buildRepoReviewEvidenceBundle(input: {
 
 export function partitionRepoReviewEvidenceChunks(
   bundle: RepoReviewEvidenceBundle,
+  maxChunkCount = Number.POSITIVE_INFINITY,
 ): RepoReviewEvidenceChunk[] {
-  return partitionEvidenceChunks(bundle);
+  const chunks = partitionEvidenceChunks(bundle);
+  const effectiveMaxChunkCount = Number.isFinite(maxChunkCount)
+    ? Math.max(1, Math.trunc(maxChunkCount))
+    : Number.POSITIVE_INFINITY;
+  if (chunks.length <= effectiveMaxChunkCount) {
+    return chunks;
+  }
+
+  const merged = chunks.map((chunk) => ({ ...chunk, files: [...chunk.files] }));
+  while (merged.length > effectiveMaxChunkCount) {
+    let mergeIndex = -1;
+    let smallestPromptBytes = Number.POSITIVE_INFINITY;
+    for (let index = 0; index < merged.length - 1; index += 1) {
+      const left = merged[index]!;
+      const right = merged[index + 1]!;
+      const combinedFileCount = left.files.length + right.files.length;
+      const combinedPromptBytes = left.promptBytes + right.promptBytes;
+      if (
+        combinedFileCount > MAX_WORKER_CHUNK_MERGE_FILE_COUNT ||
+        combinedPromptBytes > MAX_WORKER_CHUNK_MERGE_PROMPT_BYTES
+      ) {
+        continue;
+      }
+      if (combinedPromptBytes < smallestPromptBytes) {
+        smallestPromptBytes = combinedPromptBytes;
+        mergeIndex = index;
+      }
+    }
+    if (mergeIndex < 0) break;
+    const left = merged[mergeIndex]!;
+    const right = merged[mergeIndex + 1]!;
+    const nextChunk: RepoReviewEvidenceChunk = {
+      ...left,
+      files: [...left.files, ...right.files],
+      diffBytes: left.diffBytes + right.diffBytes,
+      fileContentBytes: left.fileContentBytes + right.fileContentBytes,
+      promptBytes: 0,
+    };
+    nextChunk.promptBytes = byteLength(buildWorkerEvidenceText(nextChunk));
+    merged.splice(mergeIndex, 2, nextChunk);
+  }
+
+  return merged.map((chunk, index) => ({
+    ...chunk,
+    id: `worker_chunk_${index + 1}`,
+    title: `${index + 1}/${merged.length}`,
+  }));
 }
 
 async function runWorker(input: {
@@ -2373,6 +2432,7 @@ export async function runRepoReviewCoordinatedReview(input: {
   prepared: ReviewPreparedContext;
   runId: string;
   workspacePath?: string | null;
+  maxWorkerCount?: number;
   userId?: string;
   executionStats?: RepoReviewExecutionStats;
   onTurnProgress?: (turnsByWorker: RepoReviewAssistantTurn[][]) => Promise<void>;
@@ -2438,7 +2498,10 @@ export async function runRepoReviewCoordinatedReview(input: {
       2,
     ),
   });
-  const workerChunks = partitionRepoReviewEvidenceChunks(bundle);
+  const workerChunks = partitionRepoReviewEvidenceChunks(
+    bundle,
+    input.maxWorkerCount,
+  );
   if (input.executionStats) {
     input.executionStats.splitGroups = workerChunks.length;
     input.executionStats.fullFileBytesLoaded = bundle.fileContentBytes;
@@ -2603,6 +2666,7 @@ export async function runRepoReviewCoordinatedReview(input: {
     runtimeNamespace: `${input.runId}:${mainReviewStepId}`,
     workspacePath: bundle.workspacePath || input.workspacePath || input.repository.localRepoPath,
     userId: input.userId,
+    timeoutMs: bundle.directMainAgentReview ? 0 : undefined,
     turnContext: buildRepoReviewTurnContext({
       groupKey: mainReviewStepId,
       groupLabel: mainReviewStepLabel,

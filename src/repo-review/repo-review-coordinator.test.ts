@@ -119,6 +119,31 @@ describe('repo-review coordinator', () => {
     expect(chunks.every((chunk) => chunk.promptBytes > 0)).toBe(true);
   });
 
+  it('coalesces worker chunks to a caller-provided upper bound when safe', () => {
+    const bundle = makeBundle({
+      directMainAgentReview: false,
+      files: Array.from({ length: 4 }, (_, index) => ({
+        filePath: `src/file-${index}.ts`,
+        diffText: 'diff\n' + 'x'.repeat(40000),
+        diffBytes: 40000,
+        fileContent: '',
+        fileContentBytes: 0,
+        fileContentSource: 'omitted' as const,
+        groupKey: 'src',
+        isTestFile: false,
+        language: 'ts',
+      })),
+      changedFiles: Array.from({ length: 4 }, (_, index) => `src/file-${index}.ts`),
+      totalPromptBytes: 160000,
+      fileContentBytes: 0,
+      diffBytes: 160000,
+    });
+
+    const chunks = partitionRepoReviewEvidenceChunks(bundle, 2);
+    expect(chunks).toHaveLength(2);
+    expect(chunks.every((chunk) => chunk.files.length === 2)).toBe(true);
+  });
+
   it('keeps small diffs on the direct main-agent path even above the file threshold', () => {
     expect(
       shouldDirectMainAgentReview({

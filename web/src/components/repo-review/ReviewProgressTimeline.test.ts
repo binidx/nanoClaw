@@ -429,7 +429,46 @@ describe('buildReviewProgressEntries', () => {
     const rendered = renderTimeline(entries);
     expect(rendered.container.textContent).toContain('Worker 1/1');
     expect(rendered.container.textContent).toContain('超时追问');
-    expect(rendered.container.querySelector('.repo-review-progress-turn-group')).not.toBeNull();
+    const group = rendered.container.querySelector(
+      '.repo-review-progress-turn-group',
+    );
+    expect(group).not.toBeNull();
+    expect(group?.hasAttribute('open')).toBe(false);
+    rendered.unmount();
+  });
+
+  it('keeps main-agent turn groups expanded by default', () => {
+    const entries = buildReviewProgressEntries(
+      makeRun({
+        reviewTurns: [
+          {
+            id: 'turn-main-1',
+            groupKey: 'agentic_main_summary',
+            groupLabel: '主代理直接审查',
+            phase: 'main_agent_review',
+            timestamp: '2026-04-23T00:00:02.000Z',
+            isLive: false,
+            isCompleted: true,
+            items: [
+              {
+                id: 'msg-main-1',
+                type: 'assistant_message',
+                status: 'completed',
+                text: '主代理已生成结论。',
+                timestamp: '2026-04-23T00:00:02.000Z',
+              },
+            ],
+          },
+        ],
+      }),
+    );
+
+    const rendered = renderTimeline(entries);
+    const group = rendered.container.querySelector(
+      '.repo-review-progress-turn-group',
+    );
+    expect(group).not.toBeNull();
+    expect(group?.hasAttribute('open')).toBe(true);
     rendered.unmount();
   });
 

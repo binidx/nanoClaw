@@ -1,3 +1,5 @@
+import path from 'path';
+
 import type { RepoReviewCloudDocSection } from './repo-review-doc-render.js';
 import type { RepoReviewDiffIndex } from './repo-review-diff-index.js';
 import type {
@@ -157,6 +159,28 @@ export function normalizeBranchName(value: string): string {
 
 export function shortSha(value: string): string {
   return value ? value.slice(0, 12) : '';
+}
+
+export function buildRepoReviewReadOnlyAllowedDirectories(
+  ...paths: Array<string | null | undefined>
+): string[] {
+  const directories = new Set<string>();
+  const add = (value: string | null | undefined) => {
+    const normalized = stringValue(value);
+    if (!normalized) return;
+    directories.add(path.resolve(normalized));
+  };
+
+  for (const value of paths) {
+    add(value);
+  }
+
+  add(process.cwd());
+  add(path.join(process.cwd(), 'data', 'review-workspaces'));
+
+  return Array.from(directories.values()).sort((left, right) =>
+    left.localeCompare(right, 'en'),
+  );
 }
 
 export interface RepoReviewProfile {
