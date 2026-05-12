@@ -253,9 +253,7 @@ export function SettingsPage(props: SettingsPageProps) {
     (section) => !s.visibleTabs || s.visibleTabs.includes(section.key),
   );
   const currentSection =
-    visibleSections.find((section) => section.key === s.settingsTab) ??
-    visibleSections[0] ??
-    null;
+    visibleSections.find((section) => section.key === s.settingsTab) ?? null;
   const pageSummary = s.hideSettingsTabs
     ? '集中管理当前模块的配置与运行状态。'
     : '配置 NanoClaw 的全局运行环境与安全策略。';

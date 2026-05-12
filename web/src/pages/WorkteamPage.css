@@ -197,7 +197,6 @@
 }
 
 .workflow-sidebar {
-  display: none;
   padding: 16px;
   max-height: calc(100vh - 182px);
   overflow: auto;
@@ -401,11 +400,6 @@
 .workflow-main > .workflow-canvas-panel,
 .workflow-main > .workflow-empty {
   grid-column: 1;
-}
-
-.workflow-main > .workflow-toolbar,
-.workflow-main > .workteam-section {
-  display: none;
 }
 
 .workflow-main > .workflow-detail-grid {
@@ -1585,6 +1579,14 @@ button {
 
   .workflow-detail-grid .workflow-run-list {
     grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  }
+}
+
+@media (max-width: 1024px) {
+  .workflow-sidebar,
+  .workflow-main > .workflow-toolbar,
+  .workflow-main > .workteam-section {
+    display: none;
   }
 }
 

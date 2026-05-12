@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 
 import { AppSelect, type AppSelectOption } from '../components/AppSelect';
 import { useNavigatedTab } from '../hooks/useNavigatedTab';
+import { SectionNav } from '../components/common/SectionNav';
 import {
   buildRoleSummary,
   filterUsers,
@@ -16,7 +17,12 @@ export interface UsersPageProps {
 }
 
 type UsersTab = 'users' | 'roles' | 'repo-access' | 'permission-overrides';
-const VALID_USERS_TABS: ReadonlySet<string> = new Set<UsersTab>(['users', 'roles', 'repo-access', 'permission-overrides']);
+const VALID_USERS_TABS: ReadonlySet<string> = new Set<UsersTab>([
+  'users',
+  'roles',
+  'repo-access',
+  'permission-overrides',
+]);
 type UsersPaneMode = 'empty' | 'detail' | 'edit' | 'create';
 type NoticeTone = 'success' | 'error';
 
@@ -41,7 +47,10 @@ interface RepoMember {
   granted_by: string | null;
 }
 
-function getRoleDisplayName(t: (key: string) => string, roleName: string): string {
+function getRoleDisplayName(
+  t: (key: string) => string,
+  roleName: string,
+): string {
   const map: Record<string, string> = {
     admin: t('users.role.admin'),
     manager: t('users.role.manager'),
@@ -51,7 +60,10 @@ function getRoleDisplayName(t: (key: string) => string, roleName: string): strin
   return map[roleName] || roleName;
 }
 
-function getRoleDescription(t: (key: string) => string, role: RoleRecord): string {
+function getRoleDescription(
+  t: (key: string) => string,
+  role: RoleRecord,
+): string {
   const fallbackByName: Record<string, string> = {
     admin: t('users.roleDesc.admin'),
     manager: t('users.roleDesc.manager'),
@@ -63,16 +75,21 @@ function getRoleDescription(t: (key: string) => string, role: RoleRecord): strin
   const knownChineseDescriptions: Record<string, string> = {
     '系统管理员（全部权限）': t('users.roleDesc.admin'),
     '系统管理员(全部权限)': t('users.roleDesc.admin'),
-    '全部权限': t('users.roleDesc.admin'),
-    '项目管理员': t('users.roleDesc.manager'),
+    全部权限: t('users.roleDesc.admin'),
+    项目管理员: t('users.roleDesc.manager'),
     '管理项目、审查、助手和常用配置': t('users.roleDesc.manager'),
-    '代码审查员': t('users.roleDesc.reviewer'),
-    '参与代码审查和查看审查结果': t('users.roleDesc.reviewer'),
-    '开发者': t('users.roleDesc.developer'),
-    '日常开发和基础协作权限': t('users.roleDesc.developer'),
+    代码审查员: t('users.roleDesc.reviewer'),
+    参与代码审查和查看审查结果: t('users.roleDesc.reviewer'),
+    开发者: t('users.roleDesc.developer'),
+    日常开发和基础协作权限: t('users.roleDesc.developer'),
   };
 
-  return knownChineseDescriptions[normalized] || description || fallbackByName[role.name] || t('users.当前角色没有补充说明');
+  return (
+    knownChineseDescriptions[normalized] ||
+    description ||
+    fallbackByName[role.name] ||
+    t('users.当前角色没有补充说明')
+  );
 }
 
 function getAccessLevelOptions(t: (key: string) => string): AppSelectOption[] {
@@ -83,7 +100,9 @@ function getAccessLevelOptions(t: (key: string) => string): AppSelectOption[] {
   ];
 }
 
-function getAccessLevelLabels(t: (key: string) => string): Record<string, string> {
+function getAccessLevelLabels(
+  t: (key: string) => string,
+): Record<string, string> {
   return {
     viewer: t('users.查看者'),
     reviewer: t('users.审查员'),
@@ -232,59 +251,196 @@ function getPermissionGroups(t: (key: string) => string): PermissionNavGroup[] {
     {
       section: t('users.聊天'),
       subGroups: [
-        { label: t('users.对话'), codes: ['conversation.view', 'conversation.view_all', 'conversation.create', 'conversation.delete', 'conversation.delete_all', 'conversation.send', 'conversation.export', 'conversation.share', 'conversation.access_config', 'conversation.manage', 'conversation.own'] },
-        { label: t('users.即时通讯'), codes: ['im.view', 'im.send', 'im.manage_groups'] },
-        { label: t('users.股票分析'), codes: ['stock.view', 'stock.create', 'stock.manage'] },
+        {
+          label: t('users.对话'),
+          codes: [
+            'conversation.view',
+            'conversation.view_all',
+            'conversation.create',
+            'conversation.delete',
+            'conversation.delete_all',
+            'conversation.send',
+            'conversation.export',
+            'conversation.share',
+            'conversation.access_config',
+            'conversation.manage',
+            'conversation.own',
+          ],
+        },
+        {
+          label: t('users.即时通讯'),
+          codes: ['im.view', 'im.send', 'im.manage_groups'],
+        },
+        {
+          label: t('users.股票分析'),
+          codes: ['stock.view', 'stock.create', 'stock.manage'],
+        },
       ],
     },
     {
       section: t('users.任务'),
       subGroups: [
-        { label: t('users.任务管理'), codes: ['task.view', 'task.view_all', 'task.create', 'task.edit', 'task.delete'] },
+        {
+          label: t('users.任务管理'),
+          codes: [
+            'task.view',
+            'task.view_all',
+            'task.create',
+            'task.edit',
+            'task.delete',
+          ],
+        },
       ],
     },
     {
       section: t('users.审查'),
       subGroups: [
-        { label: t('users.代码审查'), codes: ['review.create', 'review.view', 'review.manual', 'review.annotate', 'review.repo.view', 'review.repo.view_all', 'review.repo.create', 'review.repo.edit', 'review.repo.delete', 'review.repo.share', 'review.run.view', 'review.run.trigger', 'review.run.manual', 'review.run.annotate', 'review.profile.edit', 'review.digest.manage'] },
+        {
+          label: t('users.代码审查'),
+          codes: [
+            'review.create',
+            'review.view',
+            'review.manual',
+            'review.annotate',
+            'review.repo.view',
+            'review.repo.view_all',
+            'review.repo.create',
+            'review.repo.edit',
+            'review.repo.delete',
+            'review.repo.share',
+            'review.run.view',
+            'review.run.trigger',
+            'review.run.manual',
+            'review.run.annotate',
+            'review.profile.edit',
+            'review.digest.manage',
+          ],
+        },
         { label: 'CodeMap', codes: ['codemap.view', 'codemap.manage'] },
       ],
     },
     {
       section: 'Workflow',
       subGroups: [
-        { label: 'Workflow', codes: ['workteam.view', 'workteam.create', 'workteam.manage'] },
+        {
+          label: 'Workflow',
+          codes: ['workteam.view', 'workteam.create', 'workteam.manage'],
+        },
       ],
     },
     {
       section: t('users.助手'),
       subGroups: [
-        { label: t('users.助手管理'), codes: ['assistant.manage', 'assistant.view', 'assistant.create', 'assistant.edit', 'assistant.delete', 'assistant.start_chat'] },
-        { label: t('users.AI 灵魂'), codes: ['soul.view', 'soul.manage', 'soul.edit'] },
-        { label: t('users.知识库'), codes: ['knowledge.view', 'knowledge.create', 'knowledge.edit', 'knowledge.delete'] },
+        {
+          label: t('users.助手管理'),
+          codes: [
+            'assistant.manage',
+            'assistant.view',
+            'assistant.create',
+            'assistant.edit',
+            'assistant.delete',
+            'assistant.start_chat',
+          ],
+        },
+        {
+          label: t('users.AI 灵魂'),
+          codes: ['soul.view', 'soul.manage', 'soul.edit'],
+        },
+        {
+          label: t('users.知识库'),
+          codes: [
+            'knowledge.view',
+            'knowledge.create',
+            'knowledge.edit',
+            'knowledge.delete',
+          ],
+        },
       ],
     },
     {
       section: t('users.控制'),
       subGroups: [
-        { label: t('users.频道'), codes: ['channel.view', 'channel.own', 'channel.manage', 'channel.personal.create', 'channel.personal.edit', 'channel.system.manage'] },
+        {
+          label: t('users.频道'),
+          codes: [
+            'channel.view',
+            'channel.own',
+            'channel.manage',
+            'channel.personal.create',
+            'channel.personal.edit',
+            'channel.system.manage',
+          ],
+        },
         { label: t('users.终端'), codes: ['terminal.access'] },
       ],
     },
     {
       section: t('users.设置'),
       subGroups: [
-        { label: t('users.应用与市场'), codes: ['mcp.view', 'mcp.create', 'mcp.edit', 'mcp.delete', 'mcp.publish', 'skill.view', 'skill.create', 'skill.edit', 'skill.delete', 'skill.publish', 'marketplace.view', 'marketplace.install', 'marketplace.manage_sources'] },
-        { label: t('users.系统配置'), codes: ['system.settings', 'system.settings.view', 'system.settings.edit', 'admin.settings.write'] },
-        { label: 'Live2D', codes: ['live2d.view', 'live2d.manage', 'live2d.edit_personal'] },
-        { label: 'Provider', codes: ['system.providers', 'provider.system.view', 'provider.system.create', 'provider.system.edit', 'provider.system.delete', 'provider.personal.create', 'provider.personal.edit', 'provider.personal.delete'] },
+        {
+          label: t('users.应用与市场'),
+          codes: [
+            'mcp.view',
+            'mcp.create',
+            'mcp.edit',
+            'mcp.delete',
+            'mcp.publish',
+            'skill.view',
+            'skill.create',
+            'skill.edit',
+            'skill.delete',
+            'skill.publish',
+            'marketplace.view',
+            'marketplace.install',
+            'marketplace.manage_sources',
+          ],
+        },
+        {
+          label: t('users.系统配置'),
+          codes: [
+            'system.settings',
+            'system.settings.view',
+            'system.settings.edit',
+            'admin.settings.write',
+          ],
+        },
+        {
+          label: 'Live2D',
+          codes: ['live2d.view', 'live2d.manage', 'live2d.edit_personal'],
+        },
+        {
+          label: 'Provider',
+          codes: [
+            'system.providers',
+            'provider.system.view',
+            'provider.system.create',
+            'provider.system.edit',
+            'provider.system.delete',
+            'provider.personal.create',
+            'provider.personal.edit',
+            'provider.personal.delete',
+          ],
+        },
       ],
     },
     {
       section: t('users.用户管理'),
       subGroups: [
-        { label: t('users.用户与角色'), codes: ['system.users', 'system.users.view', 'system.users.create', 'system.users.edit', 'system.users.delete', 'system.users.assign_role'] },
-        { label: t('users.项目通用'), codes: ['project.manage', 'project.view'] },
+        {
+          label: t('users.用户与角色'),
+          codes: [
+            'system.users',
+            'system.users.view',
+            'system.users.create',
+            'system.users.edit',
+            'system.users.delete',
+            'system.users.assign_role',
+          ],
+        },
+        {
+          label: t('users.项目通用'),
+          codes: ['project.manage', 'project.view'],
+        },
       ],
     },
   ];
@@ -294,7 +450,9 @@ function getAllGroupedCodes(permissionGroups: PermissionNavGroup[]): string[] {
   return permissionGroups.flatMap((g) => g.subGroups.flatMap((sg) => sg.codes));
 }
 
-function getPageAccessLabels(t: (key: string) => string): Record<string, string> {
+function getPageAccessLabels(
+  t: (key: string) => string,
+): Record<string, string> {
   return {
     'conversation.view': t('users.聊天 / 对话'),
     'project.view': t('users.任务 / 应用 / 股票'),
@@ -309,7 +467,10 @@ function getPageAccessLabels(t: (key: string) => string): Record<string, string>
   };
 }
 
-function getAccessiblePages(codes: string[], t: (key: string) => string): string[] {
+function getAccessiblePages(
+  codes: string[],
+  t: (key: string) => string,
+): string[] {
   const pages: string[] = [];
   const codeSet = new Set(codes);
   const labels = getPageAccessLabels(t);
@@ -390,7 +551,9 @@ function normalizeUser(value: unknown): UserSummary | null {
         : null,
     status: record.status === 'disabled' ? 'disabled' : 'active',
     roles: Array.isArray(record.roles)
-      ? record.roles.filter((entry): entry is string => typeof entry === 'string')
+      ? record.roles.filter(
+          (entry): entry is string => typeof entry === 'string',
+        )
       : [],
     createdAt:
       typeof record.createdAt === 'string'
@@ -413,9 +576,7 @@ function normalizeRole(value: unknown): RoleRecord | null {
     description:
       typeof record.description === 'string' ? record.description : null,
     permissionCodes: Array.isArray(record.permissionCodes)
-      ? record.permissionCodes.filter(
-          (c): c is string => typeof c === 'string',
-        )
+      ? record.permissionCodes.filter((c): c is string => typeof c === 'string')
       : [],
   };
 }
@@ -453,12 +614,18 @@ async function requestJson<T>(
   return payload as T;
 }
 
-function getAvailableRoles(form: UserFormState, roles: RoleRecord[]): RoleRecord[] {
+function getAvailableRoles(
+  form: UserFormState,
+  roles: RoleRecord[],
+): RoleRecord[] {
   const selectedIds = new Set(form.roleIds);
   return roles.filter((role) => !selectedIds.has(role.id));
 }
 
-function getFormRoleNames(form: UserFormState, roleById: Map<string, RoleRecord>): string[] {
+function getFormRoleNames(
+  form: UserFormState,
+  roleById: Map<string, RoleRecord>,
+): string[] {
   return form.roleIds
     .map((roleId) => roleById.get(roleId)?.name || '')
     .filter(Boolean);
@@ -466,7 +633,11 @@ function getFormRoleNames(form: UserFormState, roleById: Map<string, RoleRecord>
 
 export function UsersPage({ apiBase }: UsersPageProps) {
   const { t } = useTranslation('users');
-  const [activeTab, setActiveTab] = useNavigatedTab<UsersTab>('users', VALID_USERS_TABS, 'users');
+  const [activeTab, setActiveTab] = useNavigatedTab<UsersTab>(
+    'users',
+    VALID_USERS_TABS,
+    'users',
+  );
   const [users, setUsers] = useState<UserSummary[]>([]);
   const [roles, setRoles] = useState<RoleRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -491,7 +662,9 @@ export function UsersPage({ apiBase }: UsersPageProps) {
   const [newRoleDesc, setNewRoleDesc] = useState('');
   const [savingNewRole, setSavingNewRole] = useState(false);
   const [selectedRoleId, setSelectedRoleId] = useState<string | null>(null);
-  const [roleExpandedSections, setRoleExpandedSections] = useState<Set<string>>(() => new Set());
+  const [roleExpandedSections, setRoleExpandedSections] = useState<Set<string>>(
+    () => new Set(),
+  );
 
   const [repositories, setRepositories] = useState<RepoRecord[]>([]);
   const [selectedRepoId, setSelectedRepoId] = useState<string | null>(null);
@@ -504,7 +677,10 @@ export function UsersPage({ apiBase }: UsersPageProps) {
   const accessLevelOptions = useMemo(() => getAccessLevelOptions(t), [t]);
   const accessLevelLabels = useMemo(() => getAccessLevelLabels(t), [t]);
   const permissionGroups = useMemo(() => getPermissionGroups(t), [t]);
-  const allGroupedCodes = useMemo(() => getAllGroupedCodes(permissionGroups), [permissionGroups]);
+  const allGroupedCodes = useMemo(
+    () => getAllGroupedCodes(permissionGroups),
+    [permissionGroups],
+  );
 
   const requestJsonT = useCallback(
     async <T,>(path: string, init?: RequestInit): Promise<T> => {
@@ -516,14 +692,18 @@ export function UsersPage({ apiBase }: UsersPageProps) {
   const loadUsers = useCallback(async () => {
     const payload = await requestJsonT<{ users?: unknown[] }>('/api/users');
     return Array.isArray(payload.users)
-      ? payload.users.map(normalizeUser).filter((entry): entry is UserSummary => Boolean(entry))
+      ? payload.users
+          .map(normalizeUser)
+          .filter((entry): entry is UserSummary => Boolean(entry))
       : [];
   }, [requestJsonT]);
 
   const loadRoles = useCallback(async () => {
     const payload = await requestJsonT<{ roles?: unknown[] }>('/api/roles');
     return Array.isArray(payload.roles)
-      ? payload.roles.map(normalizeRole).filter((entry): entry is RoleRecord => Boolean(entry))
+      ? payload.roles
+          .map(normalizeRole)
+          .filter((entry): entry is RoleRecord => Boolean(entry))
       : [];
   }, [requestJsonT]);
 
@@ -532,7 +712,10 @@ export function UsersPage({ apiBase }: UsersPageProps) {
     const run = async () => {
       setLoading(true);
       try {
-        const [nextUsers, nextRoles] = await Promise.all([loadUsers(), loadRoles()]);
+        const [nextUsers, nextRoles] = await Promise.all([
+          loadUsers(),
+          loadRoles(),
+        ]);
         if (cancelled) return;
         setUsers(nextUsers);
         setRoles(nextRoles);
@@ -545,7 +728,10 @@ export function UsersPage({ apiBase }: UsersPageProps) {
         if (cancelled) return;
         setNotice({
           tone: 'error',
-          text: error instanceof Error ? error.message : t('users.加载用户数据失败'),
+          text:
+            error instanceof Error
+              ? error.message
+              : t('users.加载用户数据失败'),
         });
       } finally {
         if (!cancelled) setLoading(false);
@@ -634,7 +820,10 @@ export function UsersPage({ apiBase }: UsersPageProps) {
   const selectedUserRoles = useMemo(
     () =>
       selectedUser
-        ? selectedUser.roles.map((name) => roleByName.get(name) || { id: name, name, description: null })
+        ? selectedUser.roles.map(
+            (name) =>
+              roleByName.get(name) || { id: name, name, description: null },
+          )
         : [],
     [roleByName, selectedUser],
   );
@@ -644,6 +833,19 @@ export function UsersPage({ apiBase }: UsersPageProps) {
     setPaneMode('detail');
     setNotice(null);
   };
+
+  const usersTabItems = useMemo(
+    () => [
+      { key: 'users' as const, label: t('users.用户管理') },
+      { key: 'roles' as const, label: t('users.角色权限') },
+      { key: 'repo-access' as const, label: t('users.仓库访问') },
+      {
+        key: 'permission-overrides' as const,
+        label: t('users.权限覆盖'),
+      },
+    ],
+    [t],
+  );
 
   const openCreatePane = () => {
     setCreateForm(createEmptyForm());
@@ -664,7 +866,8 @@ export function UsersPage({ apiBase }: UsersPageProps) {
     async (preferredUserId?: string | null) => {
       const nextUsers = await loadUsers();
       setUsers(nextUsers);
-      const nextSelectedId = preferredUserId ?? resolveSelectedUserId(nextUsers, selectedUserId);
+      const nextSelectedId =
+        preferredUserId ?? resolveSelectedUserId(nextUsers, selectedUserId);
       setSelectedUserId(nextSelectedId);
       return nextUsers;
     },
@@ -737,8 +940,12 @@ export function UsersPage({ apiBase }: UsersPageProps) {
           .filter(Boolean),
       );
       const nextRoleIds = new Set(editForm.roleIds);
-      const addRoleIds = [...nextRoleIds].filter((roleId) => !currentRoleIds.has(roleId));
-      const removeRoleIds = [...currentRoleIds].filter((roleId) => !nextRoleIds.has(roleId));
+      const addRoleIds = [...nextRoleIds].filter(
+        (roleId) => !currentRoleIds.has(roleId),
+      );
+      const removeRoleIds = [...currentRoleIds].filter(
+        (roleId) => !nextRoleIds.has(roleId),
+      );
 
       await Promise.all([
         ...addRoleIds.map((roleId) =>
@@ -768,7 +975,12 @@ export function UsersPage({ apiBase }: UsersPageProps) {
   };
 
   const handleDelete = async () => {
-    if (!selectedUser || !window.confirm(t('users.确定删除用户', { username: selectedUser.username }))) {
+    if (
+      !selectedUser ||
+      !window.confirm(
+        t('users.确定删除用户', { username: selectedUser.username }),
+      )
+    ) {
       return;
     }
     setSubmitting(true);
@@ -822,7 +1034,8 @@ export function UsersPage({ apiBase }: UsersPageProps) {
     } catch (error) {
       setNotice({
         tone: 'error',
-        text: error instanceof Error ? error.message : t('users.更新角色权限失败'),
+        text:
+          error instanceof Error ? error.message : t('users.更新角色权限失败'),
       });
     } finally {
       setSavingRolePerms(false);
@@ -835,7 +1048,9 @@ export function UsersPage({ apiBase }: UsersPageProps) {
         '/api/repo-reviews/repositories',
       );
       const repos = Array.isArray(payload.repositories)
-        ? payload.repositories.map(normalizeRepo).filter((r): r is RepoRecord => r !== null)
+        ? payload.repositories
+            .map(normalizeRepo)
+            .filter((r): r is RepoRecord => r !== null)
         : [];
       setRepositories(repos);
       if (repos.length > 0 && !selectedRepoId) {
@@ -854,7 +1069,9 @@ export function UsersPage({ apiBase }: UsersPageProps) {
           `/api/repo-reviews/repositories/${encodeURIComponent(repoId)}/members`,
         );
         const members = Array.isArray(payload.members)
-          ? payload.members.map(normalizeMember).filter((m): m is RepoMember => m !== null)
+          ? payload.members
+              .map(normalizeMember)
+              .filter((m): m is RepoMember => m !== null)
           : [];
         setRepoMembers(members);
       } catch {
@@ -887,7 +1104,10 @@ export function UsersPage({ apiBase }: UsersPageProps) {
         `/api/repo-reviews/repositories/${encodeURIComponent(selectedRepoId)}/members`,
         {
           method: 'POST',
-          body: JSON.stringify({ userId: addMemberUserId, accessLevel: addMemberLevel }),
+          body: JSON.stringify({
+            userId: addMemberUserId,
+            accessLevel: addMemberLevel,
+          }),
         },
       );
       setAddMemberUserId('');
@@ -949,563 +1169,1063 @@ export function UsersPage({ apiBase }: UsersPageProps) {
   const findUserName = useCallback(
     (userId: string) => {
       const u = users.find((user) => user.id === userId);
-      return u ? (u.displayName ? `${u.username} (${u.displayName})` : u.username) : userId;
+      return u
+        ? u.displayName
+          ? `${u.username} (${u.displayName})`
+          : u.username
+        : userId;
     },
     [users],
   );
 
   return (
     <div className="page-view users-page">
-      <div className="page-header">
+      <div className="page-header users-hero">
         <div className="page-header-copy">
           <h2>{t('users.用户')}</h2>
           <p>{t('users.管理用户账号、角色权限配置和审查仓库访问控制')}</p>
         </div>
-        <div className="page-header-actions">
+        <div className="page-header-actions users-hero-actions">
+          <div className="users-hero-chip">
+            <span>{t('users.用户')}</span>
+            <strong>{users.length}</strong>
+          </div>
+          <div className="users-hero-chip">
+            <span>{t('users.角色')}</span>
+            <strong>{roles.length}</strong>
+          </div>
+          <div className="users-hero-chip">
+            <span>{t('users.仓库')}</span>
+            <strong>{repositories.length}</strong>
+          </div>
           {activeTab === 'users' && (
-            <button type="button" className="btn-primary" onClick={openCreatePane}>
+            <button
+              type="button"
+              className="btn-primary"
+              onClick={openCreatePane}
+            >
               {t('users.新增用户')}
             </button>
           )}
         </div>
       </div>
 
-      <div className="users-tab-bar" role="tablist" aria-label={t('users.用户')}>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={activeTab === 'users'}
-          className={`users-tab ${activeTab === 'users' ? 'active' : ''}`}
-          onClick={() => setActiveTab('users')}
-        >
-          {t('users.用户管理')}
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={activeTab === 'roles'}
-          className={`users-tab ${activeTab === 'roles' ? 'active' : ''}`}
-          onClick={() => setActiveTab('roles')}
-        >
-          {t('users.角色权限')}
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={activeTab === 'repo-access'}
-          className={`users-tab ${activeTab === 'repo-access' ? 'active' : ''}`}
-          onClick={() => setActiveTab('repo-access')}
-        >
-          {t('users.仓库访问')}
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={activeTab === 'permission-overrides'}
-          className={`users-tab ${activeTab === 'permission-overrides' ? 'active' : ''}`}
-          onClick={() => setActiveTab('permission-overrides')}
-        >
-          {t('users.权限覆盖')}
-        </button>
+      <div
+        className="users-tab-bar"
+        role="tablist"
+        aria-label={t('users.用户')}
+      >
+        <SectionNav
+          className="users-section-nav"
+          ariaLabel={t('users.用户')}
+          activeKey={activeTab}
+          onChange={(key) => setActiveTab(key as UsersTab)}
+          orientation="horizontal"
+          items={usersTabItems.map((item) => ({
+            key: item.key,
+            label: item.label,
+          }))}
+        />
       </div>
 
       {activeTab === 'users' && (
-      <div className="page-body users-page-body">
-        <div className="users-workbench">
-          <aside className="users-sidebar assistant-selector-panel assistant-selector-panel--summary">
-            <div className="assistant-form-section">
-              <div className="assistant-form-section-header">
-                <h4>{t('users.用户列表')}</h4>
-                <p>{t('users.直接分页浏览即可，查询时再用筛选收窄范围')}</p>
-              </div>
-              <div className="assistant-selector-grid users-filter-grid">
-                <label className="assistant-selector-field assistant-selector-field--wide">
-                  <span>{t('users.搜索')}</span>
-                  <input
-                    value={searchQuery}
-                    onChange={(event) => {
-                      setSearchQuery(event.target.value);
-                      setCurrentPage(1);
-                    }}
-                    placeholder={t('users.按用户名、展示名或邮箱搜索')}
-                  />
-                </label>
-                <label className="assistant-selector-field">
-                  <span>{t('users.状态')}</span>
-                  <AppSelect value={statusFilter} onChange={setStatusFilter} options={statusFilterOptions} />
-                </label>
-                <label className="assistant-selector-field">
-                  <span>{t('users.角色')}</span>
-                  <AppSelect value={roleFilter} onChange={setRoleFilter} options={roleFilterOptions} />
-                </label>
-              </div>
-            </div>
-
-            <div className="users-list">
-              {loading ? <div className="assistant-card-note">{t('users.加载用户中')}</div> : null}
-              {!loading && users.length === 0 ? (
-                <div className="assistant-empty-state users-empty-state">
-                  <h3>{t('users.还没有用户')}</h3>
-                  <p>{t('users.创建第一个账号后，右侧会显示详情和角色维护入口')}</p>
-                </div>
-              ) : null}
-              {!loading && users.length > 0 && filteredUsers.length === 0 ? (
-                <div className="assistant-empty-state users-empty-state">
-                  <h3>{t('users.没有匹配结果')}</h3>
-                  <p>{t('users.当前筛选条件下没有找到用户，调整搜索词或筛选项即可')}</p>
-                </div>
-              ) : null}
-              {pagination.items.map((user) => {
-                const roleSummary = buildRoleSummary(user.roles);
-                const isActive = paneMode !== 'create' && user.id === selectedUserId;
-                return (
-                  <button
-                    key={user.id}
-                    type="button"
-                    className={`repo-review-repository-item users-list-item ${isActive ? 'active' : ''}`}
-                    onClick={() => handleSelectUser(user.id)}
-                  >
-                    <div className="users-list-item-topline assistant-card-topline">
-                      <strong>{user.username}</strong>
-                      <span className={`users-status-badge ${user.status === 'disabled' ? 'is-disabled' : 'is-active'}`}>
-                        {user.status === 'disabled' ? t('users.已停用') : t('users.启用中')}
-                      </span>
-                    </div>
-                    <span className="users-list-item-meta">{getUserSecondaryText(user, t('users.未填写展示名和邮箱'))}</span>
-                    <span className="users-role-summary">
-                      <span>{roleSummary.label}</span>
-                      <span>{t('users.创建于')} {formatCreatedAt(user.createdAt)}</span>
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-
-            {filteredUsers.length > 0 ? (
-              <div className="users-pagination">
-                <span className="users-inline-note">
-                  {t('users.分页信息', { page: pagination.page, totalPages: pagination.totalPages, total: pagination.total })}
-                </span>
-                <div className="assistant-button-row">
-                  <button
-                    type="button"
-                    className="btn-outline btn-sm"
-                    onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
-                    disabled={pagination.page <= 1}
-                  >
-                    {t('users.上一页')}
-                  </button>
-                  <button
-                    type="button"
-                    className="btn-outline btn-sm"
-                    onClick={() =>
-                      setCurrentPage((page) => Math.min(pagination.totalPages, page + 1))
-                    }
-                    disabled={pagination.page >= pagination.totalPages}
-                  >
-                    {t('users.下一页')}
-                  </button>
-                </div>
-              </div>
-            ) : null}
-          </aside>
-
-          <section className="users-detail-pane assistant-selector-panel">
-            {notice ? (
-              <div className={`users-message ${notice.tone === 'error' ? 'is-error' : 'is-success'}`}>
-                {notice.text}
-              </div>
-            ) : null}
-
-            {paneMode === 'create' ? (
-              <div className="users-detail-stack">
-                <div className="assistant-form-section">
-                  <div className="assistant-form-section-header">
-                    <h4>{t('users.新增用户')}</h4>
-                    <p>{t('users.创建后仍停留在当前工作台，不再打断左侧浏览流')}</p>
-                  </div>
-                  <div className="users-form-grid">
-                    <label className="users-form-field"><span>{t('users.用户名')}</span><input value={createForm.username} onChange={(event) => setCreateForm((prev) => ({ ...prev, username: event.target.value }))} /></label>
-                    <label className="users-form-field"><span>{t('users.初始密码')}</span><input type="password" value={createForm.password} onChange={(event) => setCreateForm((prev) => ({ ...prev, password: event.target.value }))} placeholder={t('users.留空则使用默认密码')} /></label>
-                    <label className="users-form-field"><span>{t('users.展示名')}</span><input value={createForm.displayName} onChange={(event) => setCreateForm((prev) => ({ ...prev, displayName: event.target.value }))} /></label>
-                    <label className="users-form-field"><span>{t('users.邮箱')}</span><input value={createForm.email} onChange={(event) => setCreateForm((prev) => ({ ...prev, email: event.target.value }))} /></label>
-                    <label className="users-form-field"><span>{t('users.状态')}</span><AppSelect value={createForm.status} onChange={(value) => setCreateForm((prev) => ({ ...prev, status: value === 'disabled' ? 'disabled' : 'active' }))} options={statusFilterOptions.slice(1)} /></label>
-                  </div>
-                </div>
-                <div className="assistant-form-section">
-                  <div className="assistant-form-section-header">
-                    <h4>{t('users.初始角色')}</h4>
-                    <p>{t('users.先加必需角色，更多权限仍可在详情页继续补齐')}</p>
-                  </div>
-                  <div className="assistant-chip-row users-role-list">
-                    {createForm.roleIds.length === 0 ? <span className="assistant-mini-chip users-role-chip-overflow">{t('users.暂未分配角色')}</span> : null}
-                    {createForm.roleIds.map((roleId) => (
-                      <span key={roleId} className="assistant-mini-chip users-role-chip">
-                        {roleById.get(roleId)?.name || roleId}
-                        <button type="button" className="users-role-chip-remove" onClick={() => setCreateForm((prev) => ({ ...prev, roleIds: prev.roleIds.filter((entry) => entry !== roleId) }))}>{t('users.移除')}</button>
-                      </span>
-                    ))}
-                  </div>
-                  <div className="assistant-button-row users-role-adder">
-                    <AppSelect value={createRoleDraft} onChange={setCreateRoleDraft} options={[{ value: '', label: t('users.选择要新增的角色') }, ...createAvailableRoles.map((role) => ({ value: role.id, label: role.name }))]} />
-                    <button type="button" className="btn-outline btn-sm" disabled={!createRoleDraft} onClick={() => {
-                      setCreateForm((prev) => ({ ...prev, roleIds: [...prev.roleIds, createRoleDraft] }));
-                      setCreateRoleDraft('');
-                    }}>{t('users.新增角色')}</button>
-                  </div>
-                  {createForm.roleIds.length > 0 ? (() => {
-                    const allCodes = [...new Set(createForm.roleIds.flatMap((rid) => roleById.get(rid)?.permissionCodes || []))];
-                    const pages = getAccessiblePages(allCodes, t);
-                    return pages.length > 0 ? (
-                      <div className="users-page-access-preview">
-                        <strong>{t('users.页面访问预览')}:</strong> {pages.join(' · ')}
-                      </div>
-                    ) : null;
-                  })() : null}
-                </div>
-                <div className="assistant-button-row users-pane-actions">
-                  <button type="button" className="btn-outline" onClick={() => setPaneMode(selectedUser ? 'detail' : 'empty')} disabled={submitting}>{t('users.取消')}</button>
-                  <button type="button" className="btn-primary" onClick={() => void handleCreate()} disabled={submitting}>{submitting ? t('users.新增中') : t('users.新增')}</button>
-                </div>
-              </div>
-            ) : null}
-
-            {paneMode !== 'create' && !selectedUser ? (
-              <div className="assistant-empty-state users-empty-state">
-                <h3>{t('users.选择一个用户')}</h3>
-                <p>{t('users.左侧选中账号后，这里会展示详情、角色和编辑入口')}</p>
-              </div>
-            ) : null}
-
-            {paneMode === 'detail' && selectedUser ? (
-              <div className="users-detail-stack">
-                <div className="assistant-form-section">
-                  <div className="assistant-form-section-header">
-                    <h4>{selectedUser.username}</h4>
-                    <p>{t('users.以详情为默认态，编辑只在需要修改时显式进入')}</p>
-                  </div>
-                  <div className="users-detail-grid assistant-card-summary-grid">
-                    <div><dt>{t('users.展示名')}</dt><dd>{selectedUser.displayName || '-'}</dd></div>
-                    <div><dt>{t('users.邮箱')}</dt><dd>{selectedUser.email || '-'}</dd></div>
-                    <div><dt>{t('users.创建时间')}</dt><dd>{formatCreatedAt(selectedUser.createdAt)}</dd></div>
-                    <div><dt>{t('users.当前状态')}</dt><dd>{selectedUser.status === 'disabled' ? t('users.已停用') : t('users.启用中')}</dd></div>
-                  </div>
-                </div>
-                <div className="assistant-form-section">
-                  <div className="assistant-form-section-header">
-                    <h4>{t('users.角色')}</h4>
-                    <p>{t('users.角色维护放在当前用户上下文里，不再混到左侧列表')}</p>
-                  </div>
-                  <div className="assistant-chip-row users-role-list">
-                    {selectedUserRoles.length === 0 ? <span className="assistant-mini-chip users-role-chip-overflow">{t('users.暂无角色')}</span> : null}
-                    {selectedUserRoles.map((role) => (
-                      <span key={role.id} className="assistant-mini-chip users-role-chip">{getRoleDisplayName(t, role.name)}</span>
-                    ))}
-                  </div>
-                  <div className="users-role-description-list">
-                    {selectedUserRoles.map((role) => {
-                      const codes = role.permissionCodes || [];
-                      const pages = getAccessiblePages(codes, t);
-                      return (
-                        <div key={`${role.id}-description`} className="users-role-description-item">
-                          <strong>{getRoleDisplayName(t, role.name)}</strong>
-                          <span>{getRoleDescription(t, role)}</span>
-                          {codes.length > 0 ? (
-                            <div className="users-role-detail-meta">
-                              <div className="users-role-perm-line">
-                                {t('users.权限码')}: {codes.map((c) => getPermissionLabel(t, c)).join(' · ')}
-                              </div>
-                              {pages.length > 0 ? (
-                                <div className="users-role-pages-line">
-                                  {t('users.可访问页面')}: {pages.join(' · ')}
-                                </div>
-                              ) : null}
-                            </div>
-                          ) : null}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-                <div className="assistant-form-section users-danger-zone">
-                  <div className="assistant-form-section-header">
-                    <h4>{t('users.操作')}</h4>
-                    <p>{t('users.编辑和删除都收敛在右侧，避免误操作影响列表浏览')}</p>
-                  </div>
-                  <div className="assistant-button-row users-pane-actions">
-                    <button type="button" className="btn-outline" onClick={openEditPane}>{t('users.编辑用户')}</button>
-                    <button type="button" className="btn-danger" onClick={() => void handleDelete()} disabled={submitting}>{submitting ? t('users.删除中') : t('users.删除用户')}</button>
-                  </div>
-                </div>
-              </div>
-            ) : null}
-
-            {paneMode === 'edit' && selectedUser ? (
-              <div className="users-detail-stack">
-                <div className="assistant-form-section">
-                  <div className="assistant-form-section-header">
-                    <h4>{t('users.编辑用户')}</h4>
-                    <p>{t('users.保留对象上下文，只修改必要字段')}</p>
-                  </div>
-                  <div className="users-form-grid">
-                    <label className="users-form-field"><span>{t('users.用户名')}</span><input value={editForm.username} disabled /></label>
-                    <label className="users-form-field"><span>{t('users.新密码')}</span><input type="password" value={editForm.password} onChange={(event) => setEditForm((prev) => ({ ...prev, password: event.target.value }))} placeholder={t('users.留空则保持不变')} /></label>
-                    <label className="users-form-field"><span>{t('users.展示名')}</span><input value={editForm.displayName} onChange={(event) => setEditForm((prev) => ({ ...prev, displayName: event.target.value }))} /></label>
-                    <label className="users-form-field"><span>{t('users.邮箱')}</span><input value={editForm.email} onChange={(event) => setEditForm((prev) => ({ ...prev, email: event.target.value }))} /></label>
-                    <label className="users-form-field"><span>{t('users.状态')}</span><AppSelect value={editForm.status} onChange={(value) => setEditForm((prev) => ({ ...prev, status: value === 'disabled' ? 'disabled' : 'active' }))} options={statusFilterOptions.slice(1)} /></label>
-                  </div>
-                </div>
-                <div className="assistant-form-section">
-                  <div className="assistant-form-section-header">
-                    <h4>{t('users.角色管理')}</h4>
-                    <p>{t('users.仅展示可新增角色，已选角色可直接移除')}</p>
-                  </div>
-                  <div className="assistant-chip-row users-role-list">
-                    {editForm.roleIds.length === 0 ? <span className="assistant-mini-chip users-role-chip-overflow">{t('users.暂无角色')}</span> : null}
-                    {editForm.roleIds.map((roleId) => (
-                      <span key={roleId} className="assistant-mini-chip users-role-chip">
-                        {getRoleDisplayName(t, roleById.get(roleId)?.name || roleId)}
-                        <button type="button" className="users-role-chip-remove" onClick={() => setEditForm((prev) => ({ ...prev, roleIds: prev.roleIds.filter((entry) => entry !== roleId) }))}>{t('users.移除')}</button>
-                      </span>
-                    ))}
-                  </div>
-                  <div className="assistant-button-row users-role-adder">
-                    <AppSelect value={editRoleDraft} onChange={setEditRoleDraft} options={[{ value: '', label: t('users.选择要新增的角色') }, ...editAvailableRoles.map((role) => ({ value: role.id, label: getRoleDisplayName(t, role.name) }))]} />
-                    <button type="button" className="btn-outline btn-sm" disabled={!editRoleDraft} onClick={() => {
-                      setEditForm((prev) => ({ ...prev, roleIds: [...prev.roleIds, editRoleDraft] }));
-                      setEditRoleDraft('');
-                    }}>{t('users.新增角色')}</button>
-                  </div>
-                  {editForm.roleIds.length > 0 ? (() => {
-                    const allCodes = [...new Set(editForm.roleIds.flatMap((rid) => roleById.get(rid)?.permissionCodes || []))];
-                    const pages = getAccessiblePages(allCodes, t);
-                    return pages.length > 0 ? (
-                      <div className="users-page-access-preview">
-                        <strong>{t('users.页面访问预览')}:</strong> {pages.join(' · ')}
-                      </div>
-                    ) : null;
-                  })() : null}
-                </div>
-                <div className="assistant-button-row users-pane-actions">
-                  <button type="button" className="btn-outline" onClick={() => setPaneMode('detail')} disabled={submitting}>{t('users.取消')}</button>
-                  <button type="button" className="btn-primary" onClick={() => void handleSave()} disabled={submitting}>{submitting ? t('users.保存中') : t('users.保存修改')}</button>
-                </div>
-              </div>
-            ) : null}
-          </section>
-        </div>
-      </div>
-      )}
-
-      {activeTab === 'roles' && (() => {
-        const activeRole = roles.find((r) => r.id === selectedRoleId) || null;
-        const isEditing = editingRoleId !== null && editingRoleId === selectedRoleId;
-        const activeCodes = isEditing ? editingRolePerms : (activeRole?.permissionCodes || []);
-        const totalPermCount = allGroupedCodes.length;
-
-        const toggleSection = (key: string) => {
-          setRoleExpandedSections((prev) => {
-            const next = new Set(prev);
-            if (next.has(key)) next.delete(key);
-            else next.add(key);
-            return next;
-          });
-        };
-
-        const toggleGroupAllCodes = (codes: string[]) => {
-          const allChecked = codes.every((c) => editingRolePerms.includes(c));
-          if (allChecked) {
-            setEditingRolePerms((prev) => prev.filter((c) => !codes.includes(c)));
-          } else {
-            setEditingRolePerms((prev) => [...new Set([...prev, ...codes])]);
-          }
-        };
-
-        return (
         <div className="page-body users-page-body">
           <div className="users-workbench">
             <aside className="users-sidebar assistant-selector-panel assistant-selector-panel--summary">
               <div className="assistant-form-section">
                 <div className="assistant-form-section-header">
-                  <h4>{t('users.角色列表')}</h4>
-                  <p>{t('users.选择一个角色查看和编辑其权限配置')}</p>
+                  <h4>{t('users.用户列表')}</h4>
+                  <p>{t('users.直接分页浏览即可，查询时再用筛选收窄范围')}</p>
                 </div>
-                <div className="users-role-create-toolbar">
-                  {!creatingRole ? (
-                    <button type="button" className="btn-primary btn-sm" onClick={() => setCreatingRole(true)}>+ {t('users.新建角色')}</button>
-                  ) : (
-                    <div className="users-role-create-panel">
-                      <div className="form-group">
-                        <label>{t('users.角色名称')}</label>
-                        <input type="text" placeholder={t('users.例如: editor')} value={newRoleName} onChange={(e) => setNewRoleName(e.target.value)} autoFocus />
-                      </div>
-                      <div className="form-group">
-                        <label>{t('users.描述')}</label>
-                        <input type="text" placeholder={t('users.例如: 内容编辑员')} value={newRoleDesc} onChange={(e) => setNewRoleDesc(e.target.value)} />
-                      </div>
-                      <div className="assistant-button-row">
-                        <button type="button" className="btn-outline btn-sm" onClick={() => { setCreatingRole(false); setNewRoleName(''); setNewRoleDesc(''); }} disabled={savingNewRole}>{t('users.取消')}</button>
-                        <button type="button" className="btn-primary btn-sm" disabled={savingNewRole || !newRoleName.trim()} onClick={async () => {
-                          setSavingNewRole(true);
-                          try {
-                            const res = await fetch('/api/roles', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: newRoleName.trim(), description: newRoleDesc }) });
-                            const data = await res.json();
-                            if (!res.ok) { setNotice({ text: data.error || t('users.创建失败'), tone: 'error' }); return; }
-                            setNotice({ text: t('users.角色已创建', { name: newRoleName.trim() }), tone: 'success' });
-                            setCreatingRole(false); setNewRoleName(''); setNewRoleDesc('');
-                            const nextRoles = await loadRoles();
-                            setRoles(nextRoles);
-                          } catch { setNotice({ text: t('users.网络错误'), tone: 'error' }); } finally { setSavingNewRole(false); }
-                        }}>{savingNewRole ? t('users.新增中') : t('users.新增')}</button>
-                      </div>
-                    </div>
-                  )}
+                <div className="assistant-selector-grid users-filter-grid">
+                  <label className="assistant-selector-field assistant-selector-field--wide">
+                    <span>{t('users.搜索')}</span>
+                    <input
+                      value={searchQuery}
+                      onChange={(event) => {
+                        setSearchQuery(event.target.value);
+                        setCurrentPage(1);
+                      }}
+                      placeholder={t('users.按用户名、展示名或邮箱搜索')}
+                    />
+                  </label>
+                  <label className="assistant-selector-field">
+                    <span>{t('users.状态')}</span>
+                    <AppSelect
+                      value={statusFilter}
+                      onChange={setStatusFilter}
+                      options={statusFilterOptions}
+                    />
+                  </label>
+                  <label className="assistant-selector-field">
+                    <span>{t('users.角色')}</span>
+                    <AppSelect
+                      value={roleFilter}
+                      onChange={setRoleFilter}
+                      options={roleFilterOptions}
+                    />
+                  </label>
                 </div>
               </div>
 
               <div className="users-list">
-                {roles.map((role) => {
-                  const permCount = (role.permissionCodes || []).length;
-                  const isActive = role.id === selectedRoleId;
+                {loading ? (
+                  <div className="assistant-card-note">
+                    {t('users.加载用户中')}
+                  </div>
+                ) : null}
+                {!loading && users.length === 0 ? (
+                  <div className="assistant-empty-state users-empty-state">
+                    <h3>{t('users.还没有用户')}</h3>
+                    <p>
+                      {t(
+                        'users.创建第一个账号后，右侧会显示详情和角色维护入口',
+                      )}
+                    </p>
+                  </div>
+                ) : null}
+                {!loading && users.length > 0 && filteredUsers.length === 0 ? (
+                  <div className="assistant-empty-state users-empty-state">
+                    <h3>{t('users.没有匹配结果')}</h3>
+                    <p>
+                      {t(
+                        'users.当前筛选条件下没有找到用户，调整搜索词或筛选项即可',
+                      )}
+                    </p>
+                  </div>
+                ) : null}
+                {pagination.items.map((user) => {
+                  const roleSummary = buildRoleSummary(user.roles);
+                  const isActive =
+                    paneMode !== 'create' && user.id === selectedUserId;
                   return (
                     <button
-                      key={role.id}
+                      key={user.id}
                       type="button"
                       className={`repo-review-repository-item users-list-item ${isActive ? 'active' : ''}`}
-                      onClick={() => {
-                        setSelectedRoleId(role.id);
-                        if (editingRoleId && editingRoleId !== role.id) cancelEditingRole();
-                        setRoleExpandedSections(new Set());
-                      }}
+                      onClick={() => handleSelectUser(user.id)}
                     >
                       <div className="users-list-item-topline assistant-card-topline">
-                        <strong>{getRoleDisplayName(t, role.name)}</strong>
-                        <span className="users-perm-code users-role-perm-ratio">{permCount}/{totalPermCount}</span>
+                        <strong>{user.username}</strong>
+                        <span
+                          className={`users-status-badge ${user.status === 'disabled' ? 'is-disabled' : 'is-active'}`}
+                        >
+                          {user.status === 'disabled'
+                            ? t('users.已停用')
+                            : t('users.启用中')}
+                        </span>
                       </div>
-                      <span className="users-list-item-meta">{getRoleDescription(t, role)}</span>
+                      <span className="users-list-item-meta">
+                        {getUserSecondaryText(
+                          user,
+                          t('users.未填写展示名和邮箱'),
+                        )}
+                      </span>
+                      <span className="users-role-summary">
+                        <span>{roleSummary.label}</span>
+                        <span>
+                          {t('users.创建于')} {formatCreatedAt(user.createdAt)}
+                        </span>
+                      </span>
                     </button>
                   );
                 })}
               </div>
+
+              {filteredUsers.length > 0 ? (
+                <div className="users-pagination">
+                  <span className="users-inline-note">
+                    {t('users.分页信息', {
+                      page: pagination.page,
+                      totalPages: pagination.totalPages,
+                      total: pagination.total,
+                    })}
+                  </span>
+                  <div className="assistant-button-row">
+                    <button
+                      type="button"
+                      className="btn-outline btn-sm"
+                      onClick={() =>
+                        setCurrentPage((page) => Math.max(1, page - 1))
+                      }
+                      disabled={pagination.page <= 1}
+                    >
+                      {t('users.上一页')}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-outline btn-sm"
+                      onClick={() =>
+                        setCurrentPage((page) =>
+                          Math.min(pagination.totalPages, page + 1),
+                        )
+                      }
+                      disabled={pagination.page >= pagination.totalPages}
+                    >
+                      {t('users.下一页')}
+                    </button>
+                  </div>
+                </div>
+              ) : null}
             </aside>
 
             <section className="users-detail-pane assistant-selector-panel">
               {notice ? (
-                <div className={`users-message ${notice.tone === 'error' ? 'is-error' : 'is-success'}`}>{notice.text}</div>
+                <div
+                  className={`users-message ${notice.tone === 'error' ? 'is-error' : 'is-success'}`}
+                >
+                  {notice.text}
+                </div>
               ) : null}
 
-              {!activeRole ? (
-                <div className="assistant-empty-state users-empty-state">
-                  <h3>{t('users.选择一个角色')}</h3>
-                  <p>{t('users.左侧选中角色后，这里会展示该角色的权限详情')}</p>
-                </div>
-              ) : (
+              {paneMode === 'create' ? (
                 <div className="users-detail-stack">
                   <div className="assistant-form-section">
                     <div className="assistant-form-section-header">
-                      <h4>{getRoleDisplayName(t, activeRole.name)}</h4>
-                      <p>{getRoleDescription(t, activeRole)}</p>
+                      <h4>{t('users.新增用户')}</h4>
+                      <p>
+                        {t(
+                          'users.创建后仍停留在当前工作台，不再打断左侧浏览流',
+                        )}
+                      </p>
                     </div>
-                    <div className="assistant-button-row users-role-edit-actions">
-                      {isEditing ? (
-                        <>
-                          <button type="button" className="btn-outline btn-sm" onClick={cancelEditingRole} disabled={savingRolePerms}>{t('users.取消')}</button>
-                          <button type="button" className="btn-primary btn-sm" onClick={() => void saveRolePermissions()} disabled={savingRolePerms}>{savingRolePerms ? t('users.保存中') : t('users.保存修改')}</button>
-                        </>
-                      ) : (
-                        <button type="button" className="btn-outline btn-sm" onClick={() => startEditingRole(activeRole)}>{t('users.编辑权限')}</button>
-                      )}
-                    </div>
-                    <div className="users-perm-summary-line">
-                      {t('users.已授权项权限', { count: activeCodes.length, total: totalPermCount })}
+                    <div className="users-form-grid">
+                      <label className="users-form-field">
+                        <span>{t('users.用户名')}</span>
+                        <input
+                          value={createForm.username}
+                          onChange={(event) =>
+                            setCreateForm((prev) => ({
+                              ...prev,
+                              username: event.target.value,
+                            }))
+                          }
+                        />
+                      </label>
+                      <label className="users-form-field">
+                        <span>{t('users.初始密码')}</span>
+                        <input
+                          type="password"
+                          value={createForm.password}
+                          onChange={(event) =>
+                            setCreateForm((prev) => ({
+                              ...prev,
+                              password: event.target.value,
+                            }))
+                          }
+                          placeholder={t('users.留空则使用默认密码')}
+                        />
+                      </label>
+                      <label className="users-form-field">
+                        <span>{t('users.展示名')}</span>
+                        <input
+                          value={createForm.displayName}
+                          onChange={(event) =>
+                            setCreateForm((prev) => ({
+                              ...prev,
+                              displayName: event.target.value,
+                            }))
+                          }
+                        />
+                      </label>
+                      <label className="users-form-field">
+                        <span>{t('users.邮箱')}</span>
+                        <input
+                          value={createForm.email}
+                          onChange={(event) =>
+                            setCreateForm((prev) => ({
+                              ...prev,
+                              email: event.target.value,
+                            }))
+                          }
+                        />
+                      </label>
+                      <label className="users-form-field">
+                        <span>{t('users.状态')}</span>
+                        <AppSelect
+                          value={createForm.status}
+                          onChange={(value) =>
+                            setCreateForm((prev) => ({
+                              ...prev,
+                              status:
+                                value === 'disabled' ? 'disabled' : 'active',
+                            }))
+                          }
+                          options={statusFilterOptions.slice(1)}
+                        />
+                      </label>
                     </div>
                   </div>
-
-                  {permissionGroups.map((group) => {
-                    const sectionKey = group.section;
-                    const expanded = roleExpandedSections.has(sectionKey);
-                    const sectionCodes = group.subGroups.flatMap((sg) => sg.codes);
-                    const checkedCount = sectionCodes.filter((c) => activeCodes.includes(c)).length;
-
-                    return (
-                      <div key={sectionKey} className="assistant-form-section users-perm-nav-section">
-                        <button
-                          type="button"
-                          className="users-perm-section-toggle"
-                          onClick={() => toggleSection(sectionKey)}
+                  <div className="assistant-form-section">
+                    <div className="assistant-form-section-header">
+                      <h4>{t('users.初始角色')}</h4>
+                      <p>
+                        {t('users.先加必需角色，更多权限仍可在详情页继续补齐')}
+                      </p>
+                    </div>
+                    <div className="assistant-chip-row users-role-list">
+                      {createForm.roleIds.length === 0 ? (
+                        <span className="assistant-mini-chip users-role-chip-overflow">
+                          {t('users.暂未分配角色')}
+                        </span>
+                      ) : null}
+                      {createForm.roleIds.map((roleId) => (
+                        <span
+                          key={roleId}
+                          className="assistant-mini-chip users-role-chip"
                         >
-                          <svg
-                            width="12"
-                            height="12"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2.5"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            style={{ transform: expanded ? 'rotate(90deg)' : 'rotate(0)', transition: 'transform 0.15s' }}
+                          {roleById.get(roleId)?.name || roleId}
+                          <button
+                            type="button"
+                            className="users-role-chip-remove"
+                            onClick={() =>
+                              setCreateForm((prev) => ({
+                                ...prev,
+                                roleIds: prev.roleIds.filter(
+                                  (entry) => entry !== roleId,
+                                ),
+                              }))
+                            }
                           >
-                            <polyline points="9 18 15 12 9 6"/>
-                          </svg>
-                          <span className="users-perm-section-heading">{sectionKey}</span>
-                          <span className="users-perm-section-meta">{checkedCount}/{sectionCodes.length}</span>
-                        </button>
-
-                        {expanded && (
-                          <div className="users-perm-nav-body">
-                            {group.subGroups.map((sub) => {
-                              const subChecked = sub.codes.filter((c) => activeCodes.includes(c)).length;
-                              return (
-                                <div key={sub.label} className="users-perm-sub-block">
-                                  <div className="users-perm-sub-header">
-                                    {isEditing && (
-                                      <input
-                                        type="checkbox"
-                                        checked={sub.codes.every((c) => editingRolePerms.includes(c))}
-                                        ref={(el) => { if (el) el.indeterminate = subChecked > 0 && subChecked < sub.codes.length; }}
-                                        onChange={() => toggleGroupAllCodes(sub.codes)}
-                                      />
-                                    )}
-                                    <span className="users-perm-sub-label">{sub.label}</span>
-                                    <span className="users-perm-sub-meta">({subChecked}/{sub.codes.length})</span>
-                                  </div>
-                                  <div className="users-role-perm-grid users-role-perm-grid--inset">
-                                    {sub.codes.map((code) => {
-                                      const checked = activeCodes.includes(code);
-                                      return (
-                                        <label key={code} className={`users-perm-item ${checked ? 'is-checked' : ''}`}>
-                                          <input
-                                            type="checkbox"
-                                            checked={checked}
-                                            disabled={!isEditing}
-                                            onChange={() => togglePermission(code)}
-                                          />
-                                          <span>{getPermissionLabel(t, code)}</span>
-                                          <span className="users-perm-code">{code}</span>
-                                        </label>
-                                      );
-                                    })}
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
+                            {t('users.移除')}
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                    <div className="assistant-button-row users-role-adder">
+                      <AppSelect
+                        value={createRoleDraft}
+                        onChange={setCreateRoleDraft}
+                        options={[
+                          { value: '', label: t('users.选择要新增的角色') },
+                          ...createAvailableRoles.map((role) => ({
+                            value: role.id,
+                            label: role.name,
+                          })),
+                        ]}
+                      />
+                      <button
+                        type="button"
+                        className="btn-outline btn-sm"
+                        disabled={!createRoleDraft}
+                        onClick={() => {
+                          setCreateForm((prev) => ({
+                            ...prev,
+                            roleIds: [...prev.roleIds, createRoleDraft],
+                          }));
+                          setCreateRoleDraft('');
+                        }}
+                      >
+                        {t('users.新增角色')}
+                      </button>
+                    </div>
+                    {createForm.roleIds.length > 0
+                      ? (() => {
+                          const allCodes = [
+                            ...new Set(
+                              createForm.roleIds.flatMap(
+                                (rid) =>
+                                  roleById.get(rid)?.permissionCodes || [],
+                              ),
+                            ),
+                          ];
+                          const pages = getAccessiblePages(allCodes, t);
+                          return pages.length > 0 ? (
+                            <div className="users-page-access-preview">
+                              <strong>{t('users.页面访问预览')}:</strong>{' '}
+                              {pages.join(' · ')}
+                            </div>
+                          ) : null;
+                        })()
+                      : null}
+                  </div>
+                  <div className="assistant-button-row users-pane-actions">
+                    <button
+                      type="button"
+                      className="btn-outline"
+                      onClick={() =>
+                        setPaneMode(selectedUser ? 'detail' : 'empty')
+                      }
+                      disabled={submitting}
+                    >
+                      {t('users.取消')}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-primary"
+                      onClick={() => void handleCreate()}
+                      disabled={submitting}
+                    >
+                      {submitting ? t('users.新增中') : t('users.新增')}
+                    </button>
+                  </div>
                 </div>
-              )}
+              ) : null}
+
+              {paneMode !== 'create' && !selectedUser ? (
+                <div className="assistant-empty-state users-empty-state">
+                  <h3>{t('users.选择一个用户')}</h3>
+                  <p>
+                    {t('users.左侧选中账号后，这里会展示详情、角色和编辑入口')}
+                  </p>
+                </div>
+              ) : null}
+
+              {paneMode === 'detail' && selectedUser ? (
+                <div className="users-detail-stack">
+                  <div className="assistant-form-section">
+                    <div className="assistant-form-section-header">
+                      <h4>{selectedUser.username}</h4>
+                      <p>
+                        {t('users.以详情为默认态，编辑只在需要修改时显式进入')}
+                      </p>
+                    </div>
+                    <div className="users-detail-grid assistant-card-summary-grid">
+                      <div>
+                        <dt>{t('users.展示名')}</dt>
+                        <dd>{selectedUser.displayName || '-'}</dd>
+                      </div>
+                      <div>
+                        <dt>{t('users.邮箱')}</dt>
+                        <dd>{selectedUser.email || '-'}</dd>
+                      </div>
+                      <div>
+                        <dt>{t('users.创建时间')}</dt>
+                        <dd>{formatCreatedAt(selectedUser.createdAt)}</dd>
+                      </div>
+                      <div>
+                        <dt>{t('users.当前状态')}</dt>
+                        <dd>
+                          {selectedUser.status === 'disabled'
+                            ? t('users.已停用')
+                            : t('users.启用中')}
+                        </dd>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="assistant-form-section">
+                    <div className="assistant-form-section-header">
+                      <h4>{t('users.角色')}</h4>
+                      <p>
+                        {t(
+                          'users.角色维护放在当前用户上下文里，不再混到左侧列表',
+                        )}
+                      </p>
+                    </div>
+                    <div className="assistant-chip-row users-role-list">
+                      {selectedUserRoles.length === 0 ? (
+                        <span className="assistant-mini-chip users-role-chip-overflow">
+                          {t('users.暂无角色')}
+                        </span>
+                      ) : null}
+                      {selectedUserRoles.map((role) => (
+                        <span
+                          key={role.id}
+                          className="assistant-mini-chip users-role-chip"
+                        >
+                          {getRoleDisplayName(t, role.name)}
+                        </span>
+                      ))}
+                    </div>
+                    <div className="users-role-description-list">
+                      {selectedUserRoles.map((role) => {
+                        const codes = role.permissionCodes || [];
+                        const pages = getAccessiblePages(codes, t);
+                        return (
+                          <div
+                            key={`${role.id}-description`}
+                            className="users-role-description-item"
+                          >
+                            <strong>{getRoleDisplayName(t, role.name)}</strong>
+                            <span>{getRoleDescription(t, role)}</span>
+                            {codes.length > 0 ? (
+                              <div className="users-role-detail-meta">
+                                <div className="users-role-perm-line">
+                                  {t('users.权限码')}:{' '}
+                                  {codes
+                                    .map((c) => getPermissionLabel(t, c))
+                                    .join(' · ')}
+                                </div>
+                                {pages.length > 0 ? (
+                                  <div className="users-role-pages-line">
+                                    {t('users.可访问页面')}: {pages.join(' · ')}
+                                  </div>
+                                ) : null}
+                              </div>
+                            ) : null}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  <div className="assistant-form-section users-danger-zone">
+                    <div className="assistant-form-section-header">
+                      <h4>{t('users.操作')}</h4>
+                      <p>
+                        {t(
+                          'users.编辑和删除都收敛在右侧，避免误操作影响列表浏览',
+                        )}
+                      </p>
+                    </div>
+                    <div className="assistant-button-row users-pane-actions">
+                      <button
+                        type="button"
+                        className="btn-outline"
+                        onClick={openEditPane}
+                      >
+                        {t('users.编辑用户')}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-danger"
+                        onClick={() => void handleDelete()}
+                        disabled={submitting}
+                      >
+                        {submitting ? t('users.删除中') : t('users.删除用户')}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
+              {paneMode === 'edit' && selectedUser ? (
+                <div className="users-detail-stack">
+                  <div className="assistant-form-section">
+                    <div className="assistant-form-section-header">
+                      <h4>{t('users.编辑用户')}</h4>
+                      <p>{t('users.保留对象上下文，只修改必要字段')}</p>
+                    </div>
+                    <div className="users-form-grid">
+                      <label className="users-form-field">
+                        <span>{t('users.用户名')}</span>
+                        <input value={editForm.username} disabled />
+                      </label>
+                      <label className="users-form-field">
+                        <span>{t('users.新密码')}</span>
+                        <input
+                          type="password"
+                          value={editForm.password}
+                          onChange={(event) =>
+                            setEditForm((prev) => ({
+                              ...prev,
+                              password: event.target.value,
+                            }))
+                          }
+                          placeholder={t('users.留空则保持不变')}
+                        />
+                      </label>
+                      <label className="users-form-field">
+                        <span>{t('users.展示名')}</span>
+                        <input
+                          value={editForm.displayName}
+                          onChange={(event) =>
+                            setEditForm((prev) => ({
+                              ...prev,
+                              displayName: event.target.value,
+                            }))
+                          }
+                        />
+                      </label>
+                      <label className="users-form-field">
+                        <span>{t('users.邮箱')}</span>
+                        <input
+                          value={editForm.email}
+                          onChange={(event) =>
+                            setEditForm((prev) => ({
+                              ...prev,
+                              email: event.target.value,
+                            }))
+                          }
+                        />
+                      </label>
+                      <label className="users-form-field">
+                        <span>{t('users.状态')}</span>
+                        <AppSelect
+                          value={editForm.status}
+                          onChange={(value) =>
+                            setEditForm((prev) => ({
+                              ...prev,
+                              status:
+                                value === 'disabled' ? 'disabled' : 'active',
+                            }))
+                          }
+                          options={statusFilterOptions.slice(1)}
+                        />
+                      </label>
+                    </div>
+                  </div>
+                  <div className="assistant-form-section">
+                    <div className="assistant-form-section-header">
+                      <h4>{t('users.角色管理')}</h4>
+                      <p>{t('users.仅展示可新增角色，已选角色可直接移除')}</p>
+                    </div>
+                    <div className="assistant-chip-row users-role-list">
+                      {editForm.roleIds.length === 0 ? (
+                        <span className="assistant-mini-chip users-role-chip-overflow">
+                          {t('users.暂无角色')}
+                        </span>
+                      ) : null}
+                      {editForm.roleIds.map((roleId) => (
+                        <span
+                          key={roleId}
+                          className="assistant-mini-chip users-role-chip"
+                        >
+                          {getRoleDisplayName(
+                            t,
+                            roleById.get(roleId)?.name || roleId,
+                          )}
+                          <button
+                            type="button"
+                            className="users-role-chip-remove"
+                            onClick={() =>
+                              setEditForm((prev) => ({
+                                ...prev,
+                                roleIds: prev.roleIds.filter(
+                                  (entry) => entry !== roleId,
+                                ),
+                              }))
+                            }
+                          >
+                            {t('users.移除')}
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                    <div className="assistant-button-row users-role-adder">
+                      <AppSelect
+                        value={editRoleDraft}
+                        onChange={setEditRoleDraft}
+                        options={[
+                          { value: '', label: t('users.选择要新增的角色') },
+                          ...editAvailableRoles.map((role) => ({
+                            value: role.id,
+                            label: getRoleDisplayName(t, role.name),
+                          })),
+                        ]}
+                      />
+                      <button
+                        type="button"
+                        className="btn-outline btn-sm"
+                        disabled={!editRoleDraft}
+                        onClick={() => {
+                          setEditForm((prev) => ({
+                            ...prev,
+                            roleIds: [...prev.roleIds, editRoleDraft],
+                          }));
+                          setEditRoleDraft('');
+                        }}
+                      >
+                        {t('users.新增角色')}
+                      </button>
+                    </div>
+                    {editForm.roleIds.length > 0
+                      ? (() => {
+                          const allCodes = [
+                            ...new Set(
+                              editForm.roleIds.flatMap(
+                                (rid) =>
+                                  roleById.get(rid)?.permissionCodes || [],
+                              ),
+                            ),
+                          ];
+                          const pages = getAccessiblePages(allCodes, t);
+                          return pages.length > 0 ? (
+                            <div className="users-page-access-preview">
+                              <strong>{t('users.页面访问预览')}:</strong>{' '}
+                              {pages.join(' · ')}
+                            </div>
+                          ) : null;
+                        })()
+                      : null}
+                  </div>
+                  <div className="assistant-button-row users-pane-actions">
+                    <button
+                      type="button"
+                      className="btn-outline"
+                      onClick={() => setPaneMode('detail')}
+                      disabled={submitting}
+                    >
+                      {t('users.取消')}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-primary"
+                      onClick={() => void handleSave()}
+                      disabled={submitting}
+                    >
+                      {submitting ? t('users.保存中') : t('users.保存修改')}
+                    </button>
+                  </div>
+                </div>
+              ) : null}
             </section>
           </div>
         </div>
-        );
-      })()}
+      )}
+
+      {activeTab === 'roles' &&
+        (() => {
+          const activeRole = roles.find((r) => r.id === selectedRoleId) || null;
+          const isEditing =
+            editingRoleId !== null && editingRoleId === selectedRoleId;
+          const activeCodes = isEditing
+            ? editingRolePerms
+            : activeRole?.permissionCodes || [];
+          const totalPermCount = allGroupedCodes.length;
+
+          const toggleSection = (key: string) => {
+            setRoleExpandedSections((prev) => {
+              const next = new Set(prev);
+              if (next.has(key)) next.delete(key);
+              else next.add(key);
+              return next;
+            });
+          };
+
+          const toggleGroupAllCodes = (codes: string[]) => {
+            const allChecked = codes.every((c) => editingRolePerms.includes(c));
+            if (allChecked) {
+              setEditingRolePerms((prev) =>
+                prev.filter((c) => !codes.includes(c)),
+              );
+            } else {
+              setEditingRolePerms((prev) => [...new Set([...prev, ...codes])]);
+            }
+          };
+
+          return (
+            <div className="page-body users-page-body">
+              <div className="users-workbench">
+                <aside className="users-sidebar assistant-selector-panel assistant-selector-panel--summary">
+                  <div className="assistant-form-section">
+                    <div className="assistant-form-section-header">
+                      <h4>{t('users.角色列表')}</h4>
+                      <p>{t('users.选择一个角色查看和编辑其权限配置')}</p>
+                    </div>
+                    <div className="users-role-create-toolbar">
+                      {!creatingRole ? (
+                        <button
+                          type="button"
+                          className="btn-primary btn-sm"
+                          onClick={() => setCreatingRole(true)}
+                        >
+                          + {t('users.新建角色')}
+                        </button>
+                      ) : (
+                        <div className="users-role-create-panel">
+                          <div className="form-group">
+                            <label>{t('users.角色名称')}</label>
+                            <input
+                              type="text"
+                              placeholder={t('users.例如: editor')}
+                              value={newRoleName}
+                              onChange={(e) => setNewRoleName(e.target.value)}
+                              autoFocus
+                            />
+                          </div>
+                          <div className="form-group">
+                            <label>{t('users.描述')}</label>
+                            <input
+                              type="text"
+                              placeholder={t('users.例如: 内容编辑员')}
+                              value={newRoleDesc}
+                              onChange={(e) => setNewRoleDesc(e.target.value)}
+                            />
+                          </div>
+                          <div className="assistant-button-row">
+                            <button
+                              type="button"
+                              className="btn-outline btn-sm"
+                              onClick={() => {
+                                setCreatingRole(false);
+                                setNewRoleName('');
+                                setNewRoleDesc('');
+                              }}
+                              disabled={savingNewRole}
+                            >
+                              {t('users.取消')}
+                            </button>
+                            <button
+                              type="button"
+                              className="btn-primary btn-sm"
+                              disabled={savingNewRole || !newRoleName.trim()}
+                              onClick={async () => {
+                                setSavingNewRole(true);
+                                try {
+                                  const res = await fetch('/api/roles', {
+                                    method: 'POST',
+                                    headers: {
+                                      'Content-Type': 'application/json',
+                                    },
+                                    body: JSON.stringify({
+                                      name: newRoleName.trim(),
+                                      description: newRoleDesc,
+                                    }),
+                                  });
+                                  const data = await res.json();
+                                  if (!res.ok) {
+                                    setNotice({
+                                      text: data.error || t('users.创建失败'),
+                                      tone: 'error',
+                                    });
+                                    return;
+                                  }
+                                  setNotice({
+                                    text: t('users.角色已创建', {
+                                      name: newRoleName.trim(),
+                                    }),
+                                    tone: 'success',
+                                  });
+                                  setCreatingRole(false);
+                                  setNewRoleName('');
+                                  setNewRoleDesc('');
+                                  const nextRoles = await loadRoles();
+                                  setRoles(nextRoles);
+                                } catch {
+                                  setNotice({
+                                    text: t('users.网络错误'),
+                                    tone: 'error',
+                                  });
+                                } finally {
+                                  setSavingNewRole(false);
+                                }
+                              }}
+                            >
+                              {savingNewRole
+                                ? t('users.新增中')
+                                : t('users.新增')}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="users-list">
+                    {roles.map((role) => {
+                      const permCount = (role.permissionCodes || []).length;
+                      const isActive = role.id === selectedRoleId;
+                      return (
+                        <button
+                          key={role.id}
+                          type="button"
+                          className={`repo-review-repository-item users-list-item ${isActive ? 'active' : ''}`}
+                          onClick={() => {
+                            setSelectedRoleId(role.id);
+                            if (editingRoleId && editingRoleId !== role.id)
+                              cancelEditingRole();
+                            setRoleExpandedSections(new Set());
+                          }}
+                        >
+                          <div className="users-list-item-topline assistant-card-topline">
+                            <strong>{getRoleDisplayName(t, role.name)}</strong>
+                            <span className="users-perm-code users-role-perm-ratio">
+                              {permCount}/{totalPermCount}
+                            </span>
+                          </div>
+                          <span className="users-list-item-meta">
+                            {getRoleDescription(t, role)}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </aside>
+
+                <section className="users-detail-pane assistant-selector-panel">
+                  {notice ? (
+                    <div
+                      className={`users-message ${notice.tone === 'error' ? 'is-error' : 'is-success'}`}
+                    >
+                      {notice.text}
+                    </div>
+                  ) : null}
+
+                  {!activeRole ? (
+                    <div className="assistant-empty-state users-empty-state">
+                      <h3>{t('users.选择一个角色')}</h3>
+                      <p>
+                        {t('users.左侧选中角色后，这里会展示该角色的权限详情')}
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="users-detail-stack">
+                      <div className="assistant-form-section">
+                        <div className="assistant-form-section-header">
+                          <h4>{getRoleDisplayName(t, activeRole.name)}</h4>
+                          <p>{getRoleDescription(t, activeRole)}</p>
+                        </div>
+                        <div className="assistant-button-row users-role-edit-actions">
+                          {isEditing ? (
+                            <>
+                              <button
+                                type="button"
+                                className="btn-outline btn-sm"
+                                onClick={cancelEditingRole}
+                                disabled={savingRolePerms}
+                              >
+                                {t('users.取消')}
+                              </button>
+                              <button
+                                type="button"
+                                className="btn-primary btn-sm"
+                                onClick={() => void saveRolePermissions()}
+                                disabled={savingRolePerms}
+                              >
+                                {savingRolePerms
+                                  ? t('users.保存中')
+                                  : t('users.保存修改')}
+                              </button>
+                            </>
+                          ) : (
+                            <button
+                              type="button"
+                              className="btn-outline btn-sm"
+                              onClick={() => startEditingRole(activeRole)}
+                            >
+                              {t('users.编辑权限')}
+                            </button>
+                          )}
+                        </div>
+                        <div className="users-perm-summary-line">
+                          {t('users.已授权项权限', {
+                            count: activeCodes.length,
+                            total: totalPermCount,
+                          })}
+                        </div>
+                      </div>
+
+                      {permissionGroups.map((group) => {
+                        const sectionKey = group.section;
+                        const expanded = roleExpandedSections.has(sectionKey);
+                        const sectionCodes = group.subGroups.flatMap(
+                          (sg) => sg.codes,
+                        );
+                        const checkedCount = sectionCodes.filter((c) =>
+                          activeCodes.includes(c),
+                        ).length;
+
+                        return (
+                          <div
+                            key={sectionKey}
+                            className="assistant-form-section users-perm-nav-section"
+                          >
+                            <button
+                              type="button"
+                              className="users-perm-section-toggle"
+                              onClick={() => toggleSection(sectionKey)}
+                            >
+                              <svg
+                                width="12"
+                                height="12"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2.5"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                style={{
+                                  transform: expanded
+                                    ? 'rotate(90deg)'
+                                    : 'rotate(0)',
+                                  transition: 'transform 0.15s',
+                                }}
+                              >
+                                <polyline points="9 18 15 12 9 6" />
+                              </svg>
+                              <span className="users-perm-section-heading">
+                                {sectionKey}
+                              </span>
+                              <span className="users-perm-section-meta">
+                                {checkedCount}/{sectionCodes.length}
+                              </span>
+                            </button>
+
+                            {expanded && (
+                              <div className="users-perm-nav-body">
+                                {group.subGroups.map((sub) => {
+                                  const subChecked = sub.codes.filter((c) =>
+                                    activeCodes.includes(c),
+                                  ).length;
+                                  return (
+                                    <div
+                                      key={sub.label}
+                                      className="users-perm-sub-block"
+                                    >
+                                      <div className="users-perm-sub-header">
+                                        {isEditing && (
+                                          <input
+                                            type="checkbox"
+                                            checked={sub.codes.every((c) =>
+                                              editingRolePerms.includes(c),
+                                            )}
+                                            ref={(el) => {
+                                              if (el)
+                                                el.indeterminate =
+                                                  subChecked > 0 &&
+                                                  subChecked < sub.codes.length;
+                                            }}
+                                            onChange={() =>
+                                              toggleGroupAllCodes(sub.codes)
+                                            }
+                                          />
+                                        )}
+                                        <span className="users-perm-sub-label">
+                                          {sub.label}
+                                        </span>
+                                        <span className="users-perm-sub-meta">
+                                          ({subChecked}/{sub.codes.length})
+                                        </span>
+                                      </div>
+                                      <div className="users-role-perm-grid users-role-perm-grid--inset">
+                                        {sub.codes.map((code) => {
+                                          const checked =
+                                            activeCodes.includes(code);
+                                          return (
+                                            <label
+                                              key={code}
+                                              className={`users-perm-item ${checked ? 'is-checked' : ''}`}
+                                            >
+                                              <input
+                                                type="checkbox"
+                                                checked={checked}
+                                                disabled={!isEditing}
+                                                onChange={() =>
+                                                  togglePermission(code)
+                                                }
+                                              />
+                                              <span>
+                                                {getPermissionLabel(t, code)}
+                                              </span>
+                                              <span className="users-perm-code">
+                                                {code}
+                                              </span>
+                                            </label>
+                                          );
+                                        })}
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </section>
+              </div>
+            </div>
+          );
+        })()}
 
       {activeTab === 'repo-access' && (
         <div className="page-body">
           {notice ? (
-            <div className={`users-message ${notice.tone === 'error' ? 'is-error' : 'is-success'}`}>
+            <div
+              className={`users-message ${notice.tone === 'error' ? 'is-error' : 'is-success'}`}
+            >
               {notice.text}
             </div>
           ) : null}
@@ -1514,7 +2234,11 @@ export function UsersPage({ apiBase }: UsersPageProps) {
             <div className="assistant-form-section">
               <div className="assistant-form-section-header">
                 <h4>{t('users.选择仓库')}</h4>
-                <p>{t('users.选中一个审查仓库后，可以管理哪些用户能查看和参与该仓库的审查')}</p>
+                <p>
+                  {t(
+                    'users.选中一个审查仓库后，可以管理哪些用户能查看和参与该仓库的审查',
+                  )}
+                </p>
               </div>
               {repositories.length === 0 ? (
                 <div className="settings-hint">{t('users.暂无审查仓库')}</div>
@@ -1534,8 +2258,16 @@ export function UsersPage({ apiBase }: UsersPageProps) {
                     <h4>{t('users.新增成员')}</h4>
                   </div>
                   <div className="users-repo-add-member-row">
-                    <AppSelect value={addMemberUserId} onChange={setAddMemberUserId} options={memberUserOptions} />
-                    <AppSelect value={addMemberLevel} onChange={setAddMemberLevel} options={accessLevelOptions} />
+                    <AppSelect
+                      value={addMemberUserId}
+                      onChange={setAddMemberUserId}
+                      options={memberUserOptions}
+                    />
+                    <AppSelect
+                      value={addMemberLevel}
+                      onChange={setAddMemberLevel}
+                      options={accessLevelOptions}
+                    />
                     <button
                       type="button"
                       className="btn-primary btn-sm"
@@ -1550,7 +2282,11 @@ export function UsersPage({ apiBase }: UsersPageProps) {
                 <div className="assistant-form-section">
                   <div className="assistant-form-section-header">
                     <h4>{t('users.当前成员')}</h4>
-                    <p>{membersLoading ? t('users.加载中') : t('users.成员数量', { count: repoMembers.length })}</p>
+                    <p>
+                      {membersLoading
+                        ? t('users.加载中')
+                        : t('users.成员数量', { count: repoMembers.length })}
+                    </p>
                   </div>
                   {repoMembers.length === 0 && !membersLoading ? (
                     <div className="settings-hint">{t('users.暂无成员')}</div>
@@ -1568,14 +2304,19 @@ export function UsersPage({ apiBase }: UsersPageProps) {
                         {repoMembers.map((m) => (
                           <tr key={m.user_id}>
                             <td>{findUserName(m.user_id)}</td>
-                            <td>{accessLevelLabels[m.access_level] || m.access_level}</td>
+                            <td>
+                              {accessLevelLabels[m.access_level] ||
+                                m.access_level}
+                            </td>
                             <td>{formatCreatedAt(m.granted_at)}</td>
                             <td>
                               <button
                                 type="button"
                                 className="btn-danger btn-sm"
                                 disabled={submitting}
-                                onClick={() => void handleRemoveMember(m.user_id)}
+                                onClick={() =>
+                                  void handleRemoveMember(m.user_id)
+                                }
                               >
                                 {t('users.移除')}
                               </button>
@@ -1607,11 +2348,19 @@ interface OverrideEntry {
   effect: string;
 }
 
-function PermissionOverridesPanel({ apiBase, users }: { apiBase: string; users: UserSummary[] }) {
+function PermissionOverridesPanel({
+  apiBase,
+  users,
+}: {
+  apiBase: string;
+  users: UserSummary[];
+}) {
   const { t } = useTranslation('users');
   const [selectedUserId, setSelectedUserId] = useState('');
   const [overrides, setOverrides] = useState<OverrideEntry[]>([]);
-  const [allPermissions, setAllPermissions] = useState<Array<{ id: string; code: string; name: string; category: string }>>([]);
+  const [allPermissions, setAllPermissions] = useState<
+    Array<{ id: string; code: string; name: string; category: string }>
+  >([]);
   const [newCode, setNewCode] = useState('');
   const [newEffect, setNewEffect] = useState<'allow' | 'deny'>('allow');
   const [loading, setLoading] = useState(false);
@@ -1627,27 +2376,32 @@ function PermissionOverridesPanel({ apiBase, users }: { apiBase: string; users: 
       .catch(() => {});
   }, [apiBase]);
 
-  const loadOverrides = useCallback(async (uid: string) => {
-    if (!uid) {
-      setOverrides([]);
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    try {
-      const res = await fetch(`${apiBase}/api/permission-overrides/${uid}`, { credentials: 'include' });
-      const data = await res.json();
-      if (data.ok && Array.isArray(data.overrides)) {
-        setOverrides(data.overrides);
-      } else {
+  const loadOverrides = useCallback(
+    async (uid: string) => {
+      if (!uid) {
         setOverrides([]);
+        setLoading(false);
+        return;
       }
-    } catch {
-      setOverrides([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [apiBase]);
+      setLoading(true);
+      try {
+        const res = await fetch(`${apiBase}/api/permission-overrides/${uid}`, {
+          credentials: 'include',
+        });
+        const data = await res.json();
+        if (data.ok && Array.isArray(data.overrides)) {
+          setOverrides(data.overrides);
+        } else {
+          setOverrides([]);
+        }
+      } catch {
+        setOverrides([]);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [apiBase],
+  );
 
   useEffect(() => {
     setNewCode('');
@@ -1662,23 +2416,37 @@ function PermissionOverridesPanel({ apiBase, users }: { apiBase: string; users: 
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ userId: selectedUserId, permissionCode: newCode, effect: newEffect }),
+        body: JSON.stringify({
+          userId: selectedUserId,
+          permissionCode: newCode,
+          effect: newEffect,
+        }),
       });
       await loadOverrides(selectedUserId);
       setNewCode('');
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }, [apiBase, selectedUserId, newCode, newEffect, loadOverrides]);
 
-  const handleRevoke = useCallback(async (code: string) => {
-    if (!selectedUserId) return;
-    try {
-      await fetch(`${apiBase}/api/permission-overrides/${selectedUserId}/${code}`, {
-        method: 'DELETE',
-        credentials: 'include',
-      });
-      await loadOverrides(selectedUserId);
-    } catch { /* ignore */ }
-  }, [apiBase, selectedUserId, loadOverrides]);
+  const handleRevoke = useCallback(
+    async (code: string) => {
+      if (!selectedUserId) return;
+      try {
+        await fetch(
+          `${apiBase}/api/permission-overrides/${selectedUserId}/${code}`,
+          {
+            method: 'DELETE',
+            credentials: 'include',
+          },
+        );
+        await loadOverrides(selectedUserId);
+      } catch {
+        /* ignore */
+      }
+    },
+    [apiBase, selectedUserId, loadOverrides],
+  );
 
   const userOptions: AppSelectOption[] = users.map((u) => ({
     value: u.id,
@@ -1701,7 +2469,10 @@ function PermissionOverridesPanel({ apiBase, users }: { apiBase: string; users: 
           <AppSelect
             value={selectedUserId}
             onChange={(v) => setSelectedUserId(v || '')}
-            options={[{ value: '', label: t('users.选择用户占位') }, ...userOptions]}
+            options={[
+              { value: '', label: t('users.选择用户占位') },
+              ...userOptions,
+            ]}
           />
         </div>
 
@@ -1714,7 +2485,14 @@ function PermissionOverridesPanel({ apiBase, users }: { apiBase: string; users: 
               <div className="users-form-grid">
                 <label className="users-form-field">
                   <span>{t('users.权限码')}</span>
-                  <AppSelect value={newCode} onChange={(v) => setNewCode(v)} options={[{ value: '', label: t('users.选择权限占位') }, ...permOptions]} />
+                  <AppSelect
+                    value={newCode}
+                    onChange={(v) => setNewCode(v)}
+                    options={[
+                      { value: '', label: t('users.选择权限占位') },
+                      ...permOptions,
+                    ]}
+                  />
                 </label>
                 <label className="users-form-field">
                   <span>{t('users.效果')}</span>
@@ -1728,7 +2506,12 @@ function PermissionOverridesPanel({ apiBase, users }: { apiBase: string; users: 
                   />
                 </label>
               </div>
-              <button type="button" className="btn btn-sm btn-primary users-overrides-grant-btn" onClick={handleGrant} disabled={!newCode}>
+              <button
+                type="button"
+                className="btn btn-sm btn-primary users-overrides-grant-btn"
+                onClick={handleGrant}
+                disabled={!newCode}
+              >
                 {t('users.新增')}
               </button>
             </div>
@@ -1740,7 +2523,9 @@ function PermissionOverridesPanel({ apiBase, users }: { apiBase: string; users: 
               {loading ? (
                 <div className="settings-hint">{t('users.加载中')}</div>
               ) : overrides.length === 0 ? (
-                <div className="settings-hint">{t('users.该用户暂无权限覆盖')}</div>
+                <div className="settings-hint">
+                  {t('users.该用户暂无权限覆盖')}
+                </div>
               ) : (
                 <table className="users-table users-overrides-table">
                   <thead>
@@ -1754,15 +2539,29 @@ function PermissionOverridesPanel({ apiBase, users }: { apiBase: string; users: 
                   <tbody>
                     {overrides.map((o) => (
                       <tr key={o.code}>
-                        <td><code>{o.code}</code></td>
+                        <td>
+                          <code>{o.code}</code>
+                        </td>
                         <td>{getPermissionLabel(t, o.code)}</td>
                         <td>
-                          <span className={o.effect === 'deny' ? 'users-override-effect--deny' : 'users-override-effect--allow'}>
-                            {o.effect === 'deny' ? t('users.拒绝') : t('users.允许')}
+                          <span
+                            className={
+                              o.effect === 'deny'
+                                ? 'users-override-effect--deny'
+                                : 'users-override-effect--allow'
+                            }
+                          >
+                            {o.effect === 'deny'
+                              ? t('users.拒绝')
+                              : t('users.允许')}
                           </span>
                         </td>
                         <td>
-                          <button type="button" className="btn btn-sm btn-outline-danger" onClick={() => handleRevoke(o.code)}>
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-outline-danger"
+                            onClick={() => handleRevoke(o.code)}
+                          >
                             {t('users.移除')}
                           </button>
                         </td>

@@ -91,7 +91,8 @@ const CHAT_COMMAND_SUGGESTIONS: CommandSuggestionItem[] = [
   { command: '/tasks', template: '/tasks', description: 'slash.tasks' },
   {
     command: '/task-create',
-    template: '/task-create summarize yesterday progress every morning at 9am and remind me',
+    template:
+      '/task-create summarize yesterday progress every morning at 9am and remind me',
     description: 'slash.taskCreate',
   },
   {
@@ -239,7 +240,8 @@ const ACCESS_MODE_OPTIONS: Array<{
 ];
 
 function getAccessModeOption(mode: AccessMode) {
-  const entry = ACCESS_MODE_OPTIONS.find((e) => e.value === mode) || ACCESS_MODE_OPTIONS[0];
+  const entry =
+    ACCESS_MODE_OPTIONS.find((e) => e.value === mode) || ACCESS_MODE_OPTIONS[0];
   return entry;
 }
 
@@ -279,12 +281,11 @@ function getToolCallDurationMs(
   const startedMs = startedAt ? Date.parse(startedAt) : Number.NaN;
   if (!Number.isFinite(startedMs)) return null;
   const completedMs = completedAt ? Date.parse(completedAt) : Number.NaN;
-  const endMs =
-    Number.isFinite(completedMs)
-      ? completedMs
-      : status === 'in_progress'
-        ? now
-        : Date.parse(timestamp);
+  const endMs = Number.isFinite(completedMs)
+    ? completedMs
+    : status === 'in_progress'
+      ? now
+      : Date.parse(timestamp);
   if (!Number.isFinite(endMs) || endMs < startedMs) return null;
   return Math.max(0, endMs - startedMs);
 }
@@ -311,7 +312,13 @@ const ToolCallDurationLabel = memo(function ToolCallDurationLabel({
     return () => window.clearInterval(timer);
   }, [status, startedAt]);
 
-  const durationMs = getToolCallDurationMs(startedAt, completedAt, timestamp, status, now);
+  const durationMs = getToolCallDurationMs(
+    startedAt,
+    completedAt,
+    timestamp,
+    status,
+    now,
+  );
   const label =
     durationMs === null
       ? null
@@ -358,8 +365,7 @@ interface InlineAssistantLoadingProps {
   interrupting?: boolean;
 }
 
-function InlineAssistantLoading({
-}: InlineAssistantLoadingProps) {
+function InlineAssistantLoading({}: InlineAssistantLoadingProps) {
   return (
     <div className="assistant-inline-loading" aria-label="处理中">
       <span className="assistant-inline-loading-label">处理中</span>
@@ -418,7 +424,10 @@ interface ChatPageProps {
   activeAssistantLabel: string | null;
   activeProviderId: string | null;
   providers: AiProvider[];
-  setConversationProvider: (jid: string, providerId: string | null) => void | Promise<void>;
+  setConversationProvider: (
+    jid: string,
+    providerId: string | null,
+  ) => void | Promise<void>;
   conversationSidebarCollapsed: boolean;
   toggleConversationSidebar: () => void;
   updateConversationMeta: (
@@ -488,9 +497,7 @@ interface ChatPageProps {
     policy: AccessPolicy,
   ) => Promise<true | { error: string }>;
   openAssistantsPage: (assistantId?: string | null) => void;
-  openSettingsPage: (
-    section?: 'default-access-policy',
-  ) => void;
+  openSettingsPage: (section?: 'default-access-policy') => void;
   pickConversationAccessDirectory: () => Promise<string | null>;
   resolveApproval: (
     approvalId: string,
@@ -653,10 +660,16 @@ export function ChatPage({
       accessManagedByAssistant: boolean;
       activeAssistantLabel?: string | null;
     }): string => {
-      const { approval, policy, accessManagedByAssistant, activeAssistantLabel } = input;
+      const {
+        approval,
+        policy,
+        accessManagedByAssistant,
+        activeAssistantLabel,
+      } = input;
       if (accessManagedByAssistant) {
         return t('access.denied.assistantManaged', {
-          assistant: activeAssistantLabel || t('access.inheritance.assistantDefault'),
+          assistant:
+            activeAssistantLabel || t('access.inheritance.assistantDefault'),
         });
       }
       if (policy?.mode === 'readonly') {
@@ -694,7 +707,9 @@ export function ChatPage({
   const prevFirstKeyRef = useRef<string | null>(null);
   const wasLoadingOlderRef = useRef(false);
   const atBottomRef = useRef(true);
-  const [copiedAssistantEntryKey, setCopiedAssistantEntryKey] = useState<string | null>(null);
+  const [copiedAssistantEntryKey, setCopiedAssistantEntryKey] = useState<
+    string | null
+  >(null);
   const copiedAssistantEntryTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -824,15 +839,15 @@ export function ChatPage({
   );
   const currentAccessPolicy = conversationAccess?.policy;
   const accessPolicyLayers = conversationAccess?.policyLayers;
-  const runtimeApprovalPatches = conversationAccess?.runtimeApprovalPatches || [];
+  const runtimeApprovalPatches =
+    conversationAccess?.runtimeApprovalPatches || [];
   const runtimeAccess = conversationAccess?.runtimeAccess;
   const effectiveAccess = conversationAccess?.effectiveAccess;
   const nextAccessActions = conversationAccess?.nextActions || [];
   const accessManagedByAssistant =
     currentAccessPolicy?.locked === true || !!activeConv?.assistantId;
   const effectiveAccessSummary =
-    effectiveAccess?.summary ||
-    t('access.dir.effectiveDefault');
+    effectiveAccess?.summary || t('access.dir.effectiveDefault');
   const accessInheritanceSummary = currentAccessPolicy
     ? t('access.dir.defaultEffect', {
         source: t(getAccessSourceLabel(currentAccessPolicy.source)),
@@ -892,7 +907,8 @@ export function ChatPage({
   }, [conversationMenuOpen]);
 
   const [accessDialogOpen, setAccessDialogOpen] = useState(false);
-  const [accessModeDraft, setAccessModeDraft] = useState<AccessMode>('allowall');
+  const [accessModeDraft, setAccessModeDraft] =
+    useState<AccessMode>('allowall');
   const [accessDraft, setAccessDraft] = useState<string[]>([]);
   const [newAccessDir, setNewAccessDir] = useState('');
   const [pickingAccessDir, setPickingAccessDir] = useState(false);
@@ -908,7 +924,9 @@ export function ChatPage({
   const uploadInputRef = useRef<HTMLInputElement | null>(null);
   const accessDialogWasOpenRef = useRef(false);
   const providerOptions = useMemo(() => {
-    const llmProviders = providers.filter((p) => (p.capability || 'llm') === 'llm');
+    const llmProviders = providers.filter(
+      (p) => (p.capability || 'llm') === 'llm',
+    );
     const systemProviders = llmProviders.filter((p) => p.source === 'system');
     const ownProviders = llmProviders.filter((p) => p.source === 'own');
     const sharedProviders = llmProviders.filter((p) => p.source === 'shared');
@@ -921,7 +939,10 @@ export function ChatPage({
     }> = [];
 
     if (hasOverride) {
-      options.push({ value: '__default__', label: t('provider.followDefault') });
+      options.push({
+        value: '__default__',
+        label: t('provider.followDefault'),
+      });
     }
 
     if (ownProviders.length > 0) {
@@ -1082,7 +1103,9 @@ export function ChatPage({
     (action: ConversationAccessNextAction) => {
       if (!action.target) return;
       if (action.target.type === 'assistant') {
-        openAssistantsPage(action.target.assistantId ?? activeConv?.assistantId);
+        openAssistantsPage(
+          action.target.assistantId ?? activeConv?.assistantId,
+        );
         return;
       }
       openSettingsPage('default-access-policy');
@@ -1104,9 +1127,7 @@ export function ChatPage({
       );
     } catch (err) {
       setAccessPickerError(
-        err instanceof Error
-          ? err.message
-          : t('access.error.saveNetwork'),
+        err instanceof Error ? err.message : t('access.error.saveNetwork'),
       );
     } finally {
       setPickingAccessDir(false);
@@ -1180,479 +1201,485 @@ export function ChatPage({
       item: { entry: ChatTimelineEntry; fullIndex: number },
     ) => {
       const { entry, fullIndex } = item;
-      const previous =
-        fullIndex > 0 ? timelineEntries[fullIndex - 1]! : null;
+      const previous = fullIndex > 0 ? timelineEntries[fullIndex - 1]! : null;
       const stackedAssistant =
         entry.kind !== 'user_message' && previous?.kind !== 'user_message';
       const showAssistantAvatar =
         entry.kind !== 'user_message' && !stackedAssistant;
 
       if (entry.kind === 'user_message') {
-          const displayContent = getDisplayContent(
-            entry.message.content,
-            false,
-            activeConv?.channel,
-            mentionCandidates,
-          );
-          const uploadedFiles = entry.message.uploaded_files || [];
-          const visibleContent =
-            uploadedFiles.length > 0
-              ? stripUploadedFileLabel(displayContent)
-              : displayContent;
-          const memoryActionState =
-            messageMemoryActionStateByMessageId[entry.message.id];
-          const memoryActionPending = Boolean(memoryActionState?.pendingAction);
-          return (
-            <div
-              key={entry.key}
-              id={`msg-${entry.key}`}
-              className="msg-row user"
-            >
-              <MessageCheckbox entryKey={entry.key} onToggle={toggleConversationItemSelection} />
-              <div className="msg-bubble-wrap">
-                <div
-                  className={`msg-bubble user ${entry.pending ? 'pending-user-bubble' : ''}`}
-                >
-                  {visibleContent.trim() ? (
-                    <MarkdownContent
-                      className="msg-text markdown"
-                      content={visibleContent}
-                    />
-                  ) : null}
-                  {uploadedFiles.length > 0 ? (
-                    <ConversationUploadedFiles
-                      chatJid={
-                        activeJid ||
-                        entry.message.chat_jid ||
-                        activeConv?.jid ||
-                        ''
-                      }
-                      files={uploadedFiles}
-                    />
-                  ) : null}
-                </div>
-                <div className="msg-meta">
-                  {formatTime(entry.timestamp)}
-                  {entry.pending ? ` ${t('chat.·_待发送')}` : ''}
-                </div>
-                {!entry.pending &&
-                visibleContent.trim() ? (
-                  <div className="msg-memory-actions">
-                    <button
-                      type="button"
-                      className="msg-memory-action-btn subtle"
-                      onClick={() =>
-                        void shareConversationItems([entry.key], {
-                          clearSelection: false,
-                        })
-                      }
-                    >
-                      {t('chat.12500f')}
-                    </button>
-                    <button
-                      type="button"
-                      className="msg-memory-action-btn subtle"
-                      onClick={() =>
-                        void exportConversationItemsAsMarkdown([entry.key], {
-                          clearSelection: false,
-                        })
-                      }
-                    >
-                      {t('chat.c75dd2')}
-                    </button>
-                    <button
-                      type="button"
-                      className="msg-memory-action-btn"
-                      onClick={() =>
-                        void onMessageMemoryAction({
-                          action: 'remember',
-                          messageId: entry.message.id,
-                          sender: entry.message.sender,
-                          senderName: entry.message.sender_name,
-                          text: visibleContent,
-                        })
-                      }
-                      disabled={memoryActionPending}
-                    >
-                      {memoryActionState?.pendingAction === 'remember'
-                        ? t('chat.记忆中')
-                        : t('chat.记住这个')}
-                    </button>
-                    <button
-                      type="button"
-                      className="msg-memory-action-btn subtle"
-                      onClick={() =>
-                        void onMessageMemoryAction({
-                          action: 'session_only',
-                          messageId: entry.message.id,
-                          sender: entry.message.sender,
-                          senderName: entry.message.sender_name,
-                          text: visibleContent,
-                        })
-                      }
-                      disabled={memoryActionPending}
-                    >
-                      {memoryActionState?.pendingAction === 'session_only'
-                        ? t('chat.设置中')
-                        : t('chat.仅本次')}
-                    </button>
-                  </div>
+        const displayContent = getDisplayContent(
+          entry.message.content,
+          false,
+          activeConv?.channel,
+          mentionCandidates,
+        );
+        const uploadedFiles = entry.message.uploaded_files || [];
+        const visibleContent =
+          uploadedFiles.length > 0
+            ? stripUploadedFileLabel(displayContent)
+            : displayContent;
+        const memoryActionState =
+          messageMemoryActionStateByMessageId[entry.message.id];
+        const memoryActionPending = Boolean(memoryActionState?.pendingAction);
+        return (
+          <div key={entry.key} id={`msg-${entry.key}`} className="msg-row user">
+            <MessageCheckbox
+              entryKey={entry.key}
+              onToggle={toggleConversationItemSelection}
+            />
+            <div className="msg-bubble-wrap">
+              <div
+                className={`msg-bubble user ${entry.pending ? 'pending-user-bubble' : ''}`}
+              >
+                {visibleContent.trim() ? (
+                  <MarkdownContent
+                    className="msg-text markdown"
+                    content={visibleContent}
+                  />
                 ) : null}
-                {memoryActionState?.message ? (
-                  <div
-                    className={`msg-memory-feedback ${memoryActionState.tone || 'success'}`}
-                  >
-                    {memoryActionState.message}
-                  </div>
+                {uploadedFiles.length > 0 ? (
+                  <ConversationUploadedFiles
+                    chatJid={
+                      activeJid ||
+                      entry.message.chat_jid ||
+                      activeConv?.jid ||
+                      ''
+                    }
+                    files={uploadedFiles}
+                  />
                 ) : null}
               </div>
-              <div className="msg-avatar user-avatar">U</div>
+              <div className="msg-meta">
+                {formatTime(entry.timestamp)}
+                {entry.pending ? ` ${t('chat.·_待发送')}` : ''}
+              </div>
+              {!entry.pending && visibleContent.trim() ? (
+                <div className="msg-memory-actions">
+                  <button
+                    type="button"
+                    className="msg-memory-action-btn subtle"
+                    onClick={() =>
+                      void shareConversationItems([entry.key], {
+                        clearSelection: false,
+                      })
+                    }
+                  >
+                    {t('chat.12500f')}
+                  </button>
+                  <button
+                    type="button"
+                    className="msg-memory-action-btn subtle"
+                    onClick={() =>
+                      void exportConversationItemsAsMarkdown([entry.key], {
+                        clearSelection: false,
+                      })
+                    }
+                  >
+                    {t('chat.c75dd2')}
+                  </button>
+                  <button
+                    type="button"
+                    className="msg-memory-action-btn"
+                    onClick={() =>
+                      void onMessageMemoryAction({
+                        action: 'remember',
+                        messageId: entry.message.id,
+                        sender: entry.message.sender,
+                        senderName: entry.message.sender_name,
+                        text: visibleContent,
+                      })
+                    }
+                    disabled={memoryActionPending}
+                  >
+                    {memoryActionState?.pendingAction === 'remember'
+                      ? t('chat.记忆中')
+                      : t('chat.记住这个')}
+                  </button>
+                  <button
+                    type="button"
+                    className="msg-memory-action-btn subtle"
+                    onClick={() =>
+                      void onMessageMemoryAction({
+                        action: 'session_only',
+                        messageId: entry.message.id,
+                        sender: entry.message.sender,
+                        senderName: entry.message.sender_name,
+                        text: visibleContent,
+                      })
+                    }
+                    disabled={memoryActionPending}
+                  >
+                    {memoryActionState?.pendingAction === 'session_only'
+                      ? t('chat.设置中')
+                      : t('chat.仅本次')}
+                  </button>
+                </div>
+              ) : null}
+              {memoryActionState?.message ? (
+                <div
+                  className={`msg-memory-feedback ${memoryActionState.tone || 'success'}`}
+                >
+                  {memoryActionState.message}
+                </div>
+              ) : null}
             </div>
-          );
-        }
+            <div className="msg-avatar user-avatar">U</div>
+          </div>
+        );
+      }
 
-        return (
+      return (
+        <div
+          key={entry.key}
+          id={`msg-${entry.key}`}
+          className={`msg-row bot timeline-entry-row ${stackedAssistant ? 'stacked' : ''}`}
+        >
           <div
-            key={entry.key}
-            id={`msg-${entry.key}`}
-            className={`msg-row bot timeline-entry-row ${stackedAssistant ? 'stacked' : ''}`}
+            className={`msg-avatar bot-avatar ${showAssistantAvatar ? '' : 'ghost'}`}
           >
-            <div
-              className={`msg-avatar bot-avatar ${showAssistantAvatar ? '' : 'ghost'}`}
-            >
-              {showAssistantAvatar ? 'N' : ''}
-            </div>
-            <MessageCheckbox entryKey={entry.key} onToggle={toggleConversationItemSelection} />
-            <div className="msg-bubble-wrap">
-              {entry.kind === 'assistant_message' && (
-                <div className="assistant-turn-node assistant-turn-node-assistant_message single-entry-node">
-                  <div className="assistant-turn-node-rail" aria-hidden="true">
-                    <span className="assistant-turn-node-dot response" />
-                    <span className="assistant-turn-node-line" />
-                  </div>
-                  <div className="assistant-turn-node-main">
-                      <div
-                        className={`assistant-turn-card assistant-response-card assistant-entry-card turn-item turn-item-response status-${entry.status}`}
-                      >
-                        <div className="turn-item-header assistant-response-card-header">
-                          <span
-                            className="turn-item-summary-icon response"
-                            aria-hidden="true"
-                          />
-                          <div className="turn-item-summary-main">
-                            <div className="turn-item-summary-top">
-                              <span className="turn-item-kind response">
-                                {t('assistant.reply')}
-                              </span>
-                              <span className="turn-item-title">
-                                {entry.status === 'in_progress'
-                                  ? t('chat.生成回复中')
-                                  : t('assistant.aiReply')}
-                              </span>
-                              <span className={`turn-item-status ${entry.status}`}>
-                                {getStatusLabel(entry.status)}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                        <div className="turn-item-body turn-item-body-response">
-                          {entry.status === 'in_progress' && !entry.text.trim() ? (
-                            <InlineAssistantLoading />
-                          ) : (
-                            <MarkdownContent
-                              className="msg-text markdown assistant-turn-text"
-                              content={getDisplayContent(
-                                entry.text,
-                                true,
-                                activeConv?.channel,
-                                mentionCandidates,
-                              )}
-                            />
-                          )}
-                          {entry.status === 'completed' && entry.text.trim() ? (
-                            <div className="msg-memory-actions assistant-response-actions">
-                              {latestRetryableAssistantEntryKey === entry.key ? (
-                                <button
-                                  type="button"
-                                  className="msg-memory-action-btn subtle icon-only assistant-response-retry-inline"
-                                  onClick={() =>
-                                    void regenerateReply(entry.turnId!)
-                                  }
-                                  title={regenerateButtonTitle}
-                                  aria-label={regenerateButtonTitle}
-                                  disabled={assistantBusy || regeneratingReply}
-                                >
-                                  <IconRefresh />
-                                </button>
-                              ) : null}
-                              <div className="assistant-response-actions-trailing">
-                                <button
-                                  type="button"
-                                  className={`msg-memory-action-btn subtle icon-only${copiedAssistantEntryKey === entry.key ? ' copied' : ''}`}
-                                  onClick={() =>
-                                    void handleCopyAssistantMessage(
-                                      entry.key,
-                                      entry.text,
-                                    )
-                                  }
-                                  title={t('actions.copy')}
-                                  aria-label={t('actions.copy')}
-                                >
-                                  {copiedAssistantEntryKey === entry.key ? (
-                                    <IconCheck />
-                                  ) : (
-                                    <IconCopy />
-                                  )}
-                                </button>
-                                <button
-                                  type="button"
-                                  className="msg-memory-action-btn subtle icon-only"
-                                  onClick={() =>
-                                    void shareConversationItems([entry.key], {
-                                      clearSelection: false,
-                                    })
-                                  }
-                                  title={t('chat.12500f')}
-                                  aria-label={t('chat.12500f')}
-                                >
-                                  <IconShare />
-                                </button>
-                                <button
-                                  type="button"
-                                  className="msg-memory-action-btn subtle icon-only"
-                                  onClick={() =>
-                                    void exportConversationItemsAsMarkdown(
-                                      [entry.key],
-                                      {
-                                        clearSelection: false,
-                                      },
-                                    )
-                                  }
-                                  title={t('chat.c75dd2')}
-                                  aria-label={t('chat.c75dd2')}
-                                >
-                                  <IconDownload />
-                                </button>
-                              </div>
-                            </div>
-                          ) : null}
-                        </div>
-                      </div>
-                  </div>
+            {showAssistantAvatar ? 'N' : ''}
+          </div>
+          <MessageCheckbox
+            entryKey={entry.key}
+            onToggle={toggleConversationItemSelection}
+          />
+          <div className="msg-bubble-wrap">
+            {entry.kind === 'assistant_message' && (
+              <div className="assistant-turn-node assistant-turn-node-assistant_message single-entry-node">
+                <div className="assistant-turn-node-rail" aria-hidden="true">
+                  <span className="assistant-turn-node-dot response" />
+                  <span className="assistant-turn-node-line" />
                 </div>
-              )}
-
-              {entry.kind === 'reasoning' && (
-                <div className="assistant-turn-node assistant-turn-node-reasoning_group single-entry-node">
-                  <div className="assistant-turn-node-rail" aria-hidden="true">
-                    <span
-                      className={`assistant-turn-node-dot reasoning ${entry.item.status}`}
-                    />
-                    <span className="assistant-turn-node-line" />
-                  </div>
-                  <div className="assistant-turn-node-main">
-                    <details
-                      className={`assistant-turn-card assistant-reasoning-card assistant-reasoning-details turn-item turn-item-reasoning status-${entry.item.status}`}
-                      open={
-                        entry.item.status !== 'completed' ? true : undefined
-                      }
-                    >
-                      <summary className="turn-item-header turn-item-summary">
-                        <span
-                          className="turn-item-summary-icon reasoning"
-                          aria-hidden="true"
-                        />
-                        <div className="turn-item-summary-main">
-                          <div className="turn-item-summary-top">
-                            <span className="turn-item-kind reasoning">
-                              {entry.item.status === 'in_progress'
-                                ? t('assistant.thinking')
-                                : t('assistant.thought')}
-                            </span>
-                            <span className="turn-item-title">
-                              {entry.item.title || t('assistant.processing')}
-                            </span>
-                            <span
-                              className={`turn-item-status ${entry.item.status}`}
-                            >
-                              {getStatusLabel(entry.item.status)}
-                            </span>
-                          </div>
-                          {entry.item.status === 'completed' ? (
-                            <span className="turn-item-preview assistant-reasoning-summary-text">
-                              {truncatePreview(
-                                formatReasoningText(
-                                  entry.item.title,
-                                  entry.item.text,
-                                ),
-                                120,
-                              )}
-                            </span>
-                          ) : null}
-                        </div>
-                      </summary>
-                      <div className="turn-item-body turn-item-body-reasoning">
-                        <div className="turn-item-section">
-                          <div className="turn-item-label">{t('assistant.content')}</div>
-                          <div className="assistant-activity-text assistant-activity-text-block">
-                            <span className="assistant-activity-body">
-                              {formatReasoningText(
-                                entry.item.title,
-                                entry.item.text,
-                              )}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    </details>
-                  </div>
-                </div>
-              )}
-
-              {entry.kind === 'tool_call' && (
-                <div className="assistant-turn-node assistant-turn-node-tool_call single-entry-node">
-                  <div className="assistant-turn-node-rail" aria-hidden="true">
-                    <span
-                      className={`assistant-turn-node-dot tool ${entry.item.status}`}
-                    />
-                    <span className="assistant-turn-node-line" />
-                  </div>
-                  <div className="assistant-turn-node-main">
-                    <details
-                      className="assistant-turn-card assistant-tool-card turn-item turn-item-tool"
-                      open={entry.item.status === 'failed'}
-                    >
-                      <summary className="turn-item-header turn-item-summary">
-                        <span
-                          className="turn-item-summary-icon"
-                          aria-hidden="true"
-                        />
-                        <div className="turn-item-summary-main">
-                          <div className="turn-item-summary-top">
-                            <span className="turn-item-kind tool_call">
-                              {t('assistant.tool')}
-                            </span>
-                            <span className="turn-item-title">
-                              {entry.item.title}
-                            </span>
-                            <ToolCallDurationLabel
-                              startedAt={entry.item.startedAt}
-                              completedAt={entry.item.completedAt}
-                              timestamp={entry.item.timestamp}
-                              status={entry.item.status}
-                            />
-                            <span
-                              className={`turn-item-status ${entry.item.status}`}
-                            >
-                              {getStatusLabel(entry.item.status)}
-                            </span>
-                          </div>
-                          <span className="turn-item-preview">
-                            {truncatePreview(
-                              entry.item.status === 'failed'
-                                ? entry.item.errorText ||
-                                    entry.item.argumentsText ||
-                                    ''
-                                : entry.item.resultText ||
-                                    entry.item.argumentsText ||
-                                    '',
-                            )}
+                <div className="assistant-turn-node-main">
+                  <div
+                    className={`assistant-turn-card assistant-response-card assistant-entry-card turn-item turn-item-response status-${entry.status}`}
+                  >
+                    <div className="turn-item-header assistant-response-card-header">
+                      <span
+                        className="turn-item-summary-icon response"
+                        aria-hidden="true"
+                      />
+                      <div className="turn-item-summary-main">
+                        <div className="turn-item-summary-top">
+                          <span className="turn-item-kind response">
+                            {t('assistant.reply')}
+                          </span>
+                          <span className="turn-item-title">
+                            {entry.status === 'in_progress'
+                              ? t('chat.生成回复中')
+                              : t('assistant.aiReply')}
+                          </span>
+                          <span className={`turn-item-status ${entry.status}`}>
+                            {getStatusLabel(entry.status)}
                           </span>
                         </div>
-                      </summary>
-                        <div className="turn-item-body">
-                        {entry.approval ? (
-                          <div className="assistant-approval-slot">
-                            <div className="assistant-approval-slot-text">
-                              {t('assistant.approvalPending')}
-                            </div>
+                      </div>
+                    </div>
+                    <div className="turn-item-body turn-item-body-response">
+                      {entry.status === 'in_progress' && !entry.text.trim() ? (
+                        <InlineAssistantLoading />
+                      ) : (
+                        <MarkdownContent
+                          className="msg-text markdown assistant-turn-text"
+                          content={getDisplayContent(
+                            entry.text,
+                            true,
+                            activeConv?.channel,
+                            mentionCandidates,
+                          )}
+                        />
+                      )}
+                      {entry.status === 'completed' && entry.text.trim() ? (
+                        <div className="msg-memory-actions assistant-response-actions">
+                          {latestRetryableAssistantEntryKey === entry.key ? (
+                            <button
+                              type="button"
+                              className="msg-memory-action-btn subtle icon-only assistant-response-retry-inline"
+                              onClick={() =>
+                                void regenerateReply(entry.turnId!)
+                              }
+                              title={regenerateButtonTitle}
+                              aria-label={regenerateButtonTitle}
+                              disabled={assistantBusy || regeneratingReply}
+                            >
+                              <IconRefresh />
+                            </button>
+                          ) : null}
+                          <div className="assistant-response-actions-trailing">
+                            <button
+                              type="button"
+                              className={`msg-memory-action-btn subtle icon-only${copiedAssistantEntryKey === entry.key ? ' copied' : ''}`}
+                              onClick={() =>
+                                void handleCopyAssistantMessage(
+                                  entry.key,
+                                  entry.text,
+                                )
+                              }
+                              title={t('actions.copy')}
+                              aria-label={t('actions.copy')}
+                            >
+                              {copiedAssistantEntryKey === entry.key ? (
+                                <IconCheck />
+                              ) : (
+                                <IconCopy />
+                              )}
+                            </button>
+                            <button
+                              type="button"
+                              className="msg-memory-action-btn subtle icon-only"
+                              onClick={() =>
+                                void shareConversationItems([entry.key], {
+                                  clearSelection: false,
+                                })
+                              }
+                              title={t('chat.12500f')}
+                              aria-label={t('chat.12500f')}
+                            >
+                              <IconShare />
+                            </button>
+                            <button
+                              type="button"
+                              className="msg-memory-action-btn subtle icon-only"
+                              onClick={() =>
+                                void exportConversationItemsAsMarkdown(
+                                  [entry.key],
+                                  {
+                                    clearSelection: false,
+                                  },
+                                )
+                              }
+                              title={t('chat.c75dd2')}
+                              aria-label={t('chat.c75dd2')}
+                            >
+                              <IconDownload />
+                            </button>
                           </div>
-                        ) : null}
-                        {entry.item.subagentInfo ? (
-                          <SubagentActivity
-                            info={entry.item.subagentInfo}
-                            argumentsText={entry.item.argumentsText}
-                            resultText={entry.item.resultText}
-                            errorText={entry.item.errorText}
-                          />
-                        ) : (
-                          <>
-                            {entry.item.argumentsText && (
-                              <div className="turn-item-section">
-                                <div className="turn-item-label">{t('assistant.input')}</div>
-                                <ToolResultCard
-                                  key={`${entry.item.id}-args`}
-                                  toolName={entry.item.title}
-                                  output={entry.item.argumentsText}
-                                  variant="arguments"
-                                />
-                              </div>
-                            )}
-                            {entry.item.resultText && (
-                              <div className="turn-item-section">
-                                <div className="turn-item-label">{t('assistant.result')}</div>
-                                <ToolResultCard
-                                  key={`${entry.item.id}-result`}
-                                  toolName={entry.item.title}
-                                  output={entry.item.resultText}
-                                />
-                                <GeneratedToolImages
-                                  activeJid={activeJid}
-                                  resultText={entry.item.resultText}
-                                />
-                              </div>
-                            )}
-                            {entry.item.errorText && (
-                              <div className="turn-item-section">
-                                <div className="turn-item-label">{t('assistant.error')}</div>
-                                <ToolResultCard
-                                  key={`${entry.item.id}-err`}
-                                  toolName={entry.item.title}
-                                  output={entry.item.errorText}
-                                  isError
-                                />
-                              </div>
-                            )}
-                          </>
-                        )}
-                      </div>
-                    </details>
-                  </div>
-                </div>
-              )}
-
-              {entry.kind === 'approval' && (
-                <div className="assistant-turn-node assistant-turn-node-approval_slot single-entry-node">
-                  <div className="assistant-turn-node-rail" aria-hidden="true">
-                    <span className="assistant-turn-node-dot approval" />
-                    <span className="assistant-turn-node-line" />
-                  </div>
-                  <div className="assistant-turn-node-main">
-                    <div className="assistant-turn-card assistant-approval-slot assistant-entry-card">
-                      <div className="assistant-approval-slot-text">
-                        {t('assistant.approvalMoved')}
-                      </div>
+                        </div>
+                      ) : null}
                     </div>
                   </div>
                 </div>
-              )}
+              </div>
+            )}
 
-              {entry.kind === 'turn_error' && (
-                <div className="assistant-turn-node assistant-turn-node-error single-entry-node">
-                  <div className="assistant-turn-node-rail" aria-hidden="true">
-                    <span className="assistant-turn-node-dot error" />
-                    <span className="assistant-turn-node-line" />
-                  </div>
-                  <div className="assistant-turn-node-main">
-                    <div className="turn-error">{entry.error}</div>
+            {entry.kind === 'reasoning' && (
+              <div className="assistant-turn-node assistant-turn-node-reasoning_group single-entry-node">
+                <div className="assistant-turn-node-rail" aria-hidden="true">
+                  <span
+                    className={`assistant-turn-node-dot reasoning ${entry.item.status}`}
+                  />
+                  <span className="assistant-turn-node-line" />
+                </div>
+                <div className="assistant-turn-node-main">
+                  <details
+                    className={`assistant-turn-card assistant-reasoning-card assistant-reasoning-details turn-item turn-item-reasoning status-${entry.item.status}`}
+                    open={entry.item.status !== 'completed' ? true : undefined}
+                  >
+                    <summary className="turn-item-header turn-item-summary">
+                      <span
+                        className="turn-item-summary-icon reasoning"
+                        aria-hidden="true"
+                      />
+                      <div className="turn-item-summary-main">
+                        <div className="turn-item-summary-top">
+                          <span className="turn-item-kind reasoning">
+                            {entry.item.status === 'in_progress'
+                              ? t('assistant.thinking')
+                              : t('assistant.thought')}
+                          </span>
+                          <span className="turn-item-title">
+                            {entry.item.title || t('assistant.processing')}
+                          </span>
+                          <span
+                            className={`turn-item-status ${entry.item.status}`}
+                          >
+                            {getStatusLabel(entry.item.status)}
+                          </span>
+                        </div>
+                        {entry.item.status === 'completed' ? (
+                          <span className="turn-item-preview assistant-reasoning-summary-text">
+                            {truncatePreview(
+                              formatReasoningText(
+                                entry.item.title,
+                                entry.item.text,
+                              ),
+                              120,
+                            )}
+                          </span>
+                        ) : null}
+                      </div>
+                    </summary>
+                    <div className="turn-item-body turn-item-body-reasoning">
+                      <div className="turn-item-section">
+                        <div className="turn-item-label">
+                          {t('assistant.content')}
+                        </div>
+                        <div className="assistant-activity-text assistant-activity-text-block">
+                          <span className="assistant-activity-body">
+                            {formatReasoningText(
+                              entry.item.title,
+                              entry.item.text,
+                            )}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </details>
+                </div>
+              </div>
+            )}
+
+            {entry.kind === 'tool_call' && (
+              <div className="assistant-turn-node assistant-turn-node-tool_call single-entry-node">
+                <div className="assistant-turn-node-rail" aria-hidden="true">
+                  <span
+                    className={`assistant-turn-node-dot tool ${entry.item.status}`}
+                  />
+                  <span className="assistant-turn-node-line" />
+                </div>
+                <div className="assistant-turn-node-main">
+                  <details
+                    className="assistant-turn-card assistant-tool-card turn-item turn-item-tool"
+                    open={entry.item.status === 'failed'}
+                  >
+                    <summary className="turn-item-header turn-item-summary">
+                      <span
+                        className="turn-item-summary-icon"
+                        aria-hidden="true"
+                      />
+                      <div className="turn-item-summary-main">
+                        <div className="turn-item-summary-top">
+                          <span className="turn-item-kind tool_call">
+                            {t('assistant.tool')}
+                          </span>
+                          <span className="turn-item-title">
+                            {entry.item.title}
+                          </span>
+                          <ToolCallDurationLabel
+                            startedAt={entry.item.startedAt}
+                            completedAt={entry.item.completedAt}
+                            timestamp={entry.item.timestamp}
+                            status={entry.item.status}
+                          />
+                          <span
+                            className={`turn-item-status ${entry.item.status}`}
+                          >
+                            {getStatusLabel(entry.item.status)}
+                          </span>
+                        </div>
+                        <span className="turn-item-preview">
+                          {truncatePreview(
+                            entry.item.status === 'failed'
+                              ? entry.item.errorText ||
+                                  entry.item.argumentsText ||
+                                  ''
+                              : entry.item.resultText ||
+                                  entry.item.argumentsText ||
+                                  '',
+                          )}
+                        </span>
+                      </div>
+                    </summary>
+                    <div className="turn-item-body">
+                      {entry.approval ? (
+                        <div className="assistant-approval-slot">
+                          <div className="assistant-approval-slot-text">
+                            {t('assistant.approvalPending')}
+                          </div>
+                        </div>
+                      ) : null}
+                      {entry.item.subagentInfo ? (
+                        <SubagentActivity
+                          info={entry.item.subagentInfo}
+                          argumentsText={entry.item.argumentsText}
+                          resultText={entry.item.resultText}
+                          errorText={entry.item.errorText}
+                        />
+                      ) : (
+                        <>
+                          {entry.item.argumentsText && (
+                            <div className="turn-item-section">
+                              <div className="turn-item-label">
+                                {t('assistant.input')}
+                              </div>
+                              <ToolResultCard
+                                key={`${entry.item.id}-args`}
+                                toolName={entry.item.title}
+                                output={entry.item.argumentsText}
+                                variant="arguments"
+                              />
+                            </div>
+                          )}
+                          {entry.item.resultText && (
+                            <div className="turn-item-section">
+                              <div className="turn-item-label">
+                                {t('assistant.result')}
+                              </div>
+                              <ToolResultCard
+                                key={`${entry.item.id}-result`}
+                                toolName={entry.item.title}
+                                output={entry.item.resultText}
+                              />
+                              <GeneratedToolImages
+                                activeJid={activeJid}
+                                resultText={entry.item.resultText}
+                              />
+                            </div>
+                          )}
+                          {entry.item.errorText && (
+                            <div className="turn-item-section">
+                              <div className="turn-item-label">
+                                {t('assistant.error')}
+                              </div>
+                              <ToolResultCard
+                                key={`${entry.item.id}-err`}
+                                toolName={entry.item.title}
+                                output={entry.item.errorText}
+                                isError
+                              />
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </details>
+                </div>
+              </div>
+            )}
+
+            {entry.kind === 'approval' && (
+              <div className="assistant-turn-node assistant-turn-node-approval_slot single-entry-node">
+                <div className="assistant-turn-node-rail" aria-hidden="true">
+                  <span className="assistant-turn-node-dot approval" />
+                  <span className="assistant-turn-node-line" />
+                </div>
+                <div className="assistant-turn-node-main">
+                  <div className="assistant-turn-card assistant-approval-slot assistant-entry-card">
+                    <div className="assistant-approval-slot-text">
+                      {t('assistant.approvalMoved')}
+                    </div>
                   </div>
                 </div>
-              )}
+              </div>
+            )}
 
-              <div className="msg-meta">{formatTime(entry.timestamp)}</div>
-            </div>
+            {entry.kind === 'turn_error' && (
+              <div className="assistant-turn-node assistant-turn-node-error single-entry-node">
+                <div className="assistant-turn-node-rail" aria-hidden="true">
+                  <span className="assistant-turn-node-dot error" />
+                  <span className="assistant-turn-node-line" />
+                </div>
+                <div className="assistant-turn-node-main">
+                  <div className="turn-error">{entry.error}</div>
+                </div>
+              </div>
+            )}
+
+            <div className="msg-meta">{formatTime(entry.timestamp)}</div>
           </div>
-        );
+        </div>
+      );
     },
     [
       activeConv?.channel,
@@ -1691,7 +1718,10 @@ export function ChatPage({
 
   useEffect(() => {
     if ((showInlineLoading || streaming) && atBottomRef.current) {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      messagesEndRef.current?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'nearest',
+      });
     }
   }, [showInlineLoading, streaming, messagesEndRef]);
 
@@ -1714,14 +1744,15 @@ export function ChatPage({
                 <div className="msg-avatar bot-avatar">N</div>
                 <div className="msg-bubble-wrap">
                   <div className="assistant-turn-node assistant-turn-node-live single-entry-node">
-                    <div className="assistant-turn-node-rail" aria-hidden="true">
+                    <div
+                      className="assistant-turn-node-rail"
+                      aria-hidden="true"
+                    >
                       <span className="assistant-turn-node-dot live" />
                       <span className="assistant-turn-node-line" />
                     </div>
                     <div className="assistant-turn-node-main">
-                      <div
-                        className="assistant-turn-card assistant-response-card assistant-entry-card turn-item turn-item-response status-in_progress"
-                      >
+                      <div className="assistant-turn-card assistant-response-card assistant-entry-card turn-item turn-item-response status-in_progress">
                         <div className="turn-item-header assistant-response-card-header">
                           <span
                             className="turn-item-summary-icon response"
@@ -1776,10 +1807,15 @@ export function ChatPage({
         <button className="empty-btn" onClick={() => createConversation()}>
           {t('welcome.newChat')}
         </button>
-        <div className="empty-state-hints" aria-label={t('welcome.hintAriaLabel')}>
+        <div
+          className="empty-state-hints"
+          aria-label={t('welcome.hintAriaLabel')}
+        >
           <span className="empty-state-hint">{t('welcome.hintSwitch')}</span>
           <span className="empty-state-hint">
-            <span dangerouslySetInnerHTML={{ __html: t('welcome.hintReset') }} />
+            <span
+              dangerouslySetInnerHTML={{ __html: t('welcome.hintReset') }}
+            />
           </span>
         </div>
       </div>
@@ -1799,14 +1835,18 @@ export function ChatPage({
               <span className="channel-tag">{t('status.pinned')}</span>
             ) : null}
             {activeAssistantLabel ? (
-              <span className="channel-tag">{t('chat.assistantTag', { label: activeAssistantLabel })}</span>
+              <span className="channel-tag">
+                {t('chat.assistantTag', { label: activeAssistantLabel })}
+              </span>
             ) : null}
             {conversationChannelLabel ? (
               <span className="channel-tag">{conversationChannelLabel}</span>
             ) : null}
             {providerOptions.length > 0 ? (
               <AppSelect
-                value={activeConv?.conversationProviderId || activeProviderId || ''}
+                value={
+                  activeConv?.conversationProviderId || activeProviderId || ''
+                }
                 onChange={(nextValue) => {
                   if (!nextValue || !activeConv) return;
                   void setConversationProvider(
@@ -1828,8 +1868,12 @@ export function ChatPage({
           <button
             className={`header-btn ${conversationSidebarCollapsed ? 'active' : ''}`}
             onClick={toggleConversationSidebar}
-            title={conversationSidebarCollapsed ? t('header.show') : t('header.hide')}
-            data-tooltip={conversationSidebarCollapsed ? t('header.show') : t('header.hide')}
+            title={
+              conversationSidebarCollapsed ? t('header.show') : t('header.hide')
+            }
+            data-tooltip={
+              conversationSidebarCollapsed ? t('header.show') : t('header.hide')
+            }
           >
             <IconSidebarToggle collapsed={conversationSidebarCollapsed} />
           </button>
@@ -1850,7 +1894,9 @@ export function ChatPage({
               })
             }
             title={activeConv?.is_pinned ? t('header.unpin') : t('header.pin')}
-            data-tooltip={activeConv?.is_pinned ? t('header.unpin') : t('header.pin')}
+            data-tooltip={
+              activeConv?.is_pinned ? t('header.unpin') : t('header.pin')
+            }
           >
             <IconPin filled={!!activeConv?.is_pinned} />
           </button>
@@ -1859,9 +1905,15 @@ export function ChatPage({
               <button
                 className="header-btn"
                 onClick={selectAllConversationItems}
-                title={allConversationItemsSelected ? t('header.clearSelection') : t('header.selectAll')}
+                title={
+                  allConversationItemsSelected
+                    ? t('header.clearSelection')
+                    : t('header.selectAll')
+                }
                 data-tooltip={
-                  allConversationItemsSelected ? t('header.clearSelection') : t('header.selectAll')
+                  allConversationItemsSelected
+                    ? t('header.clearSelection')
+                    : t('header.selectAll')
                 }
                 aria-disabled={timelineEntries.length === 0}
                 disabled={timelineEntries.length === 0}
@@ -1890,12 +1942,16 @@ export function ChatPage({
                 title={
                   selectedConversationItemCount === 0
                     ? t('selection.share.empty')
-                    : t('selection.share.selected', { count: selectedConversationItemCount })
+                    : t('selection.share.selected', {
+                        count: selectedConversationItemCount,
+                      })
                 }
                 data-tooltip={
                   selectedConversationItemCount === 0
                     ? t('selection.share.empty')
-                    : t('selection.share.selected', { count: selectedConversationItemCount })
+                    : t('selection.share.selected', {
+                        count: selectedConversationItemCount,
+                      })
                 }
                 aria-disabled={selectedConversationItemCount === 0}
                 disabled={selectedConversationItemCount === 0}
@@ -1975,379 +2031,415 @@ export function ChatPage({
       <Drawer
         open={accessDialogOpen}
         onClose={() => setAccessDialogOpen(false)}
-        title={accessManagedByAssistant ? t('access.titleManaged') : t('access.title')}
+        title={
+          accessManagedByAssistant
+            ? t('access.titleManaged')
+            : t('access.title')
+        }
         width={640}
       >
-            <div className="settings-hint">
-              {accessManagedByAssistant
-                ? t('access.hintManaged', { assistant: activeAssistantLabel || t('chat.auto_f0cc12') })
-                : t('access.hint')}
+        <div className="settings-hint">
+          {accessManagedByAssistant
+            ? t('access.hintManaged', {
+                assistant: activeAssistantLabel || t('chat.auto_f0cc12'),
+              })
+            : t('access.hint')}
+        </div>
+        {approvalFollowupHint ? (
+          <div className="access-policy-recommendation">
+            <div className="access-policy-recommendation-header">
+              <strong>{t('access.recommendation.title')}</strong>
+              <span>
+                {new Date(approvalFollowupHint.resolvedAt).toLocaleTimeString()}
+              </span>
             </div>
-            {approvalFollowupHint ? (
-              <div className="access-policy-recommendation">
-                <div className="access-policy-recommendation-header">
-                  <strong>{t('access.recommendation.title')}</strong>
-                  <span>
-                    {new Date(approvalFollowupHint.resolvedAt).toLocaleTimeString()}
-                  </span>
-                </div>
-                <code>{approvalFollowupHint.command}</code>
+            <code>{approvalFollowupHint.command}</code>
+            {approvalFollowupHint.cwd ? (
+              <span>
+                {t('access.recommendation.cwdLabel', {
+                  cwd: approvalFollowupHint.cwd,
+                })}
+              </span>
+            ) : null}
+            <p>
+              {describeDeniedApprovalFollowup({
+                approval: approvalFollowupHint,
+                policy: currentAccessPolicy,
+                accessManagedByAssistant,
+                activeAssistantLabel,
+              })}
+            </p>
+            {!accessManagedByAssistant ? (
+              <div className="access-policy-recommendation-actions">
                 {approvalFollowupHint.cwd ? (
-                  <span>{t('access.recommendation.cwdLabel', { cwd: approvalFollowupHint.cwd })}</span>
-                ) : null}
-                <p>
-                  {describeDeniedApprovalFollowup({
-                    approval: approvalFollowupHint,
-                    policy: currentAccessPolicy,
-                    accessManagedByAssistant,
-                    activeAssistantLabel,
-                  })}
-                </p>
-                {!accessManagedByAssistant ? (
-                  <div className="access-policy-recommendation-actions">
-                    {approvalFollowupHint.cwd ? (
-                      <>
-                        <button
-                          type="button"
-                          className="btn-outline btn-sm"
-                          onClick={() =>
-                            applySuggestedAccessDir(approvalFollowupHint.cwd)
-                          }
-                          disabled={hasAccessDirectory(
-                            accessDraft,
-                            approvalFollowupHint.cwd,
-                          )}
-                        >
-                          {hasAccessDirectory(accessDraft, approvalFollowupHint.cwd)
-                            ? t('access.recommendation.inAllowlist')
-                            : t('access.recommendation.addCwd')}
-                        </button>
-                        <button
-                          type="button"
-                          className="btn-outline btn-sm"
-                          onClick={() =>
-                            void saveSuggestedAccessDir(approvalFollowupHint.cwd)
-                          }
-                          disabled={conversationAccessSaving}
-                        >
-                          {conversationAccessSaving
-                            ? 'Saving...'
-                            : t('access.recommendation.saveAndAdd')}
-                        </button>
-                      </>
-                    ) : null}
-                    {currentAccessPolicy?.mode !== 'readonly' ? (
-                      <button
-                        type="button"
-                        className="btn-outline btn-sm"
-                        onClick={() => setAccessModeDraft('readonly')}
-                      >
-                        {t('access.recommendation.switchReadonly')}
-                      </button>
-                    ) : null}
-                    {currentAccessPolicy?.mode !== 'allowlist' ? (
-                      <button
-                        type="button"
-                        className="btn-outline btn-sm"
-                        onClick={() => setAccessModeDraft('allowlist')}
-                      >
-                        {t('access.recommendation.switchAllowlist')}
-                      </button>
-                    ) : null}
+                  <>
                     <button
                       type="button"
-                      className="btn-ghost btn-sm"
-                      onClick={() => setApprovalFollowupHint(null)}
+                      className="btn-outline btn-sm"
+                      onClick={() =>
+                        applySuggestedAccessDir(approvalFollowupHint.cwd)
+                      }
+                      disabled={hasAccessDirectory(
+                        accessDraft,
+                        approvalFollowupHint.cwd,
+                      )}
                     >
-                      {t('access.recommendation.hide')}
+                      {hasAccessDirectory(accessDraft, approvalFollowupHint.cwd)
+                        ? t('access.recommendation.inAllowlist')
+                        : t('access.recommendation.addCwd')}
                     </button>
-                  </div>
+                    <button
+                      type="button"
+                      className="btn-outline btn-sm"
+                      onClick={() =>
+                        void saveSuggestedAccessDir(approvalFollowupHint.cwd)
+                      }
+                      disabled={conversationAccessSaving}
+                    >
+                      {conversationAccessSaving
+                        ? 'Saving...'
+                        : t('access.recommendation.saveAndAdd')}
+                    </button>
+                  </>
                 ) : null}
-              </div>
-            ) : null}
-            <div className="access-policy-summary">
-              <div className="access-policy-summary-item">
-                <span>{t('access.summary.source')}</span>
-                <strong>{t(getAccessSourceLabel(currentAccessPolicy?.source))}</strong>
-              </div>
-              <div className="access-policy-summary-item">
-                <span>{t('access.summary.mode')}</span>
-                <strong>{t(getAccessModeOption(accessModeDraft).labelKey)}</strong>
-              </div>
-              <div className="access-policy-summary-item">
-                <span>{t('access.summary.directories')}</span>
-                <strong>{accessDraft.length}</strong>
-              </div>
-              <div className="access-policy-summary-item">
-                <span>{t('access.summary.runtime')}</span>
-                <strong>
-                  {runtimeAccess?.hasActivePatches
-                    ? t('access.summary.runtimeCount', { count: runtimeAccess.activePatchCount })
-                    : t('access.summary.runtimeNone')}
-                </strong>
-              </div>
-            </div>
-            <div className="assistant-choice-block">
-              <div className="assistant-section-label">{t('access.mode.title')}</div>
-              <div className="assistant-choice-grid access-policy-mode-grid">
-                {ACCESS_MODE_OPTIONS.map((option) => (
-                  <button
-                    key={option.value}
-                    type="button"
-                    className={`assistant-choice-card ${
-                      accessModeDraft === option.value ? 'active' : ''
-                    }`}
-                    onClick={() => setAccessModeDraft(option.value)}
-                    disabled={accessManagedByAssistant}
-                  >
-                    <strong>{t(option.labelKey)}</strong>
-                    <span>{t(option.descriptionKey)}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className="assistant-choice-help">
-              {t(getAccessModeOption(accessModeDraft).descriptionKey)}
-            </div>
-            <div className="settings-hint">
-              {accessManagedByAssistant
-                ? t('access.hintManagedPolicy')
-                : t('access.hintSave')}
-            </div>
-            {runtimeApprovalPatches.length > 0 ? (
-              <div className="access-runtime-patch-panel">
-                <div className="assistant-section-label">{t('access.runtime.title')}</div>
-                <div className="access-runtime-patch-list">
-                  {runtimeApprovalPatches.map((patch) => (
-                    <div key={patch.id} className="access-runtime-patch-item">
-                      <strong>{patch.toolName}</strong>
-                      <code>{patch.command}</code>
-                      <span>
-                        {t('access.runtime.scope', { scope: t(getApprovalScopeLabel(patch.scope)), expiresAt: new Date(patch.expiresAt).toLocaleString() })}
-                      </span>
-                      {patch.cwd ? <span>{t('access.runtime.cwdLabel', { cwd: patch.cwd })}</span> : null}
-                      {!accessManagedByAssistant && patch.cwd ? (
-                        <div className="access-runtime-patch-actions">
-                          <button
-                            type="button"
-                            className="btn-outline btn-sm"
-                            onClick={() => applySuggestedAccessDir(patch.cwd)}
-                            disabled={hasAccessDirectory(accessDraft, patch.cwd)}
-                          >
-                            {hasAccessDirectory(accessDraft, patch.cwd)
-                              ? t('access.runtime.inAllowlist')
-                              : t('access.runtime.addAllowlist')}
-                          </button>
-                          <button
-                            type="button"
-                            className="btn-outline btn-sm"
-                            onClick={() => void saveSuggestedAccessDir(patch.cwd)}
-                            disabled={conversationAccessSaving}
-                          >
-                            {conversationAccessSaving
-                              ? 'Saving...'
-                              : t('access.runtime.saveAndAdd')}
-                          </button>
-                        </div>
-                      ) : null}
-                    </div>
-                  ))}
-                </div>
-                <div className="assistant-choice-help">
-                  {t('access.runtime.hint')}
-                </div>
-              </div>
-            ) : null}
-            <div className="access-policy-layer-panel">
-              <div className="assistant-section-label">{t('access.nextSteps.title')}</div>
-              <div className="access-policy-layer-list">
-                <div className="access-policy-layer-item active">
-                  <strong>{t('access.nextSteps.currentEffect')}</strong>
-                  <span>{effectiveAccessSummary}</span>
-                </div>
-                {nextAccessActions.map((action) => (
-                  <div key={action.id} className="access-policy-layer-item">
-                    <strong>{action.title}</strong>
-                    <span>{action.description}</span>
-                  </div>
-                ))}
-              </div>
-              {nextAccessActions.some((action) => action.target) ? (
-                <div className="modal-actions">
-                  {nextAccessActions
-                    .filter((action) => action.target)
-                    .map((action) => (
-                      <button
-                        key={action.id}
-                        type="button"
-                        className="btn-outline"
-                        onClick={() => handleAccessNextAction(action)}
-                      >
-                        {action.target?.label}
-                      </button>
-                    ))}
-                </div>
-              ) : null}
-            </div>
-            {accessPolicyLayers ? (
-              <div className="access-policy-layer-panel">
-                <div className="access-panel-header">
-                  <div className="access-panel-header-copy">
-                    <div className="assistant-section-label">{t('access.inheritance.title')}</div>
-                    <div className="assistant-choice-help">
-                      {accessInheritanceSummary}
-                    </div>
-                  </div>
+                {currentAccessPolicy?.mode !== 'readonly' ? (
                   <button
                     type="button"
                     className="btn-outline btn-sm"
-                    onClick={() =>
-                      setAccessInheritanceExpanded((prev) => !prev)
-                    }
+                    onClick={() => setAccessModeDraft('readonly')}
                   >
-                    {accessInheritanceExpanded ? t('access.inheritance.collapse') : t('access.inheritance.expand')}
+                    {t('access.recommendation.switchReadonly')}
                   </button>
+                ) : null}
+                {currentAccessPolicy?.mode !== 'allowlist' ? (
+                  <button
+                    type="button"
+                    className="btn-outline btn-sm"
+                    onClick={() => setAccessModeDraft('allowlist')}
+                  >
+                    {t('access.recommendation.switchAllowlist')}
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  className="btn-ghost btn-sm"
+                  onClick={() => setApprovalFollowupHint(null)}
+                >
+                  {t('access.recommendation.hide')}
+                </button>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+        <div className="access-policy-summary">
+          <div className="access-policy-summary-item">
+            <span>{t('access.summary.source')}</span>
+            <strong>
+              {t(getAccessSourceLabel(currentAccessPolicy?.source))}
+            </strong>
+          </div>
+          <div className="access-policy-summary-item">
+            <span>{t('access.summary.mode')}</span>
+            <strong>{t(getAccessModeOption(accessModeDraft).labelKey)}</strong>
+          </div>
+          <div className="access-policy-summary-item">
+            <span>{t('access.summary.directories')}</span>
+            <strong>{accessDraft.length}</strong>
+          </div>
+          <div className="access-policy-summary-item">
+            <span>{t('access.summary.runtime')}</span>
+            <strong>
+              {runtimeAccess?.hasActivePatches
+                ? t('access.summary.runtimeCount', {
+                    count: runtimeAccess.activePatchCount,
+                  })
+                : t('access.summary.runtimeNone')}
+            </strong>
+          </div>
+        </div>
+        <div className="assistant-choice-block">
+          <div className="assistant-section-label">
+            {t('access.mode.title')}
+          </div>
+          <div className="assistant-choice-grid access-policy-mode-grid">
+            {ACCESS_MODE_OPTIONS.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                className={`assistant-choice-card ${
+                  accessModeDraft === option.value ? 'active' : ''
+                }`}
+                onClick={() => setAccessModeDraft(option.value)}
+                disabled={accessManagedByAssistant}
+              >
+                <strong>{t(option.labelKey)}</strong>
+                <span>{t(option.descriptionKey)}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="assistant-choice-help">
+          {t(getAccessModeOption(accessModeDraft).descriptionKey)}
+        </div>
+        <div className="settings-hint">
+          {accessManagedByAssistant
+            ? t('access.hintManagedPolicy')
+            : t('access.hintSave')}
+        </div>
+        {runtimeApprovalPatches.length > 0 ? (
+          <div className="access-runtime-patch-panel">
+            <div className="assistant-section-label">
+              {t('access.runtime.title')}
+            </div>
+            <div className="access-runtime-patch-list">
+              {runtimeApprovalPatches.map((patch) => (
+                <div key={patch.id} className="access-runtime-patch-item">
+                  <strong>{patch.toolName}</strong>
+                  <code>{patch.command}</code>
+                  <span>
+                    {t('access.runtime.scope', {
+                      scope: t(getApprovalScopeLabel(patch.scope)),
+                      expiresAt: new Date(patch.expiresAt).toLocaleString(),
+                    })}
+                  </span>
+                  {patch.cwd ? (
+                    <span>
+                      {t('access.runtime.cwdLabel', { cwd: patch.cwd })}
+                    </span>
+                  ) : null}
+                  {!accessManagedByAssistant && patch.cwd ? (
+                    <div className="access-runtime-patch-actions">
+                      <button
+                        type="button"
+                        className="btn-outline btn-sm"
+                        onClick={() => applySuggestedAccessDir(patch.cwd)}
+                        disabled={hasAccessDirectory(accessDraft, patch.cwd)}
+                      >
+                        {hasAccessDirectory(accessDraft, patch.cwd)
+                          ? t('access.runtime.inAllowlist')
+                          : t('access.runtime.addAllowlist')}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-outline btn-sm"
+                        onClick={() => void saveSuggestedAccessDir(patch.cwd)}
+                        disabled={conversationAccessSaving}
+                      >
+                        {conversationAccessSaving
+                          ? 'Saving...'
+                          : t('access.runtime.saveAndAdd')}
+                      </button>
+                    </div>
+                  ) : null}
                 </div>
-                {accessInheritanceExpanded ? (
-                  <>
-                    <div className="access-policy-layer-list">
-                      <div
-                        className={`access-policy-layer-item ${
-                          currentAccessPolicy?.source === 'global' ? 'active' : ''
-                        }`}
-                      >
-                        <strong>{t('access.inheritance.global')}</strong>
-                        <span>
-                          {formatAccessLayerDescription(accessPolicyLayers.global)}
-                        </span>
-                      </div>
-                      <div
-                        className={`access-policy-layer-item ${
-                          currentAccessPolicy?.source === 'assistant' ? 'active' : ''
-                        }`}
-                      >
-                        <strong>{activeAssistantLabel || t('access.inheritance.assistantDefault')}</strong>
-                        <span>
-                          {formatAccessLayerDescription(accessPolicyLayers.assistant)}
-                        </span>
-                      </div>
-                      <div
-                        className={`access-policy-layer-item ${
-                          currentAccessPolicy?.source === 'conversation'
-                            ? 'active'
-                            : ''
-                        }`}
-                      >
-                        <strong>{t('access.inheritance.conversation')}</strong>
-                        <span>
-                          {formatAccessLayerDescription(
-                            accessPolicyLayers.conversation,
-                          )}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="assistant-choice-help">
-                      {t('access.inheritance.hint')}
-                    </div>
-                  </>
+              ))}
+            </div>
+            <div className="assistant-choice-help">
+              {t('access.runtime.hint')}
+            </div>
+          </div>
+        ) : null}
+        <div className="access-policy-layer-panel">
+          <div className="assistant-section-label">
+            {t('access.nextSteps.title')}
+          </div>
+          <div className="access-policy-layer-list">
+            <div className="access-policy-layer-item active">
+              <strong>{t('access.nextSteps.currentEffect')}</strong>
+              <span>{effectiveAccessSummary}</span>
+            </div>
+            {nextAccessActions.map((action) => (
+              <div key={action.id} className="access-policy-layer-item">
+                <strong>{action.title}</strong>
+                <span>{action.description}</span>
+              </div>
+            ))}
+          </div>
+          {nextAccessActions.some((action) => action.target) ? (
+            <div className="modal-actions">
+              {nextAccessActions
+                .filter((action) => action.target)
+                .map((action) => (
+                  <button
+                    key={action.id}
+                    type="button"
+                    className="btn-outline"
+                    onClick={() => handleAccessNextAction(action)}
+                  >
+                    {action.target?.label}
+                  </button>
+                ))}
+            </div>
+          ) : null}
+        </div>
+        {accessPolicyLayers ? (
+          <div className="access-policy-layer-panel">
+            <div className="access-panel-header">
+              <div className="access-panel-header-copy">
+                <div className="assistant-section-label">
+                  {t('access.inheritance.title')}
+                </div>
+                <div className="assistant-choice-help">
+                  {accessInheritanceSummary}
+                </div>
+              </div>
+              <button
+                type="button"
+                className="btn-outline btn-sm"
+                onClick={() => setAccessInheritanceExpanded((prev) => !prev)}
+              >
+                {accessInheritanceExpanded
+                  ? t('access.inheritance.collapse')
+                  : t('access.inheritance.expand')}
+              </button>
+            </div>
+            {accessInheritanceExpanded ? (
+              <>
+                <div className="access-policy-layer-list">
+                  <div
+                    className={`access-policy-layer-item ${
+                      currentAccessPolicy?.source === 'global' ? 'active' : ''
+                    }`}
+                  >
+                    <strong>{t('access.inheritance.global')}</strong>
+                    <span>
+                      {formatAccessLayerDescription(accessPolicyLayers.global)}
+                    </span>
+                  </div>
+                  <div
+                    className={`access-policy-layer-item ${
+                      currentAccessPolicy?.source === 'assistant'
+                        ? 'active'
+                        : ''
+                    }`}
+                  >
+                    <strong>
+                      {activeAssistantLabel ||
+                        t('access.inheritance.assistantDefault')}
+                    </strong>
+                    <span>
+                      {formatAccessLayerDescription(
+                        accessPolicyLayers.assistant,
+                      )}
+                    </span>
+                  </div>
+                  <div
+                    className={`access-policy-layer-item ${
+                      currentAccessPolicy?.source === 'conversation'
+                        ? 'active'
+                        : ''
+                    }`}
+                  >
+                    <strong>{t('access.inheritance.conversation')}</strong>
+                    <span>
+                      {formatAccessLayerDescription(
+                        accessPolicyLayers.conversation,
+                      )}
+                    </span>
+                  </div>
+                </div>
+                <div className="assistant-choice-help">
+                  {t('access.inheritance.hint')}
+                </div>
+              </>
+            ) : null}
+          </div>
+        ) : null}
+        {accessPickerError && (
+          <div className="login-error">{accessPickerError}</div>
+        )}
+        <div className="assistant-section-label">{t('access.dir.title')}</div>
+        <div className="dir-list">
+          {conversationAccessLoading ? (
+            <div className="dir-empty">{t('access.dir.loading')}</div>
+          ) : (
+            accessDraft.map((dir, index) => (
+              <div key={`${dir}-${index}`} className="dir-item">
+                <span className="dir-path">{dir}</span>
+                {!accessManagedByAssistant ? (
+                  <button
+                    className="btn-danger btn-sm"
+                    onClick={() => removeAccessDir(index)}
+                  >
+                    {t('access.dir.remove')}
+                  </button>
                 ) : null}
               </div>
-            ) : null}
-            {accessPickerError && (
-              <div className="login-error">{accessPickerError}</div>
-            )}
-            <div className="assistant-section-label">{t('access.dir.title')}</div>
-            <div className="dir-list">
-              {conversationAccessLoading ? (
-                <div className="dir-empty">{t('access.dir.loading')}</div>
-              ) : (
-                accessDraft.map((dir, index) => (
-                  <div key={`${dir}-${index}`} className="dir-item">
-                    <span className="dir-path">{dir}</span>
-                    {!accessManagedByAssistant ? (
-                      <button
-                        className="btn-danger btn-sm"
-                        onClick={() => removeAccessDir(index)}
-                      >
-                        {t('access.dir.remove')}
-                      </button>
-                    ) : null}
-                  </div>
-                ))
-              )}
-              {!conversationAccessLoading && accessDraft.length === 0 && (
-                <div className="dir-empty">
-                  {accessManagedByAssistant
-                    ? t('access.dir.emptyManaged')
-                    : t('access.dir.empty')}
-                </div>
-              )}
+            ))
+          )}
+          {!conversationAccessLoading && accessDraft.length === 0 && (
+            <div className="dir-empty">
+              {accessManagedByAssistant
+                ? t('access.dir.emptyManaged')
+                : t('access.dir.empty')}
             </div>
-            <div className="assistant-field-hint">
-              {t('access.dir.hint')}
-            </div>
-            {!accessManagedByAssistant ? (
-              <div className="dir-add-row">
-                <input
-                  value={newAccessDir}
-                  onChange={(event) => setNewAccessDir(event.target.value)}
-                  placeholder={t('access.dir.placeholder')}
-                  onKeyDown={(event) => event.key === 'Enter' && addAccessDir()}
-                />
-                <button
-                  className="btn-outline btn-sm"
-                  onClick={() => void chooseAccessDir()}
-                  disabled={pickingAccessDir}
-                >
-                  {pickingAccessDir ? t('access.dir.picking') : t('access.dir.choose')}
-                </button>
-                <button
-                  className="btn-primary btn-sm"
-                  onClick={addAccessDir}
-                  disabled={!newAccessDir.trim()}
-                >
-                  {t('access.dir.add')}
-                </button>
-              </div>
-            ) : null}
-            <div className="modal-actions">
-              <button
-                className="btn-outline"
-                onClick={() => setAccessDialogOpen(false)}
-              >
-                {accessManagedByAssistant ? t('access.close') : t('access.cancel')}
-              </button>
-              {!accessManagedByAssistant ? (
-                <button
-                  className="btn-primary"
-                  onClick={() => {
-                    setAccessSaveError('');
-                    void Promise.resolve(
-                      saveConversationAccess({
-                        mode: accessModeDraft,
-                        directories: accessDraft,
-                      }),
-                    ).then((result) => {
-                      if (result !== true) {
-                        setAccessSaveError(
-                          typeof result === 'object' && result.error
-                            ? result.error
-                            : t('access.saveError'),
-                        );
-                      } else {
-                        setAccessDialogOpen(false);
-                      }
-                    });
-                  }}
-                  disabled={conversationAccessSaving}
-                >
-                  {conversationAccessSaving ? 'Saving...' : t('access.save')}
-                </button>
-              ) : null}
-            </div>
-            {accessSaveError && (
-              <div className="login-error">{accessSaveError}</div>
-            )}
+          )}
+        </div>
+        <div className="assistant-field-hint">{t('access.dir.hint')}</div>
+        {!accessManagedByAssistant ? (
+          <div className="dir-add-row">
+            <input
+              value={newAccessDir}
+              onChange={(event) => setNewAccessDir(event.target.value)}
+              placeholder={t('access.dir.placeholder')}
+              onKeyDown={(event) => event.key === 'Enter' && addAccessDir()}
+            />
+            <button
+              className="btn-outline btn-sm"
+              onClick={() => void chooseAccessDir()}
+              disabled={pickingAccessDir}
+            >
+              {pickingAccessDir
+                ? t('access.dir.picking')
+                : t('access.dir.choose')}
+            </button>
+            <button
+              className="btn-primary btn-sm"
+              onClick={addAccessDir}
+              disabled={!newAccessDir.trim()}
+            >
+              {t('access.dir.add')}
+            </button>
+          </div>
+        ) : null}
+        <div className="modal-actions">
+          <button
+            className="btn-outline"
+            onClick={() => setAccessDialogOpen(false)}
+          >
+            {accessManagedByAssistant ? t('access.close') : t('access.cancel')}
+          </button>
+          {!accessManagedByAssistant ? (
+            <button
+              className="btn-primary"
+              onClick={() => {
+                setAccessSaveError('');
+                void Promise.resolve(
+                  saveConversationAccess({
+                    mode: accessModeDraft,
+                    directories: accessDraft,
+                  }),
+                ).then((result) => {
+                  if (result !== true) {
+                    setAccessSaveError(
+                      typeof result === 'object' && result.error
+                        ? result.error
+                        : t('access.saveError'),
+                    );
+                  } else {
+                    setAccessDialogOpen(false);
+                  }
+                });
+              }}
+              disabled={conversationAccessSaving}
+            >
+              {conversationAccessSaving ? 'Saving...' : t('access.save')}
+            </button>
+          ) : null}
+        </div>
+        {accessSaveError && (
+          <div className="login-error">{accessSaveError}</div>
+        )}
       </Drawer>
 
       <ApprovalOverlay
@@ -2362,7 +2454,11 @@ export function ChatPage({
         {approvalFollowupHint ? (
           <div className="chat-approval-followup-banner">
             <div className="chat-approval-followup-copy">
-              <strong>{t('approvalFollowup.title', { toolName: approvalFollowupHint.toolName })}</strong>
+              <strong>
+                {t('approvalFollowup.title', {
+                  toolName: approvalFollowupHint.toolName,
+                })}
+              </strong>
               <span>{approvalFollowupHint.command}</span>
               <p>
                 {describeDeniedApprovalFollowup({
@@ -2412,7 +2508,9 @@ export function ChatPage({
                 followOutput="smooth"
                 alignToBottom
                 atBottomThreshold={80}
-                atBottomStateChange={(bottom) => { atBottomRef.current = bottom; }}
+                atBottomStateChange={(bottom) => {
+                  atBottomRef.current = bottom;
+                }}
                 initialTopMostItemIndex={
                   firstItemIndex + visibleTimelineItems.length - 1
                 }
@@ -2452,9 +2550,7 @@ export function ChatPage({
             ))}
           </div>
         )}
-        {sendError && (
-          <div className="chat-send-error">{sendError}</div>
-        )}
+        {sendError && <div className="chat-send-error">{sendError}</div>}
         <div className="input-wrap">
           {showCommandSuggestionPanel &&
             filteredCommandSuggestions.length > 0 && (
