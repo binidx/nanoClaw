@@ -206,6 +206,8 @@
     "uploadFileLabel": "[上传文件] {{names}}",
     "uploadFileEmptyOrInvalid": "文件“{{filename}}”内容为空或格式错误",
     "uploadFileTooLarge": "文件“{{filename}}”超过大小限制（{{maxSizeMb}}MB）",
+    "assistantNotFound": "未找到助手“{{id}}”",
+    "assistantDisabled": "助手“{{name}}”已停用，当前对话无法继续执行",
     "codemap": {
       "analysisPromptChildrenHint": "...同结构的子节点，id 用 \"1a\", \"1b\" 格式",
       "analysisPromptContext": "代码结构信息：",

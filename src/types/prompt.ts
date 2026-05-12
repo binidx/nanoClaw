@@ -1,4 +1,20 @@
 export type PromptScopeKind = 'system' | 'user';
+export type PromptLayer =
+  | 'system_base'
+  | 'system_persona'
+  | 'system_policy'
+  | 'system_tools'
+  | 'context_runtime'
+  | 'context_memory'
+  | 'user_input'
+  | 'task_payload'
+  | 'derived';
+
+export type PromptMutability =
+  | 'configurable'
+  | 'parameterized'
+  | 'runtime_fixed'
+  | 'derived';
 
 export interface PromptDefinition {
   key: string;
@@ -6,6 +22,8 @@ export interface PromptDefinition {
   title: string;
   description: string;
   promptKind: 'system' | 'instruction' | 'user' | 'mixed';
+  layer?: PromptLayer;
+  mutability?: PromptMutability;
   defaultTemplate: string;
   variables: string[];
   supportsStructuredPreview?: boolean;
@@ -29,6 +47,7 @@ export interface PromptSegment {
   id: string;
   label: string;
   promptKey?: string;
+  layer?: PromptLayer;
   source:
     | 'builtin'
     | 'system_default'
@@ -80,6 +99,8 @@ export interface PromptTraceInput {
   providerInputText?: string | null;
   segments?: PromptSegment[];
   resolution?: PromptSourceResolution[];
+  cacheFingerprint?: string | null;
+  stablePrefixFingerprint?: string | null;
   metadata?: Record<string, unknown>;
 }
 
@@ -94,5 +115,7 @@ export interface PromptPreviewEnvelope {
   providerInputText?: string | null;
   segments: PromptSegment[];
   resolution: PromptSourceResolution[];
+  cacheFingerprint?: string | null;
+  stablePrefixFingerprint?: string | null;
   metadata?: Record<string, unknown>;
 }

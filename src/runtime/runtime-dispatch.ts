@@ -696,6 +696,7 @@ async function resolveConversationPromptEnvelope(
       id: 'soul_system_prompt',
       label: 'Soul System Prompt',
       promptKey: 'assistant.soul.primary_policy_wrapper',
+      layer: 'system_persona',
       source: soulPrompt ? 'soul' : 'builtin',
       content: assistantRuntime.soulSystemPrompt,
     });
@@ -704,6 +705,7 @@ async function resolveConversationPromptEnvelope(
     segments.push({
       id: 'assistant_instructions_append',
       label: 'Assistant Instructions Append',
+      layer: 'system_policy',
       source: 'assistant_config',
       content: finalInstructionsAppend,
     });
@@ -711,6 +713,7 @@ async function resolveConversationPromptEnvelope(
   segments.push({
     id: 'conversation_user_prompt',
     label: 'Conversation User Prompt',
+    layer: 'context_runtime',
     source: 'conversation_context',
     content: prompt.text,
   });

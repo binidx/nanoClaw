@@ -1,3 +1,5 @@
+import crypto from 'crypto';
+
 import {
   deletePromptConfig,
   getPromptConfig,
@@ -7,8 +9,10 @@ import {
 import { getPromptDefinition } from './prompt-registry.js';
 import type {
   PromptConfigRecord,
+  PromptLayer,
   PromptPreviewEnvelope,
   PromptScopeKind,
+  PromptSegment,
   PromptTraceInput,
 } from '../types/prompt.js';
 
@@ -24,6 +28,60 @@ const OBSOLETE_REPO_REVIEW_VARIABLES = [
 function templateUsesVariable(template: string, variableName: string): boolean {
   const escaped = variableName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   return new RegExp(`\\{\\{\\s*${escaped}\\s*\\}\\}`).test(template);
+}
+
+function sha256(text: string): string {
+  return crypto.createHash('sha256').update(text).digest('hex');
+}
+
+function normalizeFingerprintText(value: string | null | undefined): string {
+  return String(value || '')
+    .replace(/\r\n/g, '\n')
+    .trim();
+}
+
+function inferSegmentLayer(segment: PromptSegment): PromptLayer {
+  if (segment.layer) return segment.layer;
+  if (segment.source === 'conversation_context') return 'context_runtime';
+  if (segment.source === 'memory') return 'context_memory';
+  if (segment.source === 'assistant_config') return 'system_persona';
+  if (segment.source === 'soul') return 'system_persona';
+  if (segment.source === 'custom') return 'system_policy';
+  return 'system_base';
+}
+
+function normalizeSegmentsForFingerprint(segments: PromptSegment[] = []): string {
+  return JSON.stringify(
+    segments.map((segment) => ({
+      id: segment.id,
+      layer: inferSegmentLayer(segment),
+      source: segment.source,
+      promptKey: segment.promptKey || null,
+      content: normalizeFingerprintText(segment.content),
+    })),
+  );
+}
+
+export function buildPromptFingerprintMeta(input: {
+  systemPromptText?: string | null;
+  userPromptText: string;
+  providerInputText?: string | null;
+  segments?: PromptSegment[];
+}): {
+  stablePrefixFingerprint: string;
+  cacheFingerprint: string;
+} {
+  const systemPromptText = normalizeFingerprintText(input.systemPromptText);
+  const userPromptText = normalizeFingerprintText(input.userPromptText);
+  const providerInputText = normalizeFingerprintText(input.providerInputText);
+  const segments = normalizeSegmentsForFingerprint(input.segments || []);
+  const stablePrefixFingerprint = sha256(systemPromptText);
+  const cacheFingerprint = sha256(
+    [systemPromptText, providerInputText || userPromptText, userPromptText, segments].join(
+      '\n---\n',
+    ),
+  );
+  return { stablePrefixFingerprint, cacheFingerprint };
 }
 
 export function isPromptConfigTemplateCompatible(
@@ -153,9 +211,36 @@ export async function removePromptConfig(input: {
 }
 
 export function buildPromptPreviewEnvelope(input: PromptPreviewEnvelope): PromptPreviewEnvelope {
-  return input;
+  const fingerprints = buildPromptFingerprintMeta({
+    systemPromptText: input.systemPromptText ?? null,
+    userPromptText: input.userPromptText,
+    providerInputText: input.providerInputText ?? null,
+    segments: input.segments,
+  });
+  return {
+    ...input,
+    stablePrefixFingerprint: input.stablePrefixFingerprint || fingerprints.stablePrefixFingerprint,
+    cacheFingerprint: input.cacheFingerprint || fingerprints.cacheFingerprint,
+  };
 }
 
 export async function recordPromptTrace(input: PromptTraceInput): Promise<void> {
-  await persistPromptTrace(input);
+  const fingerprints = buildPromptFingerprintMeta({
+    systemPromptText: input.systemPromptText ?? null,
+    userPromptText: input.userPromptText,
+    providerInputText: input.providerInputText ?? null,
+    segments: input.segments,
+  });
+  await persistPromptTrace({
+    ...input,
+    cacheFingerprint: input.cacheFingerprint || fingerprints.cacheFingerprint,
+    stablePrefixFingerprint:
+      input.stablePrefixFingerprint || fingerprints.stablePrefixFingerprint,
+    metadata: {
+      ...(input.metadata || {}),
+      cacheFingerprint: input.cacheFingerprint || fingerprints.cacheFingerprint,
+      stablePrefixFingerprint:
+        input.stablePrefixFingerprint || fingerprints.stablePrefixFingerprint,
+    },
+  });
 }

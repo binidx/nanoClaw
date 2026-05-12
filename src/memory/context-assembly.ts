@@ -711,27 +711,13 @@ export async function assembleAgentContext(
         shouldIncludePromptContextEntry(entry, currentMessageIds) &&
         !compactedSourceEntryIds.has(entry.id),
       );
-      const groupFolder =
-        recentEntries[recentEntries.length - 1]?.group_folder ||
-        latestSummary?.group_folder ||
-        '';
-      const durablePromptEntries =
-        groupFolder &&
-        (memoryConfig.promptMaxSnippets > 0 || memoryConfig.promptTokenBudget > 0)
-          ? await collectDurablePromptEntries({
-              chatJid,
-              groupFolder,
-              query: buildCurrentMemoryQuery(sourceMessages),
-              maxEntries: Math.max(1, Math.min(memoryConfig.promptMaxSnippets, 3)),
-            })
-          : [];
+      // Durable memory is now tool-first. Prompt assembly only reuses explicit
+      // memory recall entries already written into the session ledger, instead
+      // of performing another automatic recall pass on every turn.
       const storedRecallEntries = recentEntries
         .filter((entry) => entry.source_type === 'memory_recall')
         .slice(-1);
-      const recallEntries = dedupeRecallEntries([
-        ...durablePromptEntries,
-        ...storedRecallEntries,
-      ]);
+      const recallEntries = dedupeRecallEntries(storedRecallEntries);
       const recentRawEntries = recentEntries.filter(
         (entry) => entry.source_type !== 'memory_recall',
       );

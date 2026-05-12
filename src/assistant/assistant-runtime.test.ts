@@ -184,7 +184,7 @@ describe('assistant runtime resolution', () => {
       }, {
         requireEnabled: true,
       }),
-    ).rejects.toThrow('助手 "演示助手" 已停用，当前对话无法继续执行');
+    ).rejects.toThrow(/助手.*已停用，当前对话无法继续执行/);
   });
 
   it('keeps assistant-bound chats readable when the assistant record is missing', async () => {

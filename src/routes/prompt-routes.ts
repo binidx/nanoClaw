@@ -107,6 +107,10 @@ export function registerPromptRoutes(app: Express, opts: PromptRouteOptions): vo
         res.status(404).json({ ok: false, error: 'Unknown prompt key' });
         return;
       }
+      if (definition.mutability && definition.mutability !== 'configurable') {
+        res.status(400).json({ ok: false, error: 'Prompt is read-only' });
+        return;
+      }
       const body = (req.body || {}) as {
         scopeKind?: unknown;
         targetUserId?: unknown;
@@ -147,6 +151,10 @@ export function registerPromptRoutes(app: Express, opts: PromptRouteOptions): vo
       const definition = getPromptDefinition(promptKey);
       if (!definition) {
         res.status(404).json({ ok: false, error: 'Unknown prompt key' });
+        return;
+      }
+      if (definition.mutability && definition.mutability !== 'configurable') {
+        res.status(400).json({ ok: false, error: 'Prompt is read-only' });
         return;
       }
       const scopeKind = req.query.scopeKind === 'user' ? 'user' : 'system';

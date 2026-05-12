@@ -12,6 +12,7 @@ vi.mock('../db/prompt-configs.js', () => ({
 }));
 
 import {
+  buildPromptFingerprintMeta,
   isPromptConfigTemplateCompatible,
   resolvePromptText,
 } from './prompt-service.js';
@@ -112,5 +113,54 @@ describe('prompt service config compatibility', () => {
     expect(resolved.text).toBe('内置模板：head^!');
     expect(resolved.resolution.source).toBe('builtin');
     expect(resolved.resolution.configured).toBe(false);
+  });
+
+  it('builds stable and full prompt fingerprints deterministically', () => {
+    const first = buildPromptFingerprintMeta({
+      systemPromptText: 'system block',
+      userPromptText: 'user block',
+      providerInputText: 'provider block',
+      segments: [
+        {
+          id: 'soul',
+          label: 'Soul',
+          layer: 'system_persona',
+          source: 'soul',
+          content: 'persona',
+        },
+        {
+          id: 'context',
+          label: 'Context',
+          layer: 'context_runtime',
+          source: 'conversation_context',
+          content: 'recent context',
+        },
+      ],
+    });
+    const second = buildPromptFingerprintMeta({
+      systemPromptText: 'system block',
+      userPromptText: 'user block',
+      providerInputText: 'provider block',
+      segments: [
+        {
+          id: 'soul',
+          label: 'Soul',
+          layer: 'system_persona',
+          source: 'soul',
+          content: 'persona',
+        },
+        {
+          id: 'context',
+          label: 'Context',
+          layer: 'context_runtime',
+          source: 'conversation_context',
+          content: 'recent context',
+        },
+      ],
+    });
+
+    expect(first.stablePrefixFingerprint).toHaveLength(64);
+    expect(first.cacheFingerprint).toHaveLength(64);
+    expect(second).toEqual(first);
   });
 });

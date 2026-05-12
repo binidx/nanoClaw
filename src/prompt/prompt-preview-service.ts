@@ -34,7 +34,7 @@ import { buildSoulPrompt } from '../soul/soul-service.js';
 import { buildTaskPrompt } from '../workteam/agent-adapter.js';
 import { buildEvalPrompt } from '../workteam/evaluation-engine.js';
 import { buildSmartCreatorPrompt } from '../workteam/smart-creator.js';
-import type { PromptPreviewEnvelope, PromptSegment } from '../types/prompt.js';
+import type { PromptLayer, PromptPreviewEnvelope, PromptSegment } from '../types/prompt.js';
 import { t } from '../i18n/index.js';
 
 export interface PromptPreviewScenario {
@@ -69,11 +69,32 @@ function segmentForPrompt(
   label: string,
   content: string,
   source: PromptSegment['source'] = 'builtin',
+  layer?: PromptLayer,
 ): PromptSegment {
   return {
     id: promptKey,
     label,
     promptKey,
+    layer:
+      layer ||
+      (promptKey === 'conversation.companion.mode_hint'
+        ? 'system_policy'
+        : promptKey.startsWith('assistant.soul.') || promptKey.startsWith('soul.')
+        ? 'system_persona'
+        : promptKey.startsWith('assistant.profile.')
+          ? 'system_persona'
+          : promptKey.startsWith('conversation.')
+            ? 'context_runtime'
+            : promptKey.startsWith('repo_review.') ||
+                promptKey.startsWith('stock_analysis.') ||
+                promptKey.startsWith('workteam.') ||
+                promptKey.startsWith('requirement_parser.') ||
+                promptKey.startsWith('user_mcp.') ||
+                promptKey.startsWith('runtime_customization.')
+              ? 'task_payload'
+              : promptKey.startsWith('code_map.')
+                ? 'task_payload'
+              : 'user_input'),
     source,
     content,
   };

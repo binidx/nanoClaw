@@ -7,6 +7,8 @@ type PromptDefinition = {
   title: string;
   description: string;
   promptKind: string;
+  layer?: string;
+  mutability?: string;
   defaultTemplate: string;
   variables: string[];
 };
@@ -44,10 +46,13 @@ type PromptPreview = {
   systemPromptText?: string | null;
   userPromptText: string;
   providerInputText?: string | null;
+  cacheFingerprint?: string | null;
+  stablePrefixFingerprint?: string | null;
   segments: Array<{
     id: string;
     label: string;
     promptKey?: string;
+    layer?: string;
     source: string;
     content: string;
   }>;
@@ -127,6 +132,7 @@ function getFeatureScopeLabels(t: (key: string) => string): Record<string, strin
     requirement_parser: t('settings.prompt.需求解析'),
     memory: t('settings.prompt.记忆'),
     runtime_customization: t('settings.prompt.运行时定制'),
+    code_map: 'CodeMap',
     user_mcp: t('settings.prompt.用户_MCP'),
     stock_analysis: t('settings.prompt.股票分析'),
     repo_review: t('settings.prompt.仓库审查'),
@@ -140,6 +146,29 @@ function getPromptKindLabels(t: (key: string) => string): Record<string, string>
     instruction: t('settings.prompt.指令片段'),
     user: t('settings.prompt.用户提示词'),
     mixed: t('settings.prompt.混合提示词'),
+  };
+}
+
+function getPromptLayerLabels(): Record<string, string> {
+  return {
+    system_base: 'System Base',
+    system_persona: 'System Persona',
+    system_policy: 'System Policy',
+    system_tools: 'System Tools',
+    context_runtime: 'Context Runtime',
+    context_memory: 'Context Memory',
+    user_input: 'User Input',
+    task_payload: 'Task Payload',
+    derived: 'Derived',
+  };
+}
+
+function getPromptMutabilityLabels(): Record<string, string> {
+  return {
+    configurable: 'Configurable',
+    parameterized: 'Parameterized',
+    runtime_fixed: 'Runtime Fixed',
+    derived: 'Derived',
   };
 }
 
@@ -194,6 +223,14 @@ function formatFeatureScope(t: (key: string) => string, value?: string | null): 
 
 function formatPromptKind(t: (key: string) => string, value?: string | null): string {
   return labelOrRaw(getPromptKindLabels(t), value);
+}
+
+function formatPromptLayer(value?: string | null): string {
+  return labelOrRaw(getPromptLayerLabels(), value);
+}
+
+function formatPromptMutability(value?: string | null): string {
+  return labelOrRaw(getPromptMutabilityLabels(), value);
 }
 
 function formatSource(t: (key: string) => string, value?: string | null): string {
@@ -469,6 +506,14 @@ export function SettingsPromptTab({ apiBase }: { apiBase: string }) {
       systemPromptText: trace.system_prompt_text || null,
       userPromptText: trace.user_prompt_text,
       providerInputText: trace.provider_input_text || null,
+      cacheFingerprint:
+        metadata && typeof metadata.cacheFingerprint === 'string'
+          ? metadata.cacheFingerprint
+          : null,
+      stablePrefixFingerprint:
+        metadata && typeof metadata.stablePrefixFingerprint === 'string'
+          ? metadata.stablePrefixFingerprint
+          : null,
       segments,
       resolution,
       metadata,
@@ -578,6 +623,10 @@ export function SettingsPromptTab({ apiBase }: { apiBase: string }) {
 
   const handleSave = async () => {
     if (!selectedDefinition) return;
+    if (selectedDefinition.mutability && selectedDefinition.mutability !== 'configurable') {
+      setLookupMessage('该提示词当前为只读运行时片段');
+      return;
+    }
     const res = await fetch(`${apiBase}/api/prompt-configs/${encodeURIComponent(selectedDefinition.key)}`, {
       method: 'PUT',
       credentials: 'include',
@@ -595,6 +644,10 @@ export function SettingsPromptTab({ apiBase }: { apiBase: string }) {
 
   const handleReset = async () => {
     if (!selectedDefinition) return;
+    if (selectedDefinition.mutability && selectedDefinition.mutability !== 'configurable') {
+      setLookupMessage('该提示词当前为只读运行时片段');
+      return;
+    }
     const params = new URLSearchParams({ scopeKind });
     if (scopeKind === 'user' && targetUserId) params.set('targetUserId', targetUserId);
     const res = await fetch(
@@ -699,7 +752,9 @@ export function SettingsPromptTab({ apiBase }: { apiBase: string }) {
                 style={{ textAlign: 'left' }}
               >
                 <div><strong>{definition.title}</strong></div>
-                <div className="settings-hint">{formatFeatureScope(t, definition.featureScope)} · {formatPromptKind(t, definition.promptKind)}</div>
+                <div className="settings-hint">
+                  {formatFeatureScope(t, definition.featureScope)} · {formatPromptKind(t, definition.promptKind)} · {formatPromptLayer(definition.layer)} · {formatPromptMutability(definition.mutability)}
+                </div>
               </button>
             ))}
           </div>
@@ -711,7 +766,9 @@ export function SettingsPromptTab({ apiBase }: { apiBase: string }) {
               <h3>{selectedDefinition?.title || t('settings.prompt.选择一个提示词')}</h3>
               <div className="settings-hint">{selectedDefinition?.description}</div>
               <div className="settings-hint">
-                {selectedDefinition ? `${formatFeatureScope(t, selectedDefinition.featureScope)} · ${formatPromptKind(t, selectedDefinition.promptKind)}` : ''}
+                {selectedDefinition
+                  ? `${formatFeatureScope(t, selectedDefinition.featureScope)} · ${formatPromptKind(t, selectedDefinition.promptKind)} · ${formatPromptLayer(selectedDefinition.layer)} · ${formatPromptMutability(selectedDefinition.mutability)}`
+                  : ''}
               </div>
             </div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -740,15 +797,22 @@ export function SettingsPromptTab({ apiBase }: { apiBase: string }) {
               rows={16}
               value={editorText}
               onChange={(e) => setEditorText(e.target.value)}
+              readOnly={selectedDefinition?.mutability !== 'configurable'}
             />
           </label>
           <label className="config-field">
             <span>{t('settings.prompt.备注')}</span>
-            <textarea className="nc-input" rows={3} value={notesText} onChange={(e) => setNotesText(e.target.value)} />
+            <textarea
+              className="nc-input"
+              rows={3}
+              value={notesText}
+              onChange={(e) => setNotesText(e.target.value)}
+              readOnly={selectedDefinition?.mutability !== 'configurable'}
+            />
           </label>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 12 }}>
-            <button type="button" className="btn btn-primary" onClick={handleSave} disabled={!selectedDefinition || (scopeKind === 'user' && !targetUserId)}>{t('settings.prompt.保存')}</button>
-            <button type="button" className="btn btn-secondary" onClick={handleReset} disabled={!selectedDefinition}>{t('settings.prompt.删除覆盖_回退')}</button>
+            <button type="button" className="btn btn-primary" onClick={handleSave} disabled={!selectedDefinition || selectedDefinition.mutability !== 'configurable' || (scopeKind === 'user' && !targetUserId)}>{t('settings.prompt.保存')}</button>
+            <button type="button" className="btn btn-secondary" onClick={handleReset} disabled={!selectedDefinition || selectedDefinition.mutability !== 'configurable'}>{t('settings.prompt.删除覆盖_回退')}</button>
             <button type="button" className="btn btn-secondary" onClick={() => setEditorText(defaultTemplate)} disabled={!selectedDefinition}>{t('settings.prompt.载入内置默认')}</button>
           </div>
         </section>
@@ -861,6 +925,13 @@ export function SettingsPromptTab({ apiBase }: { apiBase: string }) {
           <div className="settings-hint">
             {formatFeatureScope(t, previewResult.featureScope)} / {previewResult.promptKey ? formatPromptLabel(previewResult.promptKey) : previewResult.chatJid || t('settings.prompt.预览')}
           </div>
+          {(previewResult.stablePrefixFingerprint || previewResult.cacheFingerprint) && (
+            <div className="settings-hint" style={{ marginTop: 8 }}>
+              {previewResult.stablePrefixFingerprint ? `stable ${previewResult.stablePrefixFingerprint.slice(0, 16)}…` : ''}
+              {previewResult.stablePrefixFingerprint && previewResult.cacheFingerprint ? ' · ' : ''}
+              {previewResult.cacheFingerprint ? `full ${previewResult.cacheFingerprint.slice(0, 16)}…` : ''}
+            </div>
+          )}
           {previewResult.systemPromptText && (
             <label className="config-field" style={{ marginTop: 12 }}>
               <span>{t('settings.prompt.系统提示词')}</span>
@@ -874,7 +945,7 @@ export function SettingsPromptTab({ apiBase }: { apiBase: string }) {
           <div style={{ display: 'grid', gap: 8, marginTop: 12 }}>
             {previewResult.segments.map((segment) => (
               <details key={segment.id} open>
-                <summary>{segment.label} · {formatSource(t, segment.source)}</summary>
+                <summary>{segment.label} · {formatSource(t, segment.source)} · {formatPromptLayer(segment.layer)}</summary>
                 <textarea className="nc-input" rows={6} readOnly value={segment.content} />
               </details>
             ))}

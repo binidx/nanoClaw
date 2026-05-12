@@ -22,6 +22,7 @@ import {
 } from '../code-intelligence/code-map-persist.js';
 import type { CodeMapSnapshot } from '../code-intelligence/code-map-types.js';
 import { generateTextWithDefaultProvider, generateTextStreamWithDefaultProvider } from '../provider/provider-api.js';
+import { resolvePromptText } from '../prompt/prompt-service.js';
 import {
   getReviewRepositoryById,
   listReviewRepositories,
@@ -721,9 +722,13 @@ export function registerCodeMapRoutes(
       sendSSE('status', { message: t('errors.auto_acfbe7', {}, req.locale) });
 
       try {
+        const guardPrompt = await resolvePromptText({
+          promptKey: 'code_map.json_guard',
+          fallbackText: 'Return only valid JSON. No markdown wrapping.',
+        });
         const stream = await generateTextStreamWithDefaultProvider(prompt, {
           maxTokens: profile.maxTokens,
-          systemPrompt: 'Return only valid JSON. No markdown wrapping.',
+          systemPrompt: guardPrompt.text,
         });
 
         sendSSE('status', { message: t('errors.auto_4d2bb7', {}, req.locale) });

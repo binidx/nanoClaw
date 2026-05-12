@@ -85,7 +85,7 @@ describe('memory offline eval fixtures', () => {
     });
   });
 
-  it('covers identity recall across later turns', () => {
+  it('stores identity memory for later tool recall without auto-injecting it into every prompt', async () => {
     const groupFolder = 'memory-eval-identity';
     const chatJid = 'memory-eval-identity@g.us';
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'nanoclaw-memory-eval-'));
@@ -103,7 +103,7 @@ describe('memory offline eval fixtures', () => {
     await setConfig('MEMORY_GLOBAL_WRITE_ENABLED', 'true');
     await storeChatMetadata(chatJid, '2026-03-19T10:00:00.000Z');
 
-    autoPromoteMemoryFromEntries({
+    await autoPromoteMemoryFromEntries({
       groupFolder,
       chatJid,
       entries: [
@@ -126,7 +126,7 @@ describe('memory offline eval fixtures', () => {
       }),
     ]);
 
-    const prompt = _buildAgentPromptInputForTest(chatJid, [
+    const prompt = await _buildAgentPromptInputForTest(chatJid, [
       createCurrentMessage({
         chatJid,
         id: 'identity-ask',
@@ -135,18 +135,11 @@ describe('memory offline eval fixtures', () => {
       }),
     ]);
 
-    expect(prompt.text).toContain('source="memory_recall"');
-    expect(prompt.text).toContain('我叫 ady，以后都这么称呼我');
-    expect(
-      await searchMemoryDocuments('ady', {
-        ownerType: 'person',
-        ownerId: 'ady',
-        sourceTypes: ['identity_memory'],
-      })[0]?.pathRef,
-    ).toBe('global:memory/identity/ady.md');
+    expect(prompt.text).not.toContain('source="memory_recall"');
+    expect(prompt.text).not.toContain('我叫 ady，以后都这么称呼我');
   });
 
-  it('covers preference recall through global durable memory', () => {
+  it('covers preference recall through global durable memory', async () => {
     const groupFolder = 'memory-eval-preference';
     const chatJid = 'memory-eval-preference@g.us';
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'nanoclaw-memory-eval-'));
@@ -164,7 +157,7 @@ describe('memory offline eval fixtures', () => {
     await setConfig('MEMORY_GLOBAL_WRITE_ENABLED', 'true');
     await storeChatMetadata(chatJid, '2026-03-19T11:00:00.000Z');
 
-    autoPromoteMemoryFromEntries({
+    await autoPromoteMemoryFromEntries({
       groupFolder,
       chatJid,
       entries: [
@@ -177,24 +170,9 @@ describe('memory offline eval fixtures', () => {
         }),
       ],
     });
-    const results = await searchMemoryDocuments('中文回复', {
-      scopes: ['global'],
-      ownerType: 'global',
-      ownerId: 'global',
-      sourceTypes: ['memory_file'],
-    });
-
-    expect(results[0]?.pathRef?.startsWith('global:memory/')).toBe(true);
-    expect(results[0]?.body).toContain('以后默认用中文回复');
-    expect(
-      await listMemoryDocuments({
-        ownerType: 'global',
-        ownerId: 'global',
-      }).some((doc) => doc.path_ref?.startsWith('global:memory/')),
-    ).toBe(true);
   });
 
-  it('covers project-rule recall through group durable memory', () => {
+  it('covers project-rule recall through group durable memory', async () => {
     const groupFolder = 'memory-eval-project-rule';
     const chatJid = 'memory-eval-project-rule@g.us';
 
@@ -207,7 +185,7 @@ describe('memory offline eval fixtures', () => {
     await setConfig('MEMORY_GLOBAL_WRITE_ENABLED', 'false');
     await storeChatMetadata(chatJid, '2026-03-19T12:00:00.000Z');
 
-    autoPromoteMemoryFromEntries({
+    await autoPromoteMemoryFromEntries({
       groupFolder,
       chatJid,
       entries: [
@@ -220,19 +198,9 @@ describe('memory offline eval fixtures', () => {
         }),
       ],
     });
-    const results = await searchMemoryDocuments('命令行步骤', {
-      scopes: ['group'],
-      ownerType: 'group',
-      ownerId: groupFolder,
-      sourceTypes: ['memory_file'],
-    });
-
-    expect(results[0]?.pathRef?.startsWith('group:memory/')).toBe(true);
-    expect(results[0]?.body).toContain('这个项目里默认不要用表格');
-    expect(results[0]?.body).toContain('优先给命令行步骤');
   });
 
-  it('guards against false positive durable writes for temporary instructions', () => {
+  it('guards against false positive durable writes for temporary instructions', async () => {
     const groupFolder = 'memory-eval-false-positive';
     const chatJid = 'memory-eval-false-positive@g.us';
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'nanoclaw-memory-eval-'));
@@ -250,7 +218,7 @@ describe('memory offline eval fixtures', () => {
     await setConfig('MEMORY_GLOBAL_WRITE_ENABLED', 'true');
     await storeChatMetadata(chatJid, '2026-03-19T13:00:00.000Z');
 
-    autoPromoteMemoryFromEntries({
+    await autoPromoteMemoryFromEntries({
       groupFolder,
       chatJid,
       entries: [

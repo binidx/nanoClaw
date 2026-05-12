@@ -6,8 +6,6 @@ import {
   upsertUserSoul,
   deleteUserSoul,
   getUserCoreMemories,
-  searchUserMemories,
-  getRecentlyAccessedMemories,
   getUserMemories,
   getUserMemoryById,
   addUserMemory,
@@ -154,11 +152,11 @@ function buildToneGuide(tone: string): string {
 // ---------------------------------------------------------------------------
 
 const DEFAULT_BEHAVIOR_RULES: BehaviorRule[] = [
-  { id: 'tone_consistency', text: t('soul.auto_d76c73', {}, undefined), enabled: true },
-  { id: 'natural_persona', text: t('soul.auto_aeb145', {}, undefined), enabled: true },
-  { id: 'word_style', text: t('soul.auto_fb2e6c', {}, undefined), enabled: true },
-  { id: 'no_break_char', text: t('soul.auto_603fb6', {}, undefined), enabled: true },
-  { id: 'nickname_use', text: t('soul.auto_bb8c92', {}, undefined), enabled: true },
+  { id: 'tone_consistency', text: '保持语气前后一致，不要突然切换成完全不同的口吻。', enabled: true },
+  { id: 'natural_persona', text: '保留自然的人设表达，不要显得机械或模板化。', enabled: true },
+  { id: 'word_style', text: '尽量保持统一的用词和语气风格。', enabled: true },
+  { id: 'no_break_char', text: '不要频繁打断原有语气，也不要突然转成生硬的书面腔。', enabled: true },
+  { id: 'nickname_use', text: '在适当的时候自然使用用户昵称，不要过度重复。', enabled: true },
 ];
 
 function buildDynamicBehaviorRules(soul: UserSoulRecord): string {
@@ -279,14 +277,10 @@ async function buildInsightsPromptSection(userId: string): Promise<string> {
 
     const lines = insights.map((ins) => {
       const conf = Math.round(ins.confidence * 100);
-      return t('soul.insightWithConfidence', { content: ins.content, confidence: conf }, undefined);
+      return `- ${ins.content}（置信度 ${conf}%）`;
     });
 
-    return (
-      t('soul.auto_8c42d6', {}, undefined)
-      + t('soul.auto_2a8b5d', {}, undefined)
-      + lines.join('\n')
-    );
+    return ['## Persona Insights', ...lines].join('\n');
   } catch {
     return '';
   }
@@ -460,69 +454,13 @@ export async function removeUnifiedMemory(
 // ---------------------------------------------------------------------------
 
 const MAX_MEMORY_PROMPT_ITEMS = 25;
-const MAX_TOPIC_MEMORIES = 10;
-const MAX_RECENT_MEMORIES = 5;
-
-function extractTopicKeywords(messages: string): string {
-  const clean = messages
-    .replace(/^@\S+\s*/gm, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-  return clean.length > 200 ? clean.slice(-200) : clean;
-}
 
 export async function buildMemoryPromptSection(
   userId: string,
-  chatJid?: string,
-  currentMessages?: string,
+  _chatJid?: string,
+  _currentMessages?: string,
 ): Promise<string> {
-  const coreMemories = await getUserCoreMemories(userId);
-  const seenIds = new Set(coreMemories.map((m) => m.id));
-  const durableMemories: UserMemoryRecord[] = [];
-  const coreList: UserMemoryRecord[] = [...coreMemories];
-
-  // Separate core-tier from durable-tier
-  for (const m of coreMemories) {
-    if (m.tier === 'core') {
-      // already in coreList
-    } else {
-      durableMemories.push(m);
-    }
-  }
-
-  // Topic-relevant memories via fulltext search
-  const topic = currentMessages ? extractTopicKeywords(currentMessages) : undefined;
-  if (topic && topic.length >= 2) {
-    try {
-      const topicMemories = await searchUserMemories(userId, topic, {
-        conversationId: chatJid,
-        limit: MAX_TOPIC_MEMORIES,
-      });
-      for (const m of topicMemories) {
-        if (!seenIds.has(m.id)) {
-          seenIds.add(m.id);
-          durableMemories.push(m);
-        }
-      }
-    } catch {
-      // non-fatal
-    }
-  }
-
-  // Recently accessed memories
-  try {
-    const recentMemories = await getRecentlyAccessedMemories(userId, MAX_RECENT_MEMORIES);
-    for (const m of recentMemories) {
-      if (!seenIds.has(m.id)) {
-        seenIds.add(m.id);
-        durableMemories.push(m);
-      }
-    }
-  } catch {
-    // non-fatal
-  }
-
-  const allMemories = [...coreList, ...durableMemories].slice(0, MAX_MEMORY_PROMPT_ITEMS);
+  const allMemories = (await getUserCoreMemories(userId)).slice(0, MAX_MEMORY_PROMPT_ITEMS);
 
   if (allMemories.length === 0) return '';
 
@@ -532,29 +470,17 @@ export async function buildMemoryPromptSection(
     });
   }
 
-  const parts: string[] = [t('soul.auto_747ce1', {}, undefined)];
+  const parts: string[] = ['## Memory'];
 
   // Core memories
   const coreLines = allMemories
     .filter((m) => m.tier === 'core')
     .map((m) => `- [${m.category}] ${m.content}`);
   if (coreLines.length > 0) {
-    parts.push(t('soul.auto_67e91b', {}, undefined) + coreLines.join('\n'));
+    parts.push(['### Core Memories', ...coreLines].join('\n'));
   }
 
-  // Durable memories
-  const durableLines = allMemories
-    .filter((m) => m.tier !== 'core')
-    .map((m) => {
-      const scope = m.scope === 'conversation' ? t('soul.auto_8e7dfc', {}, undefined) : '';
-      return `- [${m.category}${scope}] ${m.content}`;
-    });
-  if (durableLines.length > 0) {
-    parts.push(t('soul.auto_0d1f56', {}, undefined) + durableLines.join('\n'));
-  }
-
-  // Knowledge base retrieval is now handled via the knowledge_search MCP tool
-  // (tool-based, on-demand) rather than automatic server-side injection.
+  parts.push('Long-term or topic-specific memory should be queried with tools when needed.');
 
   return parts.join('\n');
 }

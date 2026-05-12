@@ -206,6 +206,8 @@
     "uploadFileLabel": "[Uploaded files] {{names}}",
     "uploadFileEmptyOrInvalid": "File \"{{filename}}\" is empty or invalid",
     "uploadFileTooLarge": "File \"{{filename}}\" exceeds the size limit ({{maxSizeMb}}MB)",
+    "assistantNotFound": "Assistant \"{{id}}\" was not found.",
+    "assistantDisabled": "Assistant \"{{name}}\" is disabled, so this conversation cannot continue.",
     "codemap": {
       "analysisPromptChildrenHint": "...child nodes with the same structure, using IDs like \"1a\" and \"1b\"",
       "analysisPromptContext": "Code structure information:",

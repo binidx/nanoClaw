@@ -285,7 +285,7 @@ describe('agent context assembly', () => {
     expect(rawIndex).toBeGreaterThan(recallIndex);
   });
 
-  it('injects bound identity memory before recent raw context when the current query matches it', async () => {
+  it('does not auto-inject bound identity memory without an explicit memory recall entry', async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'nanoclaw-context-memory-'));
     createdPaths.push(root);
     const globalDir = path.join(root, 'global');
@@ -335,10 +335,8 @@ describe('agent context assembly', () => {
       },
     ]);
 
-    const recallIndex = prompt.text.indexOf('用户偏好简洁回复');
-    const rawIndex = prompt.text.indexOf('上一条普通历史消息');
-    expect(recallIndex).toBeGreaterThanOrEqual(0);
-    expect(rawIndex).toBeGreaterThan(recallIndex);
+    expect(prompt.text).not.toContain('用户偏好简洁回复');
+    expect(prompt.text).toContain('上一条普通历史消息');
   });
 
   it('does not create a compaction summary as a side effect of prompt assembly', async () => {
