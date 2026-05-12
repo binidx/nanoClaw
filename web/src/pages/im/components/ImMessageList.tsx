@@ -6,6 +6,12 @@ import { MessageBubble } from '../../../components/chat/MessageBubble.js';
 import { ScrollToBottom } from '../../../components/chat/ScrollToBottom.js';
 import { TypingIndicator } from '../../../components/chat/TypingIndicator.js';
 import i18n from '../../../i18n';
+import {
+  extractDetectedUrls,
+  findDetectedUrls,
+  getImageAltText,
+  isLikelyImageUrl,
+} from '../../../message-link-utils';
 import { decryptAttachmentBlob, type ImE2eeUiState } from '../im-e2ee';
 
 function formatTs(iso: string): string {
@@ -23,15 +29,11 @@ function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-const URL_REGEX = /https?:\/\/[^\s<>"')\]]+/g;
-
 function renderTextWithLinks(text: string): React.ReactNode[] {
   const parts: React.ReactNode[] = [];
   let lastIndex = 0;
-  let match: RegExpExecArray | null;
-  const re = new RegExp(URL_REGEX.source, 'g');
 
-  while ((match = re.exec(text))) {
+  for (const match of findDetectedUrls(text)) {
     if (match.index > lastIndex) {
       parts.push(
         ...renderMentions(
@@ -40,20 +42,45 @@ function renderTextWithLinks(text: string): React.ReactNode[] {
         ),
       );
     }
-    const href = match[0];
-    parts.push(
-      <a
-        key={`link-${match.index}`}
-        href={href}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="im-msg-link"
-      >
-        {href}
-      </a>,
-    );
-    lastIndex = match.index + href.length;
+
+    if (isLikelyImageUrl(match.url)) {
+      parts.push(
+        <a
+          key={`image-${match.index}`}
+          href={match.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="md-image-link im-msg-inline-image-link"
+        >
+          <img
+            className="md-inline-image im-msg-inline-image"
+            src={match.url}
+            alt={getImageAltText(match.url)}
+            loading="lazy"
+          />
+        </a>,
+      );
+    } else {
+      parts.push(
+        <a
+          key={`link-${match.index}`}
+          href={match.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="im-msg-link"
+        >
+          {match.url}
+        </a>,
+      );
+    }
+
+    if (match.suffix) {
+      parts.push(match.suffix);
+    }
+
+    lastIndex = match.index + match.raw.length;
   }
+
   if (lastIndex < text.length)
     parts.push(...renderMentions(text.slice(lastIndex), `text-${lastIndex}`));
   return parts;
@@ -75,11 +102,6 @@ function renderMentions(text: string, keyPrefix: string): React.ReactNode[] {
   }
   if (lastIndex < text.length) parts.push(text.slice(lastIndex));
   return parts;
-}
-
-function extractUrls(text: string): string[] {
-  const matches = text.match(URL_REGEX);
-  return matches ? [...new Set(matches)] : [];
 }
 
 function ImageAttachment({ att }: { att: ImAttachment }) {
@@ -332,7 +354,8 @@ export function ImMessageList({
 
         {messages.map((m, i) => {
           const mine = m.sender === currentUserId;
-          const urls = extractUrls(m.content);
+          const urls = extractDetectedUrls(m.content);
+          const previewUrls = urls.filter((url) => !isLikelyImageUrl(url));
           const attachments = m.attachments || [];
           const isPlaceholder =
             m.content === '[文件]' && attachments.length > 0;
@@ -388,14 +411,15 @@ export function ImMessageList({
                 content={
                   <>
                     {!isPlaceholder && (
-                      <span
+                      <div
                         className={
-                          m.e2eeError ? 'im-e2ee-unreadable-message' : undefined
+                          m.e2eeError
+                            ? 'im-msg-text im-e2ee-unreadable-message'
+                            : 'im-msg-text'
                         }
-                        style={{ whiteSpace: 'pre-wrap' }}
                       >
                         {renderTextWithLinks(m.content)}
-                      </span>
+                      </div>
                     )}
                     <MessageAttachments
                       attachments={attachments}
@@ -405,9 +429,9 @@ export function ImMessageList({
                   </>
                 }
               >
-                {urls.length > 0 && (
+                {previewUrls.length > 0 && (
                   <div className="im-msg-link-previews">
-                    {urls.slice(0, 3).map((url) => (
+                    {previewUrls.slice(0, 3).map((url) => (
                       <ImLinkPreview key={url} url={url} />
                     ))}
                   </div>

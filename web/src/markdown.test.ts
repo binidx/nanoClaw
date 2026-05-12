@@ -46,4 +46,22 @@ describe('renderMarkdownContent', () => {
     expect(html).toContain('id="wiki-0-core-facts"');
     expect(html).toContain('id="wiki-1-details"');
   });
+
+  it('auto-renders bare image urls inside paragraph text', () => {
+    const html = renderToStaticMarkup(
+      createElement(
+        Fragment,
+        null,
+        renderMarkdownContent(
+          '参考图：https://cdn.example.com/demo/cat.png?size=large.',
+        ),
+      ),
+    );
+
+    expect(html).toContain(
+      '<img class="md-inline-image" src="https://cdn.example.com/demo/cat.png?size=large" alt="cat.png" loading="lazy"/>',
+    );
+    expect(html).not.toContain('src="https://cdn.example.com/demo/cat.png?size=large."');
+    expect(html).toContain('</a>.</p>');
+  });
 });

@@ -19,6 +19,11 @@ import diff from 'highlight.js/lib/languages/diff';
 import shell from 'highlight.js/lib/languages/shell';
 import plaintext from 'highlight.js/lib/languages/plaintext';
 import { createMarkdownHeadingId } from './markdown-helpers';
+import {
+  findDetectedUrls,
+  getImageAltText,
+  isLikelyImageUrl,
+} from './message-link-utils';
 
 hljs.registerLanguage('typescript', typescript);
 hljs.registerLanguage('ts', typescript);
@@ -140,6 +145,64 @@ function parseInlineLinkToken(
   };
 }
 
+function renderAutoLinkedUrl(href: string, key: string): ReactNode {
+  const safe = safeHref(href);
+  if (!safe) return href;
+
+  if (isLikelyImageUrl(safe)) {
+    return (
+      <a
+        key={key}
+        className="md-image-link"
+        href={safe}
+        target="_blank"
+        rel="noreferrer"
+      >
+        <img
+          className="md-inline-image"
+          src={safe}
+          alt={getImageAltText(safe)}
+          loading="lazy"
+        />
+      </a>
+    );
+  }
+
+  return (
+    <a key={key} href={safe} target="_blank" rel="noreferrer">
+      {href}
+    </a>
+  );
+}
+
+function renderPlainTextWithAutoLinks(
+  text: string,
+  keyPrefix: string,
+): ReactNode[] {
+  const nodes: ReactNode[] = [];
+  let lastIndex = 0;
+
+  for (const match of findDetectedUrls(text)) {
+    if (match.index > lastIndex) {
+      nodes.push(text.slice(lastIndex, match.index));
+    }
+
+    nodes.push(renderAutoLinkedUrl(match.url, `${keyPrefix}-url-${match.index}`));
+
+    if (match.suffix) {
+      nodes.push(match.suffix);
+    }
+
+    lastIndex = match.index + match.raw.length;
+  }
+
+  if (lastIndex < text.length) {
+    nodes.push(text.slice(lastIndex));
+  }
+
+  return nodes;
+}
+
 function renderInline(text: string, keyPrefix: string): ReactNode[] {
   const nodes: ReactNode[] = [];
   let lastIndex = 0;
@@ -149,7 +212,12 @@ function renderInline(text: string, keyPrefix: string): ReactNode[] {
     const start = match.index ?? 0;
 
     if (start > lastIndex) {
-      nodes.push(text.slice(lastIndex, start));
+      nodes.push(
+        ...renderPlainTextWithAutoLinks(
+          text.slice(lastIndex, start),
+          `${keyPrefix}-text-${lastIndex}`,
+        ),
+      );
     }
 
     if (token.startsWith('`') && token.endsWith('`')) {
@@ -218,7 +286,12 @@ function renderInline(text: string, keyPrefix: string): ReactNode[] {
   }
 
   if (lastIndex < text.length) {
-    nodes.push(text.slice(lastIndex));
+    nodes.push(
+      ...renderPlainTextWithAutoLinks(
+        text.slice(lastIndex),
+        `${keyPrefix}-text-${lastIndex}`,
+      ),
+    );
   }
 
   return nodes;

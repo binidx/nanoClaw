@@ -7422,6 +7422,19 @@
   text-decoration: underline;
 }
 
+.im-msg-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.im-msg-inline-image-link {
+  margin: 6px 0;
+}
+
+.im-msg-inline-image {
+  max-height: min(320px, 55vh);
+}
+
 .im-mention {
   padding: 0 3px;
   border-radius: 4px;
