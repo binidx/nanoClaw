@@ -104,6 +104,13 @@ interface AgentPromptPayload {
   historyBridgeNotice?: string;
 }
 
+interface AgentPromptLogContext {
+  stableSystemPrompt: string;
+  volatileSystemPrompt: string;
+  contextText: string;
+  userPrompt: string;
+}
+
 type AgentPromptInput = string | AgentPromptPayload;
 
 interface AgentRunInput {
@@ -3045,6 +3052,8 @@ function normalizePromptInput(promptInput: AgentPromptInput): {
   stableSystemPrompt: string;
   volatileSystemPrompt: string;
   historyBridgeNotice: string;
+  contextText: string;
+  userPrompt: string;
 } {
   if (typeof promptInput === 'string') {
     const legacy = extractUploadContext(promptInput);
@@ -3055,12 +3064,24 @@ function normalizePromptInput(promptInput: AgentPromptInput): {
       stableSystemPrompt: '',
       volatileSystemPrompt: '',
       historyBridgeNotice: '',
+      contextText: '',
+      userPrompt: legacy.cleanPrompt,
     };
   }
 
   const cleanPrompt =
     typeof promptInput?.text === 'string' ? promptInput.text.trim() : '';
   const files = resolveUploadedPromptFiles(promptInput?.uploadedFiles);
+  const contextText = Array.isArray(promptInput?.contextBlocks)
+    ? promptInput.contextBlocks
+        .map((block) => (typeof block?.content === 'string' ? block.content.trim() : ''))
+        .filter(Boolean)
+        .join('\n\n')
+    : '';
+  const userPrompt =
+    typeof promptInput?.userPrompt === 'string' && promptInput.userPrompt.trim()
+      ? promptInput.userPrompt.trim()
+      : cleanPrompt;
   return {
     cleanPrompt,
     files,
@@ -3077,6 +3098,8 @@ function normalizePromptInput(promptInput: AgentPromptInput): {
       typeof promptInput?.historyBridgeNotice === 'string'
         ? promptInput.historyBridgeNotice.trim()
         : '',
+    contextText,
+    userPrompt,
   };
 }
 
@@ -3300,6 +3323,16 @@ function buildDirectUploadBridgeContext(
   ]
     .filter(Boolean)
     .join('\n');
+}
+
+function getPromptLogContext(promptInput: AgentPromptInput): AgentPromptLogContext {
+  const normalized = normalizePromptInput(promptInput);
+  return {
+    stableSystemPrompt: normalized.stableSystemPrompt,
+    volatileSystemPrompt: normalized.volatileSystemPrompt,
+    contextText: normalized.contextText,
+    userPrompt: normalized.userPrompt,
+  };
 }
 
 function normalizeAnthropicApiBase(baseUrl: string | undefined): string {
@@ -3786,6 +3819,7 @@ async function runCodexChatCompletionsQuery(
     content: await buildCodexUserMessageContent(prompt, apiBase, apiKey),
   });
   const normalizedPrompt = normalizePromptInput(prompt);
+  const promptLogContext = getPromptLogContext(prompt);
   const reasoningPrompt = getUploadAwareUserPrompt(
     normalizedPrompt.cleanPrompt,
     normalizedPrompt.files,
@@ -3822,6 +3856,10 @@ async function runCodexChatCompletionsQuery(
           externalRequestId: agentInput.requestId,
           iteration,
           systemPrompt: instructions,
+          stableSystemPrompt: promptLogContext.stableSystemPrompt,
+          volatileSystemPrompt: promptLogContext.volatileSystemPrompt,
+          contextText: promptLogContext.contextText,
+          userPrompt: promptLogContext.userPrompt,
         },
       );
       const providerStartedAt = Date.now();
@@ -3871,6 +3909,10 @@ async function runCodexChatCompletionsQuery(
             iteration,
             requestText: reasoningPrompt,
             systemPrompt: instructions,
+            stableSystemPrompt: promptLogContext.stableSystemPrompt,
+            volatileSystemPrompt: promptLogContext.volatileSystemPrompt,
+            contextText: promptLogContext.contextText,
+            userPrompt: promptLogContext.userPrompt,
             status: error instanceof CodexApiError ? error.status : undefined,
           },
         );
@@ -3886,6 +3928,10 @@ async function runCodexChatCompletionsQuery(
         durationMs: Date.now() - providerStartedAt,
         requestText: reasoningPrompt,
         systemPrompt: instructions,
+        stableSystemPrompt: promptLogContext.stableSystemPrompt,
+        volatileSystemPrompt: promptLogContext.volatileSystemPrompt,
+        contextText: promptLogContext.contextText,
+        userPrompt: promptLogContext.userPrompt,
         responseText: turn.text,
         usage: turn.usage,
       });
@@ -4003,6 +4049,7 @@ async function runCodexQuery(
   const sharedHistory =
     historyScope === 'ephemeral' ? normalizeChatHistory([], instructions) : loadChatCompletionsHistory(instructions);
   const normalizedPrompt = normalizePromptInput(prompt);
+  const promptLogContext = getPromptLogContext(prompt);
   const promptText = getUploadAwareUserPrompt(
     normalizedPrompt.cleanPrompt,
     normalizedPrompt.files,
@@ -4075,6 +4122,10 @@ async function runCodexQuery(
           externalRequestId: agentInput.requestId,
           iteration,
           systemPrompt: instructions,
+          stableSystemPrompt: promptLogContext.stableSystemPrompt,
+          volatileSystemPrompt: promptLogContext.volatileSystemPrompt,
+          contextText: promptLogContext.contextText,
+          userPrompt: promptLogContext.userPrompt,
         },
       );
       const providerStartedAt = Date.now();
@@ -4187,6 +4238,10 @@ async function runCodexQuery(
             iteration,
             requestText: promptText,
             systemPrompt: instructions,
+            stableSystemPrompt: promptLogContext.stableSystemPrompt,
+            volatileSystemPrompt: promptLogContext.volatileSystemPrompt,
+            contextText: promptLogContext.contextText,
+            userPrompt: promptLogContext.userPrompt,
             responseId: completedResponseId || latestResponseId,
             status: error instanceof CodexApiError ? error.status : undefined,
             usage: responseUsage,
@@ -4204,6 +4259,10 @@ async function runCodexQuery(
         durationMs: Date.now() - providerStartedAt,
         requestText: promptText,
         systemPrompt: instructions,
+        stableSystemPrompt: promptLogContext.stableSystemPrompt,
+        volatileSystemPrompt: promptLogContext.volatileSystemPrompt,
+        contextText: promptLogContext.contextText,
+        userPrompt: promptLogContext.userPrompt,
         responseText: streamedAssistantText || fallbackAssistantText,
         responseId: completedResponseId || latestResponseId,
         usage: responseUsage,

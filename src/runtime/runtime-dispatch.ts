@@ -681,6 +681,50 @@ interface ResolvedConversationPromptEnvelope {
   resolution: PromptSourceResolution[];
 }
 
+async function buildConversationBaseSegments(input: {
+  targetUserId?: string;
+  includeMemoryHint: boolean;
+}): Promise<{
+  segments: PromptSegment[];
+  resolution: PromptSourceResolution[];
+}> {
+  const base = await resolvePromptText({
+    promptKey: 'conversation.base.chat_core',
+    targetUserId: input.targetUserId,
+  });
+  const segments: PromptSegment[] = [
+    {
+      id: 'conversation.base.chat_core',
+      label: 'Conversation Chat Core',
+      promptKey: 'conversation.base.chat_core',
+      layer: 'system_base',
+      mutability: 'runtime_fixed',
+      cacheSection: 'stable',
+      source: base.resolution.source,
+      content: base.text,
+    },
+  ];
+  const resolution: PromptSourceResolution[] = [base.resolution];
+  if (input.includeMemoryHint) {
+    const memoryHint = await resolvePromptText({
+      promptKey: 'conversation.tools.memory_tool_hint',
+      targetUserId: input.targetUserId,
+    });
+    segments.push({
+      id: 'conversation.tools.memory_tool_hint',
+      label: 'Conversation Memory Tool Hint',
+      promptKey: 'conversation.tools.memory_tool_hint',
+      layer: 'system_tools',
+      mutability: 'runtime_fixed',
+      cacheSection: 'stable',
+      source: memoryHint.resolution.source,
+      content: memoryHint.text,
+    });
+    resolution.push(memoryHint.resolution);
+  }
+  return { segments, resolution };
+}
+
 async function resolveConversationPromptEnvelope(
   chatJid: string,
   sourceMessages: NewMessage[],
@@ -698,6 +742,7 @@ async function resolveConversationPromptEnvelope(
   const shouldInheritSoul = boundAssistant
     ? boundAssistant.config?.inheritSoulConfig === true
     : true;
+  const isOrdinaryConversation = !boundAssistantId && !chatJid.startsWith('repo-review:');
 
   const latestHumanMsg = [...sourceMessages]
     .reverse()
@@ -745,7 +790,11 @@ async function resolveConversationPromptEnvelope(
   const assistantRuntime = await resolveAssistantRuntimeConfig(
     group,
     {},
-    { requireEnabled: true, soulPrompt },
+    {
+      requireEnabled: true,
+      soulPrompt,
+      disableSoul: !isOrdinaryConversation,
+    },
   );
 
   const convMode = await getConversationMode(chatJid);
@@ -761,22 +810,31 @@ async function resolveConversationPromptEnvelope(
     assistantRuntime.providerType ||
     (resolvedUserId ? (await getDefaultProviderForUser(resolvedUserId))?.type || null : null) ||
     'claude';
-  const projectDir = assistantRuntime.projectRootOverride || resolveGroupFolderPath(group.folder);
-  const runnerSegments = await resolveRunnerPromptSegments({
-    providerType: providerType === 'codex' ? 'codex' : 'claude',
-    targetUserId: resolvedUserId,
-    projectDir,
-    managedSkillIds: assistantRuntime.managedSkillIds,
-    userSkillIds: assistantRuntime.userSkillIds,
-    extraDirectories: (assistantRuntime.repoBindingDirectories || [])
-      .slice(1)
-      .map((hostPath, index) => ({
-        label: path.basename(hostPath) || `extra-${index + 1}`,
-        hostPath,
-      })),
-  });
-  stableSegments.push(...runnerSegments.segments);
-  resolution.push(...runnerSegments.resolution);
+  if (isOrdinaryConversation) {
+    const baseSegments = await buildConversationBaseSegments({
+      targetUserId: resolvedUserId,
+      includeMemoryHint: true,
+    });
+    stableSegments.push(...baseSegments.segments);
+    resolution.push(...baseSegments.resolution);
+  } else {
+    const projectDir = assistantRuntime.projectRootOverride || resolveGroupFolderPath(group.folder);
+    const runnerSegments = await resolveRunnerPromptSegments({
+      providerType: providerType === 'codex' ? 'codex' : 'claude',
+      targetUserId: resolvedUserId,
+      projectDir,
+      managedSkillIds: assistantRuntime.managedSkillIds,
+      userSkillIds: assistantRuntime.userSkillIds,
+      extraDirectories: (assistantRuntime.repoBindingDirectories || [])
+        .slice(1)
+        .map((hostPath, index) => ({
+          label: path.basename(hostPath) || `extra-${index + 1}`,
+          hostPath,
+        })),
+    });
+    stableSegments.push(...runnerSegments.segments);
+    resolution.push(...runnerSegments.resolution);
+  }
 
   if (assistantRuntime.instructionsMode === 'locked') {
     const lockedNotice = await resolvePromptText({
@@ -869,7 +927,9 @@ async function resolveConversationPromptEnvelope(
 
   if (!sessions[group.folder]) {
     const historyBridgeNotice = await resolvePromptText({
-      promptKey: 'runner.context.history_bridge_notice',
+      promptKey: isOrdinaryConversation
+        ? 'conversation.context.history_bridge_notice'
+        : 'runner.context.history_bridge_notice',
       targetUserId: resolvedUserId,
       variables: {
         transcript: '...(runner restores the latest visible turns when provider session state is unavailable)...',
@@ -877,9 +937,13 @@ async function resolveConversationPromptEnvelope(
       },
     });
     volatileSystemSegments.push({
-      id: 'runner.context.history_bridge_notice',
+      id: isOrdinaryConversation
+        ? 'conversation.context.history_bridge_notice'
+        : 'runner.context.history_bridge_notice',
       label: 'History Bridge Notice',
-      promptKey: 'runner.context.history_bridge_notice',
+      promptKey: isOrdinaryConversation
+        ? 'conversation.context.history_bridge_notice'
+        : 'runner.context.history_bridge_notice',
       layer: 'context_runtime',
       mutability: 'parameterized',
       cacheSection: 'volatile',
@@ -1717,17 +1781,20 @@ export async function regenerateConversationReply(
   }
   registeredGroups[chatJid] = group;
 
-  if (queue.isMessageAgentActive(chatJid)) {
+  if (queue.isMessageAgentReplyInProgress(chatJid)) {
     throw new Error('A reply is currently in progress');
-  }
-  if (activeConversationTurnIds.has(chatJid)) {
-    clearActiveConversationTurn(chatJid);
   }
 
   await sanitizeStaleTurnsForChat(chatJid);
 
   const messages = await getConversationMessages(chatJid, 1000, 0);
   const turns = await getConversationTurns(chatJid, 200, 0);
+  if (turns.some((turn) => turn.isLive)) {
+    throw new Error('A reply is currently in progress');
+  }
+  if (activeConversationTurnIds.has(chatJid)) {
+    clearActiveConversationTurn(chatJid);
+  }
   const targetTurn = resolveLatestRegeneratableTurn({
     turns,
     messages,
@@ -2006,6 +2073,14 @@ export async function processGroupMessages(
           ['agent'],
           'turn_completed',
         );
+        const completedTurn = turnPersistenceDrafts.get(result.turnEvent.turnId);
+        if (completedTurn) {
+          await storeAssistantTurnSnapshot(
+            chatJid,
+            completedTurn,
+            completedTurn.timestamp,
+          );
+        }
       }
       if (result.turnEvent.type === 'turn.failed') {
         stopTurnScopedSubagents(

@@ -201,7 +201,6 @@ export async function buildSoulPrompt(
 
   if (!soul || !soul.enabled) {
     const parts: string[] = [];
-    if (insightsSection) parts.push(insightsSection);
     if (memorySection) parts.push(memorySection);
     if (parts.length === 0) return '';
     const disabledWrapper = await resolvePromptText({
@@ -213,24 +212,18 @@ export async function buildSoulPrompt(
   }
 
   const sections: string[] = [];
-  const enabledIntro = await resolvePromptText({
-    promptKey: 'soul.enabled_intro',
-    targetUserId: userId,
-  });
-  sections.push(enabledIntro.text);
-
-  const identity: string[] = [];
-  if (soul.name) identity.push(t('soul.yourName', { name: soul.name }, undefined));
-  if (soul.user_nickname)
-    identity.push(t('soul.userNickname', { nickname: soul.user_nickname }, undefined));
-  if (soul.emoji_enabled && soul.emoji)
-    identity.push(t('soul.representativeSymbol', { emoji: soul.emoji }, undefined));
-  if (soul.creature) identity.push(t('soul.personaImage', { creature: soul.creature }, undefined));
-  if (soul.vibe) identity.push(t('soul.overallVibe', { vibe: soul.vibe }, undefined));
-  if (soul.tone && soul.tone !== 'default')
-    identity.push(t('soul.toneGuide', { tone: buildToneGuide(soul.tone) }, undefined));
-  if (soul.language_preference) identity.push(t('soul.languagePreference', { language: soul.language_preference }, undefined));
-  if (identity.length > 0) sections.push(identity.join('\n'));
+  const identityHints: string[] = [];
+  if (soul.name) identityHints.push(`Your name is ${soul.name}.`);
+  if (soul.user_nickname) {
+    identityHints.push(`Use the user's preferred nickname naturally when helpful: ${soul.user_nickname}.`);
+  }
+  if (soul.language_preference) {
+    identityHints.push(`Preferred language: ${soul.language_preference}.`);
+  }
+  if (soul.tone && soul.tone !== 'default') {
+    identityHints.push(`Tone guide: ${buildToneGuide(soul.tone)}.`);
+  }
+  if (identityHints.length > 0) sections.push(identityHints.join('\n'));
 
   if (soul.persona_prompt?.trim()) {
     const personaSection = await resolvePromptText({
@@ -275,10 +268,12 @@ async function buildInsightsPromptSection(userId: string): Promise<string> {
     const insights = await getActivePersonaInsights(userId);
     if (insights.length === 0) return '';
 
-    const lines = insights.map((ins) => {
-      const conf = Math.round(ins.confidence * 100);
-      return `- ${ins.content}（置信度 ${conf}%）`;
-    });
+    const lines = insights
+      .filter((ins) => ins.confidence >= 0.7)
+      .slice(0, 3)
+      .map((ins) => `- ${ins.content}`);
+
+    if (lines.length === 0) return '';
 
     return ['## Persona Insights', ...lines].join('\n');
   } catch {
@@ -470,17 +465,19 @@ export async function buildMemoryPromptSection(
     });
   }
 
-  const parts: string[] = ['## Memory'];
+  const highSignalCoreLines = allMemories
+    .filter((m) => m.tier === 'core' && m.importance >= 8)
+    .slice(0, 4)
+    .map((m) => `- ${m.content}`);
 
-  // Core memories
-  const coreLines = allMemories
-    .filter((m) => m.tier === 'core')
-    .map((m) => `- [${m.category}] ${m.content}`);
-  if (coreLines.length > 0) {
-    parts.push(['### Core Memories', ...coreLines].join('\n'));
+  if (highSignalCoreLines.length === 0) {
+    return 'If long-term user preferences, identity facts, or prior commitments matter, use memory tools to look them up only when needed.';
   }
 
-  parts.push('Long-term or topic-specific memory should be queried with tools when needed.');
-
-  return parts.join('\n');
+  return [
+    '## Core Memory Hints',
+    ...highSignalCoreLines,
+    '',
+    'Use memory tools for any additional long-term or topic-specific recall only when needed.',
+  ].join('\n');
 }

@@ -12,7 +12,7 @@ vi.mock('../agent/agent-runner.js', () => ({
 }));
 
 vi.mock('../assistant/assistant-runtime.js', () => ({
-  resolveAssistantRuntimeConfig: vi.fn(async () => ({
+  resolveAssistantRuntimeConfig: vi.fn(async (_group, _deps, options) => ({
     instructionsAppend: '',
     managedSkillIds: [],
     managedMcpServerIds: [],
@@ -25,6 +25,10 @@ vi.mock('../assistant/assistant-runtime.js', () => ({
     providerOverrideId: undefined,
     modelOverride: undefined,
     instructionsMode: 'append',
+    soulSystemPrompt:
+      options?.disableSoul || !options?.soulPrompt
+        ? undefined
+        : `Conversation soul instructions are the primary voice and persona policy for this chat.\n\n${options.soulPrompt}`,
   })),
 }));
 
@@ -66,6 +70,7 @@ import {
   createAssistant,
   getConversationMessages,
   getConversationTurns,
+  storeAssistantTurnSnapshot,
   storeChatMetadata,
   storeMessage,
   storeMessageDirectWithTurn,
@@ -148,6 +153,16 @@ describe('runtime dispatch web failure handling', () => {
     interruptedAgentRuns.clear();
     ipcAcknowledgedChats.clear();
     pendingUploadedFiles.clear();
+    const queueAny = queue as unknown as {
+      groups: Map<string, unknown>;
+      waitingGroups: string[];
+      _activeCount: number;
+      shuttingDown: boolean;
+    };
+    queueAny.groups.clear();
+    queueAny.waitingGroups.length = 0;
+    queueAny._activeCount = 0;
+    queueAny.shuttingDown = false;
   });
 
   it('resolves soul context from the conversation owner before sender name fallback', async () => {
@@ -273,6 +288,61 @@ describe('runtime dispatch web failure handling', () => {
       [{ id: 'user-no-soul-1', content: '@Andy hi' }],
       chatJid,
     );
+  });
+
+  it('uses the lightweight conversation base for ordinary web chats', async () => {
+    const webChannel = createMockWebChannel();
+    mockGetWebChannel.mockReturnValue(webChannel);
+    channels.push(webChannel);
+
+    const chatJid = 'web:light-chat';
+    const group: RegisteredGroup = {
+      name: 'Web Chat light-chat',
+      folder: 'web_light_chat',
+      trigger: '@Andy',
+      added_at: '2026-04-16T03:24:10.000Z',
+      requiresTrigger: false,
+      isMain: false,
+    };
+    assignRegisteredGroups({ [chatJid]: group });
+
+    await storeChatMetadata(
+      chatJid,
+      '2026-04-16T03:24:10.000Z',
+      'Owner User',
+      'web',
+      false,
+      'owner-user-id',
+    );
+    await storeMessage({
+      id: 'user-light-chat-1',
+      chat_jid: chatJid,
+      sender: 'web_user',
+      sender_name: 'Owner User',
+      content: '@Andy hi',
+      timestamp: '2026-04-16T03:24:12.000Z',
+      is_from_me: false,
+      is_bot_message: false,
+    });
+
+    vi.mocked(buildSoulPrompt).mockResolvedValue('SOUL_PROMPT');
+    mockRunAgentProcess.mockResolvedValue({
+      status: 'success',
+      result: 'Done',
+      newSessionId: 'session-light-chat',
+    });
+
+    expect(await processGroupMessages(chatJid)).toBe(true);
+
+    const input = mockRunAgentProcess.mock.calls[0]?.[1] as
+      | { prompt?: { stableSystemPrompt?: string; volatileSystemPrompt?: string } }
+      | undefined;
+    expect(input?.prompt?.stableSystemPrompt).toContain('You are a helpful assistant in a user conversation.');
+    expect(input?.prompt?.stableSystemPrompt).toContain('If long-term preferences, identity facts, or prior commitments matter, query memory tools only when needed.');
+    expect(input?.prompt?.stableSystemPrompt).toContain('primary voice and persona policy');
+    expect(input?.prompt?.stableSystemPrompt).not.toContain('You are a helpful coding assistant with access to tools.');
+    expect(input?.prompt?.stableSystemPrompt).not.toContain('## Sub-Agent Policy');
+    expect(input?.prompt?.volatileSystemPrompt || '').toContain('Untrusted conversation history');
   });
 
   it('falls back to sender identity for non-web channels instead of using the conversation owner', async () => {
@@ -497,6 +567,149 @@ describe('runtime dispatch web failure handling', () => {
     expect(enqueueMessageCheck).toHaveBeenCalledWith(chatJid);
   });
 
+  it('allows regeneration when the agent is only idle-keeping a completed reply alive', async () => {
+    const enqueueMessageCheck = vi
+      .spyOn(queue, 'enqueueMessageCheck')
+      .mockImplementation(() => {});
+
+    const chatJid = 'web:regenerate-idle-keepalive';
+    const group: RegisteredGroup = {
+      name: 'Web Chat regenerate idle keepalive',
+      folder: 'web_regenerate_idle_keepalive',
+      trigger: '@Andy',
+      added_at: '2026-04-16T03:24:10.000Z',
+      requiresTrigger: false,
+      isMain: false,
+    };
+    assignRegisteredGroups({ [chatJid]: group });
+
+    await storeChatMetadata(
+      chatJid,
+      '2026-04-16T03:24:10.000Z',
+      'Owner User',
+      'web',
+      false,
+      'owner-user-id',
+    );
+    await storeMessage({
+      id: 'user-idle-keepalive',
+      chat_jid: chatJid,
+      sender: 'web_user',
+      sender_name: 'Owner User',
+      content: '@Andy retry this',
+      timestamp: '2026-04-16T03:24:11.000Z',
+      is_from_me: false,
+      is_bot_message: false,
+    });
+    await storeMessageDirectWithTurn(
+      {
+        id: 'bot-idle-keepalive',
+        chat_jid: chatJid,
+        sender: 'Andy',
+        sender_name: 'Andy',
+        content: 'assistant reply',
+        timestamp: '2026-04-16T03:24:12.000Z',
+        is_from_me: true,
+        is_bot_message: true,
+      },
+      {
+        id: 'turn-idle-keepalive',
+        timestamp: '2026-04-16T03:24:12.000Z',
+        items: [
+          {
+            id: 'turn-idle-keepalive:assistant',
+            type: 'assistant_message',
+            status: 'completed',
+            text: 'assistant reply',
+            timestamp: '2026-04-16T03:24:12.000Z',
+          },
+        ],
+        isLive: false,
+        isCompleted: true,
+        persistedMessageId: 'bot-idle-keepalive',
+      },
+    );
+
+    const queueAny = queue as unknown as {
+      getGroup: (jid: string) => {
+        active: boolean;
+        idleWaiting: boolean;
+        isTaskAgent: boolean;
+        process: unknown;
+        groupFolder: string | null;
+      };
+    };
+    const state = queueAny.getGroup(chatJid);
+    state.active = true;
+    state.isTaskAgent = false;
+    state.idleWaiting = true;
+    state.process = {} as any;
+    state.groupFolder = group.folder;
+
+    await regenerateConversationReply(chatJid, 'turn-idle-keepalive');
+
+    expect(await getConversationMessages(chatJid, 50, 0)).toMatchObject([
+      { id: 'user-idle-keepalive', content: '@Andy retry this' },
+    ]);
+    expect(await getConversationTurns(chatJid, 50, 0)).toEqual([]);
+    expect(enqueueMessageCheck).toHaveBeenCalledWith(chatJid);
+  });
+
+  it('rejects regeneration while a live assistant turn still exists', async () => {
+    const chatJid = 'web:regenerate-live-turn';
+    const group: RegisteredGroup = {
+      name: 'Web Chat regenerate live turn',
+      folder: 'web_regenerate_live_turn',
+      trigger: '@Andy',
+      added_at: '2026-04-16T03:24:10.000Z',
+      requiresTrigger: false,
+      isMain: false,
+    };
+    assignRegisteredGroups({ [chatJid]: group });
+
+    await storeChatMetadata(
+      chatJid,
+      '2026-04-16T03:24:10.000Z',
+      'Owner User',
+      'web',
+      false,
+      'owner-user-id',
+    );
+    await storeMessage({
+      id: 'user-live-turn',
+      chat_jid: chatJid,
+      sender: 'web_user',
+      sender_name: 'Owner User',
+      content: '@Andy still working?',
+      timestamp: '2026-04-16T03:24:11.000Z',
+      is_from_me: false,
+      is_bot_message: false,
+    });
+    await storeAssistantTurnSnapshot(
+      chatJid,
+      {
+        id: 'turn-live',
+        timestamp: '2026-04-16T03:24:12.000Z',
+        items: [
+          {
+            id: 'turn-live:assistant',
+            type: 'assistant_message',
+            status: 'in_progress',
+            text: '',
+            timestamp: '2026-04-16T03:24:12.000Z',
+          },
+        ],
+        isLive: true,
+        isCompleted: false,
+      },
+      '2026-04-16T03:24:12.000Z',
+    );
+
+    await expect(
+      regenerateConversationReply(chatJid, 'turn-live'),
+    ).rejects.toThrow('A reply is currently in progress');
+  });
+
   it('validates regenerate targets against the latest visible assistant message', async () => {
     const enqueueMessageCheck = vi
       .spyOn(queue, 'enqueueMessageCheck')
@@ -706,7 +919,7 @@ describe('runtime dispatch web failure handling', () => {
       {
         id: 'user-1',
         content: '@Andy hi',
-        is_bot_message: 0,
+        is_bot_message: false,
       },
     ]);
     expect(await getConversationTurns(chatJid, 50, 0)).toEqual([

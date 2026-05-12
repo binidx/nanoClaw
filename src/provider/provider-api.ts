@@ -199,6 +199,9 @@ export async function generateTextWithDefaultProvider(
       featureScope: string;
       targetUserId?: string;
       chatJid?: string | null;
+      stableSystemPrompt?: string | null;
+      volatileSystemPrompt?: string | null;
+      contextBlocks?: PromptSegment[];
       systemPromptText?: string | null;
       segments?: PromptSegment[];
       resolution?: PromptSourceResolution[];
@@ -222,9 +225,12 @@ export async function generateTextWithDefaultProvider(
       chatJid: opts.promptTrace.chatJid ?? null,
       provider: provider.type,
       model: result.model || provider.model || null,
+      stableSystemPrompt: opts.promptTrace.stableSystemPrompt ?? null,
+      volatileSystemPrompt: opts.promptTrace.volatileSystemPrompt ?? null,
       systemPromptText: opts.promptTrace.systemPromptText ?? null,
       userPromptText: prompt,
       providerInputText: prompt,
+      contextBlocks: opts.promptTrace.contextBlocks,
       segments: opts.promptTrace.segments,
       resolution: opts.promptTrace.resolution,
       metadata: opts.promptTrace.metadata,
@@ -244,6 +250,9 @@ export async function generateTextStreamWithDefaultProvider(
       featureScope: string;
       targetUserId?: string;
       chatJid?: string | null;
+      stableSystemPrompt?: string | null;
+      volatileSystemPrompt?: string | null;
+      contextBlocks?: PromptSegment[];
       segments?: PromptSegment[];
       resolution?: PromptSourceResolution[];
       metadata?: Record<string, unknown>;
@@ -265,9 +274,12 @@ export async function generateTextStreamWithDefaultProvider(
       chatJid: opts.promptTrace.chatJid ?? null,
       provider: provider.type,
       model: provider.model || null,
+      stableSystemPrompt: opts.promptTrace.stableSystemPrompt ?? null,
+      volatileSystemPrompt: opts.promptTrace.volatileSystemPrompt ?? null,
       systemPromptText: opts.systemPrompt ?? null,
       userPromptText: prompt,
       providerInputText: prompt,
+      contextBlocks: opts.promptTrace.contextBlocks,
       segments: opts.promptTrace.segments,
       resolution: opts.promptTrace.resolution,
       metadata: opts.promptTrace.metadata,
@@ -286,6 +298,9 @@ export async function generateWebSearchTextWithDefaultProvider(
       featureScope: string;
       targetUserId?: string;
       chatJid?: string | null;
+      stableSystemPrompt?: string | null;
+      volatileSystemPrompt?: string | null;
+      contextBlocks?: PromptSegment[];
       segments?: PromptSegment[];
       resolution?: PromptSourceResolution[];
       metadata?: Record<string, unknown>;
@@ -376,8 +391,11 @@ export async function generateWebSearchTextWithDefaultProvider(
       chatJid: opts.promptTrace.chatJid ?? null,
       provider: provider.type,
       model: result.model || model,
+      stableSystemPrompt: opts.promptTrace.stableSystemPrompt ?? null,
+      volatileSystemPrompt: opts.promptTrace.volatileSystemPrompt ?? null,
       userPromptText: prompt,
       providerInputText: prompt,
+      contextBlocks: opts.promptTrace.contextBlocks,
       segments: opts.promptTrace.segments,
       resolution: opts.promptTrace.resolution,
       metadata: opts.promptTrace.metadata,

@@ -21,6 +21,10 @@ export interface AgentRunnerAiLogContext {
 interface AiTextLogFieldsInput {
   requestText?: string;
   systemPrompt?: string;
+  stableSystemPrompt?: string;
+  volatileSystemPrompt?: string;
+  contextText?: string;
+  userPrompt?: string;
   providerInput?: string;
   responseText?: string;
   errorBody?: string;
@@ -63,6 +67,10 @@ function buildPreviewFields(input: AiTextLogFieldsInput): Record<string, unknown
   const entries: Array<[string, string | undefined]> = [
     ['requestText', input.requestText],
     ['systemPrompt', input.systemPrompt],
+    ['stableSystemPrompt', input.stableSystemPrompt],
+    ['volatileSystemPrompt', input.volatileSystemPrompt],
+    ['contextText', input.contextText],
+    ['userPrompt', input.userPrompt],
     ['providerInput', input.providerInput],
     ['responseText', input.responseText],
     ['errorBody', input.errorBody],

@@ -44,6 +44,27 @@ describe('assistant runtime resolution', () => {
     expect(resolved.instructionsMode).toBe('append');
   });
 
+  it('can disable soul injection for expert-style assistant runtimes', async () => {
+    const group: RegisteredGroup = {
+      name: 'Expert Chat',
+      folder: 'expert-chat',
+      trigger: '@Andy',
+      added_at: '2024-01-01T00:00:00.000Z',
+      agentConfig: {
+        customInstructions: 'Stay task focused.',
+      },
+    };
+
+    const resolved = await resolveAssistantRuntimeConfig(
+      group,
+      {},
+      { soulPrompt: '你是小猫娘。', disableSoul: true },
+    );
+
+    expect(resolved.soulSystemPrompt).toBeUndefined();
+    expect(resolved.instructionsAppend).toBe('Stay task focused.');
+  });
+
   it('builds a high-priority conversation soul prompt block', async () => {
     const block = await buildConversationSoulSystemPrompt('保持温柔、活泼的说话风格。');
 

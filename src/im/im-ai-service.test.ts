@@ -94,6 +94,7 @@ describe('IM AI invocation execution', () => {
         expect(context.invocation.prompt).toBe('Say hello');
         expect(context.member.display_name).toBe('Assistant');
         expect(context.provider?.model).toBe('assistant-model');
+        expect(context.systemPrompt).not.toContain('Conversation soul instructions are the primary voice');
         return 'Hello from IM AI';
       },
       notifyEvent: () => {},
@@ -130,6 +131,37 @@ describe('IM AI invocation execution', () => {
       run_id: invocation.id,
     });
     expect(message.im_seq).toBe(2);
+  });
+
+  it('keeps assistant-style IM invocations on the lightweight IM base prompt', async () => {
+    const jid = 'im_grp_ai-3';
+    await addRoom(jid);
+    await addAssistantWithProvider('assistant-2');
+    await addAiMember({
+      chatJid: jid,
+      assistantId: 'assistant-2',
+      displayName: 'Assistant',
+      kind: 'assistant',
+      createdBy: 'user-a',
+    });
+    const invocation = await createAiInvocation({
+      chatJid: jid,
+      assistantId: 'assistant-2',
+      requestedBy: 'user-a',
+      prompt: 'Summarize the room',
+    });
+
+    const result = await processImAiInvocation(invocation.id, {
+      generateReply: async (context) => {
+        expect(context.systemPrompt).toContain('You are replying inside an instant-message room as "Assistant".');
+        expect(context.systemPrompt).not.toContain('Conversation soul instructions are the primary voice');
+        expect(context.systemPrompt).not.toContain('You are a helpful coding assistant with access to tools.');
+        return 'done';
+      },
+      notifyEvent: () => {},
+    });
+
+    expect(result.status).toBe('completed');
   });
 
   it('fails a queued invocation without reading or replying after E2EE is enabled', async () => {

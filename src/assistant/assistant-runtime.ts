@@ -58,6 +58,7 @@ export interface ResolvedAssistantRuntimeConfig {
 
 export interface ResolveAssistantRuntimeOptions {
   requireEnabled?: boolean;
+  disableSoul?: boolean;
 }
 
 export async function buildAssistantInstructionsAppend(
@@ -139,7 +140,9 @@ export async function resolveAssistantRuntimeConfig(
   const convModel = group.model?.trim() || null;
 
   if (!assistantId) {
-    const soulOnly = await buildConversationSoulSystemPrompt(options.soulPrompt);
+    const soulOnly = options.disableSoul
+      ? ''
+      : await buildConversationSoulSystemPrompt(options.soulPrompt);
     const customInstructions = group.agentConfig?.customInstructions?.trim();
 
     const readProvider = deps.getProviderById || getProvider;
@@ -188,7 +191,7 @@ export async function resolveAssistantRuntimeConfig(
       assistantId,
       assistantName: null,
       providerType: null,
-      soulSystemPrompt: soulFallback || undefined,
+      soulSystemPrompt: options.disableSoul ? undefined : soulFallback || undefined,
       instructionsAppend: customInstructions || undefined,
       instructionsMode: 'append',
       providerAlias: null,
@@ -267,7 +270,9 @@ export async function resolveAssistantRuntimeConfig(
     modelOverride: effectiveModel,
     providerType: provider?.type || null,
     soulSystemPrompt:
-      await buildConversationSoulSystemPrompt(options.soulPrompt) || undefined,
+      options.disableSoul
+        ? undefined
+        : await buildConversationSoulSystemPrompt(options.soulPrompt) || undefined,
     instructionsAppend: await buildResolvedAssistantInstructionsAppend({
       assistant,
       customInstructions: group.agentConfig?.customInstructions,

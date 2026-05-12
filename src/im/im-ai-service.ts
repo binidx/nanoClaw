@@ -196,15 +196,10 @@ async function resolveInvocationPromptContext(
       requiresTrigger: false,
       isMain: false,
     };
-    const soulPrompt = await buildSoulPrompt(
-      invocation.requested_by,
-      invocation.chat_jid,
-      transcript,
-    );
     const runtime = await resolveAssistantRuntimeConfig(
       group,
       { getAssistantById: getAssistant, getProviderById: getProvider },
-      { requireEnabled: true, soulPrompt },
+      { requireEnabled: true, disableSoul: true },
     );
     provider = runtime.providerOverrideId
       ? await getProvider(runtime.providerOverrideId)
@@ -212,13 +207,7 @@ async function resolveInvocationPromptContext(
     if (provider && runtime.modelOverride) {
       provider = { ...provider, model: runtime.modelOverride };
     }
-    systemPrompt = [
-      baseSystem,
-      runtime.soulSystemPrompt,
-      runtime.instructionsAppend,
-    ]
-      .filter(Boolean)
-      .join('\n\n');
+    systemPrompt = [baseSystem, runtime.instructionsAppend].filter(Boolean).join('\n\n');
   }
 
   if (!provider) {
@@ -257,6 +246,8 @@ async function generateImAiReply(context: ImAiReplyContext): Promise<string> {
     chatJid: context.invocation.chat_jid,
     provider: context.provider.type,
     model: context.provider.model || null,
+    stableSystemPrompt: context.systemPrompt,
+    volatileSystemPrompt: null,
     systemPromptText: context.systemPrompt,
     userPromptText: context.invocation.prompt,
     providerInputText: providerPrompt,
