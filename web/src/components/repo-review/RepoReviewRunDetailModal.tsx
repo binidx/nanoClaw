@@ -6,6 +6,7 @@ import {
   ReviewProgressTimeline,
   type ReviewProgressEntry,
 } from './ReviewProgressTimeline';
+import { RepoReviewModalShell } from './RepoReviewModalShell';
 
 export function RepoReviewRunDetailModal({
   run,
@@ -51,31 +52,21 @@ export function RepoReviewRunDetailModal({
   const platformDeliveryStatus = resolvePlatformDeliveryStatus(run);
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div
-        className="modal repo-review-run-detail-modal"
-        onClick={(event) => event.stopPropagation()}
-      >
-        <div className="modal-header">
-          <div>
-            <h3>{formatRunTitle(run)}</h3>
-            <div className="settings-hint">
-              {repositoryName}
-              {' · '}
-              {profileName}
-              {' · '}
-              {run.branch || run.ref || t('runDetail.noBranch')}
-            </div>
-          </div>
-          <button
-            type="button"
-            className="modal-close-btn"
-            onClick={onClose}
-            aria-label={t('runDetail.closeLabel')}
-          >
-            ×
-          </button>
-        </div>
+    <RepoReviewModalShell
+      className="repo-review-run-detail-modal"
+      title={formatRunTitle(run)}
+      subtitle={
+        <>
+          {repositoryName}
+          {' · '}
+          {profileName}
+          {' · '}
+          {run.branch || run.ref || t('runDetail.noBranch')}
+        </>
+      }
+      closeAriaLabel={t('runDetail.closeLabel')}
+      onClose={onClose}
+    >
         <div className="repo-review-run-detail-body">
           {loading ? (
             <div className="settings-hint">{t('runDetail.refreshing')}</div>
@@ -260,13 +251,7 @@ export function RepoReviewRunDetailModal({
                       {finding.title}
                       {finding.detail ? ` · ${finding.detail}` : ''}
                       {finding.suggestion && (
-                        <div
-                          style={{
-                            marginTop: '4px',
-                            fontSize: '0.9em',
-                            opacity: 0.85,
-                          }}
-                        >
+                        <div className="repo-review-finding-suggestion">
                           {t('runDetail.suggestion')}{finding.suggestion}
                         </div>
                       )}
@@ -335,7 +320,6 @@ export function RepoReviewRunDetailModal({
             ) : null}
           </div>
         </div>
-      </div>
-    </div>
+    </RepoReviewModalShell>
   );
 }

@@ -2,6 +2,7 @@ import { useTranslation } from 'react-i18next';
 
 import type { RepoReviewDigestRun } from '../../app-types';
 import { RepoReviewDetailCard } from './ReviewProgressTimeline';
+import { RepoReviewModalShell } from './RepoReviewModalShell';
 
 export function RepoReviewDigestRunDetailModal({
   run,
@@ -28,29 +29,19 @@ export function RepoReviewDigestRunDetailModal({
   const errorText = run.deliveryError || run.errorMessage;
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div
-        className="modal repo-review-run-detail-modal"
-        onClick={(event) => event.stopPropagation()}
-      >
-        <div className="modal-header">
-          <div>
-            <h3>{t('digest.detailTitle', { type: formatDigestRunTypeLabel(run.type) })}</h3>
-            <div className="settings-hint">
-              {repositoryName}
-              {' · '}
-              {new Date(run.scheduledFor || run.createdAt).toLocaleString()}
-            </div>
-          </div>
-          <button
-            type="button"
-            className="modal-close-btn"
-            onClick={onClose}
-            aria-label={t('digest.closeLabel')}
-          >
-            ×
-          </button>
-        </div>
+    <RepoReviewModalShell
+      className="repo-review-run-detail-modal"
+      title={t('digest.detailTitle', { type: formatDigestRunTypeLabel(run.type) })}
+      subtitle={
+        <>
+          {repositoryName}
+          {' · '}
+          {new Date(run.scheduledFor || run.createdAt).toLocaleString()}
+        </>
+      }
+      closeAriaLabel={t('digest.closeLabel')}
+      onClose={onClose}
+    >
         <div className="repo-review-run-detail-body">
           {loading ? (
             <div className="settings-hint">{t('digest.refreshing')}</div>
@@ -161,7 +152,6 @@ export function RepoReviewDigestRunDetailModal({
             ) : null}
           </div>
         </div>
-      </div>
-    </div>
+    </RepoReviewModalShell>
   );
 }

@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { NcSelect } from '../common';
+import { Drawer, NcSelect } from '../common';
 
 export interface McpImportDrawerProps {
   onImport: (input: {
@@ -24,14 +24,6 @@ export function McpImportDrawer({
   const [visibility, setVisibility] = useState<'private' | 'shared'>('private');
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    const handleEsc = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    document.addEventListener('keydown', handleEsc);
-    return () => document.removeEventListener('keydown', handleEsc);
-  }, [onClose]);
-
   const handleImport = async () => {
     if (!sourcePath.trim()) return;
     setSaving(true);
@@ -48,15 +40,27 @@ export function McpImportDrawer({
   };
 
   return (
-    <div className="app-drawer-overlay" onClick={onClose}>
-      <div className="app-drawer" onClick={(e) => e.stopPropagation()}>
-        <div className="app-drawer__header">
-          <h3>{t('mcp.importTitle')}</h3>
-          <button type="button" className="app-drawer__close" onClick={onClose}>
-            &times;
+    <Drawer
+      open
+      onClose={onClose}
+      title={t('mcp.importTitle')}
+      width={420}
+      footer={
+        <>
+          <button type="button" className="btn-outline" onClick={onClose}>
+            {t('action.cancel')}
           </button>
-        </div>
-        <div className="app-drawer__body">
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={handleImport}
+            disabled={saving || !sourcePath.trim()}
+          >
+            {saving ? t('mcp.importing') : t('mcp.importBtn')}
+          </button>
+        </>
+      }
+    >
           <div className="form-group">
             <label>{t('mcp.localPath')}</label>
             <input
@@ -96,21 +100,6 @@ export function McpImportDrawer({
               <option value="shared">{t('visibility.shared')}</option>
             </NcSelect>
           </div>
-        </div>
-        <div className="app-drawer__footer">
-          <button type="button" className="btn-outline" onClick={onClose}>
-            {t('action.cancel')}
-          </button>
-          <button
-            type="button"
-            className="btn-primary"
-            onClick={handleImport}
-            disabled={saving || !sourcePath.trim()}
-          >
-            {saving ? t('mcp.importing') : t('mcp.importBtn')}
-          </button>
-        </div>
-      </div>
-    </div>
+    </Drawer>
   );
 }

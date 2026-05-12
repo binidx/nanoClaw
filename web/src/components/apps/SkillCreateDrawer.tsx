@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import type { ExtensionMetadata, UserSkillView } from '../../app-types';
-import { NcSelect } from '../common';
+import { Drawer, NcSelect } from '../common';
 
 export interface SkillCreateDrawerProps {
   editing: UserSkillView | null;
@@ -38,12 +38,6 @@ export function SkillCreateDrawer({ editing, onSave, onClose }: SkillCreateDrawe
   const [visibility, setVisibility] = useState<'private' | 'shared'>(editing?.visibility ?? 'private');
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    const handleEsc = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    document.addEventListener('keydown', handleEsc);
-    return () => document.removeEventListener('keydown', handleEsc);
-  }, [onClose]);
-
   const handleSave = async () => {
     if (!name.trim()) return;
     let metadata: ExtensionMetadata | undefined;
@@ -69,15 +63,27 @@ export function SkillCreateDrawer({ editing, onSave, onClose }: SkillCreateDrawe
   };
 
   return (
-    <div className="app-drawer-overlay" onClick={onClose}>
-      <div className="app-drawer app-drawer--wide" onClick={(e) => e.stopPropagation()}>
-        <div className="app-drawer__header">
-          <h3>{editing ? t('skill.edit') : t('skill.create')}</h3>
-          <button type="button" className="app-drawer__close" onClick={onClose}>
-            &times;
+    <Drawer
+      open
+      onClose={onClose}
+      title={editing ? t('skill.edit') : t('skill.create')}
+      width={560}
+      footer={
+        <>
+          <button type="button" className="btn-outline" onClick={onClose}>
+            {t('action.cancel')}
           </button>
-        </div>
-        <div className="app-drawer__body">
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={handleSave}
+            disabled={saving || !name.trim()}
+          >
+            {saving ? t('mcp.saving') : (editing ? t('mcp.saveChanges') : t('mcp.save'))}
+          </button>
+        </>
+      }
+    >
           <div className="form-group">
             <label>{t('skill.nameRequired')}</label>
             <input value={name} onChange={(e) => setName(e.target.value)} placeholder="my-custom-skill" />
@@ -123,21 +129,6 @@ export function SkillCreateDrawer({ editing, onSave, onClose }: SkillCreateDrawe
               <option value="shared">{t('visibility.shared')}</option>
             </NcSelect>
           </div>
-        </div>
-        <div className="app-drawer__footer">
-          <button type="button" className="btn-outline" onClick={onClose}>
-            {t('action.cancel')}
-          </button>
-          <button
-            type="button"
-            className="btn-primary"
-            onClick={handleSave}
-            disabled={saving || !name.trim()}
-          >
-            {saving ? t('mcp.saving') : (editing ? t('mcp.saveChanges') : t('mcp.save'))}
-          </button>
-        </div>
-      </div>
-    </div>
+    </Drawer>
   );
 }

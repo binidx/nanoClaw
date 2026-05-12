@@ -295,9 +295,16 @@ select {
 [data-theme='dark'] .input-bar,
 [data-theme='dark'] .provider-empty,
 [data-theme='dark'] .dir-empty {
-  background: rgba(10, 18, 32, 0.88);
-  border-color: var(--border);
-  box-shadow: var(--shadow-sm);
+  background: linear-gradient(
+    180deg,
+    rgba(15, 23, 42, 0.96) 0%,
+    rgba(11, 19, 33, 0.9) 100%
+  );
+  border-color: rgba(68, 83, 116, 0.42);
+  box-shadow:
+    0 16px 34px rgba(2, 6, 23, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(16px);
 }
 
 [data-theme='dark'] .page-error {

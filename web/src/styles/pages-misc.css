@@ -11,42 +11,70 @@
 .terminal-panel {
   height: 260px;
   min-height: 180px;
-  border-top: 1px solid var(--border);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  overflow: hidden;
   display: flex;
   flex-direction: column;
-  background: #111827;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.9) 0%,
+    rgba(247, 250, 255, 0.88) 100%
+  );
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.88),
+    0 12px 28px rgba(80, 101, 150, 0.08);
 }
 
 .terminal-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 12px;
-  background: #0f172a;
-  color: #cbd5e1;
+  padding: 10px 14px;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.92) 0%,
+    rgba(246, 250, 255, 0.88) 100%
+  );
+  color: var(--text-secondary);
   font-size: 12px;
   font-weight: 600;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.84);
 }
 
 .terminal-close {
-  background: none;
-  border: none;
-  color: #cbd5e1;
+  min-height: 28px;
+  padding: 0 12px;
+  border: 1px solid rgba(var(--accent-rgb), 0.16);
+  border-radius: 999px;
+  background: rgba(var(--accent-rgb), 0.08);
+  color: var(--accent);
   font-size: 16px;
   cursor: pointer;
-  padding: 0 4px;
   line-height: 1;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.92),
+    0 8px 18px rgba(80, 101, 150, 0.08);
+  transition:
+    border-color 0.18s ease,
+    background-color 0.18s ease,
+    color 0.18s ease,
+    transform 0.18s ease;
 }
 
 .terminal-close:hover {
-  color: #fda4af;
+  border-color: rgba(var(--accent-rgb), 0.3);
+  background: rgba(var(--accent-rgb), 0.12);
+  color: var(--accent-hover);
+  transform: translateY(-1px);
 }
 
 .terminal-body {
   flex: 1;
   overflow: hidden;
-  padding: 4px;
+  padding: 12px;
   min-height: 0;
+  background: #111827;
 }
 
 .terminal-page-body {
@@ -61,14 +89,26 @@
   display: flex;
   flex-direction: column;
   border: 1px solid var(--border);
-  border-radius: var(--radius-xl);
+  border-radius: 28px;
+  padding: 12px;
+  gap: 12px;
   overflow: hidden;
-  background: #111827;
-  box-shadow: var(--shadow-sm);
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.92) 0%,
+    rgba(247, 250, 255, 0.84) 100%
+  );
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 14px 32px rgba(80, 101, 150, 0.08);
 }
 
 .terminal-page-terminal {
   min-height: 420px;
+  padding: 0;
+  border-radius: 18px;
+  background: #111827;
+  overflow: hidden;
 }
 
 .input-hint {
@@ -101,18 +141,34 @@
 .empty-btn {
   margin-top: 8px;
   padding: 11px 24px;
-  background: linear-gradient(135deg, #4f46e5 0%, #6366f1 100%);
-  color: #fff;
-  border: none;
-  border-radius: var(--radius-lg);
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.96) 0%,
+    rgba(246, 250, 255, 0.92) 100%
+  );
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: 14px;
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
-  transition: transform 0.2s ease;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.92),
+    0 12px 24px rgba(80, 101, 150, 0.08);
+  transition:
+    transform 0.2s ease,
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    color 0.2s ease;
 }
 
 .empty-btn:hover {
   transform: translateY(-1px);
+  border-color: rgba(var(--accent-rgb), 0.24);
+  color: var(--accent);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.94),
+    0 16px 28px rgba(80, 101, 150, 0.12);
 }
 
 .page-view {
@@ -126,17 +182,17 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 18px 16px 20px;
+  padding: 18px 18px 22px;
   background:
     radial-gradient(
       circle at top left,
-      rgba(var(--accent-rgb), 0.04),
-      transparent 28%
+      rgba(var(--accent-rgb), 0.06),
+      transparent 30%
     ),
     linear-gradient(
       180deg,
-      rgba(247, 250, 255, 0.58) 0%,
-      rgba(255, 255, 255, 0.7) 100%
+      rgba(247, 250, 255, 0.64) 0%,
+      rgba(255, 255, 255, 0.74) 100%
     );
   backdrop-filter: blur(12px);
 }
@@ -155,6 +211,69 @@
     );
 }
 
+[data-theme='dark'] .terminal-panel,
+[data-theme='dark'] .terminal-page-panel {
+  background: linear-gradient(
+    180deg,
+    rgba(15, 23, 42, 0.94) 0%,
+    rgba(11, 19, 33, 0.9) 100%
+  );
+  border-color: var(--border);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    0 16px 36px rgba(2, 6, 23, 0.28);
+}
+
+[data-theme='dark'] .terminal-header {
+  background: linear-gradient(
+    180deg,
+    rgba(15, 23, 42, 0.94) 0%,
+    rgba(17, 24, 39, 0.9) 100%
+  );
+  color: var(--text-secondary);
+  border-bottom-color: rgba(68, 83, 116, 0.44);
+}
+
+[data-theme='dark'] .terminal-close {
+  background: rgba(99, 102, 241, 0.14);
+  border-color: rgba(139, 155, 255, 0.22);
+  color: var(--text-primary);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    0 10px 20px rgba(2, 6, 23, 0.18);
+}
+
+[data-theme='dark'] .terminal-close:hover {
+  background: rgba(99, 102, 241, 0.2);
+  color: #e0e7ff;
+}
+
+[data-theme='dark'] .terminal-body,
+[data-theme='dark'] .terminal-page-terminal {
+  background: #0b1220;
+}
+
+[data-theme='dark'] .empty-btn {
+  background: linear-gradient(
+    180deg,
+    rgba(15, 23, 42, 0.96) 0%,
+    rgba(17, 24, 39, 0.92) 100%
+  );
+  color: var(--text-primary);
+  border-color: var(--border);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    0 12px 24px rgba(2, 6, 23, 0.24);
+}
+
+[data-theme='dark'] .empty-btn:hover {
+  border-color: rgba(var(--accent-rgb), 0.28);
+  color: var(--accent);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 16px 28px rgba(2, 6, 23, 0.28);
+}
+
 .card-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
@@ -162,11 +281,17 @@
 }
 
 .status-card {
-  background: var(--surface-card);
-  border-radius: var(--radius-xl);
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.96) 0%,
+    rgba(247, 250, 255, 0.92) 100%
+  );
+  border-radius: 22px;
   padding: 18px;
   border: 1px solid var(--border);
-  box-shadow: var(--shadow-sm);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.92),
+    0 14px 32px rgba(80, 101, 150, 0.08);
 }
 
 .status-overview-grid {
@@ -186,8 +311,8 @@
     rgba(248, 250, 252, 0.97) 100%
   );
   box-shadow:
-    0 10px 24px rgba(15, 23, 42, 0.04),
-    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 14px 32px rgba(80, 101, 150, 0.08);
 }
 
 .card-header {
@@ -824,6 +949,27 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+}
+
+.repo-review-card-header--summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+.repo-review-card-header--summary::-webkit-details-marker {
+  display: none;
+}
+
+.repo-review-card-header--summary::marker {
+  content: '';
+}
+
+.repo-review-card-header-title {
+  display: inline;
+}
+
+.repo-review-card-header-meta {
+  margin-left: 8px;
 }
 
 .repo-review-fold {
@@ -1973,6 +2119,12 @@
 .repo-review-run-findings > div {
   min-width: 0;
   overflow-wrap: anywhere;
+}
+
+.repo-review-finding-suggestion {
+  margin-top: 4px;
+  font-size: 0.9em;
+  opacity: 0.85;
 }
 
 .repo-review-run-progress {
@@ -7478,4 +7630,673 @@
 
 [data-theme='dark'] .im-dialog-overlay {
   background: rgba(0, 0, 0, 0.6);
+}
+
+/* ── Repo Review Polish ─────────────────────────────────────────── */
+.repo-review-panel {
+  gap: 20px;
+}
+
+.repo-review-layout {
+  gap: 22px;
+  grid-template-columns: minmax(300px, 340px) minmax(0, 1fr);
+}
+
+.repo-review-sidebar {
+  gap: 18px;
+}
+
+.repo-review-main {
+  gap: 20px;
+}
+
+.repo-review-card-list {
+  gap: 18px;
+}
+
+.repo-review-workspace-layout {
+  gap: 20px;
+  grid-template-columns: minmax(300px, 372px) minmax(0, 1fr);
+}
+
+.repo-review-workspace-layout--focused,
+.repo-review-workspace-layout--list-only {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.repo-review-workspace-list {
+  top: 0;
+  max-height: calc(100vh - 176px);
+}
+
+.repo-review-workspace-detail {
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: 28px;
+  background:
+    radial-gradient(
+      circle at top right,
+      rgba(var(--accent-rgb), 0.09),
+      transparent 34%
+    ),
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.96) 0%,
+      rgba(247, 250, 255, 0.92) 100%
+    );
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.92),
+    0 16px 36px rgba(80, 101, 150, 0.08);
+}
+
+.repo-review-workspace-detail-header {
+  padding-bottom: 16px;
+  border-bottom-color: rgba(148, 163, 184, 0.18);
+}
+
+.repo-review-card-list-toolbar,
+.repo-review-runs-toolbar,
+.repo-review-toolbar {
+  gap: 12px;
+}
+
+.repo-review-card-list-toolbar {
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.9) 0%,
+    rgba(247, 250, 255, 0.84) 100%
+  );
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 12px 26px rgba(80, 101, 150, 0.06);
+}
+
+.repo-review-card-list-meta-row,
+.repo-review-card-list-actions,
+.repo-review-source-summary,
+.repo-review-overview-actions,
+.repo-review-run-badges,
+.repo-review-spotlight-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.repo-review-workspace-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(min(180px, 100%), 1fr));
+}
+
+.repo-review-cards-grid {
+  gap: 16px;
+}
+
+.repo-review-search-shell {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  width: 100%;
+}
+
+.repo-review-search-shell--wide {
+  width: 100%;
+}
+
+.repo-review-search-shell .repo-review-search-input {
+  width: 100%;
+  min-width: 0;
+  padding: 11px 42px 11px 14px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.96) 0%,
+    rgba(247, 250, 255, 0.9) 100%
+  );
+  color: var(--text-primary);
+  font-size: 13px;
+  line-height: 1.5;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.92),
+    0 10px 22px rgba(80, 101, 150, 0.06);
+}
+
+.repo-review-search-shell .repo-review-search-input:focus {
+  border-color: var(--accent);
+  outline: none;
+  box-shadow:
+    0 0 0 4px rgba(var(--accent-rgb), 0.1),
+    0 12px 24px rgba(80, 101, 150, 0.08);
+}
+
+.repo-review-search-icon {
+  right: 12px;
+}
+
+.repo-review-search-clear {
+  width: 22px;
+  height: 22px;
+  right: 10px;
+}
+
+.repo-review-repo-card,
+.repo-review-repository-item,
+.repo-review-workspace-card,
+.repo-review-member-card,
+.repo-review-candidate-item,
+.repo-review-mapping-item,
+.repo-review-spotlight-item,
+.repo-review-summary-item,
+.repo-review-run-card,
+.repo-review-detail-card,
+.repo-review-progress-turn-group,
+.repo-review-branch-status-card,
+.repo-review-empty-hint,
+.repo-review-empty-card-hint,
+.repo-review-conversation-preview {
+  border-radius: 22px;
+  border: 1px solid rgba(226, 232, 240, 0.92);
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.96) 0%,
+    rgba(247, 250, 255, 0.92) 100%
+  );
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.92),
+    0 12px 28px rgba(80, 101, 150, 0.06);
+}
+
+.repo-review-repo-card,
+.repo-review-repository-item,
+.repo-review-branch-status-card {
+  border-width: 1px;
+}
+
+.repo-review-repo-card {
+  gap: 10px;
+  padding: 18px;
+}
+
+.repo-review-repo-card:hover,
+.repo-review-repository-item:hover,
+.repo-review-workspace-card.actionable:hover,
+.repo-review-member-card:hover,
+.repo-review-branch-status-card:hover {
+  transform: translateY(-1px);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.94),
+    0 16px 32px rgba(80, 101, 150, 0.1);
+}
+
+.repo-review-repo-card.active,
+.repo-review-repository-item.active,
+.repo-review-workspace-card.actionable:focus-visible,
+.repo-review-member-card.selected,
+.repo-review-branch-status-card.active {
+  border-color: rgba(var(--accent-rgb), 0.28);
+  box-shadow:
+    inset 0 0 0 1px rgba(var(--accent-rgb), 0.18),
+    0 16px 30px rgba(var(--accent-rgb), 0.08);
+}
+
+.repo-review-card,
+.repo-review-workspace-card,
+.repo-review-detail-card,
+.repo-review-branch-status-card {
+  overflow: hidden;
+}
+
+.repo-review-card {
+  gap: 16px;
+  padding: 18px;
+  border-radius: 26px;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.97) 0%,
+    rgba(247, 250, 255, 0.92) 100%
+  );
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.92),
+    0 14px 32px rgba(80, 101, 150, 0.08);
+}
+
+.repo-review-fold {
+  gap: 0;
+  padding: 0;
+}
+
+.repo-review-fold-summary {
+  padding: 18px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+}
+
+.repo-review-fold-card-actions {
+  padding: 0 18px 14px;
+}
+
+.repo-review-fold-body {
+  padding: 0 18px 18px;
+  gap: 16px;
+}
+
+.repo-review-overview-hero {
+  gap: 16px;
+  padding: 22px;
+  border-radius: 28px;
+  background:
+    radial-gradient(
+      circle at top right,
+      rgba(var(--accent-rgb), 0.12),
+      transparent 34%
+    ),
+    radial-gradient(
+      circle at bottom left,
+      rgba(34, 197, 94, 0.08),
+      transparent 28%
+    ),
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.98) 0%,
+      rgba(244, 247, 255, 0.96) 100%
+    );
+}
+
+.repo-review-overview-copy h3 {
+  font-size: 24px;
+}
+
+.repo-review-overview-kicker {
+  min-height: 28px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: rgba(var(--accent-rgb), 0.08);
+  color: var(--accent);
+}
+
+.repo-review-workspace-card {
+  padding: 16px;
+}
+
+.repo-review-workspace-card-topline,
+.repo-review-repo-card-header,
+.repo-review-run-header,
+.repo-review-card-header,
+.repo-review-workspace-detail-header,
+.repo-review-branch-status-toolbar {
+  align-items: flex-start;
+}
+
+.repo-review-source-pill,
+.repo-review-status-badge,
+.repo-review-badge,
+.repo-review-chip,
+.repo-review-branch-pill,
+.repo-review-progress-turn-tag {
+  border-radius: 999px;
+}
+
+.repo-review-chip {
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.repo-review-empty-card-hint,
+.repo-review-empty-hint {
+  border-style: solid;
+  border-color: rgba(226, 232, 240, 0.9);
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.94) 0%,
+    rgba(247, 250, 255, 0.9) 100%
+  );
+}
+
+.repo-review-search-shell .repo-review-search-clear,
+.repo-review-search-shell .repo-review-search-icon {
+  top: 50%;
+}
+
+.repo-review-run-card {
+  gap: 8px;
+  padding: 12px 14px;
+}
+
+.repo-review-run-progress {
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  background: rgba(248, 250, 252, 0.8);
+}
+
+.repo-review-detail-card,
+.repo-review-progress-turn-group {
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.96) 0%,
+    rgba(247, 250, 255, 0.92) 100%
+  );
+}
+
+.repo-review-detail-card-summary,
+.repo-review-detail-card-body {
+  padding-left: 18px;
+  padding-right: 18px;
+}
+
+.repo-review-detail-card-summary {
+  padding-top: 16px;
+  padding-bottom: 16px;
+}
+
+.repo-review-detail-card-body {
+  padding-top: 14px;
+  padding-bottom: 16px;
+}
+
+.repo-review-progress-error {
+  background: rgba(239, 68, 68, 0.08);
+  border-color: rgba(239, 68, 68, 0.18);
+}
+
+.repo-review-run-detail-modal,
+.repo-review-branch-status-modal,
+.repo-review-editor-modal {
+  background:
+    radial-gradient(
+      circle at top left,
+      rgba(var(--accent-rgb), 0.08),
+      transparent 30%
+    ),
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.98) 0%,
+      rgba(247, 250, 255, 0.94) 100%
+    );
+  backdrop-filter: blur(18px);
+}
+
+.repo-review-editor-overlay {
+  background: rgba(2, 6, 23, 0.5);
+  backdrop-filter: blur(10px);
+}
+
+.repo-review-editor-modal {
+  width: min(1120px, calc(100vw - 40px));
+  max-height: calc(100vh - 40px);
+  border: 1px solid var(--border);
+  border-radius: 28px;
+  box-shadow:
+    0 24px 60px rgba(15, 23, 42, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.92);
+}
+
+.repo-review-editor-modal-header {
+  padding-bottom: 14px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.16);
+}
+
+.repo-review-run-detail-modal {
+  width: min(1440px, calc(100vw - 24px));
+  max-height: 92vh;
+  padding: 22px 24px 26px;
+}
+
+.repo-review-branch-status-modal {
+  width: min(1540px, calc(100vw - 24px));
+  max-height: 92vh;
+  padding: 22px 24px 26px;
+}
+
+.repo-review-branch-status-card {
+  padding: 16px 18px;
+}
+
+.repo-review-branch-status-sidebar,
+.repo-review-branch-status-main {
+  scrollbar-color: rgba(148, 163, 184, 0.48) transparent;
+}
+
+.repo-review-branch-status-limit select {
+  border-radius: 14px;
+}
+
+.repo-review-codemap-empty {
+  padding: 28px 0;
+}
+
+@media (max-width: 900px) {
+  .repo-review-layout,
+  .repo-review-workspace-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .repo-review-workspace-list,
+  .repo-review-workspace-detail {
+    position: static;
+    max-height: none;
+  }
+
+  .repo-review-overview-hero-top,
+  .repo-review-workspace-card-topline,
+  .repo-review-editor-stage-top,
+  .repo-review-spotlight-item {
+    flex-direction: column;
+  }
+
+  .repo-review-overview-actions {
+    justify-content: flex-start;
+  }
+
+  .repo-review-workspace-card {
+    width: 100%;
+  }
+
+  .repo-review-branch-status-layout {
+    overflow: auto;
+  }
+}
+
+@media (max-width: 768px) {
+  .repo-review-workspace-detail,
+  .repo-review-card-list-toolbar,
+  .repo-review-card,
+  .repo-review-workspace-card,
+  .repo-review-repo-card,
+  .repo-review-run-detail-modal,
+  .repo-review-branch-status-modal,
+  .repo-review-editor-modal {
+    border-radius: 22px;
+  }
+
+  .repo-review-run-detail-modal,
+  .repo-review-branch-status-modal {
+    width: min(100vw - 16px, 1540px);
+    padding: 16px 14px 18px;
+  }
+
+  .repo-review-editor-modal {
+    width: min(100vw - 16px, 1120px);
+    max-height: calc(100vh - 16px);
+    padding: 16px 14px 18px;
+  }
+
+  .repo-review-card-list-toolbar,
+  .repo-review-workspace-detail,
+  .repo-review-card,
+  .repo-review-workspace-card,
+  .repo-review-repo-card {
+    padding: 16px;
+  }
+}
+
+[data-theme='dark'] .repo-review-workspace-detail,
+[data-theme='dark'] .repo-review-card-list-toolbar,
+[data-theme='dark'] .repo-review-card,
+[data-theme='dark'] .repo-review-workspace-card,
+[data-theme='dark'] .repo-review-repo-card,
+[data-theme='dark'] .repo-review-repository-item,
+[data-theme='dark'] .repo-review-member-card,
+[data-theme='dark'] .repo-review-candidate-item,
+[data-theme='dark'] .repo-review-mapping-item,
+[data-theme='dark'] .repo-review-spotlight-item,
+[data-theme='dark'] .repo-review-summary-item,
+[data-theme='dark'] .repo-review-run-card,
+[data-theme='dark'] .repo-review-detail-card,
+[data-theme='dark'] .repo-review-progress-turn-group,
+[data-theme='dark'] .repo-review-branch-status-card,
+[data-theme='dark'] .repo-review-empty-hint,
+[data-theme='dark'] .repo-review-empty-card-hint,
+[data-theme='dark'] .repo-review-conversation-preview,
+[data-theme='dark'] .repo-review-detection-summary,
+[data-theme='dark'] .repo-review-token-guide,
+[data-theme='dark'] .repo-review-chat-target-summary,
+[data-theme='dark'] .repo-review-run-progress,
+[data-theme='dark'] .repo-review-progress-error {
+  background: linear-gradient(
+    180deg,
+    rgba(15, 23, 42, 0.95) 0%,
+    rgba(11, 19, 33, 0.92) 100%
+  );
+  border-color: rgba(68, 83, 116, 0.44);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    0 16px 36px rgba(2, 6, 23, 0.28);
+}
+
+[data-theme='dark'] .repo-review-card-list-toolbar,
+[data-theme='dark'] .repo-review-workspace-detail,
+[data-theme='dark'] .repo-review-editor-modal,
+[data-theme='dark'] .repo-review-run-detail-modal,
+[data-theme='dark'] .repo-review-branch-status-modal {
+  background:
+    radial-gradient(
+      circle at top left,
+      rgba(96, 165, 250, 0.12),
+      transparent 30%
+    ),
+    linear-gradient(
+      180deg,
+      rgba(15, 23, 42, 0.96) 0%,
+      rgba(11, 19, 33, 0.92) 100%
+    );
+}
+
+[data-theme='dark'] .repo-review-search-shell .repo-review-search-input {
+  border-color: rgba(68, 83, 116, 0.48);
+  background: linear-gradient(
+    180deg,
+    rgba(15, 23, 42, 0.96) 0%,
+    rgba(11, 19, 33, 0.92) 100%
+  );
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    0 12px 24px rgba(2, 6, 23, 0.22);
+}
+
+[data-theme='dark'] .repo-review-search-shell .repo-review-search-input:focus {
+  border-color: rgba(96, 165, 250, 0.36);
+  box-shadow:
+    0 0 0 4px rgba(96, 165, 250, 0.12),
+    0 12px 24px rgba(2, 6, 23, 0.24);
+}
+
+[data-theme='dark'] .repo-review-search-icon {
+  color: rgba(148, 163, 184, 0.86);
+}
+
+[data-theme='dark'] .repo-review-search-clear {
+  background: rgba(148, 163, 184, 0.14);
+  color: rgba(226, 232, 240, 0.9);
+}
+
+[data-theme='dark'] .repo-review-repo-card.active,
+[data-theme='dark'] .repo-review-repository-item.active,
+[data-theme='dark'] .repo-review-workspace-card.actionable:focus-visible,
+[data-theme='dark'] .repo-review-member-card.selected,
+[data-theme='dark'] .repo-review-branch-status-card.active {
+  border-color: rgba(96, 165, 250, 0.34);
+  box-shadow:
+    inset 0 0 0 1px rgba(96, 165, 250, 0.16),
+    0 18px 36px rgba(2, 6, 23, 0.3);
+}
+
+[data-theme='dark'] .repo-review-overview-kicker {
+  background: rgba(148, 163, 184, 0.14);
+  color: #cbd5e1;
+}
+
+[data-theme='dark'] .repo-review-chip {
+  background: rgba(15, 23, 42, 0.84);
+  border-color: rgba(68, 83, 116, 0.44);
+}
+
+[data-theme='dark'] .repo-review-chip.active {
+  background: rgba(96, 165, 250, 0.16);
+  border-color: rgba(96, 165, 250, 0.32);
+  color: #bfdbfe;
+}
+
+[data-theme='dark'] .repo-review-empty-hint,
+[data-theme='dark'] .repo-review-empty-card-hint,
+[data-theme='dark'] .repo-review-summary-item,
+[data-theme='dark'] .repo-review-conversation-preview,
+[data-theme='dark'] .repo-review-detection-summary,
+[data-theme='dark'] .repo-review-token-guide,
+[data-theme='dark'] .repo-review-chat-target-summary {
+  background: linear-gradient(
+    180deg,
+    rgba(15, 23, 42, 0.92) 0%,
+    rgba(11, 19, 33, 0.88) 100%
+  );
+}
+
+[data-theme='dark'] .repo-review-status-badge,
+[data-theme='dark'] .repo-review-badge,
+[data-theme='dark'] .repo-review-source-pill,
+[data-theme='dark'] .repo-review-branch-pill,
+[data-theme='dark'] .repo-review-progress-turn-tag {
+  background: rgba(148, 163, 184, 0.14);
+  color: #e2e8f0;
+  border-color: rgba(68, 83, 116, 0.44);
+}
+
+[data-theme='dark'] .repo-review-source-pill.tone-success,
+[data-theme='dark'] .repo-review-status-badge.enabled,
+[data-theme='dark'] .repo-review-status-badge.status-pass {
+  background: rgba(34, 197, 94, 0.18);
+  color: #86efac;
+}
+
+[data-theme='dark'] .repo-review-source-pill.tone-warning,
+[data-theme='dark'] .repo-review-status-badge.status-warn {
+  background: rgba(234, 179, 8, 0.2);
+  color: #fde68a;
+}
+
+[data-theme='dark'] .repo-review-status-badge.status-fail,
+[data-theme='dark'] .repo-review-status-badge.status-error,
+[data-theme='dark'] .repo-review-badge.disabled {
+  background: rgba(248, 113, 113, 0.18);
+  color: #fca5a5;
+}
+
+[data-theme='dark'] .repo-review-run-detail-modal,
+[data-theme='dark'] .repo-review-branch-status-modal,
+[data-theme='dark'] .repo-review-editor-modal {
+  border-color: rgba(68, 83, 116, 0.48);
+  box-shadow:
+    0 26px 60px rgba(2, 6, 23, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+[data-theme='dark'] .repo-review-editor-overlay {
+  background: rgba(2, 6, 23, 0.62);
+}
+
+[data-theme='dark'] .repo-review-branch-status-limit select {
+  background: rgba(15, 23, 42, 0.92);
+  color: #e2e8f0;
 }

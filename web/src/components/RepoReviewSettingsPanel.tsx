@@ -3519,7 +3519,7 @@ export function RepoReviewSettingsPanel({
           setProfileEditorOpen(false);
         }}
         title={creatingRepository ? t('repoReview.drawer.newWorkspace') : selectedRepository?.name || t('repoReview.drawer.repoDetail')}
-        width="min(100vw, 850px)"
+        width="min(100vw, 960px)"
       >
       <section className="repo-review-workspace-detail">
         <div className="repo-review-workspace-detail-header">

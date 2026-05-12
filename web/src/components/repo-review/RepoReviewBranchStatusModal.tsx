@@ -5,6 +5,7 @@ import type { RepoReviewCommitInfo, RepoReviewRun } from '../../app-types';
 import { NcSelect } from '../common';
 import { IconSearch } from '../AppIcons';
 import { fetchRepoReviewBranchCommits } from './api';
+import { RepoReviewModalShell } from './RepoReviewModalShell';
 import type {
   RepoReviewBranchStateItem,
   RepoReviewManualReviewRequest,
@@ -141,29 +142,17 @@ export function RepoReviewBranchStatusModal({
   }, [apiBase, commitLimit, repositoryId, selectedItem?.name]);
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div
-        className="modal repo-review-branch-status-modal"
-        onClick={(event) => event.stopPropagation()}
-      >
-        <div className="modal-header">
-          <div>
-            <h3>{branchLocked ? t('branchStatus.selectBaseline') : t('branchStatus.viewAll')}</h3>
-            <div className="settings-hint">
-              {branchLocked
-                ? `${repositoryName} · ${selectedItem?.name || initialBranch || ''}`
-                : `${repositoryName} · ${t('branchStatus.branchCount', { count: items.length })}`}
-            </div>
-          </div>
-          <button
-            type="button"
-            className="modal-close-btn"
-            onClick={onClose}
-            aria-label={t('branchStatusModal.closeLabel')}
-          >
-            ×
-          </button>
-        </div>
+    <RepoReviewModalShell
+      className="repo-review-branch-status-modal"
+      title={branchLocked ? t('branchStatus.selectBaseline') : t('branchStatus.viewAll')}
+      subtitle={
+        branchLocked
+          ? `${repositoryName} · ${selectedItem?.name || initialBranch || ''}`
+          : `${repositoryName} · ${t('branchStatus.branchCount', { count: items.length })}`
+      }
+      closeAriaLabel={t('branchStatusModal.closeLabel')}
+      onClose={onClose}
+    >
         {items.length === 0 ? (
           <div className="settings-hint">{t('branchStatus.noBranches')}</div>
         ) : (
@@ -450,9 +439,9 @@ export function RepoReviewBranchStatusModal({
 
                   {selectedRuns.length > 0 && (
                     <details className="repo-review-card">
-                      <summary className="repo-review-card-header" style={{ cursor: 'pointer', listStyle: 'none' }}>
-                        <h4 style={{ display: 'inline' }}>{t('branchStatus.history')}</h4>
-                        <span className="settings-hint" style={{ marginLeft: 8 }}>
+                      <summary className="repo-review-card-header repo-review-card-header--summary">
+                        <h4 className="repo-review-card-header-title">{t('branchStatus.history')}</h4>
+                        <span className="settings-hint repo-review-card-header-meta">
                           {t('branchStatus.historyCount', { count: selectedRuns.length })}
                         </span>
                       </summary>
@@ -526,7 +515,6 @@ export function RepoReviewBranchStatusModal({
             </div>
           </div>
         )}
-      </div>
-    </div>
+    </RepoReviewModalShell>
   );
 }

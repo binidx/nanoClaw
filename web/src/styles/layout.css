@@ -144,10 +144,14 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 12px;
+  gap: 14px;
   color: var(--text-secondary);
   text-align: center;
-  padding: 24px;
+  width: min(100%, 780px);
+  margin: 20px auto;
+  padding: 32px 28px;
+  border: 1px solid var(--border);
+  border-radius: 28px;
   background:
     radial-gradient(
       circle at top,
@@ -156,9 +160,14 @@
     ),
     linear-gradient(
       180deg,
-      var(--surface-panel) 0%,
-      var(--surface-card-strong) 100%
+      rgba(255, 255, 255, 0.9) 0%,
+      rgba(248, 251, 255, 0.94) 100%
     );
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 18px 40px rgba(80, 101, 150, 0.08);
+  backdrop-filter: blur(18px);
+  overflow: hidden;
 }
 
 .empty-state h2 {
@@ -205,20 +214,20 @@
   margin: 16px 16px 0;
   padding: 18px 22px;
   border: 1px solid var(--border);
-  border-radius: 24px;
+  border-radius: 26px;
   background: linear-gradient(
     180deg,
-    rgba(255, 255, 255, 0.9),
-    rgba(247, 250, 255, 0.84)
+    rgba(255, 255, 255, 0.94),
+    rgba(247, 250, 255, 0.86)
   );
   display: flex;
   align-items: center;
   gap: 24px;
   flex-wrap: wrap;
-  backdrop-filter: blur(18px);
+  backdrop-filter: blur(20px);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.92),
-    0 10px 26px rgba(80, 101, 150, 0.06);
+    0 14px 32px rgba(80, 101, 150, 0.08);
 }
 
 .page-header h2 {
@@ -260,12 +269,12 @@
   border-color: var(--border);
   background: linear-gradient(
     180deg,
-    rgba(15, 23, 42, 0.92),
-    rgba(17, 24, 39, 0.88)
+    rgba(15, 23, 42, 0.94),
+    rgba(11, 19, 33, 0.9)
   );
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.04),
-    0 10px 26px rgba(2, 6, 23, 0.24);
+    0 14px 32px rgba(2, 6, 23, 0.28);
 }
 
 .section-header h3 {
@@ -356,6 +365,9 @@
       rgba(8, 17, 31, 0.82) 0%,
       rgba(10, 18, 32, 0.94) 100%
     );
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    0 18px 40px rgba(2, 6, 23, 0.3);
 }
 
 [data-theme='dark'] .empty-state-hint {

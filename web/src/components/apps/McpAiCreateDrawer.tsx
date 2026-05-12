@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { NcSelect } from '../common';
+import { Drawer, NcSelect } from '../common';
 
 export interface McpAiCreateDrawerProps {
   onGenerate: (input: {
@@ -24,14 +24,6 @@ export function McpAiCreateDrawer({
   const [visibility, setVisibility] = useState<'private' | 'shared'>('private');
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    const handleEsc = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    document.addEventListener('keydown', handleEsc);
-    return () => document.removeEventListener('keydown', handleEsc);
-  }, [onClose]);
-
   const handleGenerate = async () => {
     if (!request.trim()) return;
     setSaving(true);
@@ -48,15 +40,27 @@ export function McpAiCreateDrawer({
   };
 
   return (
-    <div className="app-drawer-overlay" onClick={onClose}>
-      <div className="app-drawer app-drawer--wide" onClick={(e) => e.stopPropagation()}>
-        <div className="app-drawer__header">
-          <h3>{t('mcp.aiTitle')}</h3>
-          <button type="button" className="app-drawer__close" onClick={onClose}>
-            &times;
+    <Drawer
+      open
+      onClose={onClose}
+      title={t('mcp.aiTitle')}
+      width={560}
+      footer={
+        <>
+          <button type="button" className="btn-outline" onClick={onClose}>
+            {t('action.cancel')}
           </button>
-        </div>
-        <div className="app-drawer__body">
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={handleGenerate}
+            disabled={saving || !request.trim()}
+          >
+            {saving ? t('mcp.generating') : t('mcp.generateAndInstall')}
+          </button>
+        </>
+      }
+    >
           <div className="form-group">
             <label>{t('mcp.nameOptional')}</label>
             <input
@@ -95,21 +99,6 @@ export function McpAiCreateDrawer({
               <option value="shared">{t('visibility.shared')}</option>
             </NcSelect>
           </div>
-        </div>
-        <div className="app-drawer__footer">
-          <button type="button" className="btn-outline" onClick={onClose}>
-            {t('action.cancel')}
-          </button>
-          <button
-            type="button"
-            className="btn-primary"
-            onClick={handleGenerate}
-            disabled={saving || !request.trim()}
-          >
-            {saving ? t('mcp.generating') : t('mcp.generateAndInstall')}
-          </button>
-        </div>
-      </div>
-    </div>
+    </Drawer>
   );
 }
