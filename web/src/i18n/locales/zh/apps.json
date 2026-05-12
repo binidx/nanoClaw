@@ -93,6 +93,8 @@
   "store.marketplace": "商店",
   "store.stars": "{{count}} stars",
   "store.installed": "已安装",
+  "store.sourcePrefix": "来源：",
+  "store.registryExplainer": "商店条目对所有有权限的用户可见；安装后会复制为当前用户自己的私有副本，不会与其他用户共用运行实例。",
   "registry.searchPlaceholder": "搜索应用商店...",
   "admin.title": "市场源管理",
   "admin.addSource": "+ 新增市场源",

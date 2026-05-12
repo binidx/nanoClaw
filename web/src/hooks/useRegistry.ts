@@ -5,12 +5,16 @@ export interface RegistryCatalogItem {
   name: string;
   description: string;
   type: 'skill' | 'mcp' | 'bundle';
-  source: { kind: string; repo: string; ref?: string };
+  source:
+    | { kind: 'github'; repo: string; ref?: string; path?: string }
+    | { kind: 'local'; path: string };
   tags: string[];
   author?: string;
   version?: string;
   stars?: number;
   iconUrl?: string;
+  sourceLabel?: string;
+  installNotes?: string[];
 }
 
 export interface RegistryCatalog {

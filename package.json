@@ -15,6 +15,7 @@
     "check:loc": "node scripts/check-loc.mjs --max 700",
     "check:docs:paths": "node scripts/check-doc-paths.mjs",
     "check:feature-map:freshness": "node scripts/check-feature-map-freshness.mjs",
+    "sync:agent-reach-skill": "node scripts/sync-agent-reach-skill.mjs",
     "start": "node dist/index.js",
     "dev": "tsx src/index.ts",
     "cli:dev": "tsx src/cli.ts",

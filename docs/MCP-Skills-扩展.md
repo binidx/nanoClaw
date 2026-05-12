@@ -117,6 +117,7 @@ Skills 是 AI 可读的 Markdown 指令集合。v2 支持：
 
 - 系统会额外暴露一个内置的 `Agent Reach` 市场源，用来把 Agent Reach 风格的互联网工具路由沉淀成可安装 Skill bundle。
 - 这个内置源随仓库一起发布，不依赖管理员手工录入 GitHub 地址；更新仓库代码后会随运行时资产一起更新。
+- 若本地 `/proj/Agent-Reach` 有更新，可运行 `npm run sync:agent-reach-skill` 同步 bundle 内容。
 - 当前 bundle 重点提供 Skill 路由与安装指引，不把 `xhs-cli`、`twitter-cli`、`mcporter` 这类混合上游直接伪装成 NanoClaw managed MCP。原因是现有 managed MCP 模型只适合 stdio command，而 Agent Reach 的渠道后端同时包含 CLI、mcporter alias 和外部 MCP 服务。
 - 因此推荐落地方式是：
   - 管理员安装 `Agent Reach` bundle
@@ -134,6 +135,14 @@ Skills 是 AI 可读的 Markdown 指令集合。v2 支持：
 
 注册表服务：`src/registry-service.ts`
 路由：`src/routes/registry-routes.ts`
+
+说明：
+
+- `registry/store` 中的条目面向所有有权限用户可见，但不会自动进入“我的应用”。
+- 用户点击安装后，会为该用户创建一份私有 MCP/Skill 副本，不与其他用户共享同一运行实例。
+- `public-library` 仍只聚合用户主动分享出来的 `shared` 内容，语义不同于商店。
+- `NANOCLAW_REGISTRY_CATALOG_URLS` 支持同时配置远程 JSON catalog 和本地 skill 目录。
+- 对 `/proj/openclaw`，推荐直接挂本地 `skills` / `extensions` 目录作为 skill 源，而不是假设存在 NanoClaw 兼容的远程 registry JSON。
 
 ## AI 访问方案
 

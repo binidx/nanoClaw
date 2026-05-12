@@ -24,12 +24,16 @@ export interface RegistryCatalogItem {
   name: string;
   description: string;
   type: 'skill' | 'mcp' | 'bundle';
-  source: { kind: 'github'; repo: string; ref?: string; path?: string };
+  source:
+    | { kind: 'github'; repo: string; ref?: string; path?: string }
+    | { kind: 'local'; path: string };
   tags: string[];
   author?: string;
   version?: string;
   stars?: number;
   iconUrl?: string;
+  sourceLabel?: string;
+  installNotes?: string[];
 }
 
 export interface RegistryCatalog {
@@ -48,15 +52,34 @@ export interface RegistryInstallResult {
 // Catalog sources (configurable via env or config)
 // ---------------------------------------------------------------------------
 
-const CATALOG_URLS = buildCatalogUrls();
+const CATALOG_SOURCES = buildCatalogSources();
 
-function buildCatalogUrls(): string[] {
-  const envUrls = process.env.NANOCLAW_REGISTRY_CATALOG_URLS?.trim();
-  if (envUrls) {
-    return envUrls.split(',').map((u) => u.trim()).filter(Boolean);
+type RegistryCatalogSource =
+  | { kind: 'url'; value: string }
+  | { kind: 'local-skill-dir'; value: string };
+
+function buildCatalogSources(): RegistryCatalogSource[] {
+  const configured = process.env.NANOCLAW_REGISTRY_CATALOG_URLS?.trim();
+  if (configured) {
+    return configured
+      .split(',')
+      .map((entry) => entry.trim())
+      .filter(Boolean)
+      .map((entry) =>
+        /^https?:\/\//i.test(entry)
+          ? ({ kind: 'url', value: entry } satisfies RegistryCatalogSource)
+          : ({ kind: 'local-skill-dir', value: path.resolve(entry) } satisfies RegistryCatalogSource),
+      );
   }
   return [
-    'https://raw.githubusercontent.com/nicepkg/openclaw/main/registry/catalog.json',
+    {
+      kind: 'local-skill-dir',
+      value: '/proj/openclaw/skills',
+    },
+    {
+      kind: 'local-skill-dir',
+      value: '/proj/openclaw/extensions',
+    },
   ];
 }
 
@@ -77,6 +100,7 @@ function getBuiltinFallbackCatalog(): RegistryCatalog {
         tags: ['knowledge', 'persona', 'team'],
         author: 'titanwings',
         stars: 12874,
+        sourceLabel: 'GitHub',
       },
       {
         slug: 'codebase-doctor',
@@ -86,6 +110,7 @@ function getBuiltinFallbackCatalog(): RegistryCatalog {
         source: { kind: 'github', repo: 'nicepkg/codebase-doctor' },
         tags: ['code-quality', 'diagnostics'],
         author: 'nicepkg',
+        sourceLabel: 'GitHub',
       },
       {
         slug: 'ai-commit',
@@ -95,6 +120,7 @@ function getBuiltinFallbackCatalog(): RegistryCatalog {
         source: { kind: 'github', repo: 'nicepkg/ai-commit-skill' },
         tags: ['git', 'commit', 'automation'],
         author: 'nicepkg',
+        sourceLabel: 'GitHub',
       },
       {
         slug: 'test-writer',
@@ -104,6 +130,7 @@ function getBuiltinFallbackCatalog(): RegistryCatalog {
         source: { kind: 'github', repo: 'nicepkg/test-writer' },
         tags: ['testing', 'automation'],
         author: 'nicepkg',
+        sourceLabel: 'GitHub',
       },
       {
         slug: 'code-reviewer',
@@ -113,9 +140,68 @@ function getBuiltinFallbackCatalog(): RegistryCatalog {
         source: { kind: 'github', repo: 'nicepkg/code-reviewer-skill' },
         tags: ['code-review', 'quality'],
         author: 'nicepkg',
+        sourceLabel: 'GitHub',
       },
     ],
   };
+}
+
+function toSlug(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 63);
+}
+
+function parseSkillHeading(content: string): string | null {
+  const match = content.match(/^#\s+(.+)$/m);
+  return match?.[1]?.trim() || null;
+}
+
+function firstParagraph(content: string): string {
+  const lines = content
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .filter((line) => !line.startsWith('#'));
+  return lines[0] || '';
+}
+
+function collectLocalSkillEntries(skillRoot: string): RegistryCatalogItem[] {
+  if (!fs.existsSync(skillRoot)) return [];
+  const stat = fs.statSync(skillRoot);
+  if (!stat.isDirectory()) return [];
+
+  const directChildren = fs.readdirSync(skillRoot, { withFileTypes: true });
+  const items: RegistryCatalogItem[] = [];
+  for (const child of directChildren) {
+    if (!child.isDirectory()) continue;
+    const sourceDir = path.join(skillRoot, child.name);
+    const skillMd = path.join(sourceDir, 'SKILL.md');
+    if (!fs.existsSync(skillMd)) continue;
+    const content = fs.readFileSync(skillMd, 'utf-8');
+    const heading = parseSkillHeading(content) || child.name;
+    const description = firstParagraph(content);
+    const sourceLabel = skillRoot.includes('/extensions')
+      ? 'OpenClaw Extensions'
+      : 'OpenClaw Skills';
+    items.push({
+      slug: `openclaw-${toSlug(path.relative('/proj/openclaw', sourceDir).replace(/[\\/]+/g, '-'))}`,
+      name: heading,
+      description,
+      type: 'skill',
+      source: { kind: 'local', path: sourceDir },
+      tags: ['openclaw', 'skill'],
+      author: 'openclaw',
+      sourceLabel,
+      installNotes: [
+        'Visible to all users in the store, but installed as a private copy per user.',
+      ],
+    });
+  }
+  return items;
 }
 
 // ---------------------------------------------------------------------------
@@ -142,11 +228,31 @@ export async function fetchRegistryCatalog(options?: {
   let remoteDescription = '';
   let anySuccess = false;
 
-  for (const url of CATALOG_URLS) {
+  for (const source of CATALOG_SOURCES) {
     try {
-      const res = await fetch(url, { signal: AbortSignal.timeout(10_000) });
+      if (source.kind === 'local-skill-dir') {
+        const items = collectLocalSkillEntries(source.value);
+        if (items.length > 0) {
+          anySuccess = true;
+          if (!remoteDescription) {
+            remoteName = 'Workspace Registry';
+            remoteDescription = 'Built from local OpenClaw and bundled NanoClaw skill sources.';
+          }
+          const seenSlugs = new Set(allItems.map((i) => i.slug));
+          for (const item of items) {
+            if (!seenSlugs.has(item.slug)) {
+              seenSlugs.add(item.slug);
+              allItems.push(item);
+            }
+          }
+          logger.info({ source: source.value, count: items.length }, 'registry: loaded local skill catalog');
+        }
+        continue;
+      }
+
+      const res = await fetch(source.value, { signal: AbortSignal.timeout(10_000) });
       if (!res.ok) {
-        logger.warn({ url, status: res.status }, 'registry: remote catalog returned non-OK');
+        logger.warn({ url: source.value, status: res.status }, 'registry: remote catalog returned non-OK');
         continue;
       }
       const raw = await res.json();
@@ -164,10 +270,10 @@ export async function fetchRegistryCatalog(options?: {
             allItems.push(item);
           }
         }
-        logger.info({ url, count: data.items.length }, 'registry: fetched remote catalog');
+        logger.info({ url: source.value, count: data.items.length }, 'registry: fetched remote catalog');
       }
     } catch (err) {
-      logger.warn({ err, url }, 'registry: failed to fetch remote catalog');
+      logger.warn({ err, source }, 'registry: failed to load catalog source');
     }
   }
 
@@ -207,6 +313,10 @@ function normalizeCatalogItem(raw: Record<string, unknown>): RegistryCatalogItem
     version: typeof raw.version === 'string' ? raw.version : undefined,
     stars: typeof raw.stars === 'number' ? raw.stars : undefined,
     iconUrl: typeof raw.iconUrl === 'string' ? raw.iconUrl : undefined,
+    sourceLabel: typeof raw.sourceLabel === 'string' ? raw.sourceLabel : 'GitHub',
+    installNotes: Array.isArray(raw.installNotes)
+      ? raw.installNotes.filter((item): item is string => typeof item === 'string')
+      : undefined,
   };
 }
 
@@ -272,10 +382,21 @@ export async function installFromRegistry(
   );
 
   try {
-    await fetchRepoContent(entry.source.repo, tmpDir, entry.source.ref);
-
     let repoRoot = tmpDir;
-    if (entry.source.path) {
+    if (entry.source.kind === 'github') {
+      await fetchRepoContent(entry.source.repo, tmpDir, entry.source.ref);
+      if (entry.source.path) {
+        const resolved = path.resolve(tmpDir, entry.source.path);
+        if (!resolved.startsWith(tmpDir + path.sep) && resolved !== tmpDir) {
+          throw new Error(`Invalid source path: ${entry.source.path}`);
+        }
+        repoRoot = resolved;
+      }
+    } else {
+      repoRoot = entry.source.path;
+    }
+
+    if (entry.source.kind === 'github' && entry.source.path) {
       const resolved = path.resolve(tmpDir, entry.source.path);
       if (!resolved.startsWith(tmpDir + path.sep) && resolved !== tmpDir) {
         throw new Error(`Invalid source path: ${entry.source.path}`);
@@ -297,6 +418,9 @@ export async function installFromRegistry(
         sourceType: 'registry',
         sourceRef: `${entry.slug}@${entry.version || 'latest'}`,
         tags: entry.tags,
+        metadata: {
+          capabilities: entry.tags,
+        },
       });
       results.push({ type: 'skill', item: skill });
     }
@@ -324,6 +448,9 @@ export async function installFromRegistry(
             sourceType: 'registry',
             sourceRef: `${entry.slug}@${entry.version || 'latest'}`,
             tags: entry.tags,
+            metadata: {
+              capabilities: entry.tags,
+            },
           });
           results.push({ type: 'mcp', item: mcp });
         }

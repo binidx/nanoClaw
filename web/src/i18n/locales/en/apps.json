@@ -93,6 +93,8 @@
   "store.marketplace": "Store",
   "store.stars": "{{count}} stars",
   "store.installed": "Installed",
+  "store.sourcePrefix": "Source:",
+  "store.registryExplainer": "Store entries are visible to all authorized users. Installing creates a private copy for the current user instead of a shared runtime instance.",
   "registry.searchPlaceholder": "Search marketplace...",
   "admin.title": "Market source management",
   "admin.addSource": "+ Add source",

@@ -31,6 +31,12 @@ function formatStars(stars: number | undefined): string {
   return String(stars);
 }
 
+function describeSource(item: RegistryCatalogItem): string {
+  if (item.sourceLabel) return item.sourceLabel;
+  if (item.source.kind === 'local') return item.source.path;
+  return item.source.repo;
+}
+
 export function RegistryPanel({
   items,
   catalogName,
@@ -198,11 +204,21 @@ export function RegistryPanel({
                 <div className="app-card__author">by {item.author}</div>
               )}
 
+              <div className="app-card__author">
+                {t('store.sourcePrefix')} {describeSource(item)}
+              </div>
+
               {item.tags.length > 0 && (
                 <div className="app-card__tags">
                   {item.tags.map((tag, i) => (
                     <span key={`${tag}-${i}`} className="app-card__tag">{tag}</span>
                   ))}
+                </div>
+              )}
+
+              {item.installNotes && item.installNotes.length > 0 && (
+                <div className="app-card__description">
+                  {item.installNotes[0]}
                 </div>
               )}
 

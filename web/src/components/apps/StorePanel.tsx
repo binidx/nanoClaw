@@ -35,6 +35,12 @@ function formatStars(stars: number | undefined): string {
   return String(stars);
 }
 
+function describeRegistrySource(item: RegistryCatalogItem): string {
+  if (item.sourceLabel) return item.sourceLabel;
+  if (item.source.kind === 'local') return item.source.path;
+  return item.source.repo;
+}
+
 function getLibrarySource(source: string | undefined): AppCardSource {
   return source === 'marketplace' ? 'marketplace' : 'shared';
 }
@@ -232,6 +238,9 @@ export function StorePanel({
               {registry.catalog.description && (
                 <p className="registry-panel__desc">{registry.catalog.description}</p>
               )}
+              <p className="registry-panel__desc">
+                {t('store.registryExplainer')}
+              </p>
             </div>
           )}
           <RegistryGrid
@@ -313,6 +322,12 @@ function RegistryGrid({
             </div>
             {item.description && <div className="app-card__description">{item.description}</div>}
             {item.author && <div className="app-card__author">by {item.author}</div>}
+            <div className="app-card__author">
+              {t('store.sourcePrefix')} {describeRegistrySource(item)}
+            </div>
+            {item.installNotes && item.installNotes.length > 0 && (
+              <div className="app-card__description">{item.installNotes[0]}</div>
+            )}
             {item.tags.length > 0 && (
               <div className="app-card__tags">
                 {item.tags.map((tag, i) => (
