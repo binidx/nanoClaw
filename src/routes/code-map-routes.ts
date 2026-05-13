@@ -28,6 +28,7 @@ import {
   listReviewRepositories,
   type ReviewRepositoryRecord,
 } from '../db/review.js';
+import { createModuleLogger } from '../logger.js';
 import {
   getCodeMapAiAnalysis,
   saveCodeMapAiAnalysis,
@@ -54,6 +55,7 @@ const buildingSet = new Set<string>();
 const aiSummaryCache = new Map<string, string>();
 const aiAnalysisCache = new Map<string, object>();
 const repoDescriptionCache = new Map<string, RepoDescription>();
+const codeMapLog = createModuleLogger('code-map');
 
 interface CodeRef {
   file: string;
@@ -463,7 +465,7 @@ export function registerCodeMapRoutes(
         res.status(501).json({ error: t('errors.auto_9d995b', {}, req.locale) });
         return;
       }
-      console.error('[code-map] AI summary error:', err);
+      codeMapLog.error({ err }, 'code-map: AI summary error');
       res.status(500).json({ error: t('errors.auto_741cff', {}, req.locale) });
     }
   });
@@ -645,12 +647,16 @@ export function registerCodeMapRoutes(
   }
 
   app.post('/api/code-map/:repositoryId/ai-analysis', guard, async (req, res) => {
+    let repositoryId = '';
+    let branch = '';
+    let targetPath = '';
+    let targetType: 'file' | 'dir' | '' = '';
     try {
-      const repositoryId = decodeURIComponent(String(req.params.repositoryId || ''));
+      repositoryId = decodeURIComponent(String(req.params.repositoryId || ''));
       const repo = await requireRepositoryAccess(req, res, repositoryId);
       if (!repo) return;
 
-      const branch = String(req.query.branch || req.body?.branch || '').trim() || resolveDefaultBranch(repo);
+      branch = String(req.query.branch || req.body?.branch || '').trim() || resolveDefaultBranch(repo);
       const filePath: string = String(req.body?.filePath || '').trim();
       const dirPath: string = String(req.body?.dirPath || '').trim();
       const forceRefresh: boolean = !!req.body?.forceRefresh;
@@ -665,8 +671,8 @@ export function registerCodeMapRoutes(
         return;
       }
 
-      const targetPath = filePath || dirPath;
-      const targetType = filePath ? 'file' : 'dir';
+      targetPath = filePath || dirPath;
+      targetType = filePath ? 'file' : 'dir';
       const cacheOnly: boolean = !!req.body?.cacheOnly;
 
       if (!forceRefresh) {
@@ -768,7 +774,10 @@ export function registerCodeMapRoutes(
           analysis_json: JSON.stringify(analysis),
           created_at: new Date().toISOString(),
         }).then(() => pruneCodeMapAiAnalyses(repositoryId, 200)).catch((e) => {
-          console.error('[code-map] Failed to persist AI analysis:', e);
+          codeMapLog.error(
+            { err: e, repositoryId, branch, targetPath, targetType },
+            'code-map: failed to persist AI analysis',
+          );
         });
 
         sendSSE('done', { analysis, cached: false });
@@ -777,7 +786,12 @@ export function registerCodeMapRoutes(
         sendSSE('error', {
           message: isNoProvider ? t('errors.auto_1c62f2', {}, req.locale) : t('errors.auto_ef3e0d', {}, req.locale),
         });
-        if (!isNoProvider) console.error('[code-map] AI analysis stream error:', err);
+        if (!isNoProvider) {
+          codeMapLog.error(
+            { err, repositoryId, branch, targetPath, targetType },
+            'code-map: AI analysis stream error',
+          );
+        }
       }
       res.end();
     } catch (err) {
@@ -787,7 +801,10 @@ export function registerCodeMapRoutes(
           res.status(501).json({ error: t('errors.auto_1c62f2', {}, req.locale) });
           return;
         }
-        console.error('[code-map] AI analysis error:', err);
+        codeMapLog.error(
+          { err, repositoryId, branch, targetPath, targetType },
+          'code-map: AI analysis error',
+        );
         res.status(500).json({ error: t('errors.auto_ef3e0d', {}, req.locale) });
       }
     }
@@ -873,7 +890,7 @@ export function registerCodeMapRoutes(
 
       res.json({ description: null, cached: false });
     } catch (err) {
-      console.error('[code-map] repo-description GET error:', err);
+      codeMapLog.error({ err }, 'code-map: repo-description GET error');
       res.status(500).json({ error: t('errors.auto_c43130', {}, req.locale) });
     }
   });
@@ -990,12 +1007,15 @@ export function registerCodeMapRoutes(
         analysis_json: JSON.stringify(description),
         created_at: new Date().toISOString(),
       }).then(() => pruneCodeMapAiAnalyses(repositoryId, 200)).catch((e) => {
-        console.error('[code-map] Failed to persist repo description:', e);
+        codeMapLog.error(
+          { err: e, repositoryId, branch },
+          'code-map: failed to persist repo description',
+        );
       });
 
       res.json({ description, cached: false });
     } catch (err) {
-      console.error('[code-map] repo-description POST error:', err);
+      codeMapLog.error({ err }, 'code-map: repo-description POST error');
       res.status(500).json({ error: t('errors.auto_a197fe', {}, req.locale) });
     }
   });

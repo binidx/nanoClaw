@@ -3,6 +3,10 @@ import { readFile } from 'node:fs/promises';
 
 import type { DbEngine, Dialect, RunResult } from './engine.js';
 import { logger } from '../logger.js';
+import {
+  withDbQueryLogging,
+  withDbTransactionLogging,
+} from './database-logger.js';
 
 export interface PostgresConfig {
   host: string;
@@ -165,50 +169,97 @@ export class PostgresEngine implements DbEngine {
     sql: string,
     params: unknown[] = [],
   ): Promise<T[]> {
-    const result = await this.pool.query(convertPlaceholders(sql), params);
-    return result.rows as T[];
+    return withDbQueryLogging(
+      {
+        dialect: this.dialect,
+        operation: 'queryAll',
+        sql,
+        params,
+        summarizeResult: (rows: T[]) => ({ rowCount: rows.length }),
+      },
+      async () => {
+        const result = await this.pool.query(convertPlaceholders(sql), params);
+        return result.rows as T[];
+      },
+    );
   }
 
   async queryOne<T = Record<string, unknown>>(
     sql: string,
     params: unknown[] = [],
   ): Promise<T | undefined> {
-    const result = await this.pool.query(convertPlaceholders(sql), params);
-    return (result.rows as T[])[0] ?? undefined;
+    return withDbQueryLogging(
+      {
+        dialect: this.dialect,
+        operation: 'queryOne',
+        sql,
+        params,
+        summarizeResult: (row: T | undefined) => ({ found: row !== undefined }),
+      },
+      async () => {
+        const result = await this.pool.query(convertPlaceholders(sql), params);
+        return (result.rows as T[])[0] ?? undefined;
+      },
+    );
   }
 
   async run(sql: string, params: unknown[] = []): Promise<RunResult> {
-    const converted = convertPlaceholders(sql);
-    const returning = needsReturningId(converted);
-    const finalSql = returning ? `${converted} RETURNING *` : converted;
-    const result = await this.pool.query(finalSql, params);
-    return {
-      changes: result.rowCount ?? 0,
-      lastInsertRowid: extractLastInsertId(result.rows?.[0]),
-    };
+    return withDbQueryLogging(
+      {
+        dialect: this.dialect,
+        operation: 'run',
+        sql,
+        params,
+        summarizeResult: (result: RunResult) => ({
+          changes: result.changes,
+          lastInsertRowid: String(result.lastInsertRowid),
+        }),
+      },
+      async () => {
+        const converted = convertPlaceholders(sql);
+        const returning = needsReturningId(converted);
+        const finalSql = returning ? `${converted} RETURNING *` : converted;
+        const result = await this.pool.query(finalSql, params);
+        return {
+          changes: result.rowCount ?? 0,
+          lastInsertRowid: extractLastInsertId(result.rows?.[0]),
+        };
+      },
+    );
   }
 
   async exec(sql: string): Promise<void> {
-    const statements = splitStatements(sql);
-    for (const stmt of statements) {
-      await this.pool.query(stmt);
-    }
+    return withDbQueryLogging(
+      {
+        dialect: this.dialect,
+        operation: 'exec',
+        sql,
+      },
+      async () => {
+        const statements = splitStatements(sql);
+        for (const stmt of statements) {
+          await this.pool.query(stmt);
+        }
+      },
+    );
   }
 
   async transaction<T>(fn: (engine: DbEngine) => Promise<T>): Promise<T> {
-    const client = await this.pool.connect();
-    await client.query('BEGIN');
-    const txEngine = new PostgresTxEngine(client);
-    try {
-      const result = await fn(txEngine);
-      await client.query('COMMIT');
-      return result;
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
-    }
+    return withDbTransactionLogging(this.dialect, async () => {
+      const client = await this.pool.connect();
+      await client.query('BEGIN');
+      const txEngine = new PostgresTxEngine(client);
+      try {
+        const result = await fn(txEngine);
+        await client.query('COMMIT');
+        return result;
+      } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+      } finally {
+        client.release();
+      }
+    });
   }
 
   async close(): Promise<void> {
@@ -228,47 +279,94 @@ class PostgresTxEngine implements DbEngine {
     sql: string,
     params: unknown[] = [],
   ): Promise<T[]> {
-    const result = await this.client.query(convertPlaceholders(sql), params);
-    return result.rows as T[];
+    return withDbQueryLogging(
+      {
+        dialect: this.dialect,
+        operation: 'queryAll',
+        sql,
+        params,
+        summarizeResult: (rows: T[]) => ({ rowCount: rows.length }),
+      },
+      async () => {
+        const result = await this.client.query(convertPlaceholders(sql), params);
+        return result.rows as T[];
+      },
+    );
   }
 
   async queryOne<T = Record<string, unknown>>(
     sql: string,
     params: unknown[] = [],
   ): Promise<T | undefined> {
-    const result = await this.client.query(convertPlaceholders(sql), params);
-    return (result.rows as T[])[0] ?? undefined;
+    return withDbQueryLogging(
+      {
+        dialect: this.dialect,
+        operation: 'queryOne',
+        sql,
+        params,
+        summarizeResult: (row: T | undefined) => ({ found: row !== undefined }),
+      },
+      async () => {
+        const result = await this.client.query(convertPlaceholders(sql), params);
+        return (result.rows as T[])[0] ?? undefined;
+      },
+    );
   }
 
   async run(sql: string, params: unknown[] = []): Promise<RunResult> {
-    const converted = convertPlaceholders(sql);
-    const returning = needsReturningId(converted);
-    const finalSql = returning ? `${converted} RETURNING *` : converted;
-    const result = await this.client.query(finalSql, params);
-    return {
-      changes: result.rowCount ?? 0,
-      lastInsertRowid: extractLastInsertId(result.rows?.[0]),
-    };
+    return withDbQueryLogging(
+      {
+        dialect: this.dialect,
+        operation: 'run',
+        sql,
+        params,
+        summarizeResult: (result: RunResult) => ({
+          changes: result.changes,
+          lastInsertRowid: String(result.lastInsertRowid),
+        }),
+      },
+      async () => {
+        const converted = convertPlaceholders(sql);
+        const returning = needsReturningId(converted);
+        const finalSql = returning ? `${converted} RETURNING *` : converted;
+        const result = await this.client.query(finalSql, params);
+        return {
+          changes: result.rowCount ?? 0,
+          lastInsertRowid: extractLastInsertId(result.rows?.[0]),
+        };
+      },
+    );
   }
 
   async exec(sql: string): Promise<void> {
-    const statements = splitStatements(sql);
-    for (const stmt of statements) {
-      await this.client.query(stmt);
-    }
+    return withDbQueryLogging(
+      {
+        dialect: this.dialect,
+        operation: 'exec',
+        sql,
+      },
+      async () => {
+        const statements = splitStatements(sql);
+        for (const stmt of statements) {
+          await this.client.query(stmt);
+        }
+      },
+    );
   }
 
   async transaction<T>(fn: (engine: DbEngine) => Promise<T>): Promise<T> {
-    const sp = `sp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-    await this.client.query(`SAVEPOINT ${sp}`);
-    try {
-      const result = await fn(this);
-      await this.client.query(`RELEASE SAVEPOINT ${sp}`);
-      return result;
-    } catch (err) {
-      await this.client.query(`ROLLBACK TO SAVEPOINT ${sp}`);
-      throw err;
-    }
+    return withDbTransactionLogging(this.dialect, async () => {
+      const sp = `sp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      await this.client.query(`SAVEPOINT ${sp}`);
+      try {
+        const result = await fn(this);
+        await this.client.query(`RELEASE SAVEPOINT ${sp}`);
+        return result;
+      } catch (err) {
+        await this.client.query(`ROLLBACK TO SAVEPOINT ${sp}`);
+        throw err;
+      }
+    });
   }
 
   async close(): Promise<void> {

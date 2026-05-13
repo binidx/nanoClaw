@@ -35,9 +35,12 @@ vi.mock('../logger.js', () => {
 
 vi.mock('../db.js', () => ({
   getDefaultProvider: vi.fn(() => undefined),
+  getDefaultProviderForUser: vi.fn(() => undefined),
   getConfig: vi.fn(() => undefined),
   getConfigBatch: vi.fn(() => Promise.resolve({})),
   getProvider: vi.fn(() => undefined),
+  listUserMcpServers: vi.fn(() => Promise.resolve([])),
+  isProviderVisibleToUser: vi.fn(() => Promise.resolve(true)),
 }));
 
 vi.mock('../assistant/assistant-runtime.js', () => ({
@@ -46,9 +49,30 @@ vi.mock('../assistant/assistant-runtime.js', () => ({
   })),
 }));
 
+vi.mock('../config-store.js', () => ({
+  getConfigValues: vi.fn(() =>
+    Promise.resolve({
+      MEMORY_ENABLED: 'true',
+      MEMORY_WRITE_MODE: 'daily-only',
+    })),
+  getConfigValue: vi.fn(() => Promise.resolve(undefined)),
+}));
+
 vi.mock('../auth/internal-api-auth.js', () => ({
   getInternalApiBaseUrl: vi.fn(() => 'http://127.0.0.1:3377'),
   getInternalApiToken: vi.fn(() => 'internal-browser-token'),
+}));
+
+vi.mock('../auth/local-capability-policy.js', () => ({
+  resolveLocalCapabilityForUserId: vi.fn(() =>
+    Promise.resolve({
+      id: 'browserControl',
+      permission: 'browser.control',
+      enabled: false,
+      available: false,
+      multiUserMode: false,
+      reason: 'disabled',
+    })),
 }));
 
 vi.mock('../node-executable.js', () => ({
@@ -188,10 +212,19 @@ async function startAgentRun(
   const spawnMock = vi.mocked(spawn);
   const initialSpawnCalls = spawnMock.mock.calls.length;
   const resultPromise = runAgentProcess(...args);
+  let settledResult: AgentRunOutput | undefined;
+  void resultPromise.then((value) => {
+    settledResult = value;
+  });
   await waitForCondition(
-    () => spawnMock.mock.calls.length > initialSpawnCalls,
+    () =>
+      spawnMock.mock.calls.length > initialSpawnCalls ||
+      settledResult !== undefined,
     'spawn call',
   );
+  if (settledResult && spawnMock.mock.calls.length === initialSpawnCalls) {
+    throw new Error(`Agent run settled before spawn: ${JSON.stringify(settledResult)}`);
+  }
   await waitForCondition(
     () =>
       fakeProc.stdin.listenerCount('error') > 0 &&
@@ -389,7 +422,7 @@ describe('agent runtime timeout behavior', () => {
         agentLabel: expect.any(String),
         kind: 'ai_request',
         provider: 'codex',
-        requestId: 'req-1',
+        aiRequestId: 'req-1',
         runtime: 'agent-runner',
         requestTextPreview: 'hello',
       }),
@@ -424,7 +457,7 @@ describe('agent runtime timeout behavior', () => {
         agentLabel: expect.any(String),
         kind: 'ai_error',
         provider: 'codex',
-        requestId: 'req-2',
+        aiRequestId: 'req-2',
         runtime: 'agent-runner',
         errorMessage: 'boom',
       }),

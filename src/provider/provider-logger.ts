@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { createModuleLogger } from '../logger.js';
+import { getRequestLogFields } from '../request-context.js';
 
 const providerLog = createModuleLogger('provider');
 const DEFAULT_TEXT_LOG_LIMIT = 2_000;
@@ -94,11 +95,12 @@ export function logAiRequest(
   isStream: boolean,
   options: LogAiRequestOptions = {},
 ): string {
-  const requestId = crypto.randomUUID();
+  const aiRequestId = crypto.randomUUID();
   providerLog.info(
     {
+      ...getRequestLogFields(),
       kind: 'ai_request',
-      requestId,
+      aiRequestId,
       provider,
       model,
       endpoint,
@@ -112,11 +114,11 @@ export function logAiRequest(
     },
     'AI request sent',
   );
-  return requestId;
+  return aiRequestId;
 }
 
 export function logAiResponse(
-  requestId: string,
+  aiRequestId: string,
   provider: string,
   model: string,
   endpoint: string,
@@ -126,8 +128,9 @@ export function logAiResponse(
 ): void {
   providerLog.info(
     {
+      ...getRequestLogFields(),
       kind: 'ai_response',
-      requestId,
+      aiRequestId,
       provider,
       model,
       endpoint,
@@ -149,7 +152,7 @@ export function logAiResponse(
 }
 
 export function logAiError(
-  requestId: string,
+  aiRequestId: string,
   provider: string,
   model: string,
   endpoint: string,
@@ -159,8 +162,9 @@ export function logAiError(
   const errorMessage = truncateForLog(error.message, 500);
   providerLog.error(
     {
+      ...getRequestLogFields(),
       kind: 'ai_error',
-      requestId,
+      aiRequestId,
       provider,
       model,
       endpoint,
@@ -185,7 +189,7 @@ export function logAiError(
 }
 
 export function logAiStreamComplete(
-  requestId: string,
+  aiRequestId: string,
   provider: string,
   model: string,
   endpoint: string,
@@ -194,8 +198,9 @@ export function logAiStreamComplete(
 ): void {
   providerLog.info(
     {
+      ...getRequestLogFields(),
       kind: 'ai_response',
-      requestId,
+      aiRequestId,
       provider,
       model,
       endpoint,

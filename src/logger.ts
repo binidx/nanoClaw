@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { Writable } from 'node:stream';
 import pino from 'pino';
+import { getRequestContext } from './request-context.js';
 
 /**
  * Minimal inline .env reader for logger bootstrap.
@@ -30,12 +31,35 @@ function bootstrapEnvKeys(keys: string[]): void {
 
 bootstrapEnvKeys([
   'LOG_LEVEL', 'NANOCLAW_LOG_DIR', 'NANOCLAW_LOG_STDOUT', 'NANOCLAW_LOG_CHANNEL',
-  'NANOCLAW_LOG_MAX_SIZE', 'NANOCLAW_LOG_MAX_FILES',
+  'NANOCLAW_LOG_MAX_SIZE', 'NANOCLAW_LOG_MAX_FILES', 'NANOCLAW_LOG_CONSOLE_FORMAT',
 ]);
 
 const LOG_LEVEL = process.env.LOG_LEVEL || 'info';
-const LOG_STDOUT_ENABLED = process.env.NANOCLAW_LOG_STDOUT !== 'false';
 const LOG_CHANNEL = process.env.NANOCLAW_LOG_CHANNEL || 'nanoclaw';
+
+type ConsoleLogFormat = 'pretty' | 'json';
+
+function isStdoutLoggingEnabled(): boolean {
+  const raw = String(process.env.NANOCLAW_LOG_STDOUT || '').trim().toLowerCase();
+  return !(raw === 'false' || raw === '0' || raw === 'off');
+}
+
+function resolveConsoleLogFormat(): ConsoleLogFormat {
+  const explicit = String(process.env.NANOCLAW_LOG_CONSOLE_FORMAT || '')
+    .trim()
+    .toLowerCase();
+  if (explicit === 'json') return 'json';
+  if (explicit === 'pretty') return 'pretty';
+
+  const legacy = String(process.env.NANOCLAW_LOG_STDOUT || '')
+    .trim()
+    .toLowerCase();
+  if (legacy === 'json') return 'json';
+  return 'pretty';
+}
+
+const LOG_STDOUT_ENABLED = isStdoutLoggingEnabled();
+const LOG_CONSOLE_FORMAT = resolveConsoleLogFormat();
 
 function formatShanghaiTimestamp(date: Date): string {
   const offset = 8 * 60 * 60 * 1000;
@@ -93,6 +117,87 @@ const LEVELS = {
   error: 50,
   fatal: 60,
 } as const;
+
+const PRETTY_LINE_MAX = 420;
+const PRETTY_IGNORED_KEYS = new Set([
+  'level',
+  'log_level',
+  'datetime',
+  'message',
+  'pid',
+  'channel',
+  'service',
+  'module',
+  'business',
+  'requestId',
+]);
+const PRETTY_FIELD_ORDER = [
+  'method',
+  'path',
+  'statusCode',
+  'durationMs',
+  'clientIp',
+  'statementType',
+  'sqlPreview',
+  'paramCount',
+  'paramsPreview',
+  'provider',
+  'model',
+  'endpoint',
+  'status',
+  'usage',
+  'aiRequestId',
+  'kind',
+];
+
+function truncatePrettyValue(text: string, maxLength = PRETTY_LINE_MAX): string {
+  if (text.length <= maxLength) return text;
+  return `${text.slice(0, Math.max(0, maxLength - 16))}...[truncated]`;
+}
+
+function formatPrettyFieldValue(value: unknown): string {
+  if (value === null) return 'null';
+  if (value === undefined) return 'undefined';
+  if (typeof value === 'string') return JSON.stringify(truncatePrettyValue(value));
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  if (typeof value === 'bigint') return value.toString();
+  if (Array.isArray(value)) {
+    return truncatePrettyValue(JSON.stringify(value));
+  }
+  if (typeof value === 'object') {
+    return truncatePrettyValue(JSON.stringify(value));
+  }
+  return JSON.stringify(String(value));
+}
+
+function comparePrettyKeys(a: string, b: string): number {
+  const aIndex = PRETTY_FIELD_ORDER.indexOf(a);
+  const bIndex = PRETTY_FIELD_ORDER.indexOf(b);
+  if (aIndex === -1 && bIndex === -1) return a.localeCompare(b);
+  if (aIndex === -1) return 1;
+  if (bIndex === -1) return -1;
+  return aIndex - bIndex;
+}
+
+export function formatPrettyLogRecord(record: Record<string, unknown>): string {
+  const timestamp = String(record.datetime || formatShanghaiTimestamp(new Date()));
+  const level = String(record.log_level || 'info').toUpperCase().padEnd(5, ' ');
+  const moduleName = String(record.module || record.business || record.service || 'app');
+  const requestId = typeof record.requestId === 'string' ? record.requestId : '';
+  const message = String(record.message || '');
+
+  const prefixParts = [`${timestamp} ${level}`, `[${moduleName}]`];
+  if (requestId) {
+    prefixParts.push(`[req:${requestId}]`);
+  }
+
+  const extras = Object.entries(record)
+    .filter(([key, value]) => !PRETTY_IGNORED_KEYS.has(key) && value !== undefined)
+    .sort(([a], [b]) => comparePrettyKeys(a, b))
+    .map(([key, value]) => `${key}=${formatPrettyFieldValue(value)}`);
+
+  return [prefixParts.join(' '), message, extras.join(' ')].filter(Boolean).join(' ');
+}
 
 /**
  * Writable stream that rotates the underlying file when it exceeds maxSize.
@@ -242,6 +347,61 @@ class LevelFilterStream extends Writable {
   }
 }
 
+class PrettyLogStream extends Writable {
+  private target: Writable;
+  private partial: string = '';
+
+  constructor(target: Writable) {
+    super();
+    this.target = target;
+  }
+
+  _write(
+    chunk: Buffer | string,
+    _encoding: BufferEncoding,
+    callback: (error?: Error | null) => void,
+  ): void {
+    try {
+      const text = this.partial + chunk.toString();
+      const segments = text.split('\n');
+      this.partial = segments.pop() ?? '';
+
+      let needsDrain = false;
+      for (const line of segments) {
+        if (!line) continue;
+        try {
+          const parsed = JSON.parse(line) as Record<string, unknown>;
+          const formatted = `${formatPrettyLogRecord(parsed)}\n`;
+          if (!this.target.write(formatted)) needsDrain = true;
+        } catch {
+          if (!this.target.write(`${line}\n`)) needsDrain = true;
+        }
+      }
+
+      if (needsDrain) {
+        this.target.once('drain', () => callback());
+      } else {
+        callback();
+      }
+    } catch (err) {
+      callback(err instanceof Error ? err : new Error(String(err)));
+    }
+  }
+
+  _final(callback: (error?: Error | null) => void): void {
+    if (this.partial) {
+      try {
+        const parsed = JSON.parse(this.partial) as Record<string, unknown>;
+        this.target.write(`${formatPrettyLogRecord(parsed)}\n`);
+      } catch {
+        this.target.write(`${this.partial}\n`);
+      }
+      this.partial = '';
+    }
+    callback();
+  }
+}
+
 function createLogger() {
   const infoFile = new RotatingFileStream(path.join(LOG_DIR, 'info.log'), LOG_MAX_SIZE, LOG_MAX_FILES);
   const warnFile = new RotatingFileStream(path.join(LOG_DIR, 'warn.log'), LOG_MAX_SIZE, LOG_MAX_FILES);
@@ -254,17 +414,8 @@ function createLogger() {
   ];
 
   if (LOG_STDOUT_ENABLED) {
-    const usePretty = process.env.NANOCLAW_LOG_STDOUT === 'pretty';
-    const stdoutStream = usePretty
-      ? pino.transport({
-          target: 'pino-pretty',
-          options: {
-            colorize: true,
-            timestampKey: 'datetime',
-            messageKey: 'message',
-            levelKey: 'log_level',
-          },
-        })
+    const stdoutStream = LOG_CONSOLE_FORMAT === 'pretty'
+      ? new PrettyLogStream(process.stdout)
       : process.stdout;
     streams.unshift({ stream: stdoutStream });
   }
@@ -279,6 +430,10 @@ function createLogger() {
           'errorDetails.apiBody',
         ],
         censor: '[REDACTED]',
+      },
+      mixin() {
+        const requestId = getRequestContext()?.requestId;
+        return requestId ? { requestId } : {};
       },
       formatters: {
         level(label, number) {
@@ -295,7 +450,7 @@ function createLogger() {
   );
 
   if (LOG_STDOUT_ENABLED) {
-    instance.info({ logDir: LOG_DIR }, 'Logger initialized');
+    instance.info({ logDir: LOG_DIR, consoleFormat: LOG_CONSOLE_FORMAT }, 'Logger initialized');
   }
 
   return instance;

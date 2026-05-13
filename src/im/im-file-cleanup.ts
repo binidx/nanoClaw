@@ -1,7 +1,9 @@
 import { dba } from '../db/engine-access.js';
+import { createModuleLogger } from '../logger.js';
 import type { FileStorageAdapter } from './im-file-storage.js';
 
 const BATCH_SIZE = 100;
+const imFileCleanupLog = createModuleLogger('im-file-cleanup');
 
 async function runCleanup(storage: FileStorageAdapter): Promise<number> {
   const now = new Date().toISOString();
@@ -43,10 +45,13 @@ export function startImFileCleanup(
         total += batch;
       } while (batch >= BATCH_SIZE);
       if (total > 0) {
-        console.log(`[im-file-cleanup] deleted ${total} expired attachments`);
+        imFileCleanupLog.info(
+          { deletedCount: total },
+          'im-file-cleanup: deleted expired attachments',
+        );
       }
     } catch (err) {
-      console.error('[im-file-cleanup] error:', err);
+      imFileCleanupLog.error({ err }, 'im-file-cleanup: cleanup failed');
     }
   };
 

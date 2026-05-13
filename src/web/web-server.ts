@@ -35,10 +35,7 @@ import {
   listIdentityAliases,
   listPersonProfiles,
 } from '../db.js';
-import crypto from 'crypto';
-import { createModuleLogger, logger } from '../logger.js';
-
-const httpLog = createModuleLogger('http');
+import { logger } from '../logger.js';
 import {
   createMemoryIdentityService,
   type MemoryIdentityAlias,
@@ -53,6 +50,7 @@ import {
 } from '../conversation/conversation-ask-support.js';
 import { createConversationSummaryDecorator } from '../conversation/conversation-summary.js';
 import { selectDirectoryNative } from './directory-picker.js';
+import { createHttpRequestLoggingMiddleware } from './request-logging.js';
 import {
   applyProcessConfigSideEffects,
   createAuditMutation,
@@ -528,40 +526,13 @@ function createDbBackedMemoryIdentityRepository(): MemoryIdentityRepository {
 export function createWebServer(opts: WebServerOptions) {
   const app = express();
   app.use(localeMiddleware);
-  app.use((req, res, next) => {
-    const start = Date.now();
-    (req as express.Request & { requestId?: string }).requestId =
-      crypto.randomUUID();
+  app.use(createHttpRequestLoggingMiddleware());
+  app.use((req, _res, next) => {
     const host = req.get('x-forwarded-host') || req.get('host');
     if (host) {
       const proto = req.get('x-forwarded-proto') || req.protocol || 'http';
       setDetectedBaseUrl(`${proto}://${host}`);
     }
-
-    const reqPath = req.path;
-    const skipLog =
-      reqPath.startsWith('/health') ||
-      /\.(js|css|svg|png|ico|map|woff2?)$/i.test(reqPath);
-
-    if (!skipLog) {
-      res.on('finish', () => {
-        const rid = (req as express.Request & { requestId?: string }).requestId;
-        const logData = {
-          requestId: rid,
-          method: req.method,
-          path: reqPath,
-          statusCode: res.statusCode,
-          durationMs: Date.now() - start,
-          clientIp: req.get('x-forwarded-for') || req.ip,
-        };
-        if (res.statusCode >= 400) {
-          httpLog.warn(logData, 'HTTP request completed');
-        } else {
-          httpLog.info(logData, 'HTTP request completed');
-        }
-      });
-    }
-
     next();
   });
 

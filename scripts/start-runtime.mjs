@@ -225,10 +225,12 @@ function rebuildRuntime() {
 function startRuntime() {
   const webPort = getWebPort();
   const webUrl = `http://localhost:${webPort}`;
+  const structuredLogDir = process.env.NANOCLAW_LOG_DIR || path.join(projectRoot, 'logs');
 
   console.log(' [3/3] Starting NanoClaw...');
   console.log();
   console.log(`       URL:  ${webUrl}`);
+  console.log(`       JSON Logs: ${path.relative(projectRoot, structuredLogDir)}`);
   console.log();
 
   if (!runInBackground) {
@@ -250,7 +252,7 @@ function startRuntime() {
     writeRuntimeState(childProcess.pid, webPort);
     console.log(`       PID:  ${childProcess.pid}`);
     console.log();
-    console.log(' NanoClaw is running in this window. Press Ctrl+C to stop.');
+    console.log(' NanoClaw is running in this window with human-readable console logs. Press Ctrl+C to stop.');
     console.log();
 
     let cleaningUp = false;
@@ -279,16 +281,14 @@ function startRuntime() {
     return;
   }
 
-  const logDate = new Date().toISOString().slice(0, 10);
-  const customLogDir = process.env.NANOCLAW_LOG_DIR;
-  const logDir = customLogDir || path.join(projectRoot, 'logs', logDate);
-  const runtimeLogPath = path.join(logDir, 'runtime.log');
-  const runtimeErrorLogPath = path.join(logDir, 'runtime.error.log');
+  const consoleLogDir = structuredLogDir;
+  const runtimeConsoleLogPath = path.join(consoleLogDir, 'runtime.console.log');
+  const runtimeStderrLogPath = path.join(consoleLogDir, 'runtime.stderr.log');
 
-  fs.mkdirSync(logDir, { recursive: true });
+  fs.mkdirSync(consoleLogDir, { recursive: true });
 
-  const stdoutFd = fs.openSync(runtimeLogPath, 'a');
-  const stderrFd = fs.openSync(runtimeErrorLogPath, 'a');
+  const stdoutFd = fs.openSync(runtimeConsoleLogPath, 'a');
+  const stderrFd = fs.openSync(runtimeStderrLogPath, 'a');
   const childProcess = spawn(process.execPath, [backendEntry], {
     cwd: projectRoot,
     detached: true,
@@ -310,10 +310,12 @@ function startRuntime() {
   childProcess.unref();
 
   writeRuntimeState(childProcess.pid, webPort);
-  console.log(`       Logs: ${path.relative(projectRoot, logDir)}`);
+  console.log(`       Console Log: ${path.relative(projectRoot, runtimeConsoleLogPath)}`);
+  console.log(`       STDERR Log: ${path.relative(projectRoot, runtimeStderrLogPath)}`);
+  console.log(`       JSON Logs: ${path.relative(projectRoot, structuredLogDir)}`);
   console.log(`       PID:  ${childProcess.pid}`);
   console.log();
-  console.log(' NanoClaw started in background.');
+  console.log(' NanoClaw started in background. You can tail the console log file directly.');
   console.log();
 }
 

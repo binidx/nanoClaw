@@ -6,6 +6,10 @@ import type {
 import type { ResultSetHeader } from 'mysql2';
 
 import type { DbEngine, Dialect, RunResult } from './engine.js';
+import {
+  withDbQueryLogging,
+  withDbTransactionLogging,
+} from './database-logger.js';
 
 type SqlParams = (string | number | boolean | null | Buffer | bigint)[];
 
@@ -55,48 +59,95 @@ export class MySQLEngine implements DbEngine {
     sql: string,
     params: unknown[] = [],
   ): Promise<T[]> {
-    const fixed = inlineLimitOffset(sql, params);
-    const [rows] = await this.pool.execute(fixed.sql, fixed.params as SqlParams);
-    return rows as T[];
+    return withDbQueryLogging(
+      {
+        dialect: this.dialect,
+        operation: 'queryAll',
+        sql,
+        params,
+        summarizeResult: (rows: T[]) => ({ rowCount: rows.length }),
+      },
+      async () => {
+        const fixed = inlineLimitOffset(sql, params);
+        const [rows] = await this.pool.execute(fixed.sql, fixed.params as SqlParams);
+        return rows as T[];
+      },
+    );
   }
 
   async queryOne<T = Record<string, unknown>>(
     sql: string,
     params: unknown[] = [],
   ): Promise<T | undefined> {
-    const fixed = inlineLimitOffset(sql, params);
-    const [rows] = await this.pool.execute(fixed.sql, fixed.params as SqlParams);
-    return (rows as T[])[0] ?? undefined;
+    return withDbQueryLogging(
+      {
+        dialect: this.dialect,
+        operation: 'queryOne',
+        sql,
+        params,
+        summarizeResult: (row: T | undefined) => ({ found: row !== undefined }),
+      },
+      async () => {
+        const fixed = inlineLimitOffset(sql, params);
+        const [rows] = await this.pool.execute(fixed.sql, fixed.params as SqlParams);
+        return (rows as T[])[0] ?? undefined;
+      },
+    );
   }
 
   async run(sql: string, params: unknown[] = []): Promise<RunResult> {
-    const fixed = inlineLimitOffset(sql, params);
-    const [result] = await this.pool.execute(fixed.sql, fixed.params as SqlParams);
-    const r = result as ResultSetHeader;
-    return { changes: r.affectedRows, lastInsertRowid: r.insertId };
+    return withDbQueryLogging(
+      {
+        dialect: this.dialect,
+        operation: 'run',
+        sql,
+        params,
+        summarizeResult: (result: RunResult) => ({
+          changes: result.changes,
+          lastInsertRowid: String(result.lastInsertRowid),
+        }),
+      },
+      async () => {
+        const fixed = inlineLimitOffset(sql, params);
+        const [result] = await this.pool.execute(fixed.sql, fixed.params as SqlParams);
+        const r = result as ResultSetHeader;
+        return { changes: r.affectedRows, lastInsertRowid: r.insertId };
+      },
+    );
   }
 
   async exec(sql: string): Promise<void> {
-    const statements = splitStatements(sql);
-    for (const stmt of statements) {
-      await this.pool.query(stmt);
-    }
+    return withDbQueryLogging(
+      {
+        dialect: this.dialect,
+        operation: 'exec',
+        sql,
+      },
+      async () => {
+        const statements = splitStatements(sql);
+        for (const stmt of statements) {
+          await this.pool.query(stmt);
+        }
+      },
+    );
   }
 
   async transaction<T>(fn: (engine: DbEngine) => Promise<T>): Promise<T> {
-    const conn = await this.pool.getConnection();
-    await conn.beginTransaction();
-    const txEngine = new MySQLTxEngine(conn);
-    try {
-      const result = await fn(txEngine);
-      await conn.commit();
-      return result;
-    } catch (err) {
-      await conn.rollback();
-      throw err;
-    } finally {
-      conn.release();
-    }
+    return withDbTransactionLogging(this.dialect, async () => {
+      const conn = await this.pool.getConnection();
+      await conn.beginTransaction();
+      const txEngine = new MySQLTxEngine(conn);
+      try {
+        const result = await fn(txEngine);
+        await conn.commit();
+        return result;
+      } catch (err) {
+        await conn.rollback();
+        throw err;
+      } finally {
+        conn.release();
+      }
+    });
   }
 
   async close(): Promise<void> {
@@ -116,45 +167,92 @@ class MySQLTxEngine implements DbEngine {
     sql: string,
     params: unknown[] = [],
   ): Promise<T[]> {
-    const fixed = inlineLimitOffset(sql, params);
-    const [rows] = await this.conn.execute(fixed.sql, fixed.params as SqlParams);
-    return rows as T[];
+    return withDbQueryLogging(
+      {
+        dialect: this.dialect,
+        operation: 'queryAll',
+        sql,
+        params,
+        summarizeResult: (rows: T[]) => ({ rowCount: rows.length }),
+      },
+      async () => {
+        const fixed = inlineLimitOffset(sql, params);
+        const [rows] = await this.conn.execute(fixed.sql, fixed.params as SqlParams);
+        return rows as T[];
+      },
+    );
   }
 
   async queryOne<T = Record<string, unknown>>(
     sql: string,
     params: unknown[] = [],
   ): Promise<T | undefined> {
-    const fixed = inlineLimitOffset(sql, params);
-    const [rows] = await this.conn.execute(fixed.sql, fixed.params as SqlParams);
-    return (rows as T[])[0] ?? undefined;
+    return withDbQueryLogging(
+      {
+        dialect: this.dialect,
+        operation: 'queryOne',
+        sql,
+        params,
+        summarizeResult: (row: T | undefined) => ({ found: row !== undefined }),
+      },
+      async () => {
+        const fixed = inlineLimitOffset(sql, params);
+        const [rows] = await this.conn.execute(fixed.sql, fixed.params as SqlParams);
+        return (rows as T[])[0] ?? undefined;
+      },
+    );
   }
 
   async run(sql: string, params: unknown[] = []): Promise<RunResult> {
-    const fixed = inlineLimitOffset(sql, params);
-    const [result] = await this.conn.execute(fixed.sql, fixed.params as SqlParams);
-    const r = result as ResultSetHeader;
-    return { changes: r.affectedRows, lastInsertRowid: r.insertId };
+    return withDbQueryLogging(
+      {
+        dialect: this.dialect,
+        operation: 'run',
+        sql,
+        params,
+        summarizeResult: (result: RunResult) => ({
+          changes: result.changes,
+          lastInsertRowid: String(result.lastInsertRowid),
+        }),
+      },
+      async () => {
+        const fixed = inlineLimitOffset(sql, params);
+        const [result] = await this.conn.execute(fixed.sql, fixed.params as SqlParams);
+        const r = result as ResultSetHeader;
+        return { changes: r.affectedRows, lastInsertRowid: r.insertId };
+      },
+    );
   }
 
   async exec(sql: string): Promise<void> {
-    const statements = splitStatements(sql);
-    for (const stmt of statements) {
-      await this.conn.query(stmt);
-    }
+    return withDbQueryLogging(
+      {
+        dialect: this.dialect,
+        operation: 'exec',
+        sql,
+      },
+      async () => {
+        const statements = splitStatements(sql);
+        for (const stmt of statements) {
+          await this.conn.query(stmt);
+        }
+      },
+    );
   }
 
   async transaction<T>(fn: (engine: DbEngine) => Promise<T>): Promise<T> {
-    const sp = `sp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-    await this.conn.query(`SAVEPOINT ${sp}`);
-    try {
-      const result = await fn(this);
-      await this.conn.query(`RELEASE SAVEPOINT ${sp}`);
-      return result;
-    } catch (err) {
-      await this.conn.query(`ROLLBACK TO SAVEPOINT ${sp}`);
-      throw err;
-    }
+    return withDbTransactionLogging(this.dialect, async () => {
+      const sp = `sp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      await this.conn.query(`SAVEPOINT ${sp}`);
+      try {
+        const result = await fn(this);
+        await this.conn.query(`RELEASE SAVEPOINT ${sp}`);
+        return result;
+      } catch (err) {
+        await this.conn.query(`ROLLBACK TO SAVEPOINT ${sp}`);
+        throw err;
+      }
+    });
   }
 
   async close(): Promise<void> {

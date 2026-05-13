@@ -141,19 +141,25 @@ function bridgeAgentAiLog(
   payload: BridgedAgentAiLogPayload,
 ): boolean {
   if (!payload.kind) return false;
+  const normalizedPayload = {
+    ...payload,
+    ...(typeof payload.aiRequestId !== 'string' && typeof payload.requestId === 'string'
+      ? { aiRequestId: payload.requestId }
+      : {}),
+  };
   const message =
-    payload.kind === 'ai_request'
+    normalizedPayload.kind === 'ai_request'
       ? 'AI request sent'
-      : payload.kind === 'ai_response'
+      : normalizedPayload.kind === 'ai_response'
         ? 'AI response received'
         : 'AI request failed';
   const fields = {
     group: groupName,
     agentLabel,
     runtime: 'agent-runner',
-    ...payload,
+    ...normalizedPayload,
   };
-  if (payload.kind === 'ai_error') {
+  if (normalizedPayload.kind === 'ai_error') {
     providerLog.error(fields, message);
   } else {
     providerLog.info(fields, message);
