@@ -5,11 +5,29 @@ export interface RepoReviewDiffIndexEntry {
   estimatedBytes: number;
 }
 
+export interface RepoReviewDiffHunkEntry {
+  filePath: string;
+  oldStart: number;
+  oldLineCount: number;
+  oldEnd: number;
+  newStart: number;
+  newLineCount: number;
+  newEnd: number;
+  header: string;
+  startOffset: number;
+  endOffset: number;
+  addedLineNumbers: number[];
+  removedLineNumbers: number[];
+  contextLineCount: number;
+}
+
 export interface RepoReviewDiffIndex {
   diffText: string;
   files: string[];
   entries: RepoReviewDiffIndexEntry[];
   entriesByFile: Map<string, RepoReviewDiffIndexEntry>;
+  hunks: RepoReviewDiffHunkEntry[];
+  hunksByFile: Map<string, RepoReviewDiffHunkEntry[]>;
 }
 
 function parseRepoReviewDiffHeader(line: string): {
@@ -33,12 +51,107 @@ function parseRepoReviewDiffHeader(line: string): {
   return null;
 }
 
+function parseRepoReviewDiffHunks(input: {
+  filePath: string;
+  slice: string;
+  baseOffset: number;
+}): RepoReviewDiffHunkEntry[] {
+  const lines = input.slice.split('\n');
+  const hunks: RepoReviewDiffHunkEntry[] = [];
+  let offset = input.baseOffset;
+  let current:
+    | (Omit<RepoReviewDiffHunkEntry, 'endOffset' | 'oldEnd' | 'newEnd'> & {
+        oldLine: number;
+        newLine: number;
+      })
+    | null = null;
+
+  const flush = (endOffset: number) => {
+    if (!current) return;
+    const oldEnd =
+      current.oldLineCount > 0
+        ? current.oldStart + current.oldLineCount - 1
+        : current.oldStart;
+    const newEnd =
+      current.newLineCount > 0
+        ? current.newStart + current.newLineCount - 1
+        : current.newStart;
+    hunks.push({
+      filePath: current.filePath,
+      oldStart: current.oldStart,
+      oldLineCount: current.oldLineCount,
+      oldEnd,
+      newStart: current.newStart,
+      newLineCount: current.newLineCount,
+      newEnd,
+      header: current.header,
+      startOffset: current.startOffset,
+      endOffset,
+      addedLineNumbers: current.addedLineNumbers,
+      removedLineNumbers: current.removedLineNumbers,
+      contextLineCount: current.contextLineCount,
+    });
+    current = null;
+  };
+
+  for (const line of lines) {
+    const lineLength = Buffer.byteLength(line, 'utf8');
+    const nextOffset = offset + lineLength + 1;
+    const match = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/.exec(line);
+    if (match) {
+      flush(offset);
+      const oldStart = Number(match[1]) || 0;
+      const oldLineCount = match[2] === undefined ? 1 : Number(match[2]) || 0;
+      const newStart = Number(match[3]) || 0;
+      const newLineCount = match[4] === undefined ? 1 : Number(match[4]) || 0;
+      current = {
+        filePath: input.filePath,
+        oldStart,
+        oldLineCount,
+        newStart,
+        newLineCount,
+        header: line,
+        startOffset: offset,
+        addedLineNumbers: [],
+        removedLineNumbers: [],
+        contextLineCount: 0,
+        oldLine: oldStart,
+        newLine: newStart,
+      };
+      offset = nextOffset;
+      continue;
+    }
+
+    if (current) {
+      if (line.startsWith('\\')) {
+        offset = nextOffset;
+        continue;
+      }
+      if (line.startsWith('+') && !line.startsWith('+++')) {
+        current.addedLineNumbers.push(current.newLine);
+        current.newLine += 1;
+      } else if (line.startsWith('-') && !line.startsWith('---')) {
+        current.removedLineNumbers.push(current.oldLine);
+        current.oldLine += 1;
+      } else {
+        current.contextLineCount += 1;
+        current.oldLine += 1;
+        current.newLine += 1;
+      }
+    }
+    offset = nextOffset;
+  }
+  flush(input.baseOffset + Buffer.byteLength(input.slice, 'utf8'));
+  return hunks;
+}
+
 export function buildRepoReviewDiffIndex(
   diffText: string,
 ): RepoReviewDiffIndex {
   const text = diffText || '';
   const matches = Array.from(text.matchAll(/^diff --git .*$/gm));
   const entries: RepoReviewDiffIndexEntry[] = [];
+  const hunks: RepoReviewDiffHunkEntry[] = [];
 
   for (let i = 0; i < matches.length; i += 1) {
     const match = matches[i]!;
@@ -54,6 +167,20 @@ export function buildRepoReviewDiffIndex(
       endOffset,
       estimatedBytes: Buffer.byteLength(slice, 'utf8'),
     });
+    hunks.push(
+      ...parseRepoReviewDiffHunks({
+        filePath,
+        slice,
+        baseOffset: startOffset,
+      }),
+    );
+  }
+
+  const hunksByFile = new Map<string, RepoReviewDiffHunkEntry[]>();
+  for (const hunk of hunks) {
+    const entries = hunksByFile.get(hunk.filePath) || [];
+    entries.push(hunk);
+    hunksByFile.set(hunk.filePath, entries);
   }
 
   return {
@@ -61,6 +188,8 @@ export function buildRepoReviewDiffIndex(
     files: entries.map((entry) => entry.filePath),
     entries,
     entriesByFile: new Map(entries.map((entry) => [entry.filePath, entry])),
+    hunks,
+    hunksByFile,
   };
 }
 
@@ -81,7 +210,9 @@ export function getRepoReviewDiffSlice(
     .sort((left, right) => left.startOffset - right.startOffset);
 
   return selectedEntries
-    .map((entry) => index.diffText.slice(entry.startOffset, entry.endOffset).trim())
+    .map((entry) =>
+      index.diffText.slice(entry.startOffset, entry.endOffset).trim(),
+    )
     .filter(Boolean)
     .join('\n');
 }

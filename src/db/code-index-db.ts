@@ -283,6 +283,47 @@ export async function loadCodeIndexSnapshot(
   };
 }
 
+export async function loadCodeIndexReviewContextData(
+  repositoryId: string,
+  branch: string,
+): Promise<Pick<
+  CodeIndexSnapshot,
+  'meta' | 'files' | 'functions' | 'functionEdges'
+> | null> {
+  const row = await getCodeIndexSnapshotRow(repositoryId, branch);
+  if (!row) return null;
+  const snapshotId = row.snapshot_id;
+  const [files, functions, functionEdges] = await Promise.all([
+    dba
+      .prepare(
+        `SELECT * FROM code_index_files
+         WHERE snapshot_id = ?
+         ORDER BY ${codeIndexRankColumnSql()} DESC, relative_path ASC`,
+      )
+      .all(snapshotId) as Promise<CodeIndexFileRow[]>,
+    dba
+      .prepare(
+        `SELECT * FROM code_index_functions
+         WHERE snapshot_id = ?
+         ORDER BY file_path ASC, line ASC`,
+      )
+      .all(snapshotId) as Promise<CodeIndexFunctionRow[]>,
+    dba
+      .prepare(
+        `SELECT * FROM code_index_function_edges
+         WHERE snapshot_id = ?
+         ORDER BY from_function_id ASC, line ASC`,
+      )
+      .all(snapshotId) as Promise<CodeIndexFunctionEdgeRow[]>,
+  ]);
+  return {
+    meta: rowToMeta(row),
+    files: files.map(rowToFile),
+    functions: functions.map(rowToFunction),
+    functionEdges: functionEdges.map(rowToFunctionEdge),
+  };
+}
+
 async function getCodeIndexSnapshotRow(
   repositoryId: string,
   branch: string,

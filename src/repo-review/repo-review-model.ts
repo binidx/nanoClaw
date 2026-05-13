@@ -257,6 +257,96 @@ export interface RepoReviewSupplementalPreparedFileTask {
   relatedFindings: RepoReviewRunFinding[];
 }
 
+export type ReviewEvidenceContextStatusValue =
+  | 'ready'
+  | 'stale'
+  | 'missing'
+  | 'error';
+
+export interface ReviewEvidenceContextStatus {
+  status: ReviewEvidenceContextStatusValue;
+  branch?: string;
+  sourceBranch?: string;
+  sourceHeadSha?: string;
+  reason?: string;
+  message?: string;
+  fileCount?: number;
+  functionCount?: number;
+  edgeCount?: number;
+}
+
+export interface ReviewEvidenceChangedHunk {
+  filePath: string;
+  header: string;
+  oldStart: number;
+  oldLineCount: number;
+  oldEnd: number;
+  newStart: number;
+  newLineCount: number;
+  newEnd: number;
+  addedLineNumbers: number[];
+  removedLineNumbers: number[];
+}
+
+export interface ReviewEvidenceDiffSummary {
+  fileCount: number;
+  hunkCount: number;
+  addedLines: number;
+  removedLines: number;
+  diffBytes: number;
+  files: Array<{
+    filePath: string;
+    addedLines: number;
+    removedLines: number;
+    hunkCount: number;
+    estimatedBytes: number;
+  }>;
+}
+
+export interface ReviewEvidenceImpactFunction {
+  id: string;
+  filePath: string;
+  name: string;
+  kind: string;
+  signature: string;
+  startLine: number;
+  endLine: number;
+  line: number;
+  parentFunctionId: string | null;
+  changedHunkCount: number;
+  changedLineNumbers: number[];
+}
+
+export interface ReviewEvidenceImpactEdge {
+  direction: 'upstream' | 'downstream';
+  fromFunctionId: string;
+  toFunctionId: string;
+  symbol: string;
+  line: number;
+  fromFunction?: Pick<
+    ReviewEvidenceImpactFunction,
+    'id' | 'filePath' | 'name' | 'kind' | 'startLine' | 'endLine'
+  >;
+  toFunction?: Pick<
+    ReviewEvidenceImpactFunction,
+    'id' | 'filePath' | 'name' | 'kind' | 'startLine' | 'endLine'
+  >;
+}
+
+export interface ReviewEvidenceBundle {
+  diffSummary: ReviewEvidenceDiffSummary;
+  changedFiles: string[];
+  changedHunks: ReviewEvidenceChangedHunk[];
+  changedFunctions: ReviewEvidenceImpactFunction[];
+  impactGraph: {
+    functions: ReviewEvidenceImpactFunction[];
+    edges: ReviewEvidenceImpactEdge[];
+  };
+  codeMapStatus: ReviewEvidenceContextStatus;
+  codeIndexStatus: ReviewEvidenceContextStatus;
+  missingContext: string[];
+}
+
 export interface RepoReviewExecutionStats {
   diffFiles: number;
   diffBytes: number;
@@ -279,6 +369,11 @@ export interface RepoReviewExecutionStats {
   timedOutWorkerCount?: number;
   reducerCallCount?: number;
   evidenceBundleBytes?: number;
+  codeMapContextStatus?: ReviewEvidenceContextStatusValue;
+  codeIndexContextStatus?: ReviewEvidenceContextStatusValue;
+  changedFunctionCount?: number;
+  subagentToolCallCount?: number;
+  mainReadonlyToolCallCount?: number;
   timeoutFollowupCount?: number;
   partialWorkerResultCount?: number;
   fallbackMainReviewCount?: number;
@@ -773,6 +868,7 @@ export interface ReviewPreparedContext {
   commitSummaryLines: string[];
   commitDetails: RepoReviewCommitInfo[];
   projectContextBlocks: string[];
+  evidenceBundle?: ReviewEvidenceBundle;
   overall?: ReviewOverall;
   summary?: string;
 }

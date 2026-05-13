@@ -10,6 +10,7 @@ import {
   hasRepoReviewVisibleProgress,
   ReviewProgressTimeline,
 } from './ReviewProgressTimeline';
+import { RepoReviewRunDetailModal } from './RepoReviewRunDetailModal';
 import type { RepoReviewRun } from '../../app-types';
 
 vi.mock('react-i18next', () => ({
@@ -104,7 +105,9 @@ function makeRun(overrides: Partial<RepoReviewRun> = {}): RepoReviewRun {
   };
 }
 
-function renderTimeline(entries: ReturnType<typeof buildReviewProgressEntries>) {
+function renderTimeline(
+  entries: ReturnType<typeof buildReviewProgressEntries>,
+) {
   const container = document.createElement('div');
   document.body.appendChild(container);
   const root = createRoot(container);
@@ -311,8 +314,12 @@ describe('buildReviewProgressEntries', () => {
     );
 
     const rendered = renderTimeline(entries);
-    expect(rendered.container.querySelector('.assistant-turn-node-tool_call')).not.toBeNull();
-    expect(rendered.container.querySelector('.turn-item-duration')).not.toBeNull();
+    expect(
+      rendered.container.querySelector('.assistant-turn-node-tool_call'),
+    ).not.toBeNull();
+    expect(
+      rendered.container.querySelector('.turn-item-duration'),
+    ).not.toBeNull();
     expect(rendered.container.textContent).toContain('输入');
     expect(rendered.container.textContent).toContain('输出');
     expect(rendered.container.textContent).toContain('files_indexed: 1');
@@ -377,8 +384,86 @@ describe('buildReviewProgressEntries', () => {
     );
 
     const rendered = renderTimeline(entries);
-    expect(rendered.container.querySelector('.subagent-activity-card')).toBeNull();
-    expect(rendered.container.querySelector('.turn-item-duration')).not.toBeNull();
+    expect(
+      rendered.container.querySelector('.subagent-activity-card'),
+    ).toBeNull();
+    expect(
+      rendered.container.querySelector('.turn-item-duration'),
+    ).not.toBeNull();
+    rendered.unmount();
+  });
+
+  it('nests child turns inside their parent Agent tool card', () => {
+    const parentToolCallId =
+      'run-1:agentic-subagent-tool:task-1:src-demo-ts:agent';
+    const entries = buildReviewProgressEntries(
+      makeRun({
+        reviewProgress: {
+          turnCount: 0,
+          latestAssistantText: null,
+          latestErrorText: null,
+          hasTerminalOutput: false,
+          steps: [
+            {
+              id: 'agentic_subagent_1',
+              label: '子代理 1/1',
+              kind: 'subagent',
+              status: 'completed',
+              startedAt: '2026-04-23T00:00:01.000Z',
+              completedAt: '2026-04-23T00:00:05.000Z',
+            },
+          ],
+        },
+        reviewTurns: [
+          {
+            id: 'turn-subagent-tool',
+            groupKey: 'agentic_subagent_1',
+            groupLabel: '子代理 1/1',
+            phase: 'worker',
+            timestamp: '2026-04-23T00:00:02.000Z',
+            isLive: false,
+            isCompleted: true,
+            items: [
+              {
+                id: parentToolCallId,
+                type: 'tool_call',
+                status: 'completed',
+                title: 'Agent',
+                argumentsText: '任务：审查 src/demo.ts',
+                resultText: '完成局部审查。',
+                timestamp: '2026-04-23T00:00:03.000Z',
+              },
+            ],
+          },
+          {
+            id: 'turn-subagent-child',
+            groupKey: 'agentic_subagent_1',
+            groupLabel: '子代理 1/1',
+            parentToolCallId,
+            phase: 'worker',
+            timestamp: '2026-04-23T00:00:04.000Z',
+            isLive: false,
+            isCompleted: true,
+            items: [
+              {
+                id: 'msg-subagent-child',
+                type: 'assistant_message',
+                status: 'completed',
+                text: '子代理内部结论。',
+                timestamp: '2026-04-23T00:00:04.000Z',
+              },
+            ],
+          },
+        ],
+      }),
+    );
+
+    const rendered = renderTimeline(entries);
+    const nested = rendered.container.querySelector(
+      '.repo-review-progress-nested-turns',
+    );
+    expect(nested).not.toBeNull();
+    expect(nested?.textContent).toContain('子代理内部结论');
     rendered.unmount();
   });
 
@@ -601,5 +686,66 @@ describe('buildReviewProgressEntries', () => {
     const rendered = renderTimeline(entries);
     expect(rendered.container.textContent).toContain('1.0');
     rendered.unmount();
+  });
+});
+
+describe('RepoReviewRunDetailModal evidence stats', () => {
+  it('shows evidence bundle and tool-call status metrics', () => {
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    act(() => {
+      root.render(
+        React.createElement(RepoReviewRunDetailModal, {
+          run: makeRun({
+            status: 'completed',
+            executionStats: {
+              diffFiles: 1,
+              diffBytes: 120,
+              splitGroups: 0,
+              peakReservedBytes: 0,
+              fullFileBytesLoaded: 0,
+              promptBytesBuilt: 0,
+              progressSnapshotBytes: 0,
+              extraRepoReadCount: 0,
+              fullFileBatchReservedBytes: [],
+              evidenceBundleBytes: 4096,
+              codeMapContextStatus: 'ready',
+              codeIndexContextStatus: 'stale',
+              changedFunctionCount: 2,
+              subagentToolCallCount: 0,
+              mainReadonlyToolCallCount: 1,
+            },
+          }),
+          loading: false,
+          repositoryName: 'demo',
+          profileName: 'default',
+          progressEntries: [],
+          onClose: () => undefined,
+          formatRunTitle: () => 'Run title',
+          formatResultStateLabel: () => 'warn',
+          getDeliveryTone: () => 'neutral',
+          resolveChatDeliveryStatus: () => 'not_configured',
+          resolvePlatformDeliveryStatus: () => 'not_configured',
+          formatDeliveryStatusLabel: (status: string) => status,
+          formatRunStageLabel: (stage: RepoReviewRun['stage']) => stage,
+          formatRunSourceLabel: (source: string) => source,
+          formatBaselineSourceLabel: (source?: string) => source || '-',
+          formatShortSha: (sha?: string) => sha || '-',
+          formatDurationMs: () => '-',
+          getRunDurationMs: () => undefined,
+        }),
+      );
+    });
+
+    expect(container.textContent).toContain('CodeMap');
+    expect(container.textContent).toContain('ready');
+    expect(container.textContent).toContain('Code Index');
+    expect(container.textContent).toContain('stale');
+    expect(container.textContent).toContain('4.0 KB');
+    expect(container.textContent).toContain('Changed functions');
+    expect(container.textContent).toContain('Subagent tools');
+    root.unmount();
+    container.remove();
   });
 });

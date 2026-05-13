@@ -38,7 +38,9 @@ describe('repo-review-diff-index', () => {
 
     for (const entry of index.entries) {
       const slice = sampleDiff.slice(entry.startOffset, entry.endOffset).trim();
-      expect(slice).toContain(`diff --git a/${entry.filePath} b/${entry.filePath}`);
+      expect(slice).toContain(
+        `diff --git a/${entry.filePath} b/${entry.filePath}`,
+      );
       expect(entry.estimatedBytes).toBe(Buffer.byteLength(slice, 'utf8'));
     }
   });
@@ -54,6 +56,36 @@ describe('repo-review-diff-index', () => {
     expect(multiSlice).toContain('diff --git a/A.java b/A.java');
     expect(multiSlice).toContain('diff --git a/CTest.java b/CTest.java');
     expect(multiSlice).not.toContain('diff --git a/B.xml b/B.xml');
+  });
+
+  it('extracts hunk ranges and changed line numbers', () => {
+    const diff = [
+      'diff --git a/src/demo.ts b/src/demo.ts',
+      'index 1111111..2222222 100644',
+      '--- a/src/demo.ts',
+      '+++ b/src/demo.ts',
+      '@@ -10,6 +10,8 @@ export function runReview() {',
+      ' const before = 1;',
+      '+const added = true;',
+      ' callExisting();',
+      '-return before;',
+      '+return added ? 2 : before;',
+      '}',
+    ].join('\n');
+
+    const index = buildRepoReviewDiffIndex(diff);
+
+    expect(index.hunks).toHaveLength(1);
+    expect(index.hunksByFile.get('src/demo.ts')).toHaveLength(1);
+    expect(index.hunks[0]).toMatchObject({
+      filePath: 'src/demo.ts',
+      oldStart: 10,
+      oldLineCount: 6,
+      newStart: 10,
+      newLineCount: 8,
+      addedLineNumbers: [11, 13],
+      removedLineNumbers: [12],
+    });
   });
 
   it('indexes quoted diff headers for paths with spaces', () => {

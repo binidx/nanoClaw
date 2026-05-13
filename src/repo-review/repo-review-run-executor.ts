@@ -6,7 +6,8 @@ import path from 'path';
 
 import { AGENT_TIMEOUT, DATA_DIR } from '../config.js';
 import { isDuplicateKeyError } from '../db/sql-adapters.js';
-import { loadCodeIndexSnapshot } from '../db/code-index-db.js';
+import { loadCodeIndexReviewContextData } from '../db/code-index-db.js';
+import { loadCodeMapFromDb } from '../code-intelligence/code-map-persist.js';
 
 import {
   backfillConversationParticipantsFromMessages,
@@ -122,6 +123,7 @@ import {
 import {
   buildRepoReviewDiffIndex,
   getRepoReviewDiffSlice,
+  type RepoReviewDiffHunkEntry,
 } from './repo-review-diff-index.js';
 import {
   buildRepoReviewCloudDoc,
@@ -165,8 +167,17 @@ import type {
   QueuedRepoReviewBranchResult,
   QueuedRepoReviewBranchResultSummary,
   QueuedRepoReviewSingleBranchResult,
+  ReviewEvidenceBundle,
+  ReviewEvidenceChangedHunk,
+  ReviewEvidenceContextStatus,
+  ReviewEvidenceImpactFunction,
 } from './repo-review-model.js';
-import type { CodeIndexSnapshot } from '../code-intelligence/code-index-types.js';
+import type {
+  CodeIndexFunctionEdgeRecord,
+  CodeIndexFunctionRecord,
+  CodeIndexSnapshot,
+} from '../code-intelligence/code-index-types.js';
+import type { CodeMapSnapshot } from '../code-intelligence/code-map-types.js';
 import type {
   LocalGitRemoteMetadataCacheEntry,
   LocalGitRemoteMetadataInput,
@@ -431,6 +442,7 @@ function getRepoReviewJsonBytes(value: unknown): number {
 function buildInitialRepoReviewExecutionStats(input: {
   diffText: string;
   changedFiles: string[];
+  evidenceBundle?: ReviewEvidenceBundle;
 }): RepoReviewExecutionStats {
   return {
     diffFiles: input.changedFiles.length,
@@ -453,6 +465,19 @@ function buildInitialRepoReviewExecutionStats(input: {
     partialWorkerResultCount: 0,
     fallbackMainReviewCount: 0,
     fallbackReviewedFileCount: 0,
+    subagentToolCallCount: 0,
+    mainReadonlyToolCallCount: 0,
+    ...(input.evidenceBundle
+      ? {
+          evidenceBundleBytes: getRepoReviewJsonBytes(input.evidenceBundle),
+          codeMapContextStatus: input.evidenceBundle.codeMapStatus.status,
+          codeIndexContextStatus: input.evidenceBundle.codeIndexStatus.status,
+          changedFunctionCount: input.evidenceBundle.changedFunctions.length,
+        }
+      : {
+          evidenceBundleBytes: 0,
+          changedFunctionCount: 0,
+        }),
   };
 }
 
@@ -480,6 +505,18 @@ function countRepoReviewToolCalls(
       ) {
         count += 1;
       }
+    }
+  }
+  return count;
+}
+
+function countRepoReviewToolCallItems(
+  turns: RepoReviewAssistantTurn[],
+): number {
+  let count = 0;
+  for (const turn of turns) {
+    for (const item of turn.items) {
+      if (item.type === 'tool_call') count += 1;
     }
   }
   return count;
@@ -566,6 +603,18 @@ function recordRepoReviewFullFileBatchStats<
   stats.peakReservedBytes = Math.max(stats.peakReservedBytes, peakBatchBytes);
 }
 
+function normalizeReviewEvidenceStatusValue(
+  value: unknown,
+): RepoReviewExecutionStats['codeMapContextStatus'] {
+  const normalized = stringValue(value);
+  return normalized === 'ready' ||
+    normalized === 'stale' ||
+    normalized === 'missing' ||
+    normalized === 'error'
+    ? normalized
+    : undefined;
+}
+
 function normalizeRepoReviewExecutionStats(
   value: unknown,
 ): RepoReviewExecutionStats | undefined {
@@ -609,6 +658,21 @@ function normalizeRepoReviewExecutionStats(
     timedOutWorkerCount: Math.max(0, Number(record.timedOutWorkerCount) || 0),
     reducerCallCount: Math.max(0, Number(record.reducerCallCount) || 0),
     evidenceBundleBytes: Math.max(0, Number(record.evidenceBundleBytes) || 0),
+    codeMapContextStatus: normalizeReviewEvidenceStatusValue(
+      record.codeMapContextStatus,
+    ),
+    codeIndexContextStatus: normalizeReviewEvidenceStatusValue(
+      record.codeIndexContextStatus,
+    ),
+    changedFunctionCount: Math.max(0, Number(record.changedFunctionCount) || 0),
+    subagentToolCallCount: Math.max(
+      0,
+      Number(record.subagentToolCallCount) || 0,
+    ),
+    mainReadonlyToolCallCount: Math.max(
+      0,
+      Number(record.mainReadonlyToolCallCount) || 0,
+    ),
     timeoutFollowupCount: Math.max(0, Number(record.timeoutFollowupCount) || 0),
     partialWorkerResultCount: Math.max(
       0,
@@ -1814,6 +1878,7 @@ function buildRepoReviewSubagentPromptPreview(input: {
         ? `允许全文读取：${input.fullFileFiles.join(', ')}`
         : '',
       `运行模式：${input.label}`,
+      '工具策略：none（子代理不调用工具）',
     ]
       .filter(Boolean)
       .join('\n'),
@@ -4760,24 +4825,410 @@ function summarizeRepoReviewDiffSlice(diffText: string): {
 }
 
 function buildRepoReviewDiffSummaryBlock(input: {
-  prepared: ReviewPreparedContext;
+  prepared?: ReviewPreparedContext;
+  summary?: ReviewEvidenceBundle['diffSummary'];
 }): string {
-  const diffIndex =
-    input.prepared.diffIndex ||
-    buildRepoReviewDiffIndex(input.prepared.diffText || '');
+  const summary =
+    input.summary ||
+    (input.prepared
+      ? buildRepoReviewDiffSummary(input.prepared)
+      : {
+          fileCount: 0,
+          hunkCount: 0,
+          addedLines: 0,
+          removedLines: 0,
+          diffBytes: 0,
+          files: [],
+        });
   const lines: string[] = [];
-  for (const filePath of input.prepared.changedFiles) {
-    const slice = getRepoReviewDiffSlice(diffIndex, [filePath]);
-    const summary = summarizeRepoReviewDiffSlice(slice);
+  for (const file of summary.files) {
     lines.push(
-      `- ${filePath} | +${summary.added} / -${summary.removed} | hunks ${summary.hunks} | ${Buffer.byteLength(slice || '', 'utf8')} bytes`,
+      `- ${file.filePath} | +${file.addedLines} / -${file.removedLines} | hunks ${file.hunkCount} | ${file.estimatedBytes} bytes`,
     );
   }
   return lines.length > 0 ? lines.join('\n') : '- (none)';
 }
 
+type ReviewCodeIndexContextData = Pick<
+  CodeIndexSnapshot,
+  'meta' | 'files' | 'functions' | 'functionEdges'
+>;
+
+function ensureRepoReviewDiffIndex(
+  prepared: ReviewPreparedContext,
+): NonNullable<ReviewPreparedContext['diffIndex']> {
+  const existing = prepared.diffIndex;
+  if (
+    existing &&
+    Array.isArray((existing as { hunks?: unknown }).hunks) &&
+    (existing as { hunksByFile?: unknown }).hunksByFile instanceof Map
+  ) {
+    return existing;
+  }
+  return buildRepoReviewDiffIndex(prepared.diffText || '');
+}
+
+function buildRepoReviewDiffSummary(
+  prepared: ReviewPreparedContext,
+): ReviewEvidenceBundle['diffSummary'] {
+  const diffIndex = ensureRepoReviewDiffIndex(prepared);
+  const files = prepared.changedFiles.map((filePath) => {
+    const slice = getRepoReviewDiffSlice(diffIndex, [filePath]);
+    const summary = summarizeRepoReviewDiffSlice(slice);
+    const hunkCount =
+      (diffIndex.hunksByFile.get(filePath) || []).length || summary.hunks;
+    return {
+      filePath,
+      addedLines: summary.added,
+      removedLines: summary.removed,
+      hunkCount,
+      estimatedBytes:
+        diffIndex.entriesByFile.get(filePath)?.estimatedBytes ||
+        Buffer.byteLength(slice || '', 'utf8'),
+    };
+  });
+  return {
+    fileCount: files.length,
+    hunkCount: files.reduce((total, file) => total + file.hunkCount, 0),
+    addedLines: files.reduce((total, file) => total + file.addedLines, 0),
+    removedLines: files.reduce((total, file) => total + file.removedLines, 0),
+    diffBytes: Buffer.byteLength(prepared.diffText || '', 'utf8'),
+    files,
+  };
+}
+
+function toReviewEvidenceChangedHunk(
+  hunk: RepoReviewDiffHunkEntry,
+): ReviewEvidenceChangedHunk {
+  return {
+    filePath: hunk.filePath,
+    header: hunk.header,
+    oldStart: hunk.oldStart,
+    oldLineCount: hunk.oldLineCount,
+    oldEnd: hunk.oldEnd,
+    newStart: hunk.newStart,
+    newLineCount: hunk.newLineCount,
+    newEnd: hunk.newEnd,
+    addedLineNumbers: hunk.addedLineNumbers,
+    removedLineNumbers: hunk.removedLineNumbers,
+  };
+}
+
+function getRepoReviewHunkChangedLineNumbers(
+  hunk: ReviewEvidenceChangedHunk,
+): number[] {
+  const lines = new Set<number>();
+  for (const line of hunk.addedLineNumbers) {
+    if (line > 0) lines.add(line);
+  }
+  if (lines.size === 0) {
+    const end = hunk.newLineCount > 0 ? hunk.newEnd : hunk.newStart;
+    for (let line = hunk.newStart; line <= end; line += 1) {
+      if (line > 0) lines.add(line);
+    }
+  }
+  if (lines.size === 0 && hunk.newStart > 0) {
+    lines.add(hunk.newStart);
+  }
+  return Array.from(lines.values()).sort((left, right) => left - right);
+}
+
+function hunkIntersectsCodeIndexFunction(
+  hunk: ReviewEvidenceChangedHunk,
+  fn: CodeIndexFunctionRecord,
+): boolean {
+  if (hunk.filePath !== fn.filePath) return false;
+  const changedLines = getRepoReviewHunkChangedLineNumbers(hunk);
+  if (changedLines.some((line) => line >= fn.startLine && line <= fn.endLine)) {
+    return true;
+  }
+  const hunkEnd = hunk.newLineCount > 0 ? hunk.newEnd : hunk.newStart;
+  return hunk.newStart <= fn.endLine && hunkEnd >= fn.startLine;
+}
+
+function toReviewEvidenceImpactFunction(
+  fn: CodeIndexFunctionRecord,
+  hunks: ReviewEvidenceChangedHunk[],
+): ReviewEvidenceImpactFunction {
+  const changedLineNumbers = new Set<number>();
+  for (const hunk of hunks) {
+    for (const line of getRepoReviewHunkChangedLineNumbers(hunk)) {
+      if (line >= fn.startLine && line <= fn.endLine) {
+        changedLineNumbers.add(line);
+      }
+    }
+  }
+  return {
+    id: fn.id,
+    filePath: fn.filePath,
+    name: fn.name,
+    kind: fn.kind,
+    signature: fn.signature,
+    startLine: fn.startLine,
+    endLine: fn.endLine,
+    line: fn.line,
+    parentFunctionId: fn.parentFunctionId,
+    changedHunkCount: hunks.length,
+    changedLineNumbers: Array.from(changedLineNumbers.values()).sort(
+      (left, right) => left - right,
+    ),
+  };
+}
+
+function toReviewEvidenceFunctionRef(fn: CodeIndexFunctionRecord) {
+  return {
+    id: fn.id,
+    filePath: fn.filePath,
+    name: fn.name,
+    kind: fn.kind,
+    startLine: fn.startLine,
+    endLine: fn.endLine,
+  };
+}
+
+function buildReviewEvidenceFunctionImpact(input: {
+  changedHunks: ReviewEvidenceChangedHunk[];
+  codeIndexSnapshot: ReviewCodeIndexContextData | null;
+}): {
+  changedFunctions: ReviewEvidenceImpactFunction[];
+  impactGraph: ReviewEvidenceBundle['impactGraph'];
+  missingContext: string[];
+} {
+  const missingContext: string[] = [];
+  const snapshot = input.codeIndexSnapshot;
+  if (!snapshot) {
+    if (input.changedHunks.length > 0) {
+      missingContext.push(
+        'Code Index 不可用，无法将 diff hunk 映射到函数或调用邻域。',
+      );
+    }
+    return {
+      changedFunctions: [],
+      impactGraph: { functions: [], edges: [] },
+      missingContext,
+    };
+  }
+
+  const changedFunctions: ReviewEvidenceImpactFunction[] = [];
+  const changedFunctionIds = new Set<string>();
+  const hunksByFunctionId = new Map<string, ReviewEvidenceChangedHunk[]>();
+  for (const fn of snapshot.functions) {
+    const matchingHunks = input.changedHunks.filter((hunk) =>
+      hunkIntersectsCodeIndexFunction(hunk, fn),
+    );
+    if (matchingHunks.length === 0) continue;
+    hunksByFunctionId.set(fn.id, matchingHunks);
+    changedFunctionIds.add(fn.id);
+    changedFunctions.push(toReviewEvidenceImpactFunction(fn, matchingHunks));
+  }
+  changedFunctions.sort((left, right) =>
+    left.filePath === right.filePath
+      ? left.startLine - right.startLine
+      : left.filePath.localeCompare(right.filePath, 'en'),
+  );
+
+  if (input.changedHunks.length > 0 && changedFunctions.length === 0) {
+    missingContext.push(
+      'Code Index 未定位到被 diff hunk 覆盖的函数，可能是非代码文件、顶层模块改动或索引过期。',
+    );
+  }
+
+  const functionById = new Map(snapshot.functions.map((fn) => [fn.id, fn]));
+  const graphFunctionIds = new Set(changedFunctionIds);
+  const edges: ReviewEvidenceBundle['impactGraph']['edges'] = [];
+  const seenEdges = new Set<string>();
+  const pushEdge = (
+    direction: 'upstream' | 'downstream',
+    edge: CodeIndexFunctionEdgeRecord,
+  ) => {
+    const key = `${direction}:${edge.id}`;
+    if (seenEdges.has(key)) return;
+    seenEdges.add(key);
+    const from = functionById.get(edge.fromFunctionId);
+    const to = functionById.get(edge.toFunctionId);
+    if (from) graphFunctionIds.add(from.id);
+    if (to) graphFunctionIds.add(to.id);
+    edges.push({
+      direction,
+      fromFunctionId: edge.fromFunctionId,
+      toFunctionId: edge.toFunctionId,
+      symbol: edge.symbol,
+      line: edge.line,
+      ...(from ? { fromFunction: toReviewEvidenceFunctionRef(from) } : {}),
+      ...(to ? { toFunction: toReviewEvidenceFunctionRef(to) } : {}),
+    });
+  };
+  for (const edge of snapshot.functionEdges) {
+    if (changedFunctionIds.has(edge.fromFunctionId)) {
+      pushEdge('downstream', edge);
+    }
+    if (changedFunctionIds.has(edge.toFunctionId)) {
+      pushEdge('upstream', edge);
+    }
+  }
+
+  const changedFunctionById = new Map(
+    changedFunctions.map((fn) => [fn.id, fn]),
+  );
+  const graphFunctions = Array.from(graphFunctionIds.values())
+    .map((id) => {
+      const changed = changedFunctionById.get(id);
+      if (changed) return changed;
+      const fn = functionById.get(id);
+      return fn ? toReviewEvidenceImpactFunction(fn, []) : null;
+    })
+    .filter((fn): fn is ReviewEvidenceImpactFunction => Boolean(fn))
+    .sort((left, right) =>
+      left.filePath === right.filePath
+        ? left.startLine - right.startLine
+        : left.filePath.localeCompare(right.filePath, 'en'),
+    );
+  return {
+    changedFunctions,
+    impactGraph: {
+      functions: graphFunctions,
+      edges,
+    },
+    missingContext,
+  };
+}
+
+export function buildRepoReviewCodeMapContextBlock(input: {
+  snapshot: CodeMapSnapshot | null;
+  repositoryId: string;
+  branch: string;
+  changedFiles: string[];
+}): string {
+  const branch = normalizeBranchName(input.branch || '');
+  if (!input.snapshot) {
+    return [
+      'CodeMap 影响图：unavailable',
+      `repository_id: ${input.repositoryId}`,
+      `branch: ${branch || '(unknown)'}`,
+      'reason: missing_snapshot',
+    ].join('\n');
+  }
+
+  const snapshot = input.snapshot;
+  const fileByPath = new Map(
+    snapshot.files.map((file) => [file.relativePath, file]),
+  );
+  const changedFileSet = new Set(input.changedFiles);
+  const incomingEdgesByFile = new Map<string, typeof snapshot.edges>();
+  const outgoingEdgesByFile = new Map<string, typeof snapshot.edges>();
+  for (const edge of snapshot.edges) {
+    const outgoing = outgoingEdgesByFile.get(edge.fromFile) || [];
+    outgoing.push(edge);
+    outgoingEdgesByFile.set(edge.fromFile, outgoing);
+    const incoming = incomingEdgesByFile.get(edge.toFile) || [];
+    incoming.push(edge);
+    incomingEdgesByFile.set(edge.toFile, incoming);
+  }
+
+  const relatedFileScores = new Map<string, number>();
+  for (const filePath of input.changedFiles) {
+    for (const edge of outgoingEdgesByFile.get(filePath) || []) {
+      if (!changedFileSet.has(edge.toFile)) {
+        relatedFileScores.set(
+          edge.toFile,
+          (relatedFileScores.get(edge.toFile) || 0) + 1,
+        );
+      }
+    }
+    for (const edge of incomingEdgesByFile.get(filePath) || []) {
+      if (!changedFileSet.has(edge.fromFile)) {
+        relatedFileScores.set(
+          edge.fromFile,
+          (relatedFileScores.get(edge.fromFile) || 0) + 1,
+        );
+      }
+    }
+  }
+
+  const lines = [
+    'CodeMap 影响图：',
+    `status: ready`,
+    `branch: ${snapshot.branch || branch || '(unknown)'}`,
+    `manifest_hash: ${snapshot.manifestHash || '(unknown)'}`,
+    `stats: files=${snapshot.stats.fileCount}, symbols=${snapshot.stats.symbolCount}, edges=${snapshot.stats.edgeCount}`,
+    `changed_files_with_map: ${input.changedFiles.filter((file) => fileByPath.has(file)).length}/${input.changedFiles.length}`,
+    '',
+    '变更文件结构角色：',
+  ];
+
+  for (const filePath of input.changedFiles.slice(0, 24)) {
+    const file = fileByPath.get(filePath);
+    if (!file) {
+      lines.push(`- ${filePath}: no_codemap_entry`);
+      continue;
+    }
+    const incoming = incomingEdgesByFile.get(filePath) || [];
+    const outgoing = outgoingEdgesByFile.get(filePath) || [];
+    const topSymbols = [...file.symbols]
+      .sort((left, right) => right.rank - left.rank)
+      .slice(0, 6);
+    lines.push(
+      [
+        `- ${filePath}`,
+        `language=${file.language || 'text'}`,
+        `rank=${file.rank.toFixed(4)}`,
+        `lines=${file.lineCount}`,
+        `imports=${file.importCount}`,
+        `exports=${file.exportCount}`,
+        `dependents=${incoming.length}`,
+        `dependencies=${outgoing.length}`,
+      ].join(' | '),
+    );
+    if (topSymbols.length > 0) {
+      lines.push(
+        `  top_symbols: ${topSymbols
+          .map((symbol) => `${symbol.kind} ${symbol.name}@${symbol.line}`)
+          .join(', ')}`,
+      );
+    }
+    const relatedEdges = [...incoming, ...outgoing]
+      .filter(
+        (edge) =>
+          changedFileSet.has(edge.fromFile) || changedFileSet.has(edge.toFile),
+      )
+      .slice(0, 6);
+    if (relatedEdges.length > 0) {
+      lines.push(
+        `  local_edges: ${relatedEdges
+          .map((edge) => {
+            const symbols =
+              edge.symbols.length > 0
+                ? ` [${edge.symbols.slice(0, 3).join(', ')}]`
+                : '';
+            return `${edge.fromFile} -> ${edge.toFile}${symbols}`;
+          })
+          .join('; ')}`,
+      );
+    }
+  }
+
+  const relatedFiles = [...relatedFileScores.entries()]
+    .sort((left, right) => right[1] - left[1])
+    .slice(0, 12);
+  if (relatedFiles.length > 0) {
+    lines.push('', '相关未变更邻居文件（仅作导航线索）：');
+    for (const [filePath, score] of relatedFiles) {
+      const file = fileByPath.get(filePath);
+      lines.push(
+        `- ${filePath} | links=${score} | rank=${file ? file.rank.toFixed(4) : 'unknown'}`,
+      );
+    }
+  }
+  if (input.changedFiles.length > 24) {
+    lines.push(
+      `- ...(还有 ${input.changedFiles.length - 24} 个变更文件未展开)`,
+    );
+  }
+  return lines.join('\n');
+}
+
 export function buildRepoReviewCodeIndexContextBlock(input: {
-  snapshot: CodeIndexSnapshot | null;
+  snapshot: ReviewCodeIndexContextData | null;
   repositoryId: string;
   branch: string;
   headSha?: string;
@@ -4891,7 +5342,374 @@ export function buildRepoReviewCodeIndexContextBlock(input: {
   return lines.join('\n');
 }
 
-async function enrichReviewPreparedContextWithCodeIndex(input: {
+function contextErrorMessage(value: unknown): string {
+  return value instanceof Error ? value.message : stringValue(value);
+}
+
+function isCodeIndexEvidenceStale(input: {
+  snapshot: ReviewCodeIndexContextData;
+  headSha?: string;
+}): boolean {
+  const sourceHeadSha = stringValue(input.snapshot.meta.sourceHeadSha);
+  const headSha = stringValue(input.headSha);
+  return Boolean(
+    sourceHeadSha &&
+    headSha &&
+    sourceHeadSha !== headSha &&
+    !headSha.startsWith(sourceHeadSha) &&
+    !sourceHeadSha.startsWith(headSha),
+  );
+}
+
+function buildCodeMapEvidenceStatus(input: {
+  snapshot: CodeMapSnapshot | null;
+  branch: string;
+  error?: unknown;
+}): ReviewEvidenceContextStatus {
+  if (input.error) {
+    return {
+      status: 'error',
+      branch: input.branch,
+      reason: 'load_failed',
+      message: contextErrorMessage(input.error),
+    };
+  }
+  if (!input.snapshot) {
+    return {
+      status: 'missing',
+      branch: input.branch,
+      reason: 'missing_snapshot',
+    };
+  }
+  return {
+    status: 'ready',
+    branch: input.snapshot.branch || input.branch,
+    fileCount: input.snapshot.stats.fileCount,
+    edgeCount: input.snapshot.stats.edgeCount,
+  };
+}
+
+function buildCodeIndexEvidenceStatus(input: {
+  snapshot: ReviewCodeIndexContextData | null;
+  branch: string;
+  headSha?: string;
+  error?: unknown;
+}): ReviewEvidenceContextStatus {
+  if (input.error) {
+    return {
+      status: 'error',
+      branch: input.branch,
+      reason: 'load_failed',
+      message: contextErrorMessage(input.error),
+    };
+  }
+  if (!input.snapshot) {
+    return {
+      status: 'missing',
+      branch: input.branch,
+      reason: 'missing_snapshot',
+    };
+  }
+  const meta = input.snapshot.meta;
+  const ready = meta.status === 'ready' && meta.stage === 'complete';
+  const stale = isCodeIndexEvidenceStale({
+    snapshot: input.snapshot,
+    headSha: input.headSha,
+  });
+  return {
+    status: stale ? 'stale' : ready ? 'ready' : 'missing',
+    branch: meta.branch || input.branch,
+    sourceBranch: meta.sourceBranch || meta.branch || input.branch,
+    sourceHeadSha: stringValue(meta.sourceHeadSha),
+    reason: ready ? undefined : `${meta.status}:${meta.stage}`,
+    fileCount: meta.stats.fileCount,
+    functionCount: meta.stats.functionCount,
+    edgeCount: meta.stats.functionEdgeCount,
+  };
+}
+
+export function buildRepoReviewDiffAwareEvidenceBundle(input: {
+  prepared: ReviewPreparedContext;
+  codeMapSnapshot: CodeMapSnapshot | null;
+  codeIndexSnapshot: ReviewCodeIndexContextData | null;
+  branch: string;
+  codeMapError?: unknown;
+  codeIndexError?: unknown;
+}): ReviewEvidenceBundle {
+  const diffIndex = ensureRepoReviewDiffIndex(input.prepared);
+  const changedFileSet = new Set(input.prepared.changedFiles);
+  const changedHunks = diffIndex.hunks
+    .filter((hunk) => changedFileSet.has(hunk.filePath))
+    .map(toReviewEvidenceChangedHunk);
+  const functionImpact = buildReviewEvidenceFunctionImpact({
+    changedHunks,
+    codeIndexSnapshot: input.codeIndexSnapshot,
+  });
+  const codeMapStatus = buildCodeMapEvidenceStatus({
+    snapshot: input.codeMapSnapshot,
+    branch: input.branch,
+    error: input.codeMapError,
+  });
+  const codeIndexStatus = buildCodeIndexEvidenceStatus({
+    snapshot: input.codeIndexSnapshot,
+    branch: input.branch,
+    headSha: input.prepared.headSha,
+    error: input.codeIndexError,
+  });
+  const missingContext = [...functionImpact.missingContext];
+  if (codeMapStatus.status !== 'ready') {
+    missingContext.push(
+      `CodeMap ${codeMapStatus.status}: ${codeMapStatus.reason || 'unavailable'}`,
+    );
+  }
+  if (codeIndexStatus.status !== 'ready') {
+    missingContext.push(
+      `Code Index ${codeIndexStatus.status}: ${codeIndexStatus.reason || 'unavailable'}`,
+    );
+  }
+  return {
+    diffSummary: buildRepoReviewDiffSummary(input.prepared),
+    changedFiles: input.prepared.changedFiles,
+    changedHunks,
+    changedFunctions: functionImpact.changedFunctions,
+    impactGraph: functionImpact.impactGraph,
+    codeMapStatus,
+    codeIndexStatus,
+    missingContext: Array.from(new Set(missingContext.filter(Boolean))),
+  };
+}
+
+function formatEvidenceStatus(status: ReviewEvidenceContextStatus): string {
+  return [
+    status.status,
+    status.reason ? `reason=${status.reason}` : '',
+    status.sourceHeadSha ? `source_head=${shortSha(status.sourceHeadSha)}` : '',
+    status.fileCount !== undefined ? `files=${status.fileCount}` : '',
+    status.functionCount !== undefined
+      ? `functions=${status.functionCount}`
+      : '',
+    status.edgeCount !== undefined ? `edges=${status.edgeCount}` : '',
+  ]
+    .filter(Boolean)
+    .join(' | ');
+}
+
+function formatEvidenceFunction(fn: ReviewEvidenceImpactFunction): string {
+  return `${fn.filePath}:${fn.startLine}-${fn.endLine} ${fn.kind} ${fn.name}`;
+}
+
+function renderRepoReviewEvidenceBundleBlock(
+  bundle: ReviewEvidenceBundle,
+): string {
+  const lines = [
+    'Review Evidence Bundle：',
+    '说明：以下上下文由系统在模型调用前预构建；stale/missing/error 只作为限制或导航线索，结论仍以 diff/worktree 为准。',
+    '',
+    'Evidence 状态：',
+    `- CodeMap: ${formatEvidenceStatus(bundle.codeMapStatus)}`,
+    `- Code Index: ${formatEvidenceStatus(bundle.codeIndexStatus)}`,
+    `- bundle: files=${bundle.changedFiles.length}, hunks=${bundle.changedHunks.length}, changed_functions=${bundle.changedFunctions.length}, impact_edges=${bundle.impactGraph.edges.length}`,
+    '',
+    'Diff 文件摘要：',
+    buildRepoReviewDiffSummaryBlock({
+      summary: bundle.diffSummary,
+    }),
+    '',
+    'Changed hunks：',
+  ];
+  for (const hunk of bundle.changedHunks.slice(0, 64)) {
+    lines.push(
+      `- ${hunk.filePath} | ${hunk.header} | new ${hunk.newStart}-${hunk.newEnd} | added ${hunk.addedLineNumbers.join(',') || '-'} | removed ${hunk.removedLineNumbers.join(',') || '-'}`,
+    );
+  }
+  if (bundle.changedHunks.length === 0) lines.push('- (none)');
+  if (bundle.changedHunks.length > 64) {
+    lines.push(`- ...(还有 ${bundle.changedHunks.length - 64} 个 hunk 未展开)`);
+  }
+
+  lines.push('', 'Changed functions：');
+  for (const fn of bundle.changedFunctions.slice(0, 48)) {
+    lines.push(
+      `- ${formatEvidenceFunction(fn)} | hunks=${fn.changedHunkCount} | changed_lines=${fn.changedLineNumbers.join(',') || '-'}`,
+    );
+    if (fn.signature) {
+      lines.push(`  signature: ${trimContextBlock(fn.signature, 240)}`);
+    }
+  }
+  if (bundle.changedFunctions.length === 0) lines.push('- (none)');
+  if (bundle.changedFunctions.length > 48) {
+    lines.push(
+      `- ...(还有 ${bundle.changedFunctions.length - 48} 个函数未展开)`,
+    );
+  }
+
+  lines.push('', 'Impact graph（1-hop function calls）：');
+  for (const edge of bundle.impactGraph.edges.slice(0, 80)) {
+    const from = edge.fromFunction
+      ? `${edge.fromFunction.filePath}:${edge.fromFunction.startLine} ${edge.fromFunction.name}`
+      : edge.fromFunctionId;
+    const to = edge.toFunction
+      ? `${edge.toFunction.filePath}:${edge.toFunction.startLine} ${edge.toFunction.name}`
+      : edge.toFunctionId;
+    lines.push(
+      `- ${edge.direction}: ${from} -> ${to} | symbol=${edge.symbol || '-'} | line=${edge.line || '-'}`,
+    );
+  }
+  if (bundle.impactGraph.edges.length === 0) lines.push('- (none)');
+  if (bundle.impactGraph.edges.length > 80) {
+    lines.push(
+      `- ...(还有 ${bundle.impactGraph.edges.length - 80} 条调用边未展开)`,
+    );
+  }
+
+  lines.push('', 'Context limitations：');
+  if (bundle.missingContext.length === 0) {
+    lines.push('- (none)');
+  } else {
+    for (const entry of bundle.missingContext) {
+      lines.push(`- ${entry}`);
+    }
+  }
+  return lines.join('\n');
+}
+
+export function buildRepoReviewEvidenceBundleBlock(input: {
+  bundle?: ReviewEvidenceBundle;
+  diffSummaryBlock?: string;
+  codeMapContextBlock?: string;
+  codeIndexContextBlock?: string;
+}): string {
+  if (input.bundle) {
+    return renderRepoReviewEvidenceBundleBlock(input.bundle);
+  }
+  return [
+    'Review Evidence Bundle：',
+    '说明：以下上下文由系统在模型调用前预构建，优先级低于实际 diff 和工作区取证；stale/missing 时只作为导航线索。',
+    '',
+    'Diff 文件摘要：',
+    input.diffSummaryBlock || '- (none)',
+    '',
+    input.codeMapContextBlock || 'CodeMap 影响图：unavailable',
+    '',
+    input.codeIndexContextBlock || 'Code Index 上下文：unavailable',
+  ].join('\n');
+}
+
+function filterRepoReviewEvidenceBundleForFiles(input: {
+  bundle: ReviewEvidenceBundle;
+  files: string[];
+}): ReviewEvidenceBundle {
+  const fileSet = new Set(input.files);
+  const diffFiles = input.bundle.diffSummary.files.filter((file) =>
+    fileSet.has(file.filePath),
+  );
+  const changedHunks = input.bundle.changedHunks.filter((hunk) =>
+    fileSet.has(hunk.filePath),
+  );
+  const changedFunctions = input.bundle.changedFunctions.filter((fn) =>
+    fileSet.has(fn.filePath),
+  );
+  const changedFunctionIds = new Set(changedFunctions.map((fn) => fn.id));
+  const edgeByChangedFunction = input.bundle.impactGraph.edges.filter(
+    (edge) =>
+      changedFunctionIds.has(edge.fromFunctionId) ||
+      changedFunctionIds.has(edge.toFunctionId),
+  );
+  const graphFunctionIds = new Set(changedFunctionIds);
+  for (const edge of edgeByChangedFunction) {
+    graphFunctionIds.add(edge.fromFunctionId);
+    graphFunctionIds.add(edge.toFunctionId);
+  }
+  const graphFunctions = input.bundle.impactGraph.functions.filter((fn) =>
+    graphFunctionIds.has(fn.id),
+  );
+  return {
+    ...input.bundle,
+    diffSummary: {
+      fileCount: diffFiles.length,
+      hunkCount: diffFiles.reduce((total, file) => total + file.hunkCount, 0),
+      addedLines: diffFiles.reduce((total, file) => total + file.addedLines, 0),
+      removedLines: diffFiles.reduce(
+        (total, file) => total + file.removedLines,
+        0,
+      ),
+      diffBytes: diffFiles.reduce(
+        (total, file) => total + file.estimatedBytes,
+        0,
+      ),
+      files: diffFiles,
+    },
+    changedFiles: input.bundle.changedFiles.filter((file) => fileSet.has(file)),
+    changedHunks,
+    changedFunctions,
+    impactGraph: {
+      functions: graphFunctions,
+      edges: edgeByChangedFunction,
+    },
+    missingContext:
+      changedHunks.length > 0 && changedFunctions.length === 0
+        ? [
+            ...input.bundle.missingContext,
+            '该任务 slice 未定位到变更函数，按 diff hunk 和文件级证据审查。',
+          ]
+        : input.bundle.missingContext,
+  };
+}
+
+function buildRepoReviewProjectContextBlock(input: {
+  prepared: ReviewPreparedContext;
+  files?: string[];
+}): string {
+  if (input.prepared.evidenceBundle) {
+    const bundle =
+      input.files && input.files.length > 0
+        ? filterRepoReviewEvidenceBundleForFiles({
+            bundle: input.prepared.evidenceBundle,
+            files: input.files,
+          })
+        : input.prepared.evidenceBundle;
+    return `项目上下文：\n${buildRepoReviewEvidenceBundleBlock({ bundle })}`;
+  }
+  return input.prepared.projectContextBlocks.length > 0
+    ? `项目上下文：\n${input.prepared.projectContextBlocks.join('\n\n')}`
+    : '项目上下文：暂无补充上下文。';
+}
+
+function buildRepoReviewImpactGraphBlock(
+  bundle: ReviewEvidenceBundle | undefined,
+): string {
+  if (!bundle) return 'Impact Graph：unavailable';
+  const lines = [
+    'Impact Graph：',
+    `changed_functions=${bundle.changedFunctions.length}`,
+    `one_hop_edges=${bundle.impactGraph.edges.length}`,
+  ];
+  for (const edge of bundle.impactGraph.edges.slice(0, 40)) {
+    const from = edge.fromFunction
+      ? `${edge.fromFunction.filePath}:${edge.fromFunction.startLine} ${edge.fromFunction.name}`
+      : edge.fromFunctionId;
+    const to = edge.toFunction
+      ? `${edge.toFunction.filePath}:${edge.toFunction.startLine} ${edge.toFunction.name}`
+      : edge.toFunctionId;
+    lines.push(`- ${edge.direction}: ${from} -> ${to}`);
+  }
+  if (bundle.impactGraph.edges.length === 0) lines.push('- (none)');
+  return lines.join('\n');
+}
+
+function buildRepoReviewContextLimitationsBlock(
+  bundle: ReviewEvidenceBundle | undefined,
+): string {
+  if (!bundle) return 'Context Limitations：\n- evidence bundle unavailable';
+  return [
+    'Context Limitations：',
+    ...(bundle.missingContext.length > 0
+      ? bundle.missingContext.map((entry) => `- ${entry}`)
+      : ['- (none)']),
+  ].join('\n');
+}
+
+async function enrichReviewPreparedContextWithCodeIntelligence(input: {
   repository: RepoReviewRepository;
   prepared: ReviewPreparedContext;
 }): Promise<ReviewPreparedContext> {
@@ -4899,45 +5717,61 @@ async function enrichReviewPreparedContextWithCodeIndex(input: {
   if (!branch || input.prepared.changedFiles.length === 0) {
     return input.prepared;
   }
-  try {
-    const snapshot = await loadCodeIndexSnapshot(input.repository.id, branch);
-    const block = buildRepoReviewCodeIndexContextBlock({
-      snapshot,
-      repositoryId: input.repository.id,
-      branch,
-      headSha: input.prepared.headSha,
-      changedFiles: input.prepared.changedFiles,
-    });
-    return {
-      ...input.prepared,
-      projectContextBlocks: [
-        ...input.prepared.projectContextBlocks,
-        block,
-      ].filter(Boolean),
-    };
-  } catch (err) {
+  let codeIndexSnapshot: ReviewCodeIndexContextData | null = null;
+  let codeMapSnapshot: CodeMapSnapshot | null = null;
+  let codeIndexError: unknown;
+  let codeMapError: unknown;
+  const [codeIndexResult, codeMapResult] = await Promise.allSettled([
+    loadCodeIndexReviewContextData(input.repository.id, branch),
+    loadCodeMapFromDb(input.repository.id, branch),
+  ]);
+  if (codeIndexResult.status === 'fulfilled') {
+    codeIndexSnapshot = codeIndexResult.value;
+  } else {
+    codeIndexError = codeIndexResult.reason;
     logger.warn(
       {
-        err,
+        err: codeIndexResult.reason,
         repositoryId: input.repository.id,
         branch,
       },
-      'Failed to build repo review Code Index context',
+      'Failed to load repo review Code Index context',
     );
-    return {
-      ...input.prepared,
-      projectContextBlocks: [
-        ...input.prepared.projectContextBlocks,
-        buildRepoReviewCodeIndexContextBlock({
-          snapshot: null,
-          repositoryId: input.repository.id,
-          branch,
-          headSha: input.prepared.headSha,
-          changedFiles: input.prepared.changedFiles,
-        }),
-      ],
-    };
   }
+  if (codeMapResult.status === 'fulfilled') {
+    codeMapSnapshot = codeMapResult.value;
+  } else {
+    codeMapError = codeMapResult.reason;
+    logger.warn(
+      {
+        err: codeMapResult.reason,
+        repositoryId: input.repository.id,
+        branch,
+      },
+      'Failed to load repo review CodeMap context',
+    );
+  }
+
+  const evidenceBundle = buildRepoReviewDiffAwareEvidenceBundle({
+    prepared: input.prepared,
+    codeMapSnapshot,
+    codeIndexSnapshot,
+    branch,
+    codeMapError,
+    codeIndexError,
+  });
+  const evidenceBundleBlock = buildRepoReviewEvidenceBundleBlock({
+    bundle: evidenceBundle,
+  });
+
+  return {
+    ...input.prepared,
+    evidenceBundle,
+    projectContextBlocks: [
+      ...input.prepared.projectContextBlocks,
+      evidenceBundleBlock,
+    ].filter(Boolean),
+  };
 }
 
 const REPO_REVIEW_EVIDENCE_MAX_LINES = 28;
@@ -6143,10 +6977,20 @@ export async function resolveReviewPrompt(
       diffSummaryBlock: buildRepoReviewDiffSummaryBlock({
         prepared: input.prepared,
       }),
-      projectContextBlock:
-        input.prepared.projectContextBlocks.length > 0
-          ? `项目上下文：\n${input.prepared.projectContextBlocks.join('\n\n')}`
-          : '项目上下文：暂无补充上下文。',
+      projectContextBlock: buildRepoReviewProjectContextBlock({
+        prepared: input.prepared,
+      }),
+      evidenceBundleBlock: input.prepared.evidenceBundle
+        ? buildRepoReviewEvidenceBundleBlock({
+            bundle: input.prepared.evidenceBundle,
+          })
+        : '',
+      impactGraphBlock: buildRepoReviewImpactGraphBlock(
+        input.prepared.evidenceBundle,
+      ),
+      contextLimitationsBlock: buildRepoReviewContextLimitationsBlock(
+        input.prepared.evidenceBundle,
+      ),
       changedFileCount: input.prepared.changedFiles.length,
       changedFiles:
         input.prepared.changedFiles.length > 0
@@ -6294,10 +7138,20 @@ function buildRepoReviewAgenticPromptVariables(input: {
     diffSummaryBlock: buildRepoReviewDiffSummaryBlock({
       prepared: input.prepared,
     }),
-    projectContextBlock:
-      input.prepared.projectContextBlocks.length > 0
-        ? `项目上下文：\n${input.prepared.projectContextBlocks.join('\n\n')}`
-        : '项目上下文：暂无补充上下文。',
+    projectContextBlock: buildRepoReviewProjectContextBlock({
+      prepared: input.prepared,
+    }),
+    evidenceBundleBlock: input.prepared.evidenceBundle
+      ? buildRepoReviewEvidenceBundleBlock({
+          bundle: input.prepared.evidenceBundle,
+        })
+      : '',
+    impactGraphBlock: buildRepoReviewImpactGraphBlock(
+      input.prepared.evidenceBundle,
+    ),
+    contextLimitationsBlock: buildRepoReviewContextLimitationsBlock(
+      input.prepared.evidenceBundle,
+    ),
     changedFileCount: input.prepared.changedFiles.length,
     changedFiles:
       input.prepared.changedFiles.length > 0
@@ -6338,8 +7192,7 @@ function buildRepoReviewAgenticPlanOnlyInstructions(input: {
           '不要把全文读取作为委派、审查或阻断计划的前置条件。',
         ].join('\n'),
     workspaceInspectionInstructions: [
-      '计划阶段先执行只读取证，再输出 review_plan。',
-      '至少执行一次 git diff 或等价只读工具调用确认本次变更范围。',
+      '计划阶段不调用工具，只使用本提示中的 Review Evidence Bundle、diff 摘要和提交摘要制定 review_plan。',
       '需要后续继续取证的内容写入 risk_areas 或 notes，由后续审查阶段处理。',
     ].join('\n'),
   };
@@ -6644,7 +7497,7 @@ async function runRepoReviewMainPlan(input: {
           runtimeNamespace: `${input.runId}:main-plan:${attempt + 1}`,
           workspacePath: input.workspacePath,
           userId: input.userId,
-          toolPolicy: 'readonly',
+          toolPolicy: 'none',
           turnContext: {
             groupKey: 'agentic_main_plan',
             groupLabel: '主代理制定审查计划',
@@ -6778,6 +7631,34 @@ export async function resolveRepoReviewAgenticSubagentPrompt(input: {
         input.task.fullFileFiles.length > 0
           ? input.task.fullFileFiles.map((file) => `- ${file}`).join('\n')
           : '- (none)',
+      projectContextBlock: buildRepoReviewProjectContextBlock({
+        prepared: input.prepared,
+        files: input.task.files,
+      }),
+      evidenceBundleBlock: input.prepared.evidenceBundle
+        ? buildRepoReviewEvidenceBundleBlock({
+            bundle: filterRepoReviewEvidenceBundleForFiles({
+              bundle: input.prepared.evidenceBundle,
+              files: input.task.files,
+            }),
+          })
+        : '',
+      impactGraphBlock: buildRepoReviewImpactGraphBlock(
+        input.prepared.evidenceBundle
+          ? filterRepoReviewEvidenceBundleForFiles({
+              bundle: input.prepared.evidenceBundle,
+              files: input.task.files,
+            })
+          : undefined,
+      ),
+      contextLimitationsBlock: buildRepoReviewContextLimitationsBlock(
+        input.prepared.evidenceBundle
+          ? filterRepoReviewEvidenceBundleForFiles({
+              bundle: input.prepared.evidenceBundle,
+              files: input.task.files,
+            })
+          : undefined,
+      ),
       diffSlice:
         trimContextBlock(
           diffSlice,
@@ -7099,6 +7980,12 @@ async function runRepoReviewAgenticSubagents(input: {
           childTurns,
           task.files,
         );
+        const subagentToolCallCount = countRepoReviewToolCallItems(childTurns);
+        if (input.executionStats) {
+          input.executionStats.subagentToolCallCount =
+            (input.executionStats.subagentToolCallCount || 0) +
+            subagentToolCallCount;
+        }
         const augmentedScopeLimitations = normalizeReviewScopeLimitations([
           ...parsed.scopeLimitations,
           ...(outOfScopeReadCount > 0
@@ -7122,7 +8009,10 @@ async function runRepoReviewAgenticSubagents(input: {
             focus: task.focus,
             fullFileFiles: task.fullFileFiles,
           }),
-          resultText: reviewResult.outputText,
+          resultText: [
+            `子代理工具调用数：${subagentToolCallCount}`,
+            reviewResult.outputText,
+          ].join('\n\n'),
           status: 'completed',
         });
         await setWorkerTurns();
@@ -7140,6 +8030,7 @@ async function runRepoReviewAgenticSubagents(input: {
             ['scope_limitations', augmentedScopeLimitations.length],
             ['timed_out', reviewResult.timedOut],
             ['out_of_scope_reads', outOfScopeReadCount],
+            ['tool_calls', subagentToolCallCount],
           ]),
         });
         return {
@@ -7150,6 +8041,12 @@ async function runRepoReviewAgenticSubagents(input: {
         };
       } catch (err) {
         const error = errorMessageForProgress(err);
+        const subagentToolCallCount = countRepoReviewToolCallItems(childTurns);
+        if (input.executionStats) {
+          input.executionStats.subagentToolCallCount =
+            (input.executionStats.subagentToolCallCount || 0) +
+            subagentToolCallCount;
+        }
         syntheticToolTurn = buildRepoReviewSyntheticSubagentToolTurn({
           turnId: toolTurnId,
           toolCallId,
@@ -7158,8 +8055,18 @@ async function runRepoReviewAgenticSubagents(input: {
           groupKey: stepId,
           label: `子代理 ${index + 1}/${input.tasks.length}`,
           task: task.files.length === 1 ? task.files[0]! : task.title,
-          argumentsText: resolvedPromptText,
-          errorText: error,
+          argumentsText:
+            resolvedPromptText ||
+            buildRepoReviewSubagentPromptPreview({
+              label: `子代理 ${index + 1}/${input.tasks.length}`,
+              task: task.title,
+              files: task.files,
+              focus: task.focus,
+              fullFileFiles: task.fullFileFiles,
+            }),
+          errorText: [`子代理工具调用数：${subagentToolCallCount}`, error].join(
+            '\n\n',
+          ),
           status: 'failed',
         });
         await setWorkerTurns();
@@ -7170,7 +8077,10 @@ async function runRepoReviewAgenticSubagents(input: {
           detail: `${task.title} 执行失败`,
           kind: 'subagent',
           error,
-          outputText: error,
+          outputText: formatProgressKeyValues([
+            ['tool_calls', subagentToolCallCount],
+            ['error', error],
+          ]),
         });
         return {
           task,
@@ -7512,6 +8422,10 @@ async function runRepoReviewAgenticReview(input: {
       },
       onTurnProgress: async (turns) => {
         directTurns = turns;
+        if (input.executionStats) {
+          input.executionStats.mainReadonlyToolCallCount =
+            countRepoReviewToolCallItems(directTurns);
+        }
         await input.onPhaseProgress({
           planTurns: [],
           subagentTurns: [],
@@ -7541,6 +8455,10 @@ async function runRepoReviewAgenticReview(input: {
         ['overall', parsed.overall],
         ['summary', parsed.summary],
         ['findings', parsed.findings.length],
+        [
+          'main_readonly_tool_calls',
+          input.executionStats?.mainReadonlyToolCallCount || 0,
+        ],
       ]),
       metadataText: formatProgressKeyValues([
         ['review_turns', directTurns.length],
@@ -7704,6 +8622,10 @@ async function runRepoReviewAgenticReview(input: {
           subagentResults.filter((result) => !result.failed).length,
         ],
         ['failed', subagentResults.filter((result) => result.failed).length],
+        [
+          'subagent_tool_calls',
+          input.executionStats?.subagentToolCallCount || 0,
+        ],
       ]),
     });
   } else {
@@ -7776,6 +8698,10 @@ async function runRepoReviewAgenticReview(input: {
     },
     onTurnProgress: async (turns) => {
       finalTurns = turns;
+      if (input.executionStats) {
+        input.executionStats.mainReadonlyToolCallCount =
+          countRepoReviewToolCallItems(finalTurns);
+      }
       await emitProgress();
     },
     onStatusEvent: buildRepoReviewAgentStatusProgressHandler({
@@ -7821,6 +8747,10 @@ async function runRepoReviewAgenticReview(input: {
       ['overall', parsed.overall],
       ['summary', parsed.summary],
       ['subagent_results', subagentResults.length],
+      [
+        'main_readonly_tool_calls',
+        input.executionStats?.mainReadonlyToolCallCount || 0,
+      ],
     ]),
   });
   if (usedExtractor) {
@@ -11199,7 +12129,10 @@ async function prepareReviewContext(
       profile,
     );
   }
-  return enrichReviewPreparedContextWithCodeIndex({ repository, prepared });
+  return enrichReviewPreparedContextWithCodeIntelligence({
+    repository,
+    prepared,
+  });
 }
 
 function computeBlocking(
@@ -12332,6 +13265,7 @@ async function executeRepoReviewEvent(
       executionStats = buildInitialRepoReviewExecutionStats({
         diffText: prepared.diffText,
         changedFiles: prepared.changedFiles,
+        evidenceBundle: prepared.evidenceBundle,
       });
       const activeExecutionStats = executionStats;
       const maxWorkerCount = await resolveRepoReviewMaxSubagents();
@@ -12353,10 +13287,26 @@ async function executeRepoReviewEvent(
             ['diff_bytes', Buffer.byteLength(prepared.diffText, 'utf8')],
             ['workspace_path', reviewWorkspacePath || '-'],
             ['total_budget', REPO_REVIEW_AGENTIC_DEFAULT_MAX_TOTAL_READ_BYTES],
+            [
+              'codemap_status',
+              activeExecutionStats.codeMapContextStatus || 'unknown',
+            ],
+            [
+              'codeindex_status',
+              activeExecutionStats.codeIndexContextStatus || 'unknown',
+            ],
           ]),
           outputText: formatProgressKeyValues([
             ['prepared_files', prepared.changedFiles.length],
             ['diff_bytes', Buffer.byteLength(prepared.diffText, 'utf8')],
+            [
+              'evidence_bundle_bytes',
+              activeExecutionStats.evidenceBundleBytes || 0,
+            ],
+            [
+              'changed_functions',
+              activeExecutionStats.changedFunctionCount || 0,
+            ],
           ]),
         },
       );

@@ -1011,6 +1011,11 @@ export interface RepoReviewRun {
     timedOutWorkerCount?: number;
     reducerCallCount?: number;
     evidenceBundleBytes?: number;
+    codeMapContextStatus?: 'ready' | 'stale' | 'missing' | 'error';
+    codeIndexContextStatus?: 'ready' | 'stale' | 'missing' | 'error';
+    changedFunctionCount?: number;
+    subagentToolCallCount?: number;
+    mainReadonlyToolCallCount?: number;
     timeoutFollowupCount?: number;
     partialWorkerResultCount?: number;
     fallbackMainReviewCount?: number;

@@ -2206,6 +2206,18 @@
   margin-top: 8px;
 }
 
+.repo-review-progress-nested-turns {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-subtle, rgba(148, 163, 184, 0.18));
+}
+
+.repo-review-evidence-status-grid {
+  margin-top: 12px;
+}
+
 .repo-review-progress-turn-tag {
   display: inline-flex;
   align-items: center;

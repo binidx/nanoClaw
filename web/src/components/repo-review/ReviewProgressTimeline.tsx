@@ -218,6 +218,7 @@ export function buildReviewProgressEntries(run: RepoReviewRun) {
         turnId: string;
         groupKey: string;
         groupLabel: string;
+        parentToolCallId?: string;
         phase?: string;
       }
     | {
@@ -228,6 +229,7 @@ export function buildReviewProgressEntries(run: RepoReviewRun) {
         turnId: string;
         groupKey: string;
         groupLabel: string;
+        parentToolCallId?: string;
         phase?: string;
       }
     | {
@@ -238,6 +240,7 @@ export function buildReviewProgressEntries(run: RepoReviewRun) {
         turnId: string;
         groupKey: string;
         groupLabel: string;
+        parentToolCallId?: string;
         phase?: string;
       }
     | {
@@ -248,6 +251,7 @@ export function buildReviewProgressEntries(run: RepoReviewRun) {
         turnId: string;
         groupKey: string;
         groupLabel: string;
+        parentToolCallId?: string;
         phase?: string;
       }
   > = [];
@@ -277,6 +281,7 @@ export function buildReviewProgressEntries(run: RepoReviewRun) {
           turnId: turn.id,
           groupKey,
           groupLabel,
+          parentToolCallId: turn.parentToolCallId,
           phase: turn.phase,
         });
         continue;
@@ -290,6 +295,7 @@ export function buildReviewProgressEntries(run: RepoReviewRun) {
           turnId: turn.id,
           groupKey,
           groupLabel,
+          parentToolCallId: turn.parentToolCallId,
           phase: turn.phase,
         });
         continue;
@@ -303,6 +309,7 @@ export function buildReviewProgressEntries(run: RepoReviewRun) {
           turnId: turn.id,
           groupKey,
           groupLabel,
+          parentToolCallId: turn.parentToolCallId,
           phase: turn.phase,
         });
       }
@@ -316,6 +323,7 @@ export function buildReviewProgressEntries(run: RepoReviewRun) {
         turnId: turn.id,
         groupKey,
         groupLabel,
+        parentToolCallId: turn.parentToolCallId,
         phase: turn.phase,
       });
     }
@@ -405,12 +413,14 @@ export function ReviewProgressTimeline({
     kindLabel,
     open,
     phaseLabel,
+    children,
   }: {
     key: string;
     item: ToolCallTurnItem;
     kindLabel: string;
     open: boolean;
     phaseLabel?: string;
+    children?: ReactNode;
   }) => (
     <div
       key={key}
@@ -489,6 +499,11 @@ export function ReviewProgressTimeline({
                 ) : null}
               </>
             )}
+            {children ? (
+              <div className="repo-review-progress-nested-turns">
+                {children}
+              </div>
+            ) : null}
           </div>
         </details>
       </div>
@@ -535,6 +550,7 @@ export function ReviewProgressTimeline({
 
   const renderTimelineEntry = (
     entry: Exclude<ReviewProgressEntry, { kind: 'progress_step' }>,
+    nestedChildren?: ReactNode,
   ) => {
     const phaseLabel = getReviewTurnPhaseLabel(entry.phase);
     if (entry.kind === 'assistant_message') {
@@ -689,6 +705,7 @@ export function ReviewProgressTimeline({
         kindLabel: t('timeline.tool'),
         open: entry.item.status === 'failed',
         phaseLabel,
+        children: nestedChildren,
       });
     }
     return (
@@ -709,6 +726,24 @@ export function ReviewProgressTimeline({
       .map((phase) => getReviewTurnPhaseLabel(phase))
       .filter(Boolean);
     const defaultOpen = !shouldCollapseTurnGroup(group.groupKey);
+    const toolEntryIds = new Set(
+      group.entries
+        .filter((entry) => entry.kind === 'tool_call')
+        .map((entry) => entry.item.id),
+    );
+    const childEntriesByToolCallId = new Map<string, typeof turnEntries>();
+    for (const entry of group.entries) {
+      if (!entry.parentToolCallId || !toolEntryIds.has(entry.parentToolCallId)) {
+        continue;
+      }
+      const children = childEntriesByToolCallId.get(entry.parentToolCallId) || [];
+      children.push(entry);
+      childEntriesByToolCallId.set(entry.parentToolCallId, children);
+    }
+    const topLevelEntries = group.entries.filter(
+      (entry) =>
+        !entry.parentToolCallId || !toolEntryIds.has(entry.parentToolCallId),
+    );
     return (
       <details
         key={`group:${group.groupKey}`}
@@ -734,7 +769,20 @@ export function ReviewProgressTimeline({
           </span>
         </summary>
         <div className="repo-review-progress-turn-group-body">
-          {group.entries.map((entry) => renderTimelineEntry(entry))}
+          {topLevelEntries.map((entry) => {
+            const nestedEntries =
+              entry.kind === 'tool_call'
+                ? childEntriesByToolCallId.get(entry.item.id) || []
+                : [];
+            return renderTimelineEntry(
+              entry,
+              nestedEntries.length > 0
+                ? nestedEntries.map((nestedEntry) =>
+                    renderTimelineEntry(nestedEntry),
+                  )
+                : undefined,
+            );
+          })}
         </div>
       </details>
     );
