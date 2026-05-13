@@ -122,6 +122,7 @@ interface AgentRunInput {
   chatJid: string;
   isMain: boolean;
   isScheduledTask?: boolean;
+  systemPromptProfile?: 'default_agent' | 'scheduled_lightweight';
   suppressDefaultSystemPrompt?: boolean;
   suppressScheduledTaskPreamble?: boolean;
   disableDefaultWebSearch?: boolean;
@@ -530,6 +531,8 @@ function buildClaudeSystemPromptAppend(
     }),
     assistantRuleMode: ASSISTANT_RULE_MODE,
     soulSystemPrompt: SOUL_SYSTEM_PROMPT,
+    lightweightTaskMode:
+      agentInput?.systemPromptProfile === 'scheduled_lightweight',
   });
 }
 
@@ -2833,6 +2836,8 @@ function buildResponsesInstructions(
     }),
     assistantRuleMode: ASSISTANT_RULE_MODE,
     soulSystemPrompt: SOUL_SYSTEM_PROMPT,
+    lightweightTaskMode:
+      agentInput?.systemPromptProfile === 'scheduled_lightweight',
   });
 }
 

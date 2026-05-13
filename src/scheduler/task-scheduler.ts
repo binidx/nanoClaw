@@ -9,6 +9,8 @@ import {
 } from '../agent/agent-runner.js';
 import {
   claimTaskExecution,
+  getConversationOwnerUserId,
+  getDefaultProviderForUser,
   getDueTasks,
   getTaskById,
   getTaskSnapshots,
@@ -23,6 +25,12 @@ import { RegisteredGroup, ScheduledTask } from '../types.js';
 import { computeInitialNextRun } from './task-schedule.js';
 import { createModuleLogger } from '../logger.js';
 import { runWithTenant, SYSTEM_USER_ID } from '../tenant/tenant-context.js';
+import { resolveAssistantRuntimeConfig } from '../assistant/assistant-runtime.js';
+import { buildSoulPrompt } from '../soul/soul-service.js';
+import { resolveRunnerPromptSegments } from '../prompt/runner-prompt-runtime.js';
+import { buildCompiledPromptEnvelope } from '../prompt/prompt-service.js';
+import type { AgentPromptInput } from '../types.js';
+import type { PromptSegment, PromptSourceResolution } from '../types/prompt.js';
 
 const schedulerLog = createModuleLogger('scheduler');
 
@@ -146,6 +154,142 @@ function clearTaskScheduled(taskId: string): void {
   scheduledTaskIds.delete(taskId);
 }
 
+export async function buildScheduledTaskPromptEnvelope(
+  task: ScheduledTask,
+  group: RegisteredGroup,
+): Promise<{
+  prompt: AgentPromptInput;
+  assistantRuntime: Awaited<ReturnType<typeof resolveAssistantRuntimeConfig>>;
+  resolvedUserId?: string;
+  segments: PromptSegment[];
+  resolution: PromptSourceResolution[];
+}> {
+  const ownerUserId = await getConversationOwnerUserId(task.chat_jid);
+  const resolvedUserId =
+    ownerUserId && ownerUserId !== SYSTEM_USER_ID
+      ? ownerUserId
+      : task.created_by && task.created_by !== SYSTEM_USER_ID
+        ? task.created_by
+        : undefined;
+
+  const boundAssistantId = group.assistantId?.trim() || null;
+  const shouldInheritSoul = !boundAssistantId;
+  let soulPrompt: string | undefined;
+  if (shouldInheritSoul && resolvedUserId) {
+    soulPrompt = await buildSoulPrompt(resolvedUserId, task.chat_jid, task.prompt);
+  }
+
+  const assistantRuntime = await resolveAssistantRuntimeConfig(
+    group,
+    {},
+    {
+      requireEnabled: true,
+      soulPrompt,
+      disableSoul: false,
+    },
+  );
+
+  const providerType =
+    assistantRuntime.providerType ||
+    (resolvedUserId
+      ? (await getDefaultProviderForUser(resolvedUserId))?.type || null
+      : null) ||
+    'claude';
+
+  const projectDir =
+    assistantRuntime.projectRootOverride || resolveGroupFolderPath(group.folder);
+  const runnerSegments = await resolveRunnerPromptSegments({
+    providerType: providerType === 'codex' ? 'codex' : 'claude',
+    systemPromptProfile: 'scheduled_lightweight',
+    targetUserId: resolvedUserId,
+    projectDir,
+    managedSkillIds: assistantRuntime.managedSkillIds,
+    userSkillIds: assistantRuntime.userSkillIds,
+    extraDirectories: (assistantRuntime.repoBindingDirectories || [])
+      .slice(1)
+      .map((hostPath, index) => ({
+        label: `extra-${index + 1}`,
+        hostPath,
+      })),
+  });
+
+  const stableSegments: PromptSegment[] = [];
+  let assistantInstructionSegment: PromptSegment | null = null;
+  let soulSegment: PromptSegment | null = null;
+
+  if (assistantRuntime.soulSystemPrompt) {
+    soulSegment = {
+      id: 'soul_system_prompt',
+      label: 'Soul System Prompt',
+      promptKey: 'assistant.soul.primary_policy_wrapper',
+      layer: 'system_persona',
+      mutability: 'configurable',
+      cacheSection: 'stable',
+      source: soulPrompt ? 'soul' : 'builtin',
+      content: assistantRuntime.soulSystemPrompt,
+    };
+  }
+
+  if (assistantRuntime.instructionsAppend) {
+    assistantInstructionSegment = {
+      id: 'assistant_instructions_append',
+      label: 'Assistant Instructions Append',
+      layer: 'system_policy',
+      mutability: 'derived',
+      cacheSection: 'stable',
+      source: 'assistant_config',
+      content: assistantRuntime.instructionsAppend,
+    };
+  }
+
+  if (assistantInstructionSegment && assistantRuntime.instructionsMode !== 'append') {
+    stableSegments.push(assistantInstructionSegment);
+  }
+  if (soulSegment) {
+    stableSegments.push(soulSegment);
+  }
+  stableSegments.push(...runnerSegments.segments);
+  if (assistantInstructionSegment && assistantRuntime.instructionsMode === 'append') {
+    stableSegments.push(assistantInstructionSegment);
+  }
+
+  const compiledPrompt = buildCompiledPromptEnvelope({
+    stableSystemPrompt: stableSegments.map((segment) => segment.content).join('\n\n'),
+    volatileSystemPrompt: '',
+    contextBlocks: [],
+    userPrompt: task.prompt,
+    providerInputText: task.prompt,
+    segments: [
+      ...stableSegments,
+      {
+        id: 'scheduled_task_user_prompt',
+        label: 'Scheduled Task User Prompt',
+        layer: 'user_input',
+        mutability: 'derived',
+        cacheSection: 'volatile',
+        source: 'conversation_context',
+        content: task.prompt,
+      },
+    ],
+  });
+
+  return {
+    prompt: {
+      text: task.prompt,
+      stableSystemPrompt: compiledPrompt.stableSystemPrompt,
+      volatileSystemPrompt: compiledPrompt.volatileSystemPrompt,
+      userPrompt: compiledPrompt.userPrompt,
+      contextBlocks: compiledPrompt.contextBlocks,
+      stablePrefixFingerprint: compiledPrompt.stablePrefixFingerprint || undefined,
+      cacheFingerprint: compiledPrompt.cacheFingerprint || undefined,
+    },
+    assistantRuntime,
+    resolvedUserId,
+    segments: stableSegments,
+    resolution: runnerSegments.resolution,
+  };
+}
+
 async function runTask(
   task: ScheduledTask,
   deps: SchedulerDependencies,
@@ -217,6 +361,7 @@ async function runTask(
   const sessions = deps.getSessions();
   const sessionId =
     task.context_mode === 'group' ? sessions[task.group_folder] : undefined;
+  const promptEnvelope = await buildScheduledTaskPromptEnvelope(task, group);
 
   // After the task produces a result, close the agent promptly.
   // Tasks are single-turn — no need to wait IDLE_TIMEOUT (30 min) for the
@@ -236,13 +381,32 @@ async function runTask(
     const output = await runAgentProcess(
       group,
       {
-        prompt: { text: task.prompt },
+        prompt: promptEnvelope.prompt,
         sessionId,
         groupFolder: task.group_folder,
         chatJid: task.chat_jid,
         isMain,
         isScheduledTask: true,
+        systemPromptProfile: 'scheduled_lightweight',
+        suppressScheduledTaskPreamble: true,
         assistantName: await getAssistantName(),
+        managedSkillIds: promptEnvelope.assistantRuntime.managedSkillIds,
+        managedMcpServerIds: promptEnvelope.assistantRuntime.managedMcpServerIds,
+        userSkillIds: promptEnvelope.assistantRuntime.userSkillIds,
+        userMcpServerIds: promptEnvelope.assistantRuntime.userMcpServerIds,
+        managedKbIds: promptEnvelope.assistantRuntime.managedKbIds,
+        resolvedManagedMcpServers: promptEnvelope.assistantRuntime.resolvedMcpServers,
+        projectRootOverride: promptEnvelope.assistantRuntime.projectRootOverride,
+        workspaceExtraDirectories:
+          promptEnvelope.assistantRuntime.repoBindingDirectories?.slice(1),
+        allowedDirectoriesOverride:
+          promptEnvelope.assistantRuntime.repoBindingDirectories,
+        providerOverrideId: promptEnvelope.assistantRuntime.providerOverrideId,
+        modelOverride: promptEnvelope.assistantRuntime.modelOverride,
+        soulSystemPrompt: promptEnvelope.assistantRuntime.soulSystemPrompt,
+        instructionsAppend: promptEnvelope.assistantRuntime.instructionsAppend,
+        assistantRuleMode: promptEnvelope.assistantRuntime.instructionsMode,
+        userId: promptEnvelope.resolvedUserId,
       },
       (proc, agentLabel) =>
         deps.onProcess(task.chat_jid, proc, agentLabel, task.group_folder),

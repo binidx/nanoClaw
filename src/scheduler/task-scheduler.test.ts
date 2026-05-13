@@ -1,8 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { _initTestDatabase, createTask, getTaskById } from '../db.js';
+import { buildRunnerPromptPreview } from '../prompt/runner-prompt-runtime.js';
 import {
   _resetSchedulerLoopForTests,
+  buildScheduledTaskPromptEnvelope,
   computeTaskFailurePlan,
   computeNextRun,
   enqueueTaskRun,
@@ -86,6 +88,47 @@ describe('task scheduler', () => {
 
     const task = await getTaskById('task-missing-group');
     expect(task?.status).toBe('paused');
+  });
+
+  it('builds scheduled task prompt envelopes with lightweight runtime guidance', async () => {
+    await createTask({
+      id: 'task-envelope',
+      group_folder: 'test-group',
+      chat_jid: 'web:test-envelope',
+      prompt: '提醒我下班打卡',
+      schedule_type: 'once',
+      schedule_value: '2026-02-22T00:00:00.000Z',
+      context_mode: 'isolated',
+      next_run: new Date(Date.now() + 60_000).toISOString(),
+      status: 'active',
+      created_at: '2026-02-22T00:00:00.000Z',
+    });
+
+    const task = await getTaskById('task-envelope');
+    expect(task).toBeTruthy();
+
+    const envelope = await buildScheduledTaskPromptEnvelope(task!, {
+      name: 'Test Group',
+      folder: 'test-group',
+      trigger: '@Andy',
+      added_at: '2026-02-22T00:00:00.000Z',
+      requiresTrigger: false,
+    });
+
+    expect(envelope.prompt.text).toBe('提醒我下班打卡');
+    expect(envelope.prompt.userPrompt).toBe('提醒我下班打卡');
+    expect(envelope.prompt.stableSystemPrompt).toContain(
+      'You are executing a scheduled assistant task for the user.',
+    );
+    expect(envelope.prompt.stableSystemPrompt).toContain(
+      'This run was triggered by an existing scheduled task.',
+    );
+    expect(envelope.prompt.stableSystemPrompt).not.toContain(
+      'You are a helpful coding assistant with access to tools.',
+    );
+    expect(envelope.prompt.stableSystemPrompt).not.toContain(
+      'mcp__nanoclaw__browser_status',
+    );
   });
 
   it('computeNextRun anchors interval tasks to scheduled time to prevent drift', () => {
@@ -203,6 +246,24 @@ describe('task scheduler', () => {
     });
     expect(queue.enqueueTask).toHaveBeenCalledTimes(1);
     expect(enqueued).toHaveLength(1);
+  });
+
+  it('scheduled runtime preview omits generic coding agent guidance', async () => {
+    const preview = await buildRunnerPromptPreview({
+      providerType: 'codex',
+      projectDir: '/workspace/group',
+      systemPromptProfile: 'scheduled_lightweight',
+      managedSkillIds: ['imagegen'],
+    });
+
+    expect(preview.systemPromptText).toContain(
+      'You are executing a scheduled assistant task for the user.',
+    );
+    expect(preview.systemPromptText).not.toContain(
+      'You are a helpful coding assistant with access to tools.',
+    );
+    expect(preview.systemPromptText).not.toContain('web_search');
+    expect(preview.systemPromptText).not.toContain('Sub-Agent Policy');
   });
 
   it('does not enqueue the same due task again while it is still queued', async () => {

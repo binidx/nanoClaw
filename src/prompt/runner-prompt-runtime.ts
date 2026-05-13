@@ -90,6 +90,7 @@ export async function resolveRunnerPromptSegments(input: {
   providerType: 'claude' | 'codex';
   targetUserId?: string | null;
   projectDir: string;
+  systemPromptProfile?: 'default_agent' | 'scheduled_lightweight';
   managedSkillIds?: string[];
   userSkillIds?: string[];
   subagentRuntime?: {
@@ -105,6 +106,7 @@ export async function resolveRunnerPromptSegments(input: {
   segments: PromptSegment[];
   resolution: PromptSourceResolution[];
 }> {
+  const profile = input.systemPromptProfile || 'default_agent';
   const memoryConfig = await getMemoryContextConfig();
   const webSearchEnabled =
     String(await getConfigValue('WEB_SEARCH_ENABLED').catch(() => 'true'))
@@ -127,12 +129,20 @@ export async function resolveRunnerPromptSegments(input: {
     resolveRunnerSegment({
       promptKey:
         input.providerType === 'claude'
-          ? 'runner.base.claude_tools_policy'
-          : 'runner.base.codex_tools_policy',
+          ? profile === 'scheduled_lightweight'
+            ? 'runner.base.claude_scheduled_lightweight'
+            : 'runner.base.claude_tools_policy'
+          : profile === 'scheduled_lightweight'
+            ? 'runner.base.codex_scheduled_lightweight'
+            : 'runner.base.codex_tools_policy',
       label:
         input.providerType === 'claude'
-          ? 'Runner Claude Base Policy'
-          : 'Runner Codex Base Policy',
+          ? profile === 'scheduled_lightweight'
+            ? 'Runner Claude Scheduled Base Policy'
+            : 'Runner Claude Base Policy'
+          : profile === 'scheduled_lightweight'
+            ? 'Runner Codex Scheduled Base Policy'
+            : 'Runner Codex Base Policy',
       targetUserId: input.targetUserId,
       variables:
         input.providerType === 'codex'
@@ -169,102 +179,112 @@ export async function resolveRunnerPromptSegments(input: {
             : '',
       },
     }),
-    resolveRunnerSegment({
-      promptKey: 'runner.tools.browser_guidance',
-      label: 'Runner Browser Guidance',
-      targetUserId: input.targetUserId,
-      variables: {
-        nativeWebLine: webSearchEnabled
-          ? 'Use native `web_search` for general internet lookup when it is available.'
-          : 'NanoClaw default web search is disabled by configuration. Use provider-native WebSearch/WebFetch when web access is needed.',
-        fetchLine:
-          'Use `fetch_url` to read specific pages, extract readable article text, and continue long docs with increasing `page` values.',
-        fallbackLine:
-          'If native web search is unavailable in compatibility mode, fall back to `search_web`.',
-        searchStyleLine:
-          'For search tools (`search_web`, `memory_search`), use concise keywords (2-6 words), not full sentences. Include specific terms the target document would contain.',
-        browserEntryLine:
-          'When browser control is enabled, treat MCP browser tools as the primary entrypoint: use `mcp__nanoclaw__browser_status` or `mcp__nanoclaw__browser_start` first, then `mcp__nanoclaw__browser_role_snapshot` and `mcp__nanoclaw__browser_act`.',
-        browserReuseLine:
-          'Browser snapshots are reusable by default and only need refresh after page changes, ref failures, or explicit force refresh.',
-        browserWaitLine:
-          'After interactions that trigger page updates, prefer `mcp__nanoclaw__browser_act` with `kind=waitFor` and selector/url/title conditions instead of fixed sleep waits.',
-      },
-    }),
-    resolveRunnerSegment({
-      promptKey: 'runner.tools.skills_guidance',
-      label: 'Runner Skills Guidance',
-      targetUserId: input.targetUserId,
-      variables: {
-        skillList: buildSkillList([
-          ...(input.managedSkillIds || []),
-          ...(input.userSkillIds || []),
+    ...(profile === 'scheduled_lightweight'
+      ? [
+          resolveRunnerSegment({
+            promptKey: 'runner.task.scheduled_execution',
+            label: 'Runner Scheduled Task Execution Hint',
+            targetUserId: input.targetUserId,
+          }),
+        ]
+      : [
+          resolveRunnerSegment({
+            promptKey: 'runner.tools.browser_guidance',
+            label: 'Runner Browser Guidance',
+            targetUserId: input.targetUserId,
+            variables: {
+              nativeWebLine: webSearchEnabled
+                ? 'Use native `web_search` for general internet lookup when it is available.'
+                : 'NanoClaw default web search is disabled by configuration. Use provider-native WebSearch/WebFetch when web access is needed.',
+              fetchLine:
+                'Use `fetch_url` to read specific pages, extract readable article text, and continue long docs with increasing `page` values.',
+              fallbackLine:
+                'If native web search is unavailable in compatibility mode, fall back to `search_web`.',
+              searchStyleLine:
+                'For search tools (`search_web`, `memory_search`), use concise keywords (2-6 words), not full sentences. Include specific terms the target document would contain.',
+              browserEntryLine:
+                'When browser control is enabled, treat MCP browser tools as the primary entrypoint: use `mcp__nanoclaw__browser_status` or `mcp__nanoclaw__browser_start` first, then `mcp__nanoclaw__browser_role_snapshot` and `mcp__nanoclaw__browser_act`.',
+              browserReuseLine:
+                'Browser snapshots are reusable by default and only need refresh after page changes, ref failures, or explicit force refresh.',
+              browserWaitLine:
+                'After interactions that trigger page updates, prefer `mcp__nanoclaw__browser_act` with `kind=waitFor` and selector/url/title conditions instead of fixed sleep waits.',
+            },
+          }),
+          resolveRunnerSegment({
+            promptKey: 'runner.tools.skills_guidance',
+            label: 'Runner Skills Guidance',
+            targetUserId: input.targetUserId,
+            variables: {
+              skillList: buildSkillList([
+                ...(input.managedSkillIds || []),
+                ...(input.userSkillIds || []),
+              ]),
+            },
+          }),
+          resolveRunnerSegment({
+            promptKey: 'runner.tools.subagent_guidance',
+            label: 'Runner Subagent Guidance',
+            targetUserId: input.targetUserId,
+            variables: (() => {
+              if (!subagents.enabled) {
+                return {
+                  statusLine: 'You do not have access to sub-agents. Complete all tasks directly.',
+                  roleLine: '',
+                  scopeLine: '',
+                  budgetLine: '',
+                  spawnLine: '',
+                  limitsLine: '',
+                  guidelineLine1: '',
+                  guidelineLine2: '',
+                  guidelineLine3: '',
+                  guidelineLine4: '',
+                };
+              }
+              if (subagents.currentDepth >= subagents.maxDepth) {
+                return {
+                  statusLine: `Current delegation depth: ${subagents.currentDepth}/${subagents.maxDepth}`,
+                  roleLine: 'You are already at the maximum recursive delegation depth.',
+                  scopeLine: 'Do not spawn any additional sub-agents. Complete the assigned work directly.',
+                  budgetLine: '',
+                  spawnLine: '',
+                  limitsLine: '',
+                  guidelineLine1: '',
+                  guidelineLine2: '',
+                  guidelineLine3: '',
+                  guidelineLine4: '',
+                };
+              }
+              if (subagents.currentControlScope === 'none') {
+                return {
+                  statusLine: `Current delegation depth: ${subagents.currentDepth}/${subagents.maxDepth}`,
+                  roleLine: `Current runtime role: ${subagents.currentRole}`,
+                  scopeLine: 'This runtime is running with child delegation disabled.',
+                  budgetLine: 'Do not spawn any additional sub-agents. Complete the assigned work directly.',
+                  spawnLine: '',
+                  limitsLine: '',
+                  guidelineLine1: '',
+                  guidelineLine2: '',
+                  guidelineLine3: '',
+                  guidelineLine4: '',
+                };
+              }
+              return {
+                statusLine: `Current runtime role: ${subagents.currentRole}`,
+                roleLine: `Child delegation scope: ${subagents.currentControlScope}`,
+                scopeLine: `Current delegation depth: ${subagents.currentDepth}/${subagents.maxDepth}`,
+                budgetLine: `Maximum concurrent sub-agents: ${subagents.maxActive}`,
+                spawnLine:
+                  'Use sub-agents proactively when frontend/backend work, independent investigations, or bounded implementation tasks can run in parallel.',
+                limitsLine:
+                  'Do not assign overlapping file ownership to multiple worker sub-agents, and do not delegate tiny fixes where overhead exceeds direct work.',
+                guidelineLine1: '- explorer: Focused codebase discovery (read-only operations)',
+                guidelineLine2: '- worker: Bounded implementation with disjoint file scope',
+                guidelineLine3: '- Sub-agents at the leaf depth layer cannot delegate further',
+                guidelineLine4: '- Wait for sub-agent completion before synthesizing results',
+              };
+            })(),
+          }),
         ]),
-      },
-    }),
-    resolveRunnerSegment({
-      promptKey: 'runner.tools.subagent_guidance',
-      label: 'Runner Subagent Guidance',
-      targetUserId: input.targetUserId,
-      variables: (() => {
-        if (!subagents.enabled) {
-          return {
-            statusLine: 'You do not have access to sub-agents. Complete all tasks directly.',
-            roleLine: '',
-            scopeLine: '',
-            budgetLine: '',
-            spawnLine: '',
-            limitsLine: '',
-            guidelineLine1: '',
-            guidelineLine2: '',
-            guidelineLine3: '',
-            guidelineLine4: '',
-          };
-        }
-        if (subagents.currentDepth >= subagents.maxDepth) {
-          return {
-            statusLine: `Current delegation depth: ${subagents.currentDepth}/${subagents.maxDepth}`,
-            roleLine: 'You are already at the maximum recursive delegation depth.',
-            scopeLine: 'Do not spawn any additional sub-agents. Complete the assigned work directly.',
-            budgetLine: '',
-            spawnLine: '',
-            limitsLine: '',
-            guidelineLine1: '',
-            guidelineLine2: '',
-            guidelineLine3: '',
-            guidelineLine4: '',
-          };
-        }
-        if (subagents.currentControlScope === 'none') {
-          return {
-            statusLine: `Current delegation depth: ${subagents.currentDepth}/${subagents.maxDepth}`,
-            roleLine: `Current runtime role: ${subagents.currentRole}`,
-            scopeLine: 'This runtime is running with child delegation disabled.',
-            budgetLine: 'Do not spawn any additional sub-agents. Complete the assigned work directly.',
-            spawnLine: '',
-            limitsLine: '',
-            guidelineLine1: '',
-            guidelineLine2: '',
-            guidelineLine3: '',
-            guidelineLine4: '',
-          };
-        }
-        return {
-          statusLine: `Current runtime role: ${subagents.currentRole}`,
-          roleLine: `Child delegation scope: ${subagents.currentControlScope}`,
-          scopeLine: `Current delegation depth: ${subagents.currentDepth}/${subagents.maxDepth}`,
-          budgetLine: `Maximum concurrent sub-agents: ${subagents.maxActive}`,
-          spawnLine:
-            'Use sub-agents proactively when frontend/backend work, independent investigations, or bounded implementation tasks can run in parallel.',
-          limitsLine:
-            'Do not assign overlapping file ownership to multiple worker sub-agents, and do not delegate tiny fixes where overhead exceeds direct work.',
-          guidelineLine1: '- explorer: Focused codebase discovery (read-only operations)',
-          guidelineLine2: '- worker: Bounded implementation with disjoint file scope',
-          guidelineLine3: '- Sub-agents at the leaf depth layer cannot delegate further',
-          guidelineLine4: '- Wait for sub-agent completion before synthesizing results',
-        };
-      })(),
-    }),
   ]);
 
   const resolvedEntries = results.filter((entry) => entry.segment.content);
@@ -293,6 +313,7 @@ export async function buildRunnerPromptPreview(input: {
   providerType: 'claude' | 'codex';
   targetUserId?: string | null;
   projectDir: string;
+  systemPromptProfile?: 'default_agent' | 'scheduled_lightweight';
   managedSkillIds?: string[];
   userSkillIds?: string[];
   extraDirectories?: Array<{ label: string; hostPath: string }>;
@@ -304,8 +325,12 @@ export async function buildRunnerPromptPreview(input: {
     featureScope: 'runner',
     promptKey:
       input.providerType === 'claude'
-        ? 'runner.claude_runtime'
-        : 'runner.codex_runtime',
+        ? input.systemPromptProfile === 'scheduled_lightweight'
+          ? 'runner.claude_scheduled_runtime'
+          : 'runner.claude_runtime'
+        : input.systemPromptProfile === 'scheduled_lightweight'
+          ? 'runner.codex_scheduled_runtime'
+          : 'runner.codex_runtime',
     targetUserId: input.targetUserId || null,
     stableSystemPrompt: systemPromptText,
     volatileSystemPrompt: '',
