@@ -4,7 +4,7 @@
   margin: 0 auto;
 }
 
-.knowledge-page .page-header {
+.knowledge-page .nc-page-header-row {
   align-items: flex-start;
 }
 
@@ -21,7 +21,7 @@
   flex-wrap: wrap;
 }
 
-.knowledge-page .page-header-actions {
+.knowledge-page .nc-page-header-actions {
   display: flex;
   align-items: center;
   gap: 8px;

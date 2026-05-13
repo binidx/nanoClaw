@@ -1,6 +1,7 @@
 import type {
   WorkflowArtifactPolicy,
   WorkflowConfig,
+  WorkflowEditorMode,
   WorkflowEvaluationPolicy,
   WorkflowGuardrailsConfig,
   WorkflowKind,
@@ -21,6 +22,10 @@ const WORKFLOW_VISIBILITIES = new Set<WorkflowVisibility>([
   'private',
   'shared',
   'system',
+]);
+const WORKFLOW_EDITOR_MODES = new Set<WorkflowEditorMode>([
+  'legacy',
+  'fixed_pipeline_v1',
 ]);
 
 export const DEFAULT_WORKFLOW_MESSAGE_DELAY_MS = 15_000;
@@ -56,6 +61,13 @@ function asWorkflowVisibility(value: unknown): WorkflowVisibility {
     WORKFLOW_VISIBILITIES.has(value as WorkflowVisibility)
     ? (value as WorkflowVisibility)
     : 'private';
+}
+
+function asWorkflowEditorMode(value: unknown): WorkflowEditorMode {
+  return typeof value === 'string' &&
+    WORKFLOW_EDITOR_MODES.has(value as WorkflowEditorMode)
+    ? (value as WorkflowEditorMode)
+    : 'legacy';
 }
 
 function asMessageDelayMs(value: unknown): number {
@@ -166,6 +178,7 @@ export function normalizeWorkflowConfig(input: unknown): WorkflowConfig {
   return {
     kind: asWorkflowKind(raw.kind),
     visibility: asWorkflowVisibility(raw.visibility),
+    editorMode: asWorkflowEditorMode(raw.editorMode),
     repositoryPolicy: {
       ...(typeof repositoryPolicy.required === 'boolean'
         ? { required: repositoryPolicy.required }

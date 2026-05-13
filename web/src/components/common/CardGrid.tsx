@@ -53,13 +53,25 @@ export interface CardProps {
   children: React.ReactNode;
   onClick?: () => void;
   active?: boolean;
+  selected?: boolean;
+  interactive?: boolean;
+  variant?: 'default' | 'subtle' | 'elevated';
   className?: string;
 }
 
-export function Card({ children, onClick, active, className }: CardProps) {
+export function Card({
+  children,
+  onClick,
+  active,
+  selected,
+  interactive,
+  variant = 'default',
+  className,
+}: CardProps) {
+  const isInteractive = interactive ?? Boolean(onClick);
   return (
     <div
-      className={`nc-card${active ? ' nc-card-active' : ''}${onClick ? ' nc-card-clickable' : ''}${className ? ` ${className}` : ''}`}
+      className={`nc-card nc-card-variant-${variant}${active || selected ? ' nc-card-active' : ''}${isInteractive ? ' nc-card-clickable' : ''}${className ? ` ${className}` : ''}`}
       onClick={onClick}
       role={onClick ? 'button' : undefined}
       tabIndex={onClick ? 0 : undefined}

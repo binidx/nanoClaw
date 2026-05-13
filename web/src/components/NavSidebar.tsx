@@ -61,33 +61,19 @@ export function NavSidebar({
   return (
     <nav className={`nav-sidebar ${isCollapsed ? 'collapsed' : ''}`}>
       <div className="nav-logo">
-        <div className="logo-icon">N</div>
+        <button
+          type="button"
+          className="logo-icon"
+          onClick={() => setIsCollapsed(!isCollapsed)}
+          title={isCollapsed ? t('sidebar.expand') : t('sidebar.collapse')}
+          aria-label={isCollapsed ? t('sidebar.expand') : t('sidebar.collapse')}
+        >
+          N
+        </button>
         <div className="logo-copy">
           <span className="logo-text">NanoClaw</span>
           <span className="logo-subtext">AI Workspace</span>
         </div>
-        <button
-          className="nav-collapse-btn"
-          onClick={() => setIsCollapsed(!isCollapsed)}
-          title={isCollapsed ? t('sidebar.expand') : t('sidebar.collapse')}
-        >
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            {isCollapsed ? (
-              <path d="m13 17 5-5-5-5M6 17l5-5-5-5" />
-            ) : (
-              <path d="m11 17-5-5 5-5M18 17l-5-5 5-5" />
-            )}
-          </svg>
-        </button>
       </div>
 
       <div className="nav-section">

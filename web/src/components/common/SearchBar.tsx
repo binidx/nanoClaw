@@ -24,7 +24,16 @@ export function SearchBar({ value, onChange, placeholder, children }: SearchBarP
           placeholder={placeholder || t('common.searchBar.placeholder')}
         />
         {value && (
-          <button className="nc-search-clear" onClick={() => { onChange(''); inputRef.current?.focus(); }}>×</button>
+          <button
+            type="button"
+            className="nc-search-clear"
+            onClick={() => {
+              onChange('');
+              inputRef.current?.focus();
+            }}
+          >
+            ×
+          </button>
         )}
         {!value && <span className="nc-search-icon">⌕</span>}
       </div>

@@ -146,10 +146,12 @@ export function registerWorkflowRoutes(
         sendError(res, 400, 'name is required');
         return;
       }
-      const workflowConfig =
-        req.body?.workflow_config && typeof req.body.workflow_config === 'object'
-          ? normalizeWorkflowConfig(req.body.workflow_config)
-          : normalizeWorkflowConfig({});
+      const workflowConfig = normalizeWorkflowConfig({
+        editorMode: 'fixed_pipeline_v1',
+        ...(req.body?.workflow_config && typeof req.body.workflow_config === 'object'
+          ? req.body.workflow_config
+          : {}),
+      });
       if (
         requiresSystemWorkflowAdmin(workflowConfig) &&
         !(await runPermissionGuard(systemWorkflowGuard, req, res))
@@ -162,6 +164,9 @@ export function registerWorkflowRoutes(
           typeof req.body?.description === 'string' ? req.body.description : undefined,
         workflow_config: workflowConfig,
       });
+      if (workflowConfig.editorMode === 'fixed_pipeline_v1') {
+        await db.seedFixedPipelineWorkflow(workflow.id);
+      }
       res.json(workflow);
     } catch (err) {
       logger.error({ err }, 'workflow routes: POST /workflows failed');
@@ -266,16 +271,16 @@ export function registerWorkflowRoutes(
         return;
       }
       const assistantId = normalizedString(req.body?.assistant_id);
-      const roleNodeId = normalizedString(req.body?.role_node_id);
+      let roleNodeId = normalizedString(req.body?.role_node_id);
       if (req.body.node_type === 'task') {
-        if (!roleNodeId) {
-          sendError(res, 400, 'role_node_id is required for task nodes');
-          return;
-        }
-        const roleNode = findWorkflowNode(snapshot, roleNodeId);
-        if (!roleNode || roleNode.node_type !== 'role') {
-          sendError(res, 400, 'role_node_id must reference a role node in this workflow');
-          return;
+        if (roleNodeId) {
+          const roleNode = findWorkflowNode(snapshot, roleNodeId);
+          if (!roleNode || roleNode.node_type !== 'role') {
+            sendError(res, 400, 'role_node_id must reference a role node in this workflow');
+            return;
+          }
+        } else {
+          roleNodeId = (await db.ensureWorkflowRuntimeRole(workflowId)).id;
         }
       }
       if (assistantId) {
@@ -341,15 +346,15 @@ export function registerWorkflowRoutes(
         }
         const roleNodeId = normalizedString(req.body?.role_node_id);
         if (!roleNodeId) {
-          sendError(res, 400, 'role_node_id is required for task nodes');
-          return;
+          patch.role_node_id = (await db.ensureWorkflowRuntimeRole(workflowId)).id;
+        } else {
+          const roleNode = findWorkflowNode(snapshot, roleNodeId);
+          if (!roleNode || roleNode.node_type !== 'role') {
+            sendError(res, 400, 'role_node_id must reference a role node in this workflow');
+            return;
+          }
+          patch.role_node_id = roleNodeId;
         }
-        const roleNode = findWorkflowNode(snapshot, roleNodeId);
-        if (!roleNode || roleNode.node_type !== 'role') {
-          sendError(res, 400, 'role_node_id must reference a role node in this workflow');
-          return;
-        }
-        patch.role_node_id = roleNodeId;
       }
       if (req.body?.assistant_id !== undefined) {
         if (typeof req.body.assistant_id !== 'string') {

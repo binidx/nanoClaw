@@ -35,25 +35,41 @@ function workflowTaskGroupFolder(
   return `wf_${digest}`;
 }
 
+function fallbackRoleNode(taskNode: WorkflowNodeRecord): WorkflowNodeRecord {
+  return {
+    ...taskNode,
+    id: taskNode.role_node_id || `workflow-runtime-role:${taskNode.workflow_id}`,
+    node_type: 'role',
+    name: 'Workflow Runtime',
+    description: 'Implicit workflow runtime role',
+    role_node_id: '',
+    config_json: JSON.stringify({
+      goal: 'Execute the workflow node reliably.',
+      backstory: '',
+    }),
+  };
+}
+
 function buildWorkflowRegisteredGroup(input: {
   workflowId: string;
-  roleNode: WorkflowNodeRecord;
+  roleNode?: WorkflowNodeRecord;
   taskNode: WorkflowNodeRecord;
 }): RegisteredGroup {
+  const roleNode = input.roleNode ?? fallbackRoleNode(input.taskNode);
   const folder = workflowTaskGroupFolder(
     input.workflowId,
-    input.roleNode.id,
+    roleNode.id,
     input.taskNode.id,
   );
   return {
-    name: `Workflow ${input.roleNode.name} - ${input.taskNode.name}`,
+    name: `Workflow ${roleNode.name} - ${input.taskNode.name}`,
     folder,
     trigger: '@workflow',
     added_at: new Date().toISOString(),
     assistantId:
       input.taskNode.assistant_id?.trim() ||
       parseTaskConfig(input.taskNode).assistantId?.trim() ||
-      input.roleNode.assistant_id?.trim() ||
+      roleNode.assistant_id?.trim() ||
       null,
     requiresTrigger: false,
     isMain: false,
@@ -113,7 +129,7 @@ export interface WorkflowAgentExecutionResult {
 }
 
 export function buildTaskPrompt(
-  roleNode: WorkflowNodeRecord,
+  roleNode: WorkflowNodeRecord | undefined,
   taskNode: WorkflowNodeRecord,
   runInput: string,
   upstreamMessages: Array<{
@@ -123,7 +139,8 @@ export function buildTaskPrompt(
     content: string;
   }>,
 ): string {
-  const roleCfg = parseRoleConfig(roleNode);
+  const resolvedRoleNode = roleNode ?? fallbackRoleNode(taskNode);
+  const roleCfg = parseRoleConfig(resolvedRoleNode);
   const taskCfg = parseTaskConfig(taskNode);
   const ctx = upstreamMessages
     .map(
@@ -132,10 +149,10 @@ export function buildTaskPrompt(
     )
     .join('\n\n');
   return `## Workflow Role
-${roleNode.name}
+${resolvedRoleNode.name}
 
 ## Goal
-${taskCfg.goal || roleCfg.goal || roleNode.description || 'Complete the assigned workflow responsibilities.'}
+${taskCfg.goal || roleCfg.goal || resolvedRoleNode.description || 'Complete the assigned workflow responsibilities.'}
 
 ## Backstory
 ${roleCfg.backstory || ''}
@@ -164,7 +181,7 @@ If this node is part of a two-way discussion loop, read the latest upstream mess
 export async function executeWorkflowTask(input: {
   workflowId: string;
   runId: string;
-  roleNode: WorkflowNodeRecord;
+  roleNode?: WorkflowNodeRecord;
   taskNode: WorkflowNodeRecord;
   runInput: string;
   upstreamMessages: Array<{

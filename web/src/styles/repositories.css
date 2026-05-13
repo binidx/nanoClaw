@@ -291,24 +291,15 @@
   width: 100%;
 }
 
-.repository-review-page .page-header {
-  padding-bottom: 10px;
+.repository-review-page-body .repo-review-panel--embedded.settings-section {
+  margin-bottom: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
-.repository-review-page .page-header-copy h2 {
-  font-size: 22px;
-  line-height: 1.15;
-}
-
-.repository-review-page .page-header-copy p {
-  margin-top: 4px;
-}
-
-.repository-page .page-header-copy h2 {
-  font-size: 22px;
-  line-height: 1.15;
-}
-
+.repository-review-page .nc-page-subtitle,
 .repository-page .page-header-copy p {
   max-width: 60ch;
 }

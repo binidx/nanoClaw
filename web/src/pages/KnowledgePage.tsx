@@ -14,6 +14,7 @@ import type {
   KnowledgeGraphHiddenCounts,
   KnowledgeGraphStats,
 } from '../components/KnowledgeGraph';
+import { PageHeader } from '../components/common';
 import { Pagination } from '../components/common/Pagination';
 import { NcSelect } from '../components/common/NcSelect';
 import { NcCheckbox } from '../components/common/NcCheckbox';
@@ -2948,65 +2949,72 @@ export function KnowledgePage({ apiBase }: KnowledgePageProps) {
 
   return (
     <div className="page-view knowledge-page">
-      <div className="page-header">
-        <div className="page-header-copy">
-          <h2>{t('知识库')}</h2>
-          <p>{t('管理知识库、文档索引和语义搜索。')}</p>
-        </div>
-        <div className="page-header-actions knowledge-page-actions">
-          <div className="knowledge-hero-stats">
-            <div className="knowledge-hero-chip">
-              <span>{t('知识库')}</span>
-              <strong>{bases.length}</strong>
+      <PageHeader
+        className="knowledge-page-header"
+        title={t('知识库')}
+        subtitle={t('管理知识库、文档索引和语义搜索。')}
+        meta={
+          <div className="nc-page-metrics">
+            <div className="nc-page-metric">
+              <span className="nc-page-metric-label">{t('知识库')}</span>
+              <strong className="nc-page-metric-value">{bases.length}</strong>
             </div>
-            <div className="knowledge-hero-chip">
-              <span>{t('已启用')}</span>
-              <strong>{enabledBaseCount}</strong>
+            <div className="nc-page-metric">
+              <span className="nc-page-metric-label">{t('已启用')}</span>
+              <strong className="nc-page-metric-value">{enabledBaseCount}</strong>
             </div>
-            <div className="knowledge-hero-chip">
-              <span>
+            <div className="nc-page-metric">
+              <span className="nc-page-metric-label">{t('检索能力')}</span>
+              <strong className="nc-page-metric-value">
+                {embeddingProviders.length > 0 ? t('混合检索') : t('FTS')}
+              </strong>
+              <span className="nc-page-metric-note">
                 {embeddingProviders.length > 0
                   ? t('支持混合检索')
                   : t('仅 FTS 检索')}
               </span>
             </div>
           </div>
-          <button
-            type="button"
-            className="btn-primary btn-sm"
-            onClick={openCreateDrawer}
-          >
-            {t('新建知识库')}
-          </button>
-          <button
-            type="button"
-            className="btn-outline btn-sm"
-            onClick={openGlobalSearch}
-          >
-            {t('全局搜索')}
-          </button>
-          <button
-            type="button"
-            className="btn-outline btn-xs"
-            disabled={rebuildingFts}
-            onClick={() => void handleRebuildFts()}
-            title={t('重建全文检索索引')}
-          >
-            {rebuildingFts ? t('重建中...') : t('重建 FTS')}
-          </button>
-          {embeddingProviders.length > 0 ? (
+        }
+        actions={
+          <div className="nc-page-actions-group knowledge-page-actions">
+            <button
+              type="button"
+              className="btn-primary btn-sm"
+              onClick={openCreateDrawer}
+            >
+              {t('新建知识库')}
+            </button>
+            <button
+              type="button"
+              className="btn-outline btn-sm"
+              onClick={openGlobalSearch}
+            >
+              {t('全局搜索')}
+            </button>
             <button
               type="button"
               className="btn-outline btn-xs"
-              disabled={backfilling}
-              onClick={() => void handleBackfillEmbeddings()}
-              title={t('为缺少向量的文档补录嵌入')}
+              disabled={rebuildingFts}
+              onClick={() => void handleRebuildFts()}
+              title={t('重建全文检索索引')}
             >
-              {backfilling ? t('补录中...') : t('向量补录')}
+              {rebuildingFts ? t('重建中...') : t('重建 FTS')}
             </button>
-          ) : null}
-        </div>
-      </div>
+            {embeddingProviders.length > 0 ? (
+              <button
+                type="button"
+                className="btn-outline btn-xs"
+                disabled={backfilling}
+                onClick={() => void handleBackfillEmbeddings()}
+                title={t('为缺少向量的文档补录嵌入')}
+              >
+                {backfilling ? t('补录中...') : t('向量补录')}
+              </button>
+            ) : null}
+          </div>
+        }
+      />
 
       <div className="page-body knowledge-page-body">
         {error ? (

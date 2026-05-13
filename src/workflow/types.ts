@@ -7,6 +7,12 @@ export type WorkflowKind =
   | 'system_capability'
   | 'general';
 export type WorkflowVisibility = 'private' | 'shared' | 'system';
+export type WorkflowEditorMode = 'legacy' | 'fixed_pipeline_v1';
+export type WorkflowPipelineNodeKind =
+  | 'input'
+  | 'retrieval'
+  | 'analysis'
+  | 'summary';
 export type WorkflowRunStatus =
   | 'pending'
   | 'running'
@@ -95,6 +101,7 @@ export interface WorkflowEvaluationPolicy {
 export interface WorkflowConfig {
   kind: WorkflowKind;
   visibility: WorkflowVisibility;
+  editorMode: WorkflowEditorMode;
   repositoryPolicy?: WorkflowRepositoryPolicy;
   artifactPolicy: WorkflowArtifactPolicy;
   messageDelayMs: number;
@@ -350,6 +357,7 @@ export interface RoleNodeConfig {
 }
 
 export interface TaskNodeConfig {
+  pipelineNodeKind?: WorkflowPipelineNodeKind;
   assistantId?: string;
   goal?: string;
   prompt?: string;

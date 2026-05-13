@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next';
 
 import type { Conversation } from '../app-types';
+import { PageHeader } from '../components/common';
 import { RepoReviewSettingsPanel } from '../components/RepoReviewSettingsPanel';
 
 interface RepositoryPageProps {
@@ -17,18 +18,17 @@ export default function RepositoryPage({
   const { t } = useTranslation('repoReview');
 
   return (
-    <div className="page-view settings-view">
-      <div className="page-header">
-        <div className="page-header-copy">
-          <h2>{t('auto.c270fc6f')}</h2>
-          <p>{t('auto.c83b1969')}</p>
-        </div>
-      </div>
-      <div className="page-body">
+    <div className="page-view settings-view repository-review-page">
+      <PageHeader
+        title={t('auto.c270fc6f')}
+        subtitle={t('auto.c83b1969')}
+      />
+      <div className="page-body repository-review-page-body">
         <RepoReviewSettingsPanel
           apiBase={apiBase}
           pickNativeDirectory={pickNativeDirectory}
           conversations={conversations}
+          embedded
         />
       </div>
     </div>

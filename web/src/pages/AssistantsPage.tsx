@@ -10,7 +10,7 @@ import {
 import { useTranslation } from 'react-i18next';
 
 import { AppSelect, type AppSelectOption } from '../components/AppSelect';
-import { NcCheckbox } from '../components/common';
+import { NcCheckbox, PageHeader } from '../components/common';
 import { Pagination } from '../components/common/Pagination';
 import type {
   AiProvider,
@@ -2391,143 +2391,140 @@ export function AssistantsPage({
 
   return (
     <div className="page-view assistants-page">
-      <div className="page-header">
-        <div className="page-header-copy">
-          <h2>{t('AI 助手')}</h2>
-          <p>
-            {t(
-              'assistants.这里是助手市场本身。只管理已创建助手，资源、权限和接入关系都按助手独立维护。',
-            )}
-          </p>
-        </div>
-        <div className="page-header-actions assistants-hero-actions">
-          <div className="assistants-hero-chip">
-            <span>{t('assistants.助手')}</span>
-            <strong>{assistants.length}</strong>
+      <PageHeader
+        className="assistants-page-header"
+        title={t('AI 助手')}
+        subtitle={t(
+          'assistants.这里是助手市场本身。只管理已创建助手，资源、权限和接入关系都按助手独立维护。',
+        )}
+        meta={
+          <div className="nc-page-metrics">
+            <div className="nc-page-metric">
+              <span className="nc-page-metric-label">{t('assistants.助手')}</span>
+              <strong className="nc-page-metric-value">{assistants.length}</strong>
+            </div>
+            <div className="nc-page-metric">
+              <span className="nc-page-metric-label">{t('assistants.启用')}</span>
+              <strong className="nc-page-metric-value">{enabledAssistantCount}</strong>
+            </div>
+            <div className="nc-page-metric">
+              <span className="nc-page-metric-label">{t('assistants.当前筛选')}</span>
+              <strong className="nc-page-metric-value">
+                {filteredAssistants.length}
+              </strong>
+            </div>
           </div>
-          <div className="assistants-hero-chip">
-            <span>{t('assistants.启用')}</span>
-            <strong>{enabledAssistantCount}</strong>
-          </div>
-          <div className="assistants-hero-chip">
-            <span>{t('assistants.当前筛选')}</span>
-            <strong>{filteredAssistants.length}</strong>
-          </div>
-          <button
-            type="button"
-            className="btn-outline"
-            onClick={onRefresh}
-            disabled={loading}
-          >
-            {t('assistants.刷新')}
-          </button>
-          <label
-            className="btn-outline"
-            style={{
-              cursor: 'pointer',
-              display: 'inline-flex',
-              alignItems: 'center',
-            }}
-          >
-            {t('assistants.导入')}
-            <input
-              type="file"
-              accept=".json"
-              style={{ display: 'none' }}
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (!file) return;
-                const reader = new FileReader();
-                reader.onload = async () => {
-                  try {
-                    const data = JSON.parse(reader.result as string);
-                    if (!data.assistant?.name || !data.assistant?.config) {
-                      alert(t('assistants.无效的助手导入文件'));
-                      return;
-                    }
-                    const createRes = await fetch(`${apiBase}/api/assistants`, {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({
-                        name: data.assistant.name,
-                        description: data.assistant.description ?? null,
-                        enabled: data.assistant.enabled ?? true,
-                        config: data.assistant.config,
-                        visibility: data.assistant.visibility ?? 'private',
-                      }),
-                    });
-                    if (!createRes.ok) {
-                      alert(t('assistants.创建助手失败'));
-                      return;
-                    }
-                    const { assistant: created } = await createRes.json();
-                    const aid = encodeURIComponent(created.id);
-                    const bindingTasks = [
-                      ...(data.mcpBindings ?? []).map(
-                        (b: Record<string, unknown>) =>
-                          fetch(
-                            `${apiBase}/api/assistants/${aid}/mcp-bindings`,
-                            {
-                              method: 'POST',
-                              headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({
-                                templateServerId: b.template_server_id,
-                                alias: b.alias,
-                                enabled: b.enabled,
-                              }),
-                            },
-                          ),
-                      ),
-                      ...(data.repoBindings ?? []).map(
-                        (r: Record<string, unknown>) =>
-                          fetch(
-                            `${apiBase}/api/assistants/${aid}/repo-bindings`,
-                            {
-                              method: 'POST',
-                              headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({
-                                repoUrl: r.repo_url,
-                                name: r.name,
-                                description: r.description,
-                                defaultBranch: r.default_branch,
-                                branchFilter: r.branch_filter,
-                              }),
-                            },
-                          ),
-                      ),
-                    ];
-                    const results = await Promise.allSettled(bindingTasks);
-                    const failCount = results.filter(
-                      (r) =>
-                        r.status === 'rejected' ||
-                        (r.status === 'fulfilled' && !r.value.ok),
-                    ).length;
-                    onRefresh();
-                    if (failCount > 0) {
-                      alert(
-                        t('assistants.助手已创建但绑定导入失败', {
-                          count: failCount,
+        }
+        actions={
+          <div className="nc-page-actions-group assistants-hero-actions">
+            <button
+              type="button"
+              className="btn-outline"
+              onClick={onRefresh}
+              disabled={loading}
+            >
+              {t('assistants.刷新')}
+            </button>
+            <label className="btn-outline nc-page-action-file">
+              {t('assistants.导入')}
+              <input
+                type="file"
+                accept=".json"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  const reader = new FileReader();
+                  reader.onload = async () => {
+                    try {
+                      const data = JSON.parse(reader.result as string);
+                      if (!data.assistant?.name || !data.assistant?.config) {
+                        alert(t('assistants.无效的助手导入文件'));
+                        return;
+                      }
+                      const createRes = await fetch(`${apiBase}/api/assistants`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          name: data.assistant.name,
+                          description: data.assistant.description ?? null,
+                          enabled: data.assistant.enabled ?? true,
+                          config: data.assistant.config,
+                          visibility: data.assistant.visibility ?? 'private',
                         }),
-                      );
+                      });
+                      if (!createRes.ok) {
+                        alert(t('assistants.创建助手失败'));
+                        return;
+                      }
+                      const { assistant: created } = await createRes.json();
+                      const aid = encodeURIComponent(created.id);
+                      const bindingTasks = [
+                        ...(data.mcpBindings ?? []).map(
+                          (b: Record<string, unknown>) =>
+                            fetch(
+                              `${apiBase}/api/assistants/${aid}/mcp-bindings`,
+                              {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                  templateServerId: b.template_server_id,
+                                  alias: b.alias,
+                                  enabled: b.enabled,
+                                }),
+                              },
+                            ),
+                        ),
+                        ...(data.repoBindings ?? []).map(
+                          (r: Record<string, unknown>) =>
+                            fetch(
+                              `${apiBase}/api/assistants/${aid}/repo-bindings`,
+                              {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                  repoUrl: r.repo_url,
+                                  name: r.name,
+                                  description: r.description,
+                                  defaultBranch: r.default_branch,
+                                  branchFilter: r.branch_filter,
+                                }),
+                              },
+                            ),
+                        ),
+                      ];
+                      const results = await Promise.allSettled(bindingTasks);
+                      const failCount = results.filter(
+                        (r) =>
+                          r.status === 'rejected' ||
+                          (r.status === 'fulfilled' && !r.value.ok),
+                      ).length;
+                      onRefresh();
+                      if (failCount > 0) {
+                        alert(
+                          t('assistants.助手已创建但绑定导入失败', {
+                            count: failCount,
+                          }),
+                        );
+                      }
+                    } catch {
+                      alert(t('assistants.解析导入文件失败'));
                     }
-                  } catch {
-                    alert(t('assistants.解析导入文件失败'));
-                  }
-                };
-                reader.readAsText(file);
-                e.target.value = '';
-              }}
-            />
-          </label>
-          <button
-            type="button"
-            className="btn-primary"
-            onClick={handleCreateOpen}
-          >
-            {t('assistants.新建助手')}
-          </button>
-        </div>
-      </div>
+                  };
+                  reader.readAsText(file);
+                  e.target.value = '';
+                }}
+              />
+            </label>
+            <button
+              type="button"
+              className="btn-primary"
+              onClick={handleCreateOpen}
+            >
+              {t('assistants.新建助手')}
+            </button>
+          </div>
+        }
+      />
 
       {error ? (
         <div className="page-error">

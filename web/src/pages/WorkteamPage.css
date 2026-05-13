@@ -123,6 +123,11 @@
   border-radius: 14px;
 }
 
+.workflow-topbar-controls .btn-outline.danger {
+  color: #dc2626;
+  border-color: rgba(248, 113, 113, 0.3);
+}
+
 .workflow-library {
   padding: 10px 2px 0;
 }
@@ -180,6 +185,31 @@
     transform var(--transition-fast),
     box-shadow var(--transition-fast),
     border-color var(--transition-fast);
+  position: relative;
+}
+
+.workflow-card-open {
+  all: unset;
+  display: flex;
+  width: 100%;
+  flex: 1 1 auto;
+  min-width: 0;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  cursor: pointer;
+}
+
+.workflow-card-delete {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  border: 1px solid rgba(248, 113, 113, 0.24);
+  background: rgba(255, 255, 255, 0.88);
+  color: #dc2626;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 12px;
 }
 
 .workflow-library-card:hover {
@@ -2334,4 +2364,280 @@ button {
   background:
     linear-gradient(180deg, rgba(30, 41, 59, 0.88), rgba(15, 23, 42, 0.7)),
     var(--surface-card);
+}
+
+/* Fixed pipeline redesign overrides */
+.workflow-page {
+  background:
+    radial-gradient(circle at 12% 20%, rgba(134, 163, 255, 0.18), transparent 26%),
+    radial-gradient(circle at 86% 84%, rgba(255, 217, 183, 0.18), transparent 24%),
+    linear-gradient(180deg, #edf4ff 0%, #f7fbff 48%, #fff7f1 100%);
+}
+
+.workflow-topbar {
+  align-items: center;
+}
+
+.workflow-topbar-title {
+  align-items: center;
+}
+
+.workflow-topbar-controls {
+  gap: 14px;
+}
+
+.workflow-topbar-controls .workflow-workflow-picker {
+  min-width: 240px;
+}
+
+.workflow-library-header {
+  align-items: center;
+}
+
+.workflow-library-card {
+  min-height: 188px;
+  border-radius: 24px;
+}
+
+.workflow-workbench-grid {
+  grid-template-columns: minmax(0, 1fr) 290px;
+}
+
+.workflow-detail-grid {
+  min-width: 0;
+}
+
+.workflow-inspector {
+  padding: 18px;
+  position: sticky;
+  top: 0;
+}
+
+.workflow-inspector > h3 {
+  margin-bottom: 14px;
+  font-size: 18px;
+}
+
+.workflow-inspector-body {
+  gap: 12px;
+}
+
+.workflow-inspector-body label {
+  gap: 6px;
+  font-size: 13px;
+}
+
+.workflow-inspector-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.workflow-inspector-header {
+  align-items: flex-start;
+}
+
+.workflow-delete-node-btn {
+  border: 1px solid rgba(248, 113, 113, 0.28);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.88), rgba(255, 244, 244, 0.96));
+  color: #dc2626;
+  border-radius: 14px;
+  min-height: 36px;
+  padding: 0 14px;
+  font-weight: 700;
+  box-shadow: 0 10px 22px rgba(248, 113, 113, 0.12);
+}
+
+.workflow-delete-node-btn:disabled {
+  opacity: 0.56;
+  cursor: not-allowed;
+}
+
+.workflow-inspector-node-hero {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 16px;
+  border-radius: 20px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(244, 248, 255, 0.78));
+  border: 1px solid rgba(226, 232, 240, 0.88);
+}
+
+.workflow-inspector-node-hero strong {
+  display: block;
+  font-size: 22px;
+  margin-bottom: 4px;
+}
+
+.workflow-inspector-node-hero p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.workflow-node-badge.is-pipeline {
+  background: rgba(79, 70, 229, 0.1);
+  color: #4f46e5;
+}
+
+.workflow-template-label {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.workflow-template-chips {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.workflow-template-chip {
+  min-height: 40px;
+  padding: 0 18px;
+  border-radius: 16px;
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  background: rgba(255, 255, 255, 0.84);
+  color: var(--text-primary);
+  font-weight: 700;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.84),
+    0 10px 24px rgba(80, 101, 150, 0.08);
+}
+
+.workflow-template-chip.is-active {
+  border-color: rgba(79, 70, 229, 0.24);
+  color: #4f46e5;
+}
+
+.workflow-canvas-toolbar {
+  align-items: flex-start;
+  padding: 4px 4px 14px;
+}
+
+.workflow-canvas-status {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.workflow-canvas {
+  position: relative;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.42) transparent;
+}
+
+.workflow-canvas::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.workflow-canvas::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.workflow-canvas::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.4);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+.workflow-canvas-floating-controls {
+  position: absolute;
+  right: 20px;
+  bottom: 18px;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  background: rgba(255, 255, 255, 0.8);
+  box-shadow:
+    0 18px 36px rgba(80, 101, 150, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(20px);
+}
+
+.workflow-canvas-floating-controls .btn-outline {
+  min-height: 34px;
+  border-radius: 12px;
+}
+
+.workflow-node {
+  overflow: hidden;
+}
+
+.workflow-node-icon {
+  position: absolute;
+  left: 18px;
+  top: 18px;
+  width: 42px;
+  height: 42px;
+  border-radius: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  font-weight: 900;
+}
+
+.workflow-node-icon.inspector {
+  position: static;
+  width: 64px;
+  height: 64px;
+  border-radius: 18px;
+  font-size: 28px;
+}
+
+.workflow-node strong {
+  font-size: 18px;
+}
+
+.workflow-node-provider-name {
+  margin-top: 2px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.workflow-run-dock {
+  border-radius: 28px;
+}
+
+.workflow-run-dock-header {
+  align-items: center;
+}
+
+.workflow-run-dock-header span:last-child {
+  font-size: 24px;
+  line-height: 1;
+}
+
+@media (max-width: 1100px) {
+  .workflow-workbench-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .workflow-inspector {
+    position: static;
+  }
+}
+
+[data-theme='dark'] .workflow-page {
+  background:
+    radial-gradient(circle at 12% 20%, rgba(79, 70, 229, 0.2), transparent 26%),
+    radial-gradient(circle at 86% 84%, rgba(249, 115, 22, 0.14), transparent 24%),
+    linear-gradient(180deg, rgba(15, 23, 42, 0.96), rgba(15, 23, 42, 0.92));
+}
+
+[data-theme='dark'] .workflow-template-chip,
+[data-theme='dark'] .workflow-inspector-node-hero,
+[data-theme='dark'] .workflow-canvas-floating-controls,
+[data-theme='dark'] .workflow-delete-node-btn {
+  background: rgba(15, 23, 42, 0.88);
+  border-color: rgba(51, 65, 85, 0.88);
+}
+
+[data-theme='dark'] .workflow-delete-node-btn {
+  color: #fda4af;
 }

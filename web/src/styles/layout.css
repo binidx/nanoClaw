@@ -212,28 +212,35 @@
 
 .page-header {
   margin: 16px 16px 0;
-  padding: 18px 22px;
-  border: 1px solid var(--border);
-  border-radius: 26px;
-  background: linear-gradient(
-    180deg,
-    rgba(255, 255, 255, 0.94),
-    rgba(247, 250, 255, 0.86)
-  );
+  padding: 20px 24px;
+  border: 1px solid var(--glass-border-soft);
+  border-radius: 30px;
+  background:
+    radial-gradient(
+      circle at top left,
+      rgba(var(--accent-rgb), 0.12),
+      transparent 30%
+    ),
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.96),
+      rgba(247, 250, 255, 0.88)
+    );
   display: flex;
   align-items: center;
   gap: 24px;
   flex-wrap: wrap;
-  backdrop-filter: blur(20px);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.92),
-    0 14px 32px rgba(80, 101, 150, 0.08);
+  backdrop-filter: blur(var(--glass-blur-lg));
+  -webkit-backdrop-filter: blur(var(--glass-blur-lg));
+  box-shadow: var(--shadow-glass-md);
 }
 
 .page-header h2 {
-  font-size: 22px;
+  font-family: var(--font-heading);
+  font-size: clamp(28px, 3vw, 42px);
   font-weight: 700;
   white-space: nowrap;
+  letter-spacing: -0.03em;
 }
 
 .page-header-copy {
@@ -245,8 +252,8 @@
 
 .page-header-copy p {
   font-size: 13px;
-  color: var(--text-muted);
-  line-height: 1.6;
+  color: var(--text-secondary);
+  line-height: 1.7;
 }
 
 .section-header {
@@ -266,15 +273,19 @@
 }
 
 [data-theme='dark'] .page-header {
-  border-color: var(--border);
-  background: linear-gradient(
-    180deg,
-    rgba(15, 23, 42, 0.94),
-    rgba(11, 19, 33, 0.9)
-  );
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.04),
-    0 14px 32px rgba(2, 6, 23, 0.28);
+  border-color: var(--glass-border-soft);
+  background:
+    radial-gradient(
+      circle at top left,
+      rgba(var(--accent-rgb), 0.14),
+      transparent 30%
+    ),
+    linear-gradient(
+      180deg,
+      rgba(15, 23, 42, 0.94),
+      rgba(11, 19, 33, 0.9)
+    );
+  box-shadow: var(--shadow-glass-md);
 }
 
 .section-header h3 {
@@ -336,7 +347,7 @@
 
   .chat-header,
   .page-header {
-    padding: 16px;
+    padding: 18px;
   }
 }
 

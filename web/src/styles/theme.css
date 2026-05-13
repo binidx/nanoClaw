@@ -13,11 +13,14 @@
   --conv-width: 320px;
   --main-bg: #edf3ff;
   --card-bg: rgba(255, 255, 255, 0.86);
+  --surface-canvas: rgba(255, 255, 255, 0.34);
   --surface-shell: rgba(255, 255, 255, 0.52);
   --surface-panel: rgba(255, 255, 255, 0.68);
   --surface-card: rgba(255, 255, 255, 0.78);
   --surface-card-strong: rgba(255, 255, 255, 0.9);
   --surface-subtle: rgba(244, 248, 255, 0.88);
+  --surface-float: rgba(255, 255, 255, 0.74);
+  --surface-overlay: rgba(255, 255, 255, 0.84);
   --surface-accent: rgba(91, 118, 255, 0.08);
   --surface-accent-strong: rgba(91, 118, 255, 0.14);
 
@@ -31,6 +34,12 @@
   --accent-hover: #4a5df0;
   --accent-light: rgba(90, 109, 255, 0.12);
   --accent-rgb: 90, 109, 255;
+  --gradient-brand: linear-gradient(135deg, #7f8cff 0%, #5a6dff 48%, #4f46e5 100%);
+  --gradient-brand-soft: linear-gradient(
+    180deg,
+    rgba(122, 141, 255, 0.16) 0%,
+    rgba(255, 255, 255, 0.88) 100%
+  );
 
   /* Chat bubbles */
   --user-bubble: linear-gradient(135deg, #4f46e5 0%, #6366f1 100%);
@@ -68,6 +77,9 @@
   --radius-lg: 12px;
   --radius-xl: 16px;
   --radius-2xl: 20px;
+  --radius-control: 17px;
+  --radius-panel: 26px;
+  --radius-pill: 999px;
 
   /* Z-index */
   --z-content: 1;
@@ -92,12 +104,28 @@
   --shadow-sm: 0 10px 26px rgba(80, 101, 150, 0.08);
   --shadow-md: 0 18px 44px rgba(80, 101, 150, 0.12);
   --shadow-lg: 0 28px 60px rgba(80, 101, 150, 0.16);
+  --shadow-glass-sm:
+    0 12px 28px rgba(80, 101, 150, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.88);
+  --shadow-glass-md:
+    0 20px 46px rgba(80, 101, 150, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  --shadow-glass-lg:
+    0 30px 70px rgba(80, 101, 150, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.92);
+  --glass-border-soft: rgba(255, 255, 255, 0.58);
+  --glass-border-strong: rgba(255, 255, 255, 0.76);
+  --glass-blur-sm: 12px;
+  --glass-blur-md: 18px;
+  --glass-blur-lg: 26px;
 
   /* Layout shell */
   --layout-shell-padding: 16px;
   --layout-shell-gap: 14px;
   --panel-radius-lg: 26px;
+  --control-height-sm: 34px;
   --control-height-md: 40px;
+  --control-height-lg: 46px;
   --select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 20 20' fill='none'%3E%3Cpath d='M5 7.5L10 12.5L15 7.5' stroke='%2364758B' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
 
   --panel: var(--card-bg);
@@ -134,11 +162,14 @@
   --conv-bg: #0c1423;
   --main-bg: #07101d;
   --card-bg: rgba(15, 23, 42, 0.9);
+  --surface-canvas: rgba(9, 16, 29, 0.42);
   --surface-shell: rgba(9, 16, 29, 0.66);
   --surface-panel: rgba(10, 18, 32, 0.9);
   --surface-card: rgba(15, 23, 42, 0.84);
   --surface-card-strong: rgba(15, 23, 42, 0.92);
   --surface-subtle: rgba(15, 23, 42, 0.78);
+  --surface-float: rgba(13, 20, 35, 0.84);
+  --surface-overlay: rgba(10, 18, 32, 0.92);
   --surface-accent: rgba(120, 138, 255, 0.12);
   --surface-accent-strong: rgba(120, 138, 255, 0.18);
   --text-primary: #e5eefc;
@@ -147,6 +178,12 @@
   --accent: #93a3ff;
   --accent-hover: #b0bbff;
   --accent-light: rgba(147, 163, 255, 0.16);
+  --gradient-brand: linear-gradient(135deg, #90a2ff 0%, #6d79ff 48%, #5661f2 100%);
+  --gradient-brand-soft: linear-gradient(
+    180deg,
+    rgba(120, 138, 255, 0.22) 0%,
+    rgba(15, 23, 42, 0.9) 100%
+  );
   --user-bubble: linear-gradient(135deg, #4f46e5 0%, #6d6af8 100%);
   --bot-bubble: rgba(15, 23, 42, 0.92);
   --border: rgba(68, 83, 116, 0.38);
@@ -163,6 +200,17 @@
   --shadow-sm: 0 10px 26px rgba(2, 6, 23, 0.24);
   --shadow-md: 0 18px 44px rgba(2, 6, 23, 0.34);
   --shadow-lg: 0 28px 60px rgba(2, 6, 23, 0.42);
+  --shadow-glass-sm:
+    0 14px 30px rgba(2, 6, 23, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  --shadow-glass-md:
+    0 22px 48px rgba(2, 6, 23, 0.32),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  --shadow-glass-lg:
+    0 32px 72px rgba(2, 6, 23, 0.42),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  --glass-border-soft: rgba(68, 83, 116, 0.4);
+  --glass-border-strong: rgba(89, 105, 140, 0.52);
   --select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 20 20' fill='none'%3E%3Cpath d='M5 7.5L10 12.5L15 7.5' stroke='%2394A3B8' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   --panel: var(--card-bg);
   --panel-alt: var(--surface-subtle);

@@ -59,7 +59,7 @@ describe('validateWorkflowGraph', () => {
     ).not.toThrow();
   });
 
-  it('rejects a task node without a bound role node', () => {
+  it('allows a task node without a bound role node', () => {
     const task = node({
       id: 'task-a',
       node_type: 'task',
@@ -67,9 +67,7 @@ describe('validateWorkflowGraph', () => {
       role_node_id: '',
     });
 
-    expect(() => validateWorkflowGraph([task], [])).toThrow(
-      /missing a bound role node/i,
-    );
+    expect(() => validateWorkflowGraph([task], [])).not.toThrow();
   });
 
   it('rejects directed cycles between task nodes', () => {

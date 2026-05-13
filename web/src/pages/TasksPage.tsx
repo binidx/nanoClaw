@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AppSelect, type AppSelectOption } from '../components/AppSelect';
 import { IconChevronDown, IconSort } from '../components/AppIcons';
+import { PageHeader } from '../components/common';
 import { Pagination } from '../components/common/Pagination';
 
 import type { Conversation, ScheduledTaskSummary } from '../app-types';
@@ -688,66 +689,67 @@ export function TasksPage({
 
   return (
     <div className="page-view">
-      <div className="page-header">
-        <h2>{t('tasks.定时任务')}</h2>
-        <div className="page-header-actions">
-          <div className="tasks-header-target">
-            <span className="tasks-header-label">{t('tasks.当前对话')}</span>
-            <AppSelect
-              value={selectedChatJid || ''}
-              onChange={(val) => setSelectedChatJid(val)}
-              options={conversationOptions}
-              ariaLabel={t('tasks.选择目标对话')}
-              compact
-              className="tasks-header-conv-select"
-            />
+      <PageHeader
+        title={t('tasks.定时任务')}
+        subtitle={
+          selectedConversation
+            ? summaryConversation
+            : t('tasks.先选择一个对话后再创建任务')
+        }
+        meta={
+          <div className="nc-page-metrics">
+            <div className="nc-page-metric">
+              <span className="nc-page-metric-label">{t('tasks.任务总数')}</span>
+              <strong className="nc-page-metric-value">{counts.all}</strong>
+              <span className="nc-page-metric-note">
+                {t('tasks.当前对话下全部任务')}
+              </span>
+            </div>
+            <div className="nc-page-metric">
+              <span className="nc-page-metric-label">{t('tasks.状态')}</span>
+              <strong className="nc-page-metric-value">
+                {counts.active} / {counts.paused} / {counts.completed}
+              </strong>
+              <span className="nc-page-metric-note">
+                {t('tasks.运行中暂停完成')}
+              </span>
+            </div>
+            <div className="nc-page-metric">
+              <span className="nc-page-metric-label">{t('tasks.最近执行')}</span>
+              <strong className="nc-page-metric-value">
+                {latestExecutedTask
+                  ? truncateText(latestExecutedTask.title, 18)
+                  : t('tasks.暂无')}
+              </strong>
+              <span className="nc-page-metric-note">{latestSummary}</span>
+            </div>
           </div>
-          <button
-            className="btn-outline btn-sm"
-            onClick={onRefresh}
-            disabled={refreshing}
-          >
-            {refreshing ? t('tasks.刷新中') : t('tasks.刷新')}
-          </button>
-        </div>
-      </div>
+        }
+        actions={
+          <div className="nc-page-actions-group">
+            <div className="tasks-header-target">
+              <span className="tasks-header-label">{t('tasks.当前对话')}</span>
+              <AppSelect
+                value={selectedChatJid || ''}
+                onChange={(val) => setSelectedChatJid(val)}
+                options={conversationOptions}
+                ariaLabel={t('tasks.选择目标对话')}
+                compact
+                className="tasks-header-conv-select"
+              />
+            </div>
+            <button
+              className="btn-outline btn-sm"
+              onClick={onRefresh}
+              disabled={refreshing}
+            >
+              {refreshing ? t('tasks.刷新中') : t('tasks.刷新')}
+            </button>
+          </div>
+        }
+      />
 
       <div className="page-body tasks-page-body">
-        <div className="tasks-summary-strip">
-          <div className="tasks-summary-item">
-            <span className="tasks-summary-label">{t('tasks.当前对话')}</span>
-            <strong className="tasks-summary-value">
-              {selectedConversation ? t('tasks.已绑定') : t('tasks.未选择')}
-            </strong>
-            <span className="tasks-summary-note">
-              {selectedConversation
-                ? summaryConversation
-                : t('tasks.先选择一个对话后再创建任务')}
-            </span>
-          </div>
-          <div className="tasks-summary-item">
-            <span className="tasks-summary-label">{t('tasks.任务总数')}</span>
-            <strong className="tasks-summary-value">{counts.all}</strong>
-            <span className="tasks-summary-note">{t('tasks.当前对话下全部任务')}</span>
-          </div>
-          <div className="tasks-summary-item">
-            <span className="tasks-summary-label">{t('tasks.状态')}</span>
-            <strong className="tasks-summary-value">
-              {counts.active} / {counts.paused} / {counts.completed}
-            </strong>
-            <span className="tasks-summary-note">{t('tasks.运行中暂停完成')}</span>
-          </div>
-          <div className="tasks-summary-item">
-            <span className="tasks-summary-label">{t('tasks.最近执行')}</span>
-            <strong className="tasks-summary-value tasks-summary-value-sm">
-              {latestExecutedTask
-                ? truncateText(latestExecutedTask.title, 18)
-                : t('tasks.暂无')}
-            </strong>
-            <span className="tasks-summary-note">{latestSummary}</span>
-          </div>
-        </div>
-
         {!showCreator && taskNotice ? (
           <div className={`tasks-notice ${taskNotice.tone}`}>
             {taskNotice.text}

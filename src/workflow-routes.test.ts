@@ -69,6 +69,10 @@ async function withServer(
 }
 
 async function createWorkflowFixture() {
+  const assistant = await createAssistant({
+    id: 'assistant-fixture',
+    name: 'Fixture Assistant',
+  });
   const workflow = await workflowDb.createWorkflow({
     name: 'Workflow Alpha',
     description: 'fixture',
@@ -86,6 +90,7 @@ async function createWorkflowFixture() {
     node_type: 'task',
     name: 'Plan',
     role_node_id: role.id,
+    assistant_id: assistant.id,
     config_json: { prompt: 'Make plan', expectedOutput: 'Plan text' },
     position_x: 340,
     position_y: 80,
@@ -94,6 +99,7 @@ async function createWorkflowFixture() {
     node_type: 'task',
     name: 'Build',
     role_node_id: role.id,
+    assistant_id: assistant.id,
     config_json: { prompt: 'Build code', expectedOutput: 'Code diff' },
     position_x: 640,
     position_y: 80,
@@ -103,7 +109,7 @@ async function createWorkflowFixture() {
     target_node_id: taskB.id,
     direction: 'one_way',
   });
-  return { workflow, role, taskA, taskB };
+  return { workflow, role, taskA, taskB, assistant };
 }
 
 async function waitFor(
@@ -173,9 +179,21 @@ describe('workflow routes', () => {
 
       const snapshotResponse = await fetch(`${baseUrl}/api/workflows/${created.id}`);
       expect(snapshotResponse.status).toBe(200);
-      expect(await snapshotResponse.json()).toMatchObject({
+      const snapshot = await snapshotResponse.json();
+      expect(snapshot).toMatchObject({
         workflow: expect.objectContaining({ name: 'Launch Flow' }),
-        nodes: [expect.objectContaining({ name: 'Coordinator', node_type: 'role' })],
+      });
+      expect(snapshot.nodes).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ name: 'Coordinator', node_type: 'role' }),
+          expect.objectContaining({ name: '输入', node_type: 'task' }),
+          expect.objectContaining({ name: '资料检索', node_type: 'task' }),
+          expect.objectContaining({ name: '分析', node_type: 'task' }),
+          expect.objectContaining({ name: '总结', node_type: 'task' }),
+        ]),
+      );
+      expect(JSON.parse(snapshot.workflow.workflow_config || '{}')).toMatchObject({
+        editorMode: 'fixed_pipeline_v1',
       });
     });
   });
@@ -290,7 +308,7 @@ describe('workflow routes', () => {
     });
   });
 
-  it('rejects invalid assistant bindings and allows worker nodes to bind assistants', async () => {
+  it('rejects invalid assistant bindings and allows task nodes without assistant bindings', async () => {
     const app = createApp();
     const assistant = await createAssistant({
       id: 'assistant-bindable',
@@ -308,9 +326,10 @@ describe('workflow routes', () => {
           config_json: { prompt: 'do work' },
         }),
       });
-      expect(missingRoleResponse.status).toBe(400);
-      await expect(missingRoleResponse.json()).resolves.toEqual({
-        error: 'role_node_id is required for task nodes',
+      expect(missingRoleResponse.status).toBe(200);
+      await expect(missingRoleResponse.json()).resolves.toMatchObject({
+        node_type: 'task',
+        assistant_id: '',
       });
 
       const invalidAssistantResponse = await fetch(`${baseUrl}/api/workflows/${workflow.id}/nodes`, {
@@ -367,10 +386,33 @@ describe('workflow routes', () => {
         method: 'POST',
       });
       expect(response.status).toBe(200);
-      expect(await response.json()).toEqual({
-        valid: false,
-        errors: [expect.stringMatching(/missing a bound role node/i)],
+      expect(await response.json()).toEqual({ valid: true, errors: [] });
+    });
+  });
+
+  it('fails at runtime when a task node has no execution assistant', async () => {
+    const app = createApp();
+    const { workflow, taskA } = await createWorkflowFixture();
+    await workflowDb.updateWorkflowNode(taskA.id, { assistant_id: '' });
+
+    await withServer(app, async (baseUrl) => {
+      const startResponse = await fetch(`${baseUrl}/api/workflows/${workflow.id}/run`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ input: 'Run without executor' }),
       });
+      expect(startResponse.status).toBe(200);
+      const run = (await startResponse.json()) as { id: string };
+
+      await waitFor(async () => {
+        const graph = await workflowDb.getWorkflowRunGraph(run.id);
+        return graph?.runNodes.some((node) => node.status === 'failed') ?? false;
+      });
+
+      const graph = await workflowDb.getWorkflowRunGraph(run.id);
+      expect(graph?.runNodes.find((node) => node.node_id === taskA.id)?.last_error).toBe(
+        '该节点缺少执行主体',
+      );
     });
   });
 
@@ -417,6 +459,7 @@ describe('workflow routes', () => {
     const role = await workflowDb.createWorkflowNode(workflow.id, {
       node_type: 'role',
       name: 'Worker',
+      assistant_id: 'assistant-delayed',
       config_json: { goal: 'Work' },
     });
     const taskA = await workflowDb.createWorkflowNode(workflow.id, {
@@ -731,6 +774,7 @@ describe('workflow routes', () => {
     const role = await workflowDb.createWorkflowNode(workflow.id, {
       node_type: 'role',
       name: 'Reviewer',
+      assistant_id: 'assistant-discuss',
       config_json: { goal: 'Review peer output' },
     });
     const taskA = await workflowDb.createWorkflowNode(workflow.id, {

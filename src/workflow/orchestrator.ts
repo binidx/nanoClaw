@@ -25,6 +25,8 @@ function nowIso(): string {
 }
 
 function parseTaskConfig(node: WorkflowNodeRecord): {
+  assistantId?: string;
+  pipelineNodeKind?: 'input' | 'retrieval' | 'analysis' | 'summary';
   prompt?: string;
   expectedOutput?: string;
   timeoutMs?: number;
@@ -37,6 +39,8 @@ function parseTaskConfig(node: WorkflowNodeRecord): {
 } {
   try {
     return JSON.parse(node.config_json || '{}') as {
+      assistantId?: string;
+      pipelineNodeKind?: 'input' | 'retrieval' | 'analysis' | 'summary';
       prompt?: string;
       expectedOutput?: string;
       timeoutMs?: number;
@@ -50,6 +54,19 @@ function parseTaskConfig(node: WorkflowNodeRecord): {
   } catch {
     return {};
   }
+}
+
+function resolveExecutionAssistantId(
+  node: WorkflowNodeRecord,
+  roleNode: WorkflowNodeRecord | undefined,
+): string {
+  const taskConfig = parseTaskConfig(node);
+  return (
+    node.assistant_id?.trim() ||
+    taskConfig.assistantId?.trim() ||
+    roleNode?.assistant_id?.trim() ||
+    ''
+  );
 }
 
 function directedEdges(edges: WorkflowEdgeRecord[]): WorkflowEdgeRecord[] {
@@ -637,6 +654,45 @@ export class WorkflowOrchestrator {
     const runNode = graph.runNodes.find((item) => item.node_id === node.id);
     if (!runNode) return;
     const taskConfig = parseTaskConfig(node);
+    if (taskConfig.pipelineNodeKind === 'input') {
+      await db.updateWorkflowRunNode(runNode.id, {
+        status: 'completed',
+        input_snapshot: JSON.stringify({
+          runInput: graph.run.input,
+          pipelineNodeKind: 'input',
+        }),
+        output_snapshot: graph.run.input || '',
+        last_error: '',
+        started_at: nowIso(),
+        completed_at: nowIso(),
+        pause_reason: '',
+      });
+      this.eventBus.emit(this.runId, 'node_completed', {
+        nodeId: node.id,
+        output: graph.run.input || '',
+        executionMs: 0,
+      });
+      const outEdges = graph.edges
+        .map((edge) => ({ edge, transfer: resolveRuntimeTransfer(edge, node.id) }))
+        .filter(
+          (
+            entry,
+          ): entry is {
+            edge: WorkflowEdgeRecord;
+            transfer: { sourceNodeId: string; targetNodeId: string };
+          } => entry.transfer !== null,
+        );
+      for (const { edge, transfer } of outEdges) {
+        await this.queueTransfer({
+          edge,
+          transfer,
+          content: graph.run.input || '',
+          messageType: 'node_output',
+        });
+      }
+      this.enqueueSchedule();
+      return;
+    }
     if (taskConfig.approvalRequired && runNode.version <= 1) {
       await db.updateWorkflowRunNode(runNode.id, {
         status: 'paused',
@@ -656,15 +712,17 @@ export class WorkflowOrchestrator {
       return;
     }
     const roleNode = this.nodesById.get(node.role_node_id);
-    if (!roleNode || roleNode.node_type !== 'role') {
+    const resolvedRoleNode =
+      roleNode && roleNode.node_type === 'role' ? roleNode : undefined;
+    if (!resolveExecutionAssistantId(node, resolvedRoleNode)) {
       await db.updateWorkflowRunNode(runNode.id, {
         status: 'failed',
-        last_error: 'Task node is missing a bound role node',
+        last_error: '该节点缺少执行主体',
         completed_at: nowIso(),
       });
       this.eventBus.emit(this.runId, 'node_failed', {
         nodeId: node.id,
-        error: 'missing_role_node',
+        error: 'missing_executor',
       });
       this.enqueueSchedule();
       return;
@@ -700,13 +758,13 @@ export class WorkflowOrchestrator {
     });
     this.eventBus.emit(this.runId, 'node_started', {
       nodeId: node.id,
-      roleNodeId: roleNode.id,
+      roleNodeId: resolvedRoleNode?.id || '',
     });
 
     const result = await executeWorkflowTask({
       workflowId: this.workflowId,
       runId: graph.run.id,
-      roleNode,
+      roleNode: resolvedRoleNode,
       taskNode: node,
       runInput: graph.run.input,
       upstreamMessages,
@@ -1308,14 +1366,6 @@ export function validateWorkflowGraph(
   const taskIds = new Set(
     nodes.filter((node) => node.node_type === 'task').map((node) => node.id),
   );
-  const roleIds = new Set(
-    nodes.filter((node) => node.node_type === 'role').map((node) => node.id),
-  );
-  for (const node of nodes) {
-    if (node.node_type === 'task' && !roleIds.has(node.role_node_id)) {
-      throw new Error(`Task node "${node.name}" is missing a bound role node`);
-    }
-  }
   for (const edge of edges) {
     if (!nodeIds.has(edge.source_node_id) || !nodeIds.has(edge.target_node_id)) {
       throw new Error('Edge references a missing node');

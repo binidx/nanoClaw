@@ -156,6 +156,7 @@ type RepoReviewSettingsPanelProps = {
   conversations: Conversation[];
   initialRepositoryId?: string;
   hideRepositoryList?: boolean;
+  embedded?: boolean;
 };
 
 function stripBranchStateVisibility(
@@ -990,6 +991,7 @@ export function RepoReviewSettingsPanel({
   conversations,
   initialRepositoryId,
   hideRepositoryList = false,
+  embedded = false,
 }: RepoReviewSettingsPanelProps) {
   const { t } = useTranslation('repoReview');
   const [loading, setLoading] = useState(false);
@@ -3372,22 +3374,50 @@ export function RepoReviewSettingsPanel({
   }, [overview.profiles]);
 
   return (
-    <div className="settings-section repo-review-panel">
-      <div className="section-header">
-        <div>
-          <h3>Repo Review</h3>
-          <p className="settings-hint">
-            {t('repoReview.panel.description')}
-          </p>
+    <div className={`settings-section repo-review-panel${embedded ? ' repo-review-panel--embedded' : ''}`}>
+      {embedded ? (
+        <div className="repo-review-panel-toolbar">
+          <div className="repo-review-panel-toolbar-copy">
+            <span className="repo-review-panel-toolbar-kicker">
+              Repo Review
+            </span>
+            <span className="repo-review-panel-toolbar-note">
+              {`${t('repoReview.repo.total', {
+                count: repositoryStats.total,
+              })} · ${t('repoReview.repo.enabled', {
+                count: repositoryStats.enabled,
+              })}`}
+            </span>
+          </div>
+          <button
+            className="btn-outline btn-sm"
+            onClick={() => void refreshOverview()}
+            disabled={loading && isInitialLoadRef.current}
+          >
+            {loading && isInitialLoadRef.current
+              ? t('repoReview.common.loading')
+              : t('repoReview.button.refresh')}
+          </button>
         </div>
-        <button
-          className="btn-outline btn-sm"
-          onClick={() => void refreshOverview()}
-          disabled={loading && isInitialLoadRef.current}
-        >
-          {loading && isInitialLoadRef.current ? t('repoReview.common.loading') : t('repoReview.button.refresh')}
-        </button>
-      </div>
+      ) : (
+        <div className="section-header">
+          <div>
+            <h3>Repo Review</h3>
+            <p className="settings-hint">
+              {t('repoReview.panel.description')}
+            </p>
+          </div>
+          <button
+            className="btn-outline btn-sm"
+            onClick={() => void refreshOverview()}
+            disabled={loading && isInitialLoadRef.current}
+          >
+            {loading && isInitialLoadRef.current
+              ? t('repoReview.common.loading')
+              : t('repoReview.button.refresh')}
+          </button>
+        </div>
+      )}
 
       <div className={`repo-review-workspace-layout${hideRepositoryList ? ' repo-review-workspace-layout--focused' : ''}${showWorkspaceDetail ? '' : ' repo-review-workspace-layout--list-only'}`}>
       {!hideRepositoryList ? (

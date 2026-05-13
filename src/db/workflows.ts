@@ -63,6 +63,120 @@ export async function createWorkflow(
   return record;
 }
 
+export async function seedFixedPipelineWorkflow(
+  workflowId: string,
+): Promise<void> {
+  const runtimeRoleNode = await ensureWorkflowRuntimeRole(workflowId);
+
+  const inputNode = await createWorkflowNode(workflowId, {
+    node_type: 'task',
+    name: '输入',
+    description: '接收需求与数据',
+    role_node_id: runtimeRoleNode.id,
+    config_json: {
+      pipelineNodeKind: 'input',
+      goal: 'Capture the global workflow input and pass it downstream verbatim.',
+      expectedOutput: '整理后的输入上下文',
+    },
+    position_x: 180,
+    position_y: 180,
+    sort_order: 1,
+  });
+  const retrievalNode = await createWorkflowNode(workflowId, {
+    node_type: 'task',
+    name: '资料检索',
+    description: '检索相关资料与知识库',
+    role_node_id: runtimeRoleNode.id,
+    config_json: {
+      pipelineNodeKind: 'retrieval',
+      goal: 'Find the most relevant supporting materials before analysis.',
+      prompt: '根据输入整理关键问题，检索相关资料、知识点和证据，输出结构化检索结果。',
+      expectedOutput: '结构化检索结果、证据和关键信息摘要',
+    },
+    position_x: 640,
+    position_y: 180,
+    sort_order: 2,
+  });
+  const analysisNode = await createWorkflowNode(workflowId, {
+    node_type: 'task',
+    name: '分析',
+    description: '处理并生成分析结果',
+    role_node_id: runtimeRoleNode.id,
+    config_json: {
+      pipelineNodeKind: 'analysis',
+      goal: 'Reason over the retrieved materials and produce a clear analysis.',
+      prompt: '结合输入与检索结果进行分析，识别模式、风险、机会和关键结论。',
+      expectedOutput: '清晰的分析结论、依据和待确认项',
+    },
+    position_x: 260,
+    position_y: 500,
+    sort_order: 3,
+  });
+  const summaryNode = await createWorkflowNode(workflowId, {
+    node_type: 'task',
+    name: '总结',
+    description: '生成结论与建议',
+    role_node_id: runtimeRoleNode.id,
+    config_json: {
+      pipelineNodeKind: 'summary',
+      goal: 'Synthesize the analysis into a concise final output.',
+      prompt: '汇总分析结果，输出结论、建议、下一步行动和必要说明。',
+      expectedOutput: '最终结论、建议和行动清单',
+    },
+    position_x: 680,
+    position_y: 500,
+    sort_order: 4,
+  });
+
+  await createWorkflowEdge(workflowId, {
+    source_node_id: inputNode.id,
+    target_node_id: retrievalNode.id,
+    direction: 'one_way',
+    label: '输入到检索',
+  });
+  await createWorkflowEdge(workflowId, {
+    source_node_id: retrievalNode.id,
+    target_node_id: analysisNode.id,
+    direction: 'one_way',
+    label: '检索到分析',
+  });
+  await createWorkflowEdge(workflowId, {
+    source_node_id: analysisNode.id,
+    target_node_id: summaryNode.id,
+    direction: 'one_way',
+    label: '分析到总结',
+  });
+}
+
+export async function ensureWorkflowRuntimeRole(
+  workflowId: string,
+): Promise<WorkflowNodeRecord> {
+  const existingNode = (await listWorkflowNodes(workflowId)).find((node) => {
+    if (node.node_type !== 'role') return false;
+    try {
+      const config = JSON.parse(node.config_json || '{}') as Record<string, unknown>;
+      return config.hiddenInWorkbench === true && config.pipelineRole === true;
+    } catch {
+      return false;
+    }
+  });
+  if (existingNode) return existingNode;
+
+  return createWorkflowNode(workflowId, {
+    node_type: 'role',
+    name: 'Workflow Pipeline Runtime',
+    description: 'Hidden shared runtime role for the fixed workflow pipeline.',
+    config_json: {
+      hiddenInWorkbench: true,
+      pipelineRole: true,
+      goal: 'Execute the fixed workflow pipeline reliably.',
+    },
+    position_x: 80,
+    position_y: 240,
+    sort_order: 0,
+  });
+}
+
 export async function listWorkflows(): Promise<WorkflowRecord[]> {
   const rows = await dba.prepare(
     `SELECT * FROM workflows WHERE user_id = ? AND deleted_at IS NULL ORDER BY updated_at DESC, created_at DESC`,

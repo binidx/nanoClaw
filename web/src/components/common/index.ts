@@ -19,6 +19,18 @@ export type { EmptyStateProps } from './EmptyState';
 export { PageHeader } from './PageHeader';
 export type { PageHeaderProps } from './PageHeader';
 
+export { NcSurface } from './NcSurface';
+export type { NcSurfaceProps, NcSurfaceVariant } from './NcSurface';
+
+export { NcBadge } from './NcBadge';
+export type { NcBadgeProps, NcBadgeTone, NcBadgeVariant } from './NcBadge';
+
+export { NcIconButton } from './NcIconButton';
+export type { NcIconButtonProps, NcIconButtonVariant, NcIconButtonSize } from './NcIconButton';
+
+export { NcToolbar } from './NcToolbar';
+export type { NcToolbarProps } from './NcToolbar';
+
 export { TabBar } from './TabBar';
 export type { Tab, TabBarProps } from './TabBar';
 
@@ -29,13 +41,13 @@ export { EntityWorkspaceLayout } from './EntityWorkspaceLayout';
 export type { EntityWorkspaceLayoutProps } from './EntityWorkspaceLayout';
 
 export { NcButton } from './NcButton';
-export type { NcButtonProps, ButtonVariant, ButtonSize } from './NcButton';
+export type { NcButtonProps, ButtonVariant, ButtonSize, ButtonAppearance } from './NcButton';
 
 export { NcSelect } from './NcSelect';
-export type { NcSelectProps } from './NcSelect';
+export type { NcSelectProps, NcSelectSurface, NcSelectSize } from './NcSelect';
 
 export { NcInput } from './NcInput';
-export type { NcInputProps } from './NcInput';
+export type { NcInputProps, NcInputSurface, NcInputSize } from './NcInput';
 
 export { NcCheckbox } from './NcCheckbox';
 export type { NcCheckboxProps } from './NcCheckbox';

@@ -94,3 +94,29 @@
 - `src/db/workflows.ts` / `schema-*` 新增 `workflow_pending_transfers` 和 `workflow_artifacts`，用于 agent 间延迟消息干预、导出、发布与仓库提交推送。
 - `web/src/pages/WorkteamPage.tsx` 入口改为本页工作流卡片库，运行台展示 pending transfer 队列和交付产物操作。
 - 将 feature map 元数据同步到当前已提交代码 `source_head_sha=0e32466c00f38407e135d4ba6d06a33e7c39ca7f`；本次 Workflow 重构仍包含未提交实现变更，freshness 检查会继续列出相关脏文件作为提示。
+
+## [2026-05-13] update | Workflow 生产护栏与评估可见性
+
+- Workflow Workbench 稳定边界新增 `src/workflow/metrics.ts` 与 `src/workflow/evaluation.ts`。
+- `src/db/workflows.ts` / `schema-*` 新增 `workflow_run_evaluations`，保存 deterministic run evaluation。
+- `web/src/pages/WorkteamPage.tsx` 运行详情展示 metrics/evaluation，配置页展示生产护栏与工具策略。
+
+## [2026-05-13] update | Repo Review diff-aware evidence bundle 与代码图谱上下文
+
+- Repo Review executor 在模型调用前构建 typed Review Evidence Bundle，合并 diff hunk、CodeMap 状态、Code Index 函数定位和 1-hop 函数调用邻域。
+- agentic 子代理默认只读取预构建 evidence，不使用工具；主代理保留只读补证能力。
+- Repo Review 时间线开始使用 `parentToolCallId` 将子代理 turn 内嵌到对应 Agent 工具卡片，并展示 evidence / 工具调用统计。
+- 完成通知与详情视图补充系统生成的 `branch + short(base..head)` 审查范围；工具统计语义收敛为只读补证调用数。
+
+## [2026-05-13] update | Workflow fixed pipeline workbench
+
+- Workflow Workbench 新建默认入口改为 `fixed_pipeline_v1`，后端创建时自动生成 `输入 -> 资料检索 -> 分析 -> 总结` 四节点模板与隐藏共享 role。
+- `src/workflow/config.ts` / `types.ts` 新增 workflow editor mode 与 pipeline node kind 稳定字段；`src/workflow/orchestrator.ts` 为 `input` 节点新增整图输入直通语义。
+- `web/src/pages/WorkteamPage.tsx` 主界面改为效果图式固定四节点工作台，Provider 选择对齐可见 Provider 分组，旧 `role/task` workflow 在新页面只读兼容。
+
+## [2026-05-13] update | Workflow editor returns to editable whiteboard semantics
+
+- `src/routes/workflow-routes.ts` 继续使用现有 workflow/node/edge CRUD，但 task 节点创建与保存不再要求显式 role 绑定，后端用隐藏 runtime role 兼容当前执行结构。
+- `src/workflow/orchestrator.ts` / `agent-adapter.ts` 将 assistant 缺失收敛为运行时错误“该节点缺少执行主体”，不再把 assistant 绑定作为建图阶段前提。
+- `web/src/pages/WorkteamPage.tsx` 列表页收敛为 workflow 卡片网格，详情页恢复新增节点、拖拽、连线、删边、删节点、返回工作流、删除 workflow、简化配置与只读运行查看。
+- 将 feature map 元数据同步到当前已提交代码 `source_head_sha=becad113d7dc577b4424663ddf46b6aa06340707`。

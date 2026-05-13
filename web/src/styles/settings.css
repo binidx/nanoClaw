@@ -215,25 +215,32 @@
   align-items: center;
   min-height: 34px;
   padding: 0 14px;
-  border-radius: 999px;
-  border: 1px solid var(--border);
-  background: linear-gradient(
-    180deg,
-    rgba(255, 255, 255, 0.92),
-    rgba(247, 250, 255, 0.84)
-  );
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--glass-border-soft);
+  background:
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.94),
+      rgba(247, 250, 255, 0.84)
+    ),
+    var(--surface-float);
   color: var(--text-secondary);
   font-size: 12px;
   font-weight: 600;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.92),
-    0 8px 18px rgba(80, 101, 150, 0.06);
+  box-shadow: var(--shadow-glass-sm);
+  backdrop-filter: blur(var(--glass-blur-md));
 }
 
 .settings-hero-chip.is-active {
   color: var(--accent);
   border-color: rgba(var(--accent-rgb), 0.22);
-  background: rgba(var(--accent-rgb), 0.08);
+  background:
+    linear-gradient(
+      180deg,
+      rgba(var(--accent-rgb), 0.16),
+      rgba(255, 255, 255, 0.88)
+    ),
+    var(--surface-float);
 }
 
 .settings-body {
@@ -259,16 +266,21 @@
 
 .settings-rail-summary {
   padding: 18px;
-  border: 1px solid var(--border);
-  border-radius: 20px;
-  background: linear-gradient(
-    180deg,
-    rgba(255, 255, 255, 0.92),
-    rgba(247, 250, 255, 0.86)
-  );
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.92),
-    0 10px 24px rgba(80, 101, 150, 0.06);
+  border: 1px solid var(--glass-border-soft);
+  border-radius: 24px;
+  background:
+    radial-gradient(
+      circle at top left,
+      rgba(var(--accent-rgb), 0.08),
+      transparent 32%
+    ),
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.94),
+      rgba(247, 250, 255, 0.86)
+    );
+  box-shadow: var(--shadow-glass-sm);
+  backdrop-filter: blur(var(--glass-blur-md));
 }
 
 .settings-rail-kicker,
@@ -302,16 +314,21 @@
 
 .settings-stage-panel {
   min-width: 0;
-  border: 1px solid var(--border);
-  border-radius: 22px;
-  background: linear-gradient(
-    180deg,
-    rgba(255, 255, 255, 0.94),
-    rgba(248, 251, 255, 0.9)
-  );
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.92),
-    0 12px 28px rgba(80, 101, 150, 0.08);
+  border: 1px solid var(--glass-border-soft);
+  border-radius: 28px;
+  background:
+    radial-gradient(
+      circle at top left,
+      rgba(var(--accent-rgb), 0.1),
+      transparent 30%
+    ),
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.96),
+      rgba(248, 251, 255, 0.9)
+    );
+  box-shadow: var(--shadow-glass-md);
+  backdrop-filter: blur(var(--glass-blur-lg));
   overflow: hidden;
 }
 
