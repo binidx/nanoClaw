@@ -1037,7 +1037,7 @@ describe('repo-review-service', () => {
     });
 
     expect(result.runs[0]?.run.status).toBe('completed');
-    expect(mockRunAgentProcess).toHaveBeenCalledTimes(5);
+    expect(mockRunAgentProcess).toHaveBeenCalledTimes(4);
     const namespaces = mockRunAgentProcess.mock.calls.map(
       (call) => String(call[1]?.runtimeNamespace || ''),
     );
@@ -1047,7 +1047,6 @@ describe('repo-review-service', () => {
         `${result.runs[0]!.run.id}:subagent:1`,
         `${result.runs[0]!.run.id}:subagent:2`,
         `${result.runs[0]!.run.id}:main-final`,
-        `${result.runs[0]!.run.id}:extractor:1`,
       ]),
     );
     expect(new Set(namespaces).size).toBe(namespaces.length);
@@ -1081,14 +1080,14 @@ describe('repo-review-service', () => {
         expect.objectContaining({
           id: 'agentic_structured_extract',
           label: '格式化整理',
-          status: 'completed',
+          status: 'skipped',
         }),
       ]),
     );
     expect(progressRun?.executionStats).toMatchObject({
       plannedSubagentCount: 2,
       delegatedSubagentCount: 2,
-      modelCallCount: 5,
+      modelCallCount: 4,
     });
   });
 
@@ -1246,8 +1245,8 @@ describe('repo-review-service', () => {
     const finalPrompt = String(
       mockRunAgentProcess.mock.calls[2]?.[1]?.prompt?.text || '',
     );
-    expect(finalPrompt).toContain('原始输出');
-    expect(finalPrompt).toContain('缓存字段兼容性遗漏');
+    expect(finalPrompt).toContain('子代理证据摘要');
+    expect(finalPrompt).toContain('remaining_checks');
     expect(finalPrompt).toContain('需要主代理确认跨文件调用方是否依赖旧字段');
   });
 
@@ -1745,7 +1744,7 @@ describe('repo-review-service', () => {
       stage: 'push',
     });
 
-    expect(mockRunAgentProcess).toHaveBeenCalledTimes(4);
+    expect(mockRunAgentProcess).toHaveBeenCalledTimes(3);
     const firstPrompt = String(
       mockRunAgentProcess.mock.calls[0]?.[1]?.prompt?.text || '',
     );
@@ -1754,15 +1753,14 @@ describe('repo-review-service', () => {
     );
     expect(firstPrompt).toContain('## 第一轮输出协议');
     expect(firstPrompt).toContain('review_plan');
-    expect(firstPrompt).toContain('计划阶段禁止调用工具');
-    expect(firstPrompt).not.toContain('完整 Markdown 审查报告');
+    expect(firstPrompt).toContain('至少执行一次 `git -C /workspace/extra diff');
     expect(secondPrompt).toContain('## 输出要求');
     expect(secondPrompt).toContain('确认问题');
     expect(secondPrompt).toContain('demo.ts');
     expect(secondPrompt).toContain('不要创建、派发或调用子代理');
 
     const run = result.runs[0]!.run;
-    expect(run.overall).toBe('warn');
+    expect(run.overall).toBe('pass');
     expect(run.summary).toContain('认证入口 diff 主线无阻断问题');
     const supplementalToolItems = run.reviewTurns.flatMap((turn) =>
       turn.items.filter(
@@ -1774,38 +1772,22 @@ describe('repo-review-service', () => {
         type: 'tool_call',
         status: 'completed',
         title: 'Agent',
-        argumentsText: expect.stringContaining('允许文件：'),
+        argumentsText: expect.stringContaining('文件：demo.ts'),
         resultText: expect.stringContaining('缺少空 token 分支的回归测试'),
       }),
     ]);
-    expect(run.fileReviews).toEqual([
-      expect.objectContaining({
-        file: 'demo.ts',
-        summary: expect.stringContaining('认证入口逻辑'),
-      }),
-    ]);
-    expect(run.findings).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          file: 'demo.ts',
-          detail: expect.stringContaining('authenticate 当前直接返回空串'),
-        }),
-      ]),
-    );
+    expect(run.fileReviews).toEqual([]);
+    expect(run.findings).toEqual([]);
     expect(run.markdownBody).toContain('主审查正文里的代码片段应被保留');
     expect(run.markdownBody).toContain('```ts');
     expect(run.markdownBody).toContain('return token?.trim() ?? ""');
-    expect(run.suggestions).toEqual(
-      expect.arrayContaining([
-        '补一条覆盖空 token 输入的单测，并断言返回值语义。',
-      ]),
-    );
+    expect(run.suggestions).toEqual([]);
     expect(run.executionStats).toMatchObject({
       diffFiles: 1,
       extraRepoReadCount: 0,
       plannedSubagentCount: 1,
       delegatedSubagentCount: 1,
-      modelCallCount: 4,
+      modelCallCount: 3,
     });
     expect(run.executionStats?.fullFileBytesLoaded).toBe(0);
     expect(run.executionStats?.promptBytesBuilt).toBeGreaterThan(0);
@@ -2324,11 +2306,11 @@ describe('repo-review-service', () => {
     });
 
     await waitForCondition(async () => {
-      expect(mockRunAgentProcess).toHaveBeenCalledTimes(5);
+      expect(mockRunAgentProcess).toHaveBeenCalledTimes(4);
     });
     const result = await triggerPromise;
 
-    expect(mockRunAgentProcess).toHaveBeenCalledTimes(5);
+    expect(mockRunAgentProcess).toHaveBeenCalledTimes(4);
     const prompts = mockRunAgentProcess.mock.calls.map((call) =>
       String(call[1]?.prompt?.text || ''),
     );
@@ -3943,7 +3925,7 @@ describe('repo-review-service', () => {
     expect(result.runs[0]?.run.findings).toHaveLength(1);
     expect(result.runs[0]?.run.findings[0]?.detail).toContain('```diff');
     expect(result.runs[0]?.run.findings[0]?.detail).toContain('-  return await save();');
-    expect(mockRunAgentProcess).toHaveBeenCalledTimes(3);
+    expect(mockRunAgentProcess).toHaveBeenCalledTimes(2);
   });
 
   it('synthesizes a detailed markdown review body when structured output omits raw_report_markdown', async () => {

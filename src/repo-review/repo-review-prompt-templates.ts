@@ -230,22 +230,13 @@ const REPO_REVIEW_AGENTIC_PLAN_BLOCK = [
 
 const REPO_REVIEW_AGENTIC_PLAN_ONLY_BLOCK = [
   '## 计划阶段约束',
-  '- 计划阶段禁止调用工具、读取文件、执行 git 命令或派发子代理。',
-  '- 只依据本提示内的仓库信息、变更文件列表、diff bytes、提交摘要和系统预算制定计划。',
-  '- 不要把“需要先取证”写成阻塞计划；需要后续取证的点写入 risk_areas 或 notes。',
-  '- 不要输出审查发现、严重性结论或最终报告。',
-].join('\n');
-
-const REPO_REVIEW_AGENTIC_FINAL_OUTPUT_BLOCK = [
-  '## 最终报告要求',
-  '- 输出中文 Markdown，不要输出 JSON，不要使用代码块包裹整份报告。',
-  '- markdown_body 必须严格遵守固定报告模板中的标题、章节顺序和表格格式。',
-  '- findings 优先：如有问题，先列问题，按严重程度排序。',
-  '- 高风险和中风险问题必须同时给出“问题代码片段”和“修复后的代码示例”。',
-  '- 低风险问题也必须给出明确文件位置和具体建议。',
-  '- 子代理结论只作为证据输入；你必须去重、校正严重性，并明确哪些限制影响结论。',
-  '- 如果没有问题，明确说明没有发现阻断性问题，并列出仍未覆盖的风险或测试缺口。',
-  '- 除 overall、severity、confidence 这些枚举值外，所有用户可见文本必须使用简体中文。',
+  '- 计划阶段必须先用只读工具确认提交范围和关键 diff，再输出 review_plan。',
+  '- 至少执行一次 `git -C /workspace/extra diff {{diffRange}}` 或等价只读工具调用。',
+  '- 计划里只描述后续如何审查与是否委派，不要直接输出最终审查结论。',
+  '- 需要后续继续取证的点写入 risk_areas 或 notes，不要把它们伪装成已确认问题。',
+  '- 子代理数量必须按实际需要给出，不要为了用满预算而创建全部可用子代理。',
+  '- tasks[].files 和 full_file_review_files 只能来自变更文件列表。',
+  '- 若不委派，必须明确说明不委派原因。',
 ].join('\n');
 
 const AGENT_TOOL_BLOCK = [
@@ -272,11 +263,8 @@ const REPO_REVIEW_DASHBOARD_BLOCK = [
   '{{commitSummaryBlock}}',
   '变更文件：',
   '{{changedFiles}}',
-  '',
-  '{{projectContextBlock}}',
-  '',
-  '分支 diff：',
-  '{{diffText}}',
+  '变更概览：',
+  '{{diffSummaryBlock}}',
 ].join('\n');
 
 const REPO_REVIEW_AGENTIC_DASHBOARD_BLOCK = [
@@ -432,7 +420,7 @@ export const REPO_REVIEW_AGENTIC_FINAL_TEMPLATE = [
   '',
   REPORT_STYLE_BLOCK,
   '',
-  REPO_REVIEW_AGENTIC_FINAL_OUTPUT_BLOCK,
+  OUTPUT_CONTRACT_BLOCK,
 ].join('\n');
 
 export const REPO_REVIEW_AGENTIC_EXTRACTOR_TEMPLATE = [

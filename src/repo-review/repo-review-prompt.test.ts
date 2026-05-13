@@ -32,9 +32,10 @@ describe('repo-review prompt templates (lean mode)', () => {
     expect(templates).not.toMatch(/auto_[0-9a-f]{6}/);
   });
 
-  it('primary template carries diff evidence and project context inline', () => {
-    expect(REPO_REVIEW_PRIMARY_TEMPLATE).toContain('{{diffText}}');
-    expect(REPO_REVIEW_PRIMARY_TEMPLATE).toContain('{{projectContextBlock}}');
+  it('primary template uses diff summary instead of inlining full diff', () => {
+    expect(REPO_REVIEW_PRIMARY_TEMPLATE).toContain('{{diffSummaryBlock}}');
+    expect(REPO_REVIEW_PRIMARY_TEMPLATE).not.toContain('{{diffText}}');
+    expect(REPO_REVIEW_PRIMARY_TEMPLATE).not.toContain('{{projectContextBlock}}');
   });
 
   it('primary template only asks for structured JSON output', () => {
@@ -129,8 +130,10 @@ describe('repo-review prompt templates (lean mode)', () => {
 
     expect(prompt).toContain('取证范围：base123..head456');
     expect(prompt).toContain('本次已开启“全文件补充审查”');
-    expect(prompt).toContain('TypeScript monorepo.');
-    expect(prompt).toContain('diff --git a/src/demo.ts b/src/demo.ts');
+    expect(prompt).toContain('src/demo.ts');
+    expect(prompt).toContain('变更概览');
+    expect(prompt).not.toContain('TypeScript monorepo.');
+    expect(prompt).not.toContain('diff --git a/src/demo.ts b/src/demo.ts');
     expect(prompt).not.toContain('SHOULD_NOT_INLINE_DIFF');
   });
 
@@ -154,7 +157,8 @@ describe('repo-review prompt templates (lean mode)', () => {
     expect(prompt).toContain('基线提交：(none)');
     expect(prompt).toContain('目标提交：head789');
     expect(prompt).toContain('取证范围：head789^!');
-    expect(prompt).toContain('diff --git a/src/demo.ts b/src/demo.ts');
+    expect(prompt).toContain('变更概览');
+    expect(prompt).not.toContain('diff --git a/src/demo.ts b/src/demo.ts');
   });
 
   it('injects the custom review prompt exactly once per rendered prompt', async () => {
@@ -179,6 +183,30 @@ describe('repo-review prompt templates (lean mode)', () => {
 
     expect(prompt.match(/附加审查要求：/g)).toHaveLength(1);
     expect(prompt.match(/STRICT REVIEW POLICY/g)).toHaveLength(1);
+  });
+
+  it('keeps legacy repo review prompt variables available for custom templates', async () => {
+    const prompt = await buildReviewPrompt({
+      repository: { name: 'demo-repo', language: 'TypeScript' } as any,
+      profile: {
+        promptTemplate: '',
+        includeFullFileContext: false,
+      } as any,
+      event: { stage: 'push', source: 'local-hook' } as any,
+      prepared: {
+        actor: 'alice',
+        branch: 'main',
+        baseSha: 'base123',
+        headSha: 'head456',
+        commitSummaryLines: [],
+        changedFiles: ['src/demo.ts'],
+        projectContextBlocks: ['TypeScript monorepo.'],
+        diffText: 'diff --git a/src/demo.ts b/src/demo.ts\n+export const demo = true;',
+      } as any,
+    });
+
+    expect(prompt).not.toContain('TypeScript monorepo.');
+    expect(prompt).not.toContain('diff --git a/src/demo.ts b/src/demo.ts');
   });
 
   it('runtime digest prompt includes stable repo, window, branch and commit metadata', async () => {

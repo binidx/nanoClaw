@@ -128,7 +128,6 @@ import {
   buildRepoReviewSummaryMessage,
   type RepoReviewCloudDocSection,
 } from './repo-review-doc-render.js';
-import { runRepoReviewCoordinatedReview } from './repo-review-coordinator.js';
 import { computeNextDigestAt } from './repo-review-digest-service.js';
 import { getProviderForModule } from '../tenant/tenant-db.js';
 import { runWithTenant, SYSTEM_USER_ID } from '../tenant/tenant-context.js';
@@ -4660,6 +4659,49 @@ function buildFilteredDiff(
   return kept.join('\n').trim();
 }
 
+function summarizeRepoReviewDiffSlice(diffText: string): {
+  added: number;
+  removed: number;
+  hunks: number;
+} {
+  const lines = String(diffText || '').split('\n');
+  let added = 0;
+  let removed = 0;
+  let hunks = 0;
+  for (const line of lines) {
+    if (line.startsWith('@@ ')) {
+      hunks += 1;
+      continue;
+    }
+    if (line.startsWith('+++ ') || line.startsWith('--- ')) continue;
+    if (line.startsWith('+')) {
+      added += 1;
+      continue;
+    }
+    if (line.startsWith('-')) {
+      removed += 1;
+    }
+  }
+  return { added, removed, hunks };
+}
+
+function buildRepoReviewDiffSummaryBlock(input: {
+  prepared: ReviewPreparedContext;
+}): string {
+  const diffIndex =
+    input.prepared.diffIndex ||
+    buildRepoReviewDiffIndex(input.prepared.diffText || '');
+  const lines: string[] = [];
+  for (const filePath of input.prepared.changedFiles) {
+    const slice = getRepoReviewDiffSlice(diffIndex, [filePath]);
+    const summary = summarizeRepoReviewDiffSlice(slice);
+    lines.push(
+      `- ${filePath} | +${summary.added} / -${summary.removed} | hunks ${summary.hunks} | ${Buffer.byteLength(slice || '', 'utf8')} bytes`,
+    );
+  }
+  return lines.length > 0 ? lines.join('\n') : '- (none)';
+}
+
 const REPO_REVIEW_EVIDENCE_MAX_LINES = 28;
 const REPO_REVIEW_EVIDENCE_CONTEXT_BEFORE = 3;
 const REPO_REVIEW_EVIDENCE_CONTEXT_AFTER = 6;
@@ -5725,6 +5767,9 @@ export async function resolveReviewPrompt(
         input.prepared.commitSummaryLines.length > 0
           ? `Commits in this branch update:\n${input.prepared.commitSummaryLines.map((line) => `- ${line}`).join('\n')}`
           : '',
+      diffSummaryBlock: buildRepoReviewDiffSummaryBlock({
+        prepared: input.prepared,
+      }),
       projectContextBlock:
         input.prepared.projectContextBlocks.length > 0
           ? `项目上下文：\n${input.prepared.projectContextBlocks.join('\n\n')}`
@@ -5873,6 +5918,9 @@ function buildRepoReviewAgenticPromptVariables(input: {
       input.prepared.commitSummaryLines.length > 0
         ? `Commits in this branch update:\n${input.prepared.commitSummaryLines.map((line) => `- ${line}`).join('\n')}`
         : '',
+    diffSummaryBlock: buildRepoReviewDiffSummaryBlock({
+      prepared: input.prepared,
+    }),
     changedFileCount: input.prepared.changedFiles.length,
     changedFiles:
       input.prepared.changedFiles.length > 0
@@ -5913,9 +5961,9 @@ function buildRepoReviewAgenticPlanOnlyInstructions(input: {
           '不要把全文读取作为委派、审查或阻断计划的前置条件。',
         ].join('\n'),
     workspaceInspectionInstructions: [
-      '计划阶段禁止调用工具、读取文件、执行 git 命令或派发子代理。',
-      '只使用本提示已经提供的提交范围、变更文件列表、diff bytes、提交摘要和系统预算。',
-      '需要后续取证的内容写入 risk_areas 或 notes，由后续审查阶段处理。',
+      '计划阶段先执行只读取证，再输出 review_plan。',
+      '至少执行一次 git diff 或等价只读工具调用确认本次变更范围。',
+      '需要后续继续取证的内容写入 risk_areas 或 notes，由后续审查阶段处理。',
     ].join('\n'),
   };
 }
@@ -7329,57 +7377,64 @@ async function runRepoReviewAgenticReview(input: {
     }),
   });
   throwIfRepoReviewRunCancelled(input.runId);
-  const mainReportMarkdown = mainReportResult.outputText;
+  const finalOutput = mainReportResult.outputText;
+  let parsed: ParsedReviewResult;
+  let usedExtractor = false;
+  try {
+    parsed = parseReviewResult(finalOutput);
+  } catch {
+    parsed = await extractRepoReviewStructuredResult({
+      repository: input.repository,
+      profile: input.profile,
+      mainReportMarkdown: finalOutput,
+      subagentResults,
+      runId: input.runId,
+      workspacePath: input.workspacePath,
+      userId: input.userId,
+      executionStats: input.executionStats,
+      onTurnProgress: async (turns) => {
+        extractorTurns = turns;
+        await emitProgress();
+      },
+      onProgressStep: input.onProgressStep,
+    });
+    usedExtractor = true;
+  }
   await input.onProgressStep?.({
     id: 'agentic_main_summary',
     label: '主代理汇总结论',
     status: 'completed',
-    detail: '最终 Markdown 报告已生成',
+    detail: usedExtractor ? '主代理报告已生成，已通过 formatter 兜底结构化' : '主代理已直接生成结构化结论',
     kind: 'main',
-    outputText: formatProgressKeyValues([
-      ['markdown_bytes', Buffer.byteLength(mainReportMarkdown, 'utf8')],
-      ['subagent_results', subagentResults.length],
-    ]),
-  });
-
-  await input.onProgressStep?.({
-    id: 'agentic_structured_extract',
-    label: '格式化整理',
-    status: 'running',
-    detail: '独立 formatter 正在转换主报告',
-    kind: 'extractor',
-    inputText: formatProgressKeyValues([
-      ['markdown_bytes', Buffer.byteLength(mainReportMarkdown, 'utf8')],
-      ['subagent_results', subagentResults.length],
-    ]),
-  });
-  const parsed = await extractRepoReviewStructuredResult({
-    repository: input.repository,
-    profile: input.profile,
-    mainReportMarkdown,
-    subagentResults,
-    runId: input.runId,
-    workspacePath: input.workspacePath,
-    userId: input.userId,
-    executionStats: input.executionStats,
-    onTurnProgress: async (turns) => {
-      extractorTurns = turns;
-      await emitProgress();
-    },
-    onProgressStep: input.onProgressStep,
-  });
-  await input.onProgressStep?.({
-    id: 'agentic_structured_extract',
-    label: '格式化整理',
-    status: 'completed',
-    detail: `${input.executionStats?.extractorAttempts || 0} 次提取尝试`,
-    kind: 'extractor',
     outputText: formatProgressKeyValues([
       ['overall', parsed.overall],
       ['summary', parsed.summary],
-      ['attempts', input.executionStats?.extractorAttempts || 0],
+      ['subagent_results', subagentResults.length],
     ]),
   });
+  if (usedExtractor) {
+    await input.onProgressStep?.({
+      id: 'agentic_structured_extract',
+      label: '格式化整理',
+      status: 'completed',
+      detail: `${input.executionStats?.extractorAttempts || 0} 次提取尝试`,
+      kind: 'extractor',
+      outputText: formatProgressKeyValues([
+        ['overall', parsed.overall],
+        ['summary', parsed.summary],
+        ['attempts', input.executionStats?.extractorAttempts || 0],
+      ]),
+    });
+  } else {
+    await input.onProgressStep?.({
+      id: 'agentic_structured_extract',
+      label: '格式化整理',
+      status: 'skipped',
+      detail: '主代理已直接返回结构化 JSON',
+      kind: 'extractor',
+      outputText: '主代理已直接返回结构化 JSON，跳过独立 formatter。',
+    });
+  }
   return {
     parsed,
     reviewTurns: [
@@ -11331,7 +11386,7 @@ async function executeRepoReviewEvent(
       );
       runCallbackContext = mergeCallbackContext(runCallbackContext, {
         ...patch,
-        reviewTurns: undefined,
+        reviewTurns,
         reviewProgress,
         ...(executionStats ? { executionStats } : {}),
       });
@@ -11887,18 +11942,27 @@ async function executeRepoReviewEvent(
         suggestions: string[];
         recommendedBlock: boolean;
       } | null = null;
-      const coordinatedReview = await runRepoReviewCoordinatedReview({
+      const agenticBudget = buildRepoReviewAgenticBudget({
+        profile,
+        maxSubagents: maxWorkerCount,
+      });
+      const agenticReview = await runRepoReviewAgenticReview({
         repository,
         profile,
         event,
-      prepared,
-      runId: runRecord.id,
-      workspacePath: reviewWorkspacePath,
-      maxWorkerCount,
-      userId: reviewUserId,
-      executionStats: activeExecutionStats,
-        onTurnProgress: async (turnsByWorker) => {
-          reviewTurns = turnsByWorker.flat();
+        prepared,
+        runId: runRecord.id,
+        workspacePath: reviewWorkspacePath,
+        userId: reviewUserId,
+        budget: agenticBudget,
+        executionStats: activeExecutionStats,
+        onPhaseProgress: async (turns) => {
+          reviewTurns = [
+            ...turns.planTurns,
+            ...turns.subagentTurns.flat(),
+            ...turns.finalTurns,
+            ...turns.extractorTurns,
+          ];
           activeExecutionStats.extraRepoReadCount = countRepoReviewToolCalls(
             reviewTurns,
             'read_file',
@@ -11922,7 +11986,8 @@ async function executeRepoReviewEvent(
         },
       });
       throwIfRepoReviewRunCancelled(runRecord.id);
-      parsed = coordinatedReview.parsed as unknown as ParsedReviewResult;
+      reviewTurns = agenticReview.reviewTurns;
+      parsed = agenticReview.parsed;
       finalReview = {
         overall: parsed.overall,
         summary: parsed.summary,
@@ -11932,28 +11997,30 @@ async function executeRepoReviewEvent(
         suggestions: parsed.suggestions,
         recommendedBlock: parsed.recommendedBlock,
       };
-      const finalMarkdownBody = buildStructuredRepoReviewMarkdown(
-        {
-          summary: finalReview.summary,
-          findings: finalReview.findings,
-          fileReviews: finalReview.fileReviews,
-          commitReviews: parsed.commitReviews,
-          suggestions: finalReview.suggestions,
-        } as unknown as Pick<
-          RepoReviewRun,
-          'summary' | 'findings' | 'commitReviews' | 'suggestions'
-        >,
-        {
-          repositoryName: repository.name,
-          branch: prepared.branch,
-          baseSha: prepared.baseSha,
-          headSha: prepared.headSha,
-          actor: prepared.actor,
-          stage: event.stage,
-          prMrNumber: event.prMrNumber,
-          scopeLimitations: finalReview.scopeLimitations,
-        },
-      );
+      const finalMarkdownBody =
+        stringValue(parsed.markdownBody) ||
+        buildStructuredRepoReviewMarkdown(
+          {
+            summary: finalReview.summary,
+            findings: finalReview.findings,
+            fileReviews: finalReview.fileReviews,
+            commitReviews: parsed.commitReviews,
+            suggestions: finalReview.suggestions,
+          } as unknown as Pick<
+            RepoReviewRun,
+            'summary' | 'findings' | 'commitReviews' | 'suggestions'
+          >,
+          {
+            repositoryName: repository.name,
+            branch: prepared.branch,
+            baseSha: prepared.baseSha,
+            headSha: prepared.headSha,
+            actor: prepared.actor,
+            stage: event.stage,
+            prMrNumber: event.prMrNumber,
+            scopeLimitations: finalReview.scopeLimitations,
+          },
+        );
       const blocking = computeBlocking(
         profile,
         finalReview.overall,
