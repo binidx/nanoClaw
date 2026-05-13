@@ -28,6 +28,7 @@ export interface AgentRunInput {
   chatJid: string;
   isMain: boolean;
   isScheduledTask?: boolean;
+  systemPromptProfile?: 'default_agent' | 'scheduled_lightweight';
   /**
    * When true, skip the agent runner's default global system prompt assembly.
    * Use this for flows that already provide a fully-scoped request prompt and

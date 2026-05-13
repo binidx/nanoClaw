@@ -267,11 +267,35 @@ const PROMPT_PREVIEW_SCENARIOS: PromptPreviewScenario[] = [
     },
   },
   {
+    id: 'runner.codex_scheduled_runtime',
+    title: 'Runner Codex scheduled runtime',
+    description: 'Codex scheduled task lightweight runtime prompt preview.',
+    featureScope: 'runner',
+    promptKey: 'runner.preview.codex_scheduled_runtime',
+    kind: 'runtime_prompt',
+    defaultVariables: {
+      projectDir: '/workspace/group',
+      managedSkillIds: ['imagegen'],
+    },
+  },
+  {
     id: 'runner.claude_runtime',
     title: 'Runner Claude runtime',
     description: 'Claude runner stable system prompt preview.',
     featureScope: 'runner',
     promptKey: 'runner.preview.claude_runtime',
+    kind: 'runtime_prompt',
+    defaultVariables: {
+      projectDir: '/workspace/group',
+      managedSkillIds: ['imagegen'],
+    },
+  },
+  {
+    id: 'runner.claude_scheduled_runtime',
+    title: 'Runner Claude scheduled runtime',
+    description: 'Claude scheduled task lightweight runtime prompt preview.',
+    featureScope: 'runner',
+    promptKey: 'runner.preview.claude_scheduled_runtime',
     kind: 'runtime_prompt',
     defaultVariables: {
       projectDir: '/workspace/group',
@@ -793,11 +817,21 @@ export async function buildPromptPreviewFromRuntime(input: {
 
   if (
     promptKey === 'runner.preview.codex_runtime' ||
-    promptKey === 'runner.preview.claude_runtime'
+    promptKey === 'runner.preview.claude_runtime' ||
+    promptKey === 'runner.preview.codex_scheduled_runtime' ||
+    promptKey === 'runner.preview.claude_scheduled_runtime'
   ) {
     return buildRunnerPromptPreview({
       providerType:
-        promptKey === 'runner.preview.codex_runtime' ? 'codex' : 'claude',
+        promptKey === 'runner.preview.codex_runtime' ||
+        promptKey === 'runner.preview.codex_scheduled_runtime'
+          ? 'codex'
+          : 'claude',
+      systemPromptProfile:
+        promptKey === 'runner.preview.codex_scheduled_runtime' ||
+        promptKey === 'runner.preview.claude_scheduled_runtime'
+          ? 'scheduled_lightweight'
+          : 'default_agent',
       targetUserId: input.targetUserId || null,
       projectDir: asString(vars.projectDir, '/workspace/group'),
       managedSkillIds: asStringArray(vars.managedSkillIds),
