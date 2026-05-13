@@ -847,6 +847,14 @@ export function createSchema(database: Database.Database): void {
     );
     CREATE INDEX IF NOT EXISTS idx_code_search_index_terms_cache_file
       ON code_search_index_terms(cache_key, relative_path, ordinal ASC);
+    CREATE TABLE IF NOT EXISTS code_search_index_payload_chunks (
+      cache_key TEXT NOT NULL,
+      ordinal INTEGER NOT NULL,
+      compression TEXT NOT NULL,
+      chunk_bytes INTEGER NOT NULL,
+      payload_blob BLOB NOT NULL,
+      PRIMARY KEY (cache_key, ordinal)
+    );
     CREATE TABLE IF NOT EXISTS code_map_ai_analyses (
       id TEXT PRIMARY KEY,
       repository_id TEXT NOT NULL,

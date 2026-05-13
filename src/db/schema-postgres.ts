@@ -845,6 +845,14 @@ export function buildPostgresSchema(autoPk: string): string {
       term TEXT NOT NULL,
       PRIMARY KEY (cache_key, relative_path, ordinal)
     );
+    CREATE TABLE IF NOT EXISTS code_search_index_payload_chunks (
+      cache_key TEXT NOT NULL,
+      ordinal INT NOT NULL,
+      compression TEXT NOT NULL,
+      chunk_bytes INT NOT NULL,
+      payload_blob BYTEA NOT NULL,
+      PRIMARY KEY (cache_key, ordinal)
+    );
 
     CREATE TABLE IF NOT EXISTS code_map_ai_analyses (
       id TEXT PRIMARY KEY,
@@ -1742,6 +1750,16 @@ export async function runPostgresMigrations(engine: DbEngine): Promise<void> {
   await safeMigrate(
     `ALTER TABLE code_index_snapshots ADD COLUMN IF NOT EXISTS source_head_sha TEXT NOT NULL DEFAULT ''`,
   );
+  await safeMigrate(`
+    CREATE TABLE IF NOT EXISTS code_search_index_payload_chunks (
+      cache_key TEXT NOT NULL,
+      ordinal INT NOT NULL,
+      compression TEXT NOT NULL,
+      chunk_bytes INT NOT NULL,
+      payload_blob BYTEA NOT NULL,
+      PRIMARY KEY (cache_key, ordinal)
+    )
+  `);
 
   // Partial unique index: prevent duplicate active stock analysis tasks per code
   await safeMigrate(`

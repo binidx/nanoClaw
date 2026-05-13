@@ -2077,10 +2077,69 @@ describe('code search index persistence helpers', () => {
         }),
       ],
     });
+    expect(
+      await dbModule.dba
+        .prepare(
+          `SELECT ordinal, compression, chunk_bytes
+           FROM code_search_index_payload_chunks
+           WHERE cache_key = ?
+           ORDER BY ordinal ASC`,
+        )
+        .all('code-search-index:workspace-a'),
+    ).toEqual([
+      expect.objectContaining({
+        ordinal: 0,
+        compression: 'gzip',
+      }),
+    ]);
 
     await deleteCodeSearchSnapshot('code-search-index:workspace-a');
     expect(
       await getCodeSearchSnapshot('code-search-index:workspace-a'),
+    ).toBeUndefined();
+  });
+
+  it('treats legacy header-only code search cache entries as missing', async () => {
+    await dbModule.dba
+      .prepare(
+        `INSERT OR REPLACE INTO code_search_indexes (
+          cache_key, root_directory, manifest_hash, build_options_json,
+          generated_at, file_count, symbol_count, term_count, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        'code-search-index:legacy-only',
+        '/repo/legacy',
+        'manifest-legacy',
+        '{}',
+        '2026-03-18T00:00:00.000Z',
+        1,
+        1,
+        1,
+        '2026-03-18T00:00:00.000Z',
+        '2026-03-18T00:00:00.000Z',
+      );
+    await dbModule.dba
+      .prepare(
+        `INSERT INTO code_search_index_files (
+          cache_key, relative_path, absolute_path, extension, language,
+          byte_size, line_count, imports_json, previews_json
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        'code-search-index:legacy-only',
+        'src/legacy.ts',
+        '/repo/legacy/src/legacy.ts',
+        '.ts',
+        'typescript',
+        64,
+        4,
+        '[]',
+        '[]',
+      );
+
+    expect(
+      await getCodeSearchSnapshot('code-search-index:legacy-only'),
     ).toBeUndefined();
   });
 });

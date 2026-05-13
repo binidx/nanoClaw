@@ -11,7 +11,7 @@ import {
   searchCodeReferenceHints,
   searchCodeSymbols,
 } from './code-search.js';
-import { _initTestDatabase } from '../db.js';
+import { _initTestDatabase, dba } from '../db.js';
 
 const tempRoots: string[] = [];
 
@@ -160,13 +160,46 @@ describe('code search', () => {
       }),
     ]);
     expect(
-      getCodeSearchCacheStatus(root, {
+      await getCodeSearchCacheStatus(root, {
         cacheKey: 'workspace-a',
       }),
     ).toMatchObject({
       cacheKey: 'code-search-index:workspace-a',
       status: 'fresh',
     });
+  });
+
+  it('rebuilds when only a legacy code-search header exists without payload chunks', async () => {
+    const root = createTempWorkspace();
+    writeFile(root, 'src/order-service.ts', 'export class OrderService {}\n');
+
+    const cacheKey = 'code-search-index:workspace-legacy';
+    await dba
+      .prepare(
+        `INSERT OR REPLACE INTO code_search_indexes (
+          cache_key, root_directory, manifest_hash, build_options_json,
+          generated_at, file_count, symbol_count, term_count, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        cacheKey,
+        root,
+        'stale-manifest',
+        '{}',
+        '2026-03-18T00:00:00.000Z',
+        1,
+        1,
+        0,
+        '2026-03-18T00:00:00.000Z',
+        '2026-03-18T00:00:00.000Z',
+      );
+
+    const loaded = await loadOrBuildPersistentCodeSearchIndex(root, {
+      cacheKey: 'workspace-legacy',
+    });
+
+    expect(loaded?.source).toBe('rebuilt');
+    expect(loaded?.index.files[0]?.relativePath).toBe('src/order-service.ts');
   });
 
   it('treats maxFiles 0 as unlimited when building the index', () => {

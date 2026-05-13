@@ -812,6 +812,15 @@ export function buildMySQLSchema(autoPk: string): string {
       term VARCHAR(128) NOT NULL,
       PRIMARY KEY (cache_key, relative_path(255), ordinal)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    
+    CREATE TABLE IF NOT EXISTS code_search_index_payload_chunks (
+      cache_key VARCHAR(255) NOT NULL,
+      ordinal INT NOT NULL,
+      compression VARCHAR(32) NOT NULL,
+      chunk_bytes INT NOT NULL,
+      payload_blob MEDIUMBLOB NOT NULL,
+      PRIMARY KEY (cache_key, ordinal)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
     CREATE TABLE IF NOT EXISTS code_map_ai_analyses (
       id VARCHAR(64) PRIMARY KEY,
@@ -1718,6 +1727,16 @@ export async function runMySQLMigrations(engine: DbEngine): Promise<void> {
   await safeMigrate(
     `CREATE INDEX idx_code_search_index_terms_cache_file ON code_search_index_terms(cache_key, relative_path(255))`,
   );
+  await safeMigrate(`
+    CREATE TABLE IF NOT EXISTS code_search_index_payload_chunks (
+      cache_key VARCHAR(255) NOT NULL,
+      ordinal INT NOT NULL,
+      compression VARCHAR(32) NOT NULL,
+      chunk_bytes INT NOT NULL,
+      payload_blob MEDIUMBLOB NOT NULL,
+      PRIMARY KEY (cache_key, ordinal)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `);
   // Code map AI analyses
   await safeMigrate(
     `CREATE INDEX idx_code_map_ai_analyses_lookup ON code_map_ai_analyses(repository_id, branch, target_path(191))`,
