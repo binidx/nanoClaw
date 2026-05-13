@@ -180,6 +180,47 @@ describe('workflow routes', () => {
     });
   });
 
+  it('allows workteam.create to create workflows without granting other workflow mutations', async () => {
+    const createOnlyRequirePermission: RequirePermissionFn =
+      (...codes) =>
+      async (_req, res, next) => {
+        if (codes.includes('workteam.create')) {
+          next();
+          return;
+        }
+        res.status(403).json({ error: 'Forbidden', required: codes });
+      };
+    const app = createApp(createOnlyRequirePermission);
+
+    await withServer(app, async (baseUrl) => {
+      const createResponse = await fetch(`${baseUrl}/api/workflows`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'Create Only Flow' }),
+      });
+      expect(createResponse.status).toBe(200);
+      const created = (await createResponse.json()) as { id: string };
+
+      const updateResponse = await fetch(`${baseUrl}/api/workflows/${created.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ description: 'should not update' }),
+      });
+      expect(updateResponse.status).toBe(403);
+
+      const nodeResponse = await fetch(`${baseUrl}/api/workflows/${created.id}/nodes`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          node_type: 'role',
+          name: 'Blocked Role',
+          config_json: { goal: 'Coordinate' },
+        }),
+      });
+      expect(nodeResponse.status).toBe(403);
+    });
+  });
+
   it('requires admin permission for system workflow creation and publication', async () => {
     const denySystemRequirePermission: RequirePermissionFn =
       (...codes) =>

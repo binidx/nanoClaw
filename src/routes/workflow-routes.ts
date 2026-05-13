@@ -120,6 +120,11 @@ export function registerWorkflowRoutes(
 ): void {
   const viewGuard = opts.requirePermission('project.view', 'workteam.view');
   const manageGuard = opts.requirePermission('project.manage', 'workteam.manage');
+  const createGuard = opts.requirePermission(
+    'project.manage',
+    'workteam.manage',
+    'workteam.create',
+  );
   const systemWorkflowGuard = opts.requirePermission(
     'admin.settings.write',
     'marketplace.manage_sources',
@@ -135,7 +140,7 @@ export function registerWorkflowRoutes(
     }
   });
 
-  router.post('/workflows', manageGuard, async (req, res) => {
+  router.post('/workflows', createGuard, async (req, res) => {
     try {
       if (typeof req.body?.name !== 'string' || !req.body.name.trim()) {
         sendError(res, 400, 'name is required');

@@ -1,14 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation } from 'react-router-dom';
+import { AppSelect, type AppSelectOption } from '../components/AppSelect';
 import { getUrlSubPath } from '../router/paths';
 import { useWebSocket } from '../hooks/useWebSocket';
+import type { AiProvider } from '../app-types';
 import { WorkflowRepositoryPanel } from '../components/repository/WorkflowRepositoryPanel';
 import './WorkteamPage.css';
 
 export interface WorkteamPageProps {
   apiBase: string;
   canManage?: boolean;
+  canCreateWorkflow?: boolean;
 }
 
 type WorkflowStatus = 'draft' | 'active' | 'archived';
@@ -408,8 +411,12 @@ interface WorkflowCardSummary {
   latestRunAt?: string;
 }
 
-const NODE_WIDTH = 120;
-const NODE_HEIGHT = 88;
+const NODE_WIDTH = 236;
+const NODE_HEIGHT = 100;
+const CANVAS_BASE_WIDTH = 1600;
+const CANVAS_BASE_HEIGHT = 1100;
+const MIN_CANVAS_ZOOM = 0.45;
+const MAX_CANVAS_ZOOM = 1.8;
 
 function parseJsonObject<T>(
   raw: string,
@@ -534,10 +541,10 @@ function nodeAccent(node: WorkflowNodeRecord): string {
 }
 
 function edgePath(source: WorkflowNodeRecord, target: WorkflowNodeRecord): string {
-  const x1 = source.position_x + 120;
-  const y1 = source.position_y + 44;
+  const x1 = source.position_x + NODE_WIDTH;
+  const y1 = source.position_y + NODE_HEIGHT / 2;
   const x2 = target.position_x;
-  const y2 = target.position_y + 44;
+  const y2 = target.position_y + NODE_HEIGHT / 2;
   const mid = (x1 + x2) / 2;
   return `M ${x1} ${y1} C ${mid} ${y1}, ${mid} ${y2}, ${x2} ${y2}`;
 }
@@ -889,13 +896,18 @@ function displayAssistantName(
   return assistants.find((assistant) => assistant.id === assistantId)?.name || assistantId;
 }
 
-export function WorkteamPage({ apiBase, canManage = true }: WorkteamPageProps) {
+export function WorkteamPage({
+  apiBase,
+  canManage = true,
+  canCreateWorkflow = canManage,
+}: WorkteamPageProps) {
   const { t } = useTranslation('workteam');
   const location = useLocation();
   const routeWorkflowId = getUrlSubPath(location.pathname);
   const [activeWorkflowId, setActiveWorkflowId] = useState(routeWorkflowId);
   const workflowId = activeWorkflowId;
   const canvasRef = useRef<HTMLDivElement | null>(null);
+  const canvasPanelRef = useRef<HTMLElement | null>(null);
   const dragRef = useRef<DragState | null>(null);
   const selectionBoxRef = useRef<SelectionBoxState | null>(null);
 
@@ -912,6 +924,7 @@ export function WorkteamPage({ apiBase, canManage = true }: WorkteamPageProps) {
   const [runMetrics, setRunMetrics] = useState<WorkflowRunMetrics | null>(null);
   const [runEvaluation, setRunEvaluation] = useState<WorkflowEvaluation | null>(null);
   const [assistants, setAssistants] = useState<AssistantRecord[]>([]);
+  const [providers, setProviders] = useState<AiProvider[]>([]);
   const [selectedNodeId, setSelectedNodeId] = useState<string>('');
   const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>([]);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string>('');
@@ -926,6 +939,10 @@ export function WorkteamPage({ apiBase, canManage = true }: WorkteamPageProps) {
   const [workflowStatusFilter, setWorkflowStatusFilter] = useState<
     WorkflowStatus | 'all'
   >('all');
+  const [activeModal, setActiveModal] = useState<
+    'create' | 'settings' | 'repository' | null
+  >(null);
+  const [canvasZoom, setCanvasZoom] = useState(1);
   const [runInput, setRunInput] = useState('');
   const [runPanelExpanded, setRunPanelExpanded] = useState(false);
   const [edgeFeedbackText, setEdgeFeedbackText] = useState('');
@@ -1051,10 +1068,23 @@ export function WorkteamPage({ apiBase, canManage = true }: WorkteamPageProps) {
     }
   }, [apiBase]);
 
+  const loadProviders = useCallback(async () => {
+    try {
+      const res = await fetch(`${apiBase}/api/user/providers?capability=llm`, {
+        credentials: 'include',
+      });
+      if (!res.ok) return;
+      setProviders((await res.json()) as AiProvider[]);
+    } catch {
+      setProviders([]);
+    }
+  }, [apiBase]);
+
   useEffect(() => {
     void loadWorkflows().catch((err) => setError(String(err)));
     void loadAssistants();
-  }, [loadWorkflows, loadAssistants]);
+    void loadProviders();
+  }, [loadWorkflows, loadAssistants, loadProviders]);
 
   useEffect(() => {
     if (workflows.length === 0) {
@@ -1397,6 +1427,22 @@ export function WorkteamPage({ apiBase, canManage = true }: WorkteamPageProps) {
     [snapshot],
   );
 
+  const providerOptions = useMemo<AppSelectOption[]>(
+    () => [
+      { value: '', label: t('workteam.跟随assistant默认Provider') },
+      ...providers
+        .filter((provider) => (provider.capability || 'llm') === 'llm')
+        .map((provider) => ({
+          value: provider.id,
+          label:
+            provider.model && provider.is_default !== 1
+              ? `${provider.alias} · ${provider.model}`
+              : provider.alias,
+        })),
+    ],
+    [providers, t],
+  );
+
   const filteredWorkflows = useMemo(() => {
     const query = workflowQuery.trim().toLowerCase();
     return workflows.filter((workflow) => {
@@ -1430,14 +1476,64 @@ export function WorkteamPage({ apiBase, canManage = true }: WorkteamPageProps) {
     [],
   );
 
+  const toCanvasPoint = useCallback(
+    (clientX: number, clientY: number) => {
+      const canvas = canvasRef.current;
+      if (!canvas) return { x: 0, y: 0 };
+      const rect = canvas.getBoundingClientRect();
+      return {
+        x: (clientX - rect.left) / canvasZoom,
+        y: (clientY - rect.top) / canvasZoom,
+      };
+    },
+    [canvasZoom],
+  );
+
+  const setClampedCanvasZoom = useCallback((nextZoom: number) => {
+    setCanvasZoom(
+      Math.min(MAX_CANVAS_ZOOM, Math.max(MIN_CANVAS_ZOOM, nextZoom)),
+    );
+  }, []);
+
+  const fitCanvasToView = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || visibleWorkerNodes.length === 0) {
+      setClampedCanvasZoom(1);
+      return;
+    }
+    const maxX = Math.max(
+      ...visibleWorkerNodes.map((node) => node.position_x + NODE_WIDTH + 120),
+    );
+    const maxY = Math.max(
+      ...visibleWorkerNodes.map((node) => node.position_y + NODE_HEIGHT + 120),
+    );
+    const nextZoom = Math.min(
+      (canvas.clientWidth - 48) / Math.max(maxX, 640),
+      (canvas.clientHeight - 48) / Math.max(maxY, 420),
+      1.2,
+    );
+    setClampedCanvasZoom(nextZoom);
+    canvas.scrollTo({ left: 0, top: 0, behavior: 'smooth' });
+  }, [setClampedCanvasZoom, visibleWorkerNodes]);
+
+  const toggleCanvasFullscreen = useCallback(() => {
+    const panel = canvasPanelRef.current;
+    if (!panel) return;
+    if (document.fullscreenElement) {
+      void document.exitFullscreen();
+      return;
+    }
+    void panel.requestFullscreen();
+  }, []);
+
   useEffect(() => {
     const onMove = (event: MouseEvent) => {
       const drag = dragRef.current;
       const canvas = canvasRef.current;
       if (drag && canvas) {
-        const rect = canvas.getBoundingClientRect();
-        const nextX = Math.max(16, event.clientX - rect.left - drag.offsetX);
-        const nextY = Math.max(16, event.clientY - rect.top - drag.offsetY);
+        const point = toCanvasPoint(event.clientX, event.clientY);
+        const nextX = Math.max(16, point.x - drag.offsetX);
+        const nextY = Math.max(16, point.y - drag.offsetY);
         const anchor = drag.originPositions.find(
           (item) => item.nodeId === drag.nodeId,
         );
@@ -1454,11 +1550,11 @@ export function WorkteamPage({ apiBase, canManage = true }: WorkteamPageProps) {
       }
       const box = selectionBoxRef.current;
       if (!box || !canvas) return;
-      const rect = canvas.getBoundingClientRect();
+      const point = toCanvasPoint(event.clientX, event.clientY);
       const nextBox = {
         ...box,
-        currentX: event.clientX - rect.left,
-        currentY: event.clientY - rect.top,
+        currentX: point.x,
+        currentY: point.y,
       };
       selectionBoxRef.current = nextBox;
       setSelectionBox(nextBox);
@@ -1516,7 +1612,14 @@ export function WorkteamPage({ apiBase, canManage = true }: WorkteamPageProps) {
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
     };
-  }, [apiBase, workflowId, snapshot, setSnapshotNode, visibleWorkerNodes]);
+  }, [
+    apiBase,
+    workflowId,
+    snapshot,
+    setSnapshotNode,
+    toCanvasPoint,
+    visibleWorkerNodes,
+  ]);
 
   const applyAutoLayout = async () => {
     if (!workflowId || !snapshot) return;
@@ -1582,6 +1685,7 @@ export function WorkteamPage({ apiBase, canManage = true }: WorkteamPageProps) {
       const created = (await res.json()) as WorkflowRecord;
       setNewWorkflowName('');
       setNewWorkflowDesc('');
+      setActiveModal(null);
       await loadWorkflows();
       setActiveWorkflowId(created.id);
     } catch (err) {
@@ -1645,8 +1749,8 @@ export function WorkteamPage({ apiBase, canManage = true }: WorkteamPageProps) {
             timeoutMs: 600000,
             approvalRequired: false,
           },
-          position_x: 120 + (count % 4) * 220,
-          position_y: 100 + Math.floor(count / 4) * 150,
+          position_x: 120 + (count % 3) * 300,
+          position_y: 100 + Math.floor(count / 3) * 170,
         }),
       });
       if (!res.ok) throw new Error(await readError(res));
@@ -2244,23 +2348,13 @@ export function WorkteamPage({ apiBase, canManage = true }: WorkteamPageProps) {
           ) : (
             <div className="workflow-title-stack">
               <h2>{t('pageTitle')}</h2>
+              <span>{t('workteam.连接节点构建自动化流程')}</span>
             </div>
           )}
         </div>
         <div className="workflow-topbar-controls">
           {snapshot ? (
             <>
-              <select
-                value={workflowId}
-                onChange={(event) => setActiveWorkflowId(event.target.value)}
-                aria-label={t('workteam.工作流')}
-              >
-                {workflows.map((workflow) => (
-                  <option key={workflow.id} value={workflow.id}>
-                    {workflow.name}
-                  </option>
-                ))}
-              </select>
               <button
                 type="button"
                 className="btn-primary"
@@ -2288,6 +2382,22 @@ export function WorkteamPage({ apiBase, canManage = true }: WorkteamPageProps) {
               >
                 {t('workteam.发布')}
               </button>
+              <button
+                type="button"
+                className="btn-outline"
+                onClick={() => setActiveModal('repository')}
+                disabled={!workflowId || !snapshot}
+              >
+                {t('workteam.仓库配置')}
+              </button>
+              <button
+                type="button"
+                className="btn-outline"
+                onClick={() => setActiveModal('settings')}
+                disabled={!workflowId || !snapshot}
+              >
+                {t('workteam.更多配置')}
+              </button>
             </>
           ) : (
             <>
@@ -2311,6 +2421,14 @@ export function WorkteamPage({ apiBase, canManage = true }: WorkteamPageProps) {
                 <option value="active">active</option>
                 <option value="archived">archived</option>
               </select>
+              <button
+                type="button"
+                className="btn-primary"
+                disabled={!canCreateWorkflow || busy}
+                onClick={() => setActiveModal('create')}
+              >
+                {t('workteam.新建工作流')}
+              </button>
             </>
           )}
         </div>
@@ -2324,26 +2442,7 @@ export function WorkteamPage({ apiBase, canManage = true }: WorkteamPageProps) {
           <section className="workflow-library">
             <div className="workflow-library-header">
               <h3>{t('workteam.工作流卡片库')}</h3>
-              <div className="workflow-create-inline">
-                <input
-                  value={newWorkflowName}
-                  onChange={(event) => setNewWorkflowName(event.target.value)}
-                  placeholder={t('workteam.新工作流名称')}
-                />
-                <input
-                  value={newWorkflowDesc}
-                  onChange={(event) => setNewWorkflowDesc(event.target.value)}
-                  placeholder={t('workteam.工作流说明')}
-                />
-                <button
-                  type="button"
-                  className="btn-primary"
-                  disabled={!canManage || busy || !newWorkflowName.trim()}
-                  onClick={() => void createWorkflow()}
-                >
-                  {t('workteam.新建工作流')}
-                </button>
-              </div>
+              <span>{filteredWorkflows.length} {t('workteam.个工作流')}</span>
             </div>
             <div className="workflow-card-grid">
               {filteredWorkflows.map((workflow) => {
@@ -2395,7 +2494,7 @@ export function WorkteamPage({ apiBase, canManage = true }: WorkteamPageProps) {
         ) : (
           <section className="workflow-workbench">
             <div className="workflow-workbench-grid">
-              <section className="workflow-canvas-panel">
+              <section className="workflow-canvas-panel" ref={canvasPanelRef}>
                 <div className="workflow-canvas-toolbar">
                   <div className="workflow-canvas-status">
                     <span className="workflow-metric-chip">
@@ -2444,24 +2543,69 @@ export function WorkteamPage({ apiBase, canManage = true }: WorkteamPageProps) {
                     >
                       {t('workteam.校验图')}
                     </button>
+                    <button
+                      type="button"
+                      className="btn-outline btn-sm"
+                      onClick={() => setClampedCanvasZoom(canvasZoom - 0.1)}
+                    >
+                      -
+                    </button>
+                    <span className="workflow-zoom-label">
+                      {Math.round(canvasZoom * 100)}%
+                    </span>
+                    <button
+                      type="button"
+                      className="btn-outline btn-sm"
+                      onClick={() => setClampedCanvasZoom(canvasZoom + 0.1)}
+                    >
+                      +
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-outline btn-sm"
+                      onClick={fitCanvasToView}
+                    >
+                      {t('workteam.适配视图')}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-outline btn-sm"
+                      onClick={toggleCanvasFullscreen}
+                    >
+                      {t('workteam.全屏')}
+                    </button>
                   </div>
                 </div>
                 <div
                   ref={canvasRef}
                   className="workflow-canvas"
                   onMouseDown={(event) => {
-                    if (event.target !== event.currentTarget) return;
-                    const rect = event.currentTarget.getBoundingClientRect();
+                    const target = event.target as HTMLElement;
+                    if (
+                      event.target !== event.currentTarget &&
+                      !target.classList.contains('workflow-canvas-stage')
+                    ) {
+                      return;
+                    }
+                    const point = toCanvasPoint(event.clientX, event.clientY);
                     const nextBox = {
-                      startX: event.clientX - rect.left,
-                      startY: event.clientY - rect.top,
-                      currentX: event.clientX - rect.left,
-                      currentY: event.clientY - rect.top,
+                      startX: point.x,
+                      startY: point.y,
+                      currentX: point.x,
+                      currentY: point.y,
                     };
                     selectionBoxRef.current = nextBox;
                     setSelectionBox(nextBox);
                   }}
                 >
+                  <div
+                    className="workflow-canvas-stage"
+                    style={{
+                      width: CANVAS_BASE_WIDTH,
+                      height: CANVAS_BASE_HEIGHT,
+                      transform: `scale(${canvasZoom})`,
+                    }}
+                  >
                   <svg className="workflow-edge-layer">
                     <defs>
                       <marker
@@ -2541,11 +2685,11 @@ export function WorkteamPage({ apiBase, canManage = true }: WorkteamPageProps) {
                           setSelectedNodeIds(nextSelectedIds);
                           setSelectedNodeId(node.id);
                           setSelectedEdgeId('');
-                          const rect = event.currentTarget.getBoundingClientRect();
+                          const point = toCanvasPoint(event.clientX, event.clientY);
                           dragRef.current = {
                             nodeId: node.id,
-                            offsetX: event.clientX - rect.left,
-                            offsetY: event.clientY - rect.top,
+                            offsetX: point.x - node.position_x,
+                            offsetY: point.y - node.position_y,
                             activeNodeIds: nextSelectedIds,
                             originPositions: snapshot.nodes
                               .filter((item) => nextSelectedIds.includes(item.id))
@@ -2624,6 +2768,7 @@ export function WorkteamPage({ apiBase, canManage = true }: WorkteamPageProps) {
                       }}
                     />
                   ) : null}
+                  </div>
                 </div>
               </section>
 
@@ -2635,6 +2780,7 @@ export function WorkteamPage({ apiBase, canManage = true }: WorkteamPageProps) {
                       key={selectedNode.id}
                       node={selectedNode}
                       assistants={assistants}
+                      providerOptions={providerOptions}
                       runNode={selectedRunNode}
                       canManage={canManage}
                       busy={busy}
@@ -2677,38 +2823,12 @@ export function WorkteamPage({ apiBase, canManage = true }: WorkteamPageProps) {
                         startReconnect(selectedEdge.id, 'target')
                       }
                     />
-                  ) : currentWorkflowConfig ? (
-                    <WorkflowSettingsPanel
-                      snapshot={snapshot}
-                      config={currentWorkflowConfig}
-                      canManage={canManage}
-                      busy={busy}
-                      onWorkflowChange={(patch) =>
-                        setSnapshot({
-                          ...snapshot,
-                          workflow: {
-                            ...snapshot.workflow,
-                            ...patch,
-                          },
-                        })
-                      }
-                      onConfigChange={updateWorkflowConfig}
-                      onSave={() => void saveCurrentWorkflow()}
-                      onPublish={() => void publishWorkflow()}
-                    />
-                  ) : null}
+                  ) : (
+                    <div className="workflow-inspector-empty">
+                      {t('workteam.选择一个节点或连线开始编辑')}
+                    </div>
+                  )}
                 </div>
-
-                <WorkflowRepositoryPanel
-                  apiBase={apiBase}
-                  workflowId={snapshot.workflow.id}
-                  canManage={canManage}
-                  boundAssistantNames={visibleWorkerNodes
-                    .map((node) =>
-                      displayAssistantName(assistants, resolveNodeAssistantId(node)),
-                    )
-                    .filter(Boolean)}
-                />
               </aside>
             </div>
 
@@ -3259,6 +3379,120 @@ export function WorkteamPage({ apiBase, canManage = true }: WorkteamPageProps) {
           </section>
         )}
       </div>
+      {activeModal === 'create' ? (
+        <div className="modal-overlay workflow-modal-overlay" role="presentation">
+          <div className="modal workflow-modal">
+            <div className="modal-header">
+              <h3>{t('workteam.新建工作流')}</h3>
+              <button
+                type="button"
+                className="modal-close-btn"
+                onClick={() => setActiveModal(null)}
+                aria-label={t('workteam.关闭')}
+              >
+                ×
+              </button>
+            </div>
+            <div className="workflow-modal-body">
+              <label>
+                {t('workteam.新工作流名称')}
+                <input
+                  value={newWorkflowName}
+                  onChange={(event) => setNewWorkflowName(event.target.value)}
+                  placeholder={t('workteam.新工作流名称')}
+                />
+              </label>
+              <label>
+                {t('workteam.工作流说明')}
+                <textarea
+                  value={newWorkflowDesc}
+                  onChange={(event) => setNewWorkflowDesc(event.target.value)}
+                  placeholder={t('workteam.工作流说明')}
+                />
+              </label>
+            </div>
+            <div className="workflow-modal-actions">
+              <button
+                type="button"
+                className="btn-outline"
+                onClick={() => setActiveModal(null)}
+              >
+                {t('workteam.取消')}
+              </button>
+              <button
+                type="button"
+                className="btn-primary"
+                disabled={!canCreateWorkflow || busy || !newWorkflowName.trim()}
+                onClick={() => void createWorkflow()}
+              >
+                {t('workteam.新建工作流')}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+      {activeModal === 'settings' && snapshot && currentWorkflowConfig ? (
+        <div className="modal-overlay workflow-modal-overlay" role="presentation">
+          <div className="modal workflow-modal workflow-modal-wide">
+            <div className="modal-header">
+              <h3>{t('workteam.更多配置')}</h3>
+              <button
+                type="button"
+                className="modal-close-btn"
+                onClick={() => setActiveModal(null)}
+                aria-label={t('workteam.关闭')}
+              >
+                ×
+              </button>
+            </div>
+            <WorkflowSettingsPanel
+              snapshot={snapshot}
+              config={currentWorkflowConfig}
+              canManage={canManage}
+              busy={busy}
+              onWorkflowChange={(patch) =>
+                setSnapshot({
+                  ...snapshot,
+                  workflow: {
+                    ...snapshot.workflow,
+                    ...patch,
+                  },
+                })
+              }
+              onConfigChange={updateWorkflowConfig}
+              onSave={() => void saveCurrentWorkflow()}
+              onPublish={() => void publishWorkflow()}
+            />
+          </div>
+        </div>
+      ) : null}
+      {activeModal === 'repository' && snapshot ? (
+        <div className="modal-overlay workflow-modal-overlay" role="presentation">
+          <div className="modal workflow-modal workflow-modal-wide">
+            <div className="modal-header">
+              <h3>{t('workteam.仓库配置')}</h3>
+              <button
+                type="button"
+                className="modal-close-btn"
+                onClick={() => setActiveModal(null)}
+                aria-label={t('workteam.关闭')}
+              >
+                ×
+              </button>
+            </div>
+            <WorkflowRepositoryPanel
+              apiBase={apiBase}
+              workflowId={snapshot.workflow.id}
+              canManage={canManage}
+              boundAssistantNames={visibleWorkerNodes
+                .map((node) =>
+                  displayAssistantName(assistants, resolveNodeAssistantId(node)),
+                )
+                .filter(Boolean)}
+            />
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -3730,6 +3964,7 @@ function WorkflowSettingsPanel({
 function NodeInspector({
   node,
   assistants,
+  providerOptions,
   runNode,
   canManage,
   busy,
@@ -3743,6 +3978,7 @@ function NodeInspector({
 }: {
   node: WorkflowNodeRecord;
   assistants: AssistantRecord[];
+  providerOptions: AppSelectOption[];
   runNode: WorkflowRunNodeRecord | null;
   canManage: boolean;
   busy: boolean;
@@ -3886,6 +4122,24 @@ function NodeInspector({
             </select>
           </label>
           <label>
+            {t('workteam.AI Provider')}
+            <AppSelect
+              value={providerOverrideId}
+              onChange={setProviderOverrideId}
+              options={providerOptions}
+              ariaLabel={t('workteam.AI Provider')}
+              searchable
+            />
+          </label>
+          <label>
+            {t('workteam.model可选')}
+            <input
+              value={modelOverride}
+              onChange={(event) => setModelOverride(event.target.value)}
+              placeholder={t('workteam.留空则跟随Provider默认模型')}
+            />
+          </label>
+          <label>
             {t('workteam.提示词')}
             <textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} />
           </label>
@@ -3935,22 +4189,6 @@ function NodeInspector({
             <label>
               {t('workteam.超时毫秒')}
               <input value={timeoutMs} onChange={(event) => setTimeoutMs(event.target.value)} />
-            </label>
-            <label>
-              {t('workteam.providerId可选')}
-              <input
-                value={providerOverrideId}
-                onChange={(event) => setProviderOverrideId(event.target.value)}
-                placeholder={t('workteam.providerId可选')}
-            />
-            </label>
-            <label>
-              {t('workteam.model可选')}
-              <input
-                value={modelOverride}
-                onChange={(event) => setModelOverride(event.target.value)}
-                placeholder={t('workteam.model可选')}
-              />
             </label>
             <label>
               {t('workteam.追加指令')}
