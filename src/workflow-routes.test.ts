@@ -696,13 +696,13 @@ describe('workflow routes', () => {
       node_type: 'task',
       name: 'A',
       role_node_id: role.id,
-      config_json: { prompt: 'A prompt' },
+      config_json: { prompt: 'A prompt', handoffPolicy: { cooldownMs: 0 } },
     });
     const taskB = await workflowDb.createWorkflowNode(workflow.id, {
       node_type: 'task',
       name: 'B',
       role_node_id: role.id,
-      config_json: { prompt: 'B prompt' },
+      config_json: { prompt: 'B prompt', handoffPolicy: { cooldownMs: 0 } },
     });
     await workflowDb.createWorkflowEdge(workflow.id, {
       source_node_id: taskA.id,

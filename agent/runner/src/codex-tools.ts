@@ -57,6 +57,7 @@ import {
   checkWritePermissionOrEscalate,
   getAccessMode,
   isReadOnlyShellCommand,
+  mapWorkspacePathsInShellCommand,
   precheckBashCommandPaths,
   resolvePath,
 } from './workspace-permissions.js';
@@ -87,6 +88,7 @@ export interface CodexToolExecutionContext {
     groupFolder: string;
     chatJid: string;
     isMain: boolean;
+    toolPolicy?: 'none' | 'readonly' | 'full';
     disableDefaultWebSearch?: boolean;
     assistantName?: string;
     managedSkillIds?: string[];
@@ -790,13 +792,50 @@ function isEnabledBaseTool(name: string): boolean {
   return true;
 }
 
+type CodexToolPolicy = 'none' | 'readonly' | 'full';
+
+function resolveCodexToolPolicy(
+  value: unknown,
+): CodexToolPolicy {
+  return value === 'none' || value === 'readonly' || value === 'full'
+    ? value
+    : 'full';
+}
+
+const READONLY_CODEX_TOOL_NAMES = new Set([
+  'bash',
+  'read_file',
+  'glob',
+  'grep',
+  'list_dir',
+  'search_web',
+  'fetch_url',
+  'read_lints',
+  'semantic_search',
+  'memory_search',
+  'memory_get',
+]);
+
+function isCodexToolAllowedByPolicy(
+  name: string,
+  policy: CodexToolPolicy,
+): boolean {
+  if (policy === 'full') return true;
+  if (policy === 'none') return false;
+  return READONLY_CODEX_TOOL_NAMES.has(name);
+}
+
 async function buildCodexFunctionTools(options?: {
   omitLocalSearchWeb?: boolean;
+  toolPolicy?: CodexToolPolicy;
 }): Promise<ResponsesToolDef[]> {
+  const toolPolicy = resolveCodexToolPolicy(options?.toolPolicy);
+  if (toolPolicy === 'none') return [];
   const mcpTools = await listCodexMcpTools();
   const subagentRuntime = getCodexSubagentRuntimeConfig();
   const webConfig = getRuntimeConfig();
   const baseTools = BASE_CODEX_TOOLS_RESPONSES.filter((tool) => {
+    if (!isCodexToolAllowedByPolicy(tool.name, toolPolicy)) return false;
     if (!isEnabledBaseTool(tool.name)) return false;
     if (options?.omitLocalSearchWeb && tool.name === 'search_web') return false;
     if (!isDefaultWebSearchEnabled() && tool.name === 'search_web') return false;
@@ -805,27 +844,36 @@ async function buildCodexFunctionTools(options?: {
   });
   return [
     ...baseTools,
-    ...getSubagentToolDefs(),
-    ...(subagentRuntime.canSpawn ? [buildAgentToolDef()] : []),
-    ...mcpTools.map((tool) => ({
+    ...(toolPolicy === 'full' ? getSubagentToolDefs() : []),
+    ...(toolPolicy === 'full' && subagentRuntime.canSpawn ? [buildAgentToolDef()] : []),
+    ...(toolPolicy === 'full' ? mcpTools.map((tool) => ({
       type: 'function' as const,
       name: tool.name,
       description: tool.description,
       parameters: tool.parameters,
-    })),
+    })) : []),
   ];
 }
 
-export async function buildCodexResponsesTools(): Promise<CodexResponsesToolDef[]> {
+export async function buildCodexResponsesTools(options?: {
+  toolPolicy?: CodexToolPolicy;
+}): Promise<CodexResponsesToolDef[]> {
+  const toolPolicy = resolveCodexToolPolicy(options?.toolPolicy);
   const tools = await buildCodexFunctionTools({
     omitLocalSearchWeb: isCodexNativeWebSearchPreferred(),
+    toolPolicy,
   });
-  const nativeWebSearchTool = buildNativeWebSearchTool();
+  const nativeWebSearchTool =
+    toolPolicy === 'none' ? null : buildNativeWebSearchTool();
   return nativeWebSearchTool ? [nativeWebSearchTool, ...tools] : tools;
 }
 
-export async function buildCodexOpenAiTools(): Promise<ChatCompletionsToolDef[]> {
-  const tools = await buildCodexFunctionTools();
+export async function buildCodexOpenAiTools(options?: {
+  toolPolicy?: CodexToolPolicy;
+}): Promise<ChatCompletionsToolDef[]> {
+  const tools = await buildCodexFunctionTools({
+    toolPolicy: resolveCodexToolPolicy(options?.toolPolicy),
+  });
   return tools.map((tool) => ({
     type: 'function',
     function: {
@@ -854,6 +902,7 @@ export const __testing = {
     managedSubagents.clear();
     pendingSpawnReservations.clear();
   },
+  isCodexToolAllowedByPolicy,
 };
 
 // ── Tool execution ──
@@ -1003,6 +1052,10 @@ export async function executeTool(
   options?: CodexToolExecutionOptions,
 ): Promise<string> {
   try {
+    const toolPolicy = resolveCodexToolPolicy(options?.agentInput?.toolPolicy);
+    if (!isCodexToolAllowedByPolicy(name, toolPolicy)) {
+      return `Error: Tool "${name}" is disabled by the current tool policy (${toolPolicy})`;
+    }
     const mcpResult = await executeCodexMcpTool(name, input);
     if (mcpResult !== null) return truncateToolOutput(name, mcpResult);
 
@@ -1085,7 +1138,7 @@ async function executeBash(
   cwd: string,
   options?: CodexToolExecutionOptions,
 ): Promise<string> {
-  const command = input.command as string;
+  const command = mapWorkspacePathsInShellCommand(input.command as string);
   const requestedWorkdir = (input.workdir as string) || cwd;
   const workdir = resolvePath(requestedWorkdir, cwd);
   const timeout = (input.timeout as number) || 30000;
@@ -1261,6 +1314,7 @@ function buildChildAgentInput(
     managedSkillIds: options?.agentInput?.managedSkillIds,
     managedMcpServerIds: options?.agentInput?.managedMcpServerIds,
     workingDirectory: options?.agentInput?.workingDirectory || cwd,
+    toolPolicy: options?.agentInput?.toolPolicy,
     secrets: collectChildSecretsFromEnv(options),
   };
 }

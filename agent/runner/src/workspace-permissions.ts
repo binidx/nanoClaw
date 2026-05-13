@@ -147,6 +147,23 @@ export function resolveWorkspacePath(filePath: string): string {
   return filePath;
 }
 
+export function mapWorkspacePathsInShellCommand(command: string): string {
+  let mapped = String(command || '');
+  for (const mapping of WORKSPACE_PATH_MAPPINGS) {
+    const hostRoot = process.env[mapping.envKey] || mapping.fallback?.();
+    if (!hostRoot) continue;
+    const escapedPrefix = mapping.virtualPrefix.replace(
+      /[.*+?^${}()|[\]\\]/g,
+      '\\$&',
+    );
+    mapped = mapped.replace(
+      new RegExp(`${escapedPrefix}(?=$|[\\s"';&|)\\/])`, 'g'),
+      () => hostRoot,
+    );
+  }
+  return mapped;
+}
+
 export function resolvePath(filePath: string, cwd: string): string {
   const mappedPath = resolveWorkspacePath(filePath);
   return path.isAbsolute(mappedPath)

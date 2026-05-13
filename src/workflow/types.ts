@@ -67,6 +67,31 @@ export interface WorkflowRepositoryPolicy {
   bindingKey?: string;
 }
 
+export interface WorkflowGuardrailsConfig {
+  maxDurationMs: number;
+  concurrentNodes: number;
+  maxNodeRuns: number;
+  maxTransfers: number;
+  maxToolCalls: number;
+  maxExecutionEvents: number;
+  maxEstimatedContextCharsPerNode: number;
+}
+
+export interface WorkflowToolPolicy {
+  mode: 'assistant_default' | 'restricted';
+  managedSkillIds?: string[];
+  userSkillIds?: string[];
+  managedMcpServerIds?: string[];
+  userMcpServerIds?: string[];
+  managedKbIds?: string[];
+  providerOverrideId?: string;
+  modelOverride?: string;
+}
+
+export interface WorkflowEvaluationPolicy {
+  enabled: boolean;
+}
+
 export interface WorkflowConfig {
   kind: WorkflowKind;
   visibility: WorkflowVisibility;
@@ -74,6 +99,9 @@ export interface WorkflowConfig {
   artifactPolicy: WorkflowArtifactPolicy;
   messageDelayMs: number;
   publishTarget?: 'skill' | 'mcp' | 'system';
+  guardrails: WorkflowGuardrailsConfig;
+  toolPolicy: WorkflowToolPolicy;
+  evaluationPolicy: WorkflowEvaluationPolicy;
 }
 
 export interface WorkflowRecord {
@@ -257,6 +285,15 @@ export interface WorkflowArtifactRecord {
   updated_at: string;
 }
 
+export interface WorkflowRunEvaluationRecord {
+  id: string;
+  run_id: string;
+  status: 'pass' | 'warn' | 'fail';
+  score: number;
+  findings_json: string;
+  created_at: string;
+}
+
 export interface CreateWorkflowInput {
   name: string;
   description?: string;
@@ -303,6 +340,7 @@ export interface WorkflowRunGraph {
   messageFrames: WorkflowMessageFrameRecord[];
   pendingTransfers: WorkflowPendingTransferRecord[];
   artifacts: WorkflowArtifactRecord[];
+  evaluation?: WorkflowRunEvaluationRecord;
 }
 
 export interface RoleNodeConfig {
@@ -322,6 +360,10 @@ export interface TaskNodeConfig {
   modelOverride?: string;
   instructionsAppend?: string;
   allowedDirectories?: string[];
+  toolPolicy?: WorkflowToolPolicy;
+  retryPolicy?: {
+    maxAttempts: number;
+  };
   handoffPolicy?: {
     maxTurns: number;
     cooldownMs: number;

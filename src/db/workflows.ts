@@ -19,6 +19,7 @@ import type {
   WorkflowMessageFrameRecord,
   WorkflowPendingTransferRecord,
   WorkflowArtifactRecord,
+  WorkflowRunEvaluationRecord,
   WorkflowSnapshot,
 } from '../workflow/types.js';
 import { normalizeWorkflowConfig } from '../workflow/config.js';
@@ -1205,6 +1206,59 @@ export async function createWorkflowArtifact(input: {
   return record;
 }
 
+export async function upsertWorkflowRunEvaluation(input: {
+  run_id: string;
+  status: WorkflowRunEvaluationRecord['status'];
+  score: number;
+  findings_json: string;
+}): Promise<WorkflowRunEvaluationRecord> {
+  const ts = now();
+  const existing = await getWorkflowRunEvaluation(input.run_id);
+  if (existing) {
+    await dba.prepare(`
+      UPDATE workflow_run_evaluations
+      SET status = ?, score = ?, findings_json = ?, created_at = ?
+      WHERE id = ?
+    `).run(input.status, input.score, input.findings_json, ts, existing.id);
+    return {
+      ...existing,
+      status: input.status,
+      score: input.score,
+      findings_json: input.findings_json,
+      created_at: ts,
+    };
+  }
+  const record: WorkflowRunEvaluationRecord = {
+    id: genId(),
+    run_id: input.run_id,
+    status: input.status,
+    score: input.score,
+    findings_json: input.findings_json,
+    created_at: ts,
+  };
+  await dba.prepare(`
+    INSERT INTO workflow_run_evaluations (id, run_id, status, score, findings_json, created_at)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(
+    record.id,
+    record.run_id,
+    record.status,
+    record.score,
+    record.findings_json,
+    record.created_at,
+  );
+  return record;
+}
+
+export async function getWorkflowRunEvaluation(
+  runId: string,
+): Promise<WorkflowRunEvaluationRecord | undefined> {
+  const row = await dba.prepare(
+    `SELECT * FROM workflow_run_evaluations WHERE run_id = ? ORDER BY created_at DESC LIMIT 1`,
+  ).get(runId);
+  return row as WorkflowRunEvaluationRecord | undefined;
+}
+
 export async function listWorkflowArtifacts(
   runId: string,
 ): Promise<WorkflowArtifactRecord[]> {
@@ -1273,6 +1327,7 @@ export async function getWorkflowRunGraph(
     messageFrames,
     pendingTransfers,
     artifacts,
+    evaluation,
   ] = await Promise.all([
     listWorkflowNodes(workflow.id),
     listWorkflowEdges(workflow.id),
@@ -1285,6 +1340,7 @@ export async function getWorkflowRunGraph(
     listWorkflowMessageFrames(run.id),
     listWorkflowPendingTransfers(run.id),
     listWorkflowArtifacts(run.id),
+    getWorkflowRunEvaluation(run.id),
   ]);
   return {
     run,
@@ -1300,5 +1356,6 @@ export async function getWorkflowRunGraph(
     messageFrames,
     pendingTransfers,
     artifacts,
+    evaluation,
   };
 }

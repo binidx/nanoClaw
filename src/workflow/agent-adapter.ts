@@ -9,6 +9,7 @@ import type {
   WorkflowNodeRecord,
   RoleNodeConfig,
   TaskNodeConfig,
+  WorkflowToolPolicy,
 } from './types.js';
 
 export const AGENT_POLL_INTERVAL_MS = 2000;
@@ -85,6 +86,24 @@ function normalizeTaskAllowedDirectories(
   return normalized.length > 0 ? normalized : undefined;
 }
 
+function effectiveToolPolicy(
+  workflowPolicy: WorkflowToolPolicy | undefined,
+  taskPolicy: WorkflowToolPolicy | undefined,
+): WorkflowToolPolicy {
+  return taskPolicy ?? workflowPolicy ?? { mode: 'assistant_default' };
+}
+
+function restrictResolvedMcpServers(
+  servers: Awaited<ReturnType<typeof resolveAssistantRuntimeConfig>>['resolvedMcpServers'],
+  allowedIds: string[] | undefined,
+) {
+  if (!Array.isArray(servers) || !allowedIds) return undefined;
+  const allowed = new Set(allowedIds);
+  return servers.filter(
+    (server) => allowed.has(server.id) || allowed.has(server.templateServerId),
+  );
+}
+
 export interface WorkflowAgentExecutionResult {
   success: boolean;
   output: string;
@@ -154,6 +173,7 @@ export async function executeWorkflowTask(input: {
     direction: string;
     content: string;
   }>;
+  toolPolicy?: WorkflowToolPolicy;
   signal?: AbortSignal;
 }): Promise<WorkflowAgentExecutionResult> {
   const {
@@ -163,6 +183,7 @@ export async function executeWorkflowTask(input: {
     taskNode,
     runInput,
     upstreamMessages,
+    toolPolicy: workflowToolPolicy,
     signal,
   } =
     input;
@@ -199,6 +220,26 @@ export async function executeWorkflowTask(input: {
     const taskAllowedDirectories = normalizeTaskAllowedDirectories(
       taskCfg.allowedDirectories,
     );
+    const toolPolicy = effectiveToolPolicy(workflowToolPolicy, taskCfg.toolPolicy);
+    const restricted = toolPolicy.mode === 'restricted';
+    const managedSkillIds = restricted ? toolPolicy.managedSkillIds : assistantRuntime.managedSkillIds;
+    const userSkillIds = restricted ? toolPolicy.userSkillIds : assistantRuntime.userSkillIds;
+    const managedMcpServerIds = restricted
+      ? toolPolicy.managedMcpServerIds
+      : assistantRuntime.managedMcpServerIds;
+    const userMcpServerIds = restricted
+      ? toolPolicy.userMcpServerIds
+      : assistantRuntime.userMcpServerIds;
+    const managedKbIds = restricted ? toolPolicy.managedKbIds : assistantRuntime.managedKbIds;
+    const resolvedManagedMcpServers = restricted
+      ? restrictResolvedMcpServers(assistantRuntime.resolvedMcpServers, managedMcpServerIds)
+      : assistantRuntime.resolvedMcpServers;
+    const providerOverrideId = restricted
+      ? toolPolicy.providerOverrideId
+      : taskProviderOverrideId || assistantRuntime.providerOverrideId;
+    const modelOverride = restricted
+      ? toolPolicy.modelOverride
+      : taskModelOverride || assistantRuntime.modelOverride;
     const startMs = Date.now();
     let pollCount = 0;
     let latestResult = '';
@@ -297,12 +338,12 @@ export async function executeWorkflowTask(input: {
         chatJid: runtimeJid,
         isMain: false,
         assistantName: await getAssistantName(),
-        managedSkillIds: assistantRuntime.managedSkillIds,
-        managedMcpServerIds: assistantRuntime.managedMcpServerIds,
-        userSkillIds: assistantRuntime.userSkillIds,
-        userMcpServerIds: assistantRuntime.userMcpServerIds,
-        managedKbIds: assistantRuntime.managedKbIds,
-        resolvedManagedMcpServers: assistantRuntime.resolvedMcpServers,
+        managedSkillIds,
+        managedMcpServerIds,
+        userSkillIds,
+        userMcpServerIds,
+        managedKbIds,
+        resolvedManagedMcpServers,
         projectRootOverride:
           taskAllowedDirectories?.[0] || assistantRuntime.projectRootOverride,
         workspaceExtraDirectories:
@@ -311,9 +352,8 @@ export async function executeWorkflowTask(input: {
             : assistantRuntime.repoBindingDirectories?.slice(1),
         allowedDirectoriesOverride:
           taskAllowedDirectories || assistantRuntime.repoBindingDirectories,
-        providerOverrideId:
-          taskProviderOverrideId || assistantRuntime.providerOverrideId,
-        modelOverride: taskModelOverride || assistantRuntime.modelOverride,
+        providerOverrideId,
+        modelOverride,
         soulSystemPrompt: assistantRuntime.soulSystemPrompt,
         instructionsAppend:
           [assistantRuntime.instructionsAppend, taskInstructionsAppend]

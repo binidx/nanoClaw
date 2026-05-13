@@ -3135,6 +3135,17 @@ export function createSchema(database: Database.Database): void {
     );
     CREATE INDEX IF NOT EXISTS idx_workflow_artifacts_run
       ON workflow_artifacts(run_id, artifact_type, created_at);
+
+    CREATE TABLE IF NOT EXISTS workflow_run_evaluations (
+      id TEXT PRIMARY KEY,
+      run_id TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'warn',
+      score INTEGER NOT NULL DEFAULT 0,
+      findings_json TEXT NOT NULL DEFAULT '[]',
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_workflow_run_evaluations_run
+      ON workflow_run_evaluations(run_id, created_at);
   `);
 
   // ── ABAC: resource_access, user_permission_overrides, permission_groups ──

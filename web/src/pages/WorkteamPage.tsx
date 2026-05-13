@@ -3,7 +3,6 @@ import { useTranslation } from 'react-i18next';
 import { useLocation } from 'react-router-dom';
 import { getUrlSubPath } from '../router/paths';
 import { useWebSocket } from '../hooks/useWebSocket';
-import { Drawer } from '../components/common/Drawer';
 import { WorkflowRepositoryPanel } from '../components/repository/WorkflowRepositoryPanel';
 import './WorkteamPage.css';
 
@@ -58,6 +57,32 @@ interface WorkflowConfig {
     bindingKey?: string;
   };
   publishTarget?: 'skill' | 'mcp' | 'system';
+  guardrails?: WorkflowGuardrailsConfig;
+  toolPolicy?: WorkflowToolPolicy;
+  evaluationPolicy?: {
+    enabled?: boolean;
+  };
+}
+
+interface WorkflowGuardrailsConfig {
+  maxDurationMs: number;
+  concurrentNodes: number;
+  maxNodeRuns: number;
+  maxTransfers: number;
+  maxToolCalls: number;
+  maxExecutionEvents: number;
+  maxEstimatedContextCharsPerNode: number;
+}
+
+interface WorkflowToolPolicy {
+  mode: 'assistant_default' | 'restricted';
+  managedSkillIds?: string[];
+  userSkillIds?: string[];
+  managedMcpServerIds?: string[];
+  userMcpServerIds?: string[];
+  managedKbIds?: string[];
+  providerOverrideId?: string;
+  modelOverride?: string;
 }
 
 interface WorkflowNodeRecord {
@@ -240,6 +265,40 @@ interface WorkflowArtifactRecord {
   updated_at: string;
 }
 
+interface WorkflowRunMetrics {
+  runId: string;
+  status: string;
+  durationMs: number;
+  nodeRuns: number;
+  transfers: number;
+  toolCalls: number;
+  approvals: number;
+  executionEvents: number;
+  maxEstimatedContextCharsPerNode: number;
+  guardrails: WorkflowGuardrailsConfig;
+  remaining: {
+    durationMs: number;
+    nodeRuns: number;
+    transfers: number;
+    toolCalls: number;
+    executionEvents: number;
+  };
+  breakerReason?: string;
+}
+
+interface WorkflowEvaluation {
+  runId: string;
+  status: 'pass' | 'warn' | 'fail';
+  score: number;
+  findings: Array<{
+    code: string;
+    severity: 'info' | 'warning' | 'error';
+    message: string;
+    nodeId?: string;
+  }>;
+  createdAt: string;
+}
+
 interface WorkflowExecutionEventView {
   id: string;
   title: string;
@@ -291,6 +350,7 @@ interface TaskConfig {
   modelOverride?: string;
   instructionsAppend?: string;
   allowedDirectories?: string[];
+  toolPolicy?: WorkflowToolPolicy;
   handoffPolicy?: {
     maxTurns: number;
     cooldownMs: number;
@@ -341,325 +401,15 @@ interface ReconnectState {
   end: 'source' | 'target';
 }
 
-interface RoleNodeTemplate {
-  id: string;
-  name: string;
-  goal: string;
-  backstory: string;
-}
-
-interface TaskNodeTemplate {
-  id: string;
-  name: string;
-  description: string;
-  prompt: string;
-  expectedOutput: string;
-  timeoutMs?: number;
-  approvalRequired?: boolean;
-}
-
-interface WorkflowGraphTemplate {
-  id: string;
-  name: string;
-  description: string;
-  roles: Array<
-    RoleNodeTemplate & {
-      key: string;
-      position: { x: number; y: number };
-    }
-  >;
-  tasks: Array<
-    TaskNodeTemplate & {
-      key: string;
-      roleKey: string;
-      position: { x: number; y: number };
-    }
-  >;
-  edges: Array<{
-    sourceTaskKey: string;
-    targetTaskKey: string;
-    direction?: WorkflowEdgeDirection;
-    discussionTurns?: number;
-    label?: string;
-  }>;
+interface WorkflowCardSummary {
+  workerCount: number;
+  edgeCount: number;
+  latestRunStatus?: WorkflowRunStatus;
+  latestRunAt?: string;
 }
 
 const NODE_WIDTH = 120;
 const NODE_HEIGHT = 88;
-
-function buildRoleNodeTemplates(t: (key: string, options?: Record<string, unknown>) => string): RoleNodeTemplate[] {
-  return [
-    {
-      id: 'planner',
-      name: 'Planner',
-      goal: t('拆解目标、识别约束并产出清晰执行计划。'),
-      backstory: t('擅长需求分析、任务分解和阶段规划。'),
-    },
-    {
-      id: 'architect',
-      name: 'Architect',
-      goal: t('设计系统方案、接口边界与关键技术取舍。'),
-      backstory: t('擅长架构设计、边界划分和复杂系统建模。'),
-    },
-    {
-      id: 'builder',
-      name: 'Builder',
-      goal: t('把设计落成可运行实现，快速迭代交付。'),
-      backstory: t('擅长编码、调试和把方案变成可工作的系统。'),
-    },
-    {
-      id: 'reviewer',
-      name: 'Reviewer',
-      goal: t('识别风险、缺陷和回归点，推动质量收敛。'),
-      backstory: t('擅长代码审查、边界检查和异常场景验证。'),
-    },
-    {
-      id: 'verifier',
-      name: 'Verifier',
-      goal: t('执行验证、确认结果并给出最终通过结论。'),
-      backstory: t('擅长测试设计、验收和交付前确认。'),
-    },
-  ];
-}
-
-function buildTaskNodeTemplates(t: (key: string, options?: Record<string, unknown>) => string): TaskNodeTemplate[] {
-  return [
-    {
-      id: 'analyze',
-      name: 'Analyze',
-      description: t('分析输入、背景和约束，形成结构化认知。'),
-      prompt: t('先分析问题背景、目标、约束和潜在风险，再给出结构化结论。'),
-      expectedOutput: t('结构化分析结果'),
-    },
-    {
-      id: 'design',
-      name: 'Design',
-      description: t('产出设计方案与关键决策。'),
-      prompt: t('给出设计方案、关键边界、组件关系和实现策略。'),
-      expectedOutput: t('设计方案'),
-    },
-    {
-      id: 'implement',
-      name: 'Implement',
-      description: t('基于既有方案执行实现。'),
-      prompt: t('根据上游设计和反馈完成实现，并明确产出结果。'),
-      expectedOutput: t('实现结果'),
-    },
-    {
-      id: 'review',
-      name: 'Review',
-      description: t('检查实现质量并提出修改建议。'),
-      prompt: t('从正确性、风险、回归和可维护性角度审查当前结果。'),
-      expectedOutput: t('审查意见'),
-    },
-    {
-      id: 'verify',
-      name: 'Verify',
-      description: t('执行最终验收与通过判断。'),
-      prompt: t('验证目标是否达成，列出通过结论、残余风险和阻塞项。'),
-      expectedOutput: t('验收结论'),
-    },
-  ];
-}
-
-function buildWorkflowGraphTemplates(
-  roleNodeTemplates: RoleNodeTemplate[],
-  taskNodeTemplates: TaskNodeTemplate[],
-  t: (key: string, options?: Record<string, unknown>) => string,
-): WorkflowGraphTemplate[] {
-  return [
-    {
-      id: 'sdlc-lite',
-      name: 'SDLC Lite',
-      description: t('需求 -> 方案 -> 开发 -> 评审 -> 验证'),
-    roles: [
-      {
-        key: 'planner',
-        ...roleNodeTemplates[0],
-        position: { x: 60, y: 80 },
-      },
-      {
-        key: 'architect',
-        ...roleNodeTemplates[1],
-        position: { x: 60, y: 220 },
-      },
-      {
-        key: 'builder',
-        ...roleNodeTemplates[2],
-        position: { x: 60, y: 360 },
-      },
-      {
-        key: 'reviewer',
-        ...roleNodeTemplates[3],
-        position: { x: 60, y: 500 },
-      },
-      {
-        key: 'verifier',
-        ...roleNodeTemplates[4],
-        position: { x: 60, y: 640 },
-      },
-    ],
-    tasks: [
-      {
-        key: 'analyze',
-        ...taskNodeTemplates[0],
-        roleKey: 'planner',
-        position: { x: 340, y: 80 },
-      },
-      {
-        key: 'design',
-        ...taskNodeTemplates[1],
-        roleKey: 'architect',
-        position: { x: 620, y: 180 },
-      },
-      {
-        key: 'implement',
-        ...taskNodeTemplates[2],
-        roleKey: 'builder',
-        position: { x: 900, y: 280 },
-      },
-      {
-        key: 'review',
-        ...taskNodeTemplates[3],
-        roleKey: 'reviewer',
-        position: { x: 1180, y: 380 },
-      },
-      {
-        key: 'verify',
-        ...taskNodeTemplates[4],
-        roleKey: 'verifier',
-        position: { x: 1460, y: 480 },
-      },
-    ],
-    edges: [
-      { sourceTaskKey: 'analyze', targetTaskKey: 'design' },
-      { sourceTaskKey: 'design', targetTaskKey: 'implement' },
-      { sourceTaskKey: 'implement', targetTaskKey: 'review' },
-      { sourceTaskKey: 'review', targetTaskKey: 'verify' },
-    ],
-  },
-  {
-    id: 'analysis-exec-summary',
-    name: 'Analysis -> Execute -> Summarize',
-    description: t('快速分析、执行、汇总的轻量闭环'),
-    roles: [
-      {
-        key: 'analyst',
-        ...roleNodeTemplates[0],
-        position: { x: 60, y: 120 },
-      },
-      {
-        key: 'builder',
-        ...roleNodeTemplates[2],
-        position: { x: 60, y: 300 },
-      },
-      {
-        key: 'verifier',
-        ...roleNodeTemplates[4],
-        position: { x: 60, y: 480 },
-      },
-    ],
-    tasks: [
-      {
-        key: 'analyze',
-        ...taskNodeTemplates[0],
-        roleKey: 'analyst',
-        position: { x: 340, y: 120 },
-      },
-      {
-        key: 'implement',
-        ...taskNodeTemplates[2],
-        roleKey: 'builder',
-        position: { x: 720, y: 260 },
-      },
-      {
-        key: 'verify',
-        ...taskNodeTemplates[4],
-        roleKey: 'verifier',
-        position: { x: 1100, y: 400 },
-      },
-    ],
-    edges: [
-      { sourceTaskKey: 'analyze', targetTaskKey: 'implement' },
-      { sourceTaskKey: 'implement', targetTaskKey: 'verify' },
-    ],
-  },
-  {
-    id: 'debate-arbiter',
-    name: 'Debate + Arbiter',
-    description: t('双人讨论后交由仲裁节点收敛结论'),
-    roles: [
-      {
-        key: 'side-a',
-        id: 'debater-a',
-        name: 'Debater A',
-        goal: t('auto.6eda290c'),
-        backstory: t('auto.ab56ed0b'),
-        position: { x: 60, y: 120 },
-      },
-      {
-        key: 'side-b',
-        id: 'debater-b',
-        name: 'Debater B',
-        goal: t('auto.7220a1d4'),
-        backstory: t('auto.274ad680'),
-        position: { x: 60, y: 320 },
-      },
-      {
-        key: 'arbiter',
-        id: 'arbiter',
-        name: 'Arbiter',
-        goal: t('auto.0203969d'),
-        backstory: t('auto.99fac797'),
-        position: { x: 60, y: 540 },
-      },
-    ],
-    tasks: [
-      {
-        key: 'arg-a',
-        id: 'arg-a',
-        name: 'Argument A',
-        description: t('auto.5e22a80b'),
-        prompt: t('auto.d59b6c57'),
-        expectedOutput: t('auto.ff44c391'),
-        roleKey: 'side-a',
-        position: { x: 340, y: 120 },
-      },
-      {
-        key: 'arg-b',
-        id: 'arg-b',
-        name: 'Argument B',
-        description: t('auto.5e96b31f'),
-        prompt: t('auto.d292fac9'),
-        expectedOutput: t('auto.2d356b0d'),
-        roleKey: 'side-b',
-        position: { x: 760, y: 260 },
-      },
-      {
-        key: 'arbiter',
-        id: 'arbiter-task',
-        name: 'Arbitrate',
-        description: t('auto.1530f31c'),
-        prompt: t('auto.6d823aa0'),
-        expectedOutput: t('auto.a66dc0b7'),
-        roleKey: 'arbiter',
-        position: { x: 1180, y: 420 },
-      },
-    ],
-    edges: [
-      {
-        sourceTaskKey: 'arg-a',
-        targetTaskKey: 'arg-b',
-        direction: 'two_way',
-        discussionTurns: 4,
-        label: 'debate',
-      },
-      { sourceTaskKey: 'arg-a', targetTaskKey: 'arbiter' },
-      { sourceTaskKey: 'arg-b', targetTaskKey: 'arbiter' },
-    ],
-  },
-  ];
-}
 
 function parseJsonObject<T>(
   raw: string,
@@ -694,6 +444,7 @@ function parseAssistantListPayload(value: unknown): AssistantRecord[] {
 
 function parseWorkflowConfig(raw: string): WorkflowConfig {
   const value = parseJsonObject<WorkflowConfig>(raw);
+  const guardrails = (value.guardrails || {}) as Partial<WorkflowGuardrailsConfig>;
   return {
     kind: value.kind || 'general',
     visibility: value.visibility || 'private',
@@ -706,6 +457,39 @@ function parseWorkflowConfig(raw: string): WorkflowConfig {
     },
     repositoryPolicy: value.repositoryPolicy || {},
     publishTarget: value.publishTarget,
+    guardrails: {
+      maxDurationMs:
+        typeof guardrails.maxDurationMs === 'number' ? guardrails.maxDurationMs : 1800000,
+      concurrentNodes:
+        typeof guardrails.concurrentNodes === 'number' ? guardrails.concurrentNodes : 2,
+      maxNodeRuns:
+        typeof guardrails.maxNodeRuns === 'number' ? guardrails.maxNodeRuns : 50,
+      maxTransfers:
+        typeof guardrails.maxTransfers === 'number' ? guardrails.maxTransfers : 100,
+      maxToolCalls:
+        typeof guardrails.maxToolCalls === 'number' ? guardrails.maxToolCalls : 200,
+      maxExecutionEvents:
+        typeof guardrails.maxExecutionEvents === 'number'
+          ? guardrails.maxExecutionEvents
+          : 2000,
+      maxEstimatedContextCharsPerNode:
+        typeof guardrails.maxEstimatedContextCharsPerNode === 'number'
+          ? guardrails.maxEstimatedContextCharsPerNode
+          : 60000,
+    },
+    toolPolicy: {
+      mode: value.toolPolicy?.mode === 'restricted' ? 'restricted' : 'assistant_default',
+      managedSkillIds: value.toolPolicy?.managedSkillIds || [],
+      userSkillIds: value.toolPolicy?.userSkillIds || [],
+      managedMcpServerIds: value.toolPolicy?.managedMcpServerIds || [],
+      userMcpServerIds: value.toolPolicy?.userMcpServerIds || [],
+      managedKbIds: value.toolPolicy?.managedKbIds || [],
+      providerOverrideId: value.toolPolicy?.providerOverrideId || '',
+      modelOverride: value.toolPolicy?.modelOverride || '',
+    },
+    evaluationPolicy: {
+      enabled: value.evaluationPolicy?.enabled !== false,
+    },
   };
 }
 
@@ -729,6 +513,21 @@ function fmt(value: string): string {
   return date.toLocaleString();
 }
 
+function fmtDuration(ms: number): string {
+  if (!Number.isFinite(ms)) return '0s';
+  const abs = Math.max(0, Math.floor(ms));
+  const minutes = Math.floor(abs / 60000);
+  const seconds = Math.floor((abs % 60000) / 1000);
+  return minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
+}
+
+function splitCsv(value: string): string[] {
+  return value
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
 function nodeAccent(node: WorkflowNodeRecord): string {
   if (node.node_type === 'role') return '#1d4ed8';
   return '#0f766e';
@@ -741,10 +540,6 @@ function edgePath(source: WorkflowNodeRecord, target: WorkflowNodeRecord): strin
   const y2 = target.position_y + 44;
   const mid = (x1 + x2) / 2;
   return `M ${x1} ${y1} C ${mid} ${y1}, ${mid} ${y2}, ${x2} ${y2}`;
-}
-
-function positionLabel(node: WorkflowNodeRecord): string {
-  return `${Math.round(node.position_x)}, ${Math.round(node.position_y)}`;
 }
 
 function buildTaskLevels(
@@ -1059,15 +854,44 @@ function displayNodeName(
   return nodes?.find((node) => node.id === nodeId)?.name || nodeId;
 }
 
+function workerNodesFromSnapshot(
+  snapshot: WorkflowSnapshot | null,
+): WorkflowNodeRecord[] {
+  return snapshot?.nodes.filter((node) => node.node_type === 'task') ?? [];
+}
+
+function visibleEdgesFromSnapshot(
+  snapshot: WorkflowSnapshot | null,
+): WorkflowEdgeRecord[] {
+  if (!snapshot) return [];
+  const workerNodeIds = new Set(
+    snapshot.nodes
+      .filter((node) => node.node_type === 'task')
+      .map((node) => node.id),
+  );
+  return snapshot.edges.filter(
+    (edge) =>
+      workerNodeIds.has(edge.source_node_id) &&
+      workerNodeIds.has(edge.target_node_id),
+  );
+}
+
+function resolveNodeAssistantId(node: WorkflowNodeRecord): string {
+  const taskConfig = parseJsonObject<TaskConfig>(node.config_json);
+  return node.assistant_id || taskConfig.assistantId || '';
+}
+
+function displayAssistantName(
+  assistants: AssistantRecord[],
+  assistantId: string,
+): string {
+  if (!assistantId) return '';
+  return assistants.find((assistant) => assistant.id === assistantId)?.name || assistantId;
+}
+
 export function WorkteamPage({ apiBase, canManage = true }: WorkteamPageProps) {
   const { t } = useTranslation('workteam');
   const location = useLocation();
-  const roleNodeTemplates = useMemo(() => buildRoleNodeTemplates(t), [t]);
-  const taskNodeTemplates = useMemo(() => buildTaskNodeTemplates(t), [t]);
-  const workflowGraphTemplates = useMemo(
-    () => buildWorkflowGraphTemplates(roleNodeTemplates, taskNodeTemplates, t),
-    [roleNodeTemplates, taskNodeTemplates, t],
-  );
   const routeWorkflowId = getUrlSubPath(location.pathname);
   const [activeWorkflowId, setActiveWorkflowId] = useState(routeWorkflowId);
   const workflowId = activeWorkflowId;
@@ -1076,12 +900,17 @@ export function WorkteamPage({ apiBase, canManage = true }: WorkteamPageProps) {
   const selectionBoxRef = useRef<SelectionBoxState | null>(null);
 
   const [workflows, setWorkflows] = useState<WorkflowRecord[]>([]);
+  const [workflowSummaries, setWorkflowSummaries] = useState<
+    Record<string, WorkflowCardSummary>
+  >({});
   const [snapshot, setSnapshot] = useState<WorkflowSnapshot | null>(null);
   const [runs, setRuns] = useState<WorkflowRunRecord[]>([]);
   const [selectedRunId, setSelectedRunId] = useState<string>('');
   const [runGraph, setRunGraph] = useState<WorkflowRunGraph | null>(null);
   const [pendingTransfers, setPendingTransfers] = useState<WorkflowPendingTransferRecord[]>([]);
   const [artifacts, setArtifacts] = useState<WorkflowArtifactRecord[]>([]);
+  const [runMetrics, setRunMetrics] = useState<WorkflowRunMetrics | null>(null);
+  const [runEvaluation, setRunEvaluation] = useState<WorkflowEvaluation | null>(null);
   const [assistants, setAssistants] = useState<AssistantRecord[]>([]);
   const [selectedNodeId, setSelectedNodeId] = useState<string>('');
   const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>([]);
@@ -1093,7 +922,12 @@ export function WorkteamPage({ apiBase, canManage = true }: WorkteamPageProps) {
   );
   const [newWorkflowName, setNewWorkflowName] = useState('');
   const [newWorkflowDesc, setNewWorkflowDesc] = useState('');
+  const [workflowQuery, setWorkflowQuery] = useState('');
+  const [workflowStatusFilter, setWorkflowStatusFilter] = useState<
+    WorkflowStatus | 'all'
+  >('all');
   const [runInput, setRunInput] = useState('');
+  const [runPanelExpanded, setRunPanelExpanded] = useState(false);
   const [edgeFeedbackText, setEdgeFeedbackText] = useState('');
   const [edgeFeedbackDirection, setEdgeFeedbackDirection] = useState<
     'forward' | 'reverse'
@@ -1106,8 +940,6 @@ export function WorkteamPage({ apiBase, canManage = true }: WorkteamPageProps) {
   const [nodeInputPriorityMode, setNodeInputPriorityMode] = useState<
     'feedback_first' | 'chronological'
   >('feedback_first');
-  const [showWorkflowSettings, setShowWorkflowSettings] = useState(false);
-  const [showRunDrawer, setShowRunDrawer] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -1156,16 +988,30 @@ export function WorkteamPage({ apiBase, canManage = true }: WorkteamPageProps) {
       setRunGraph(null);
       setPendingTransfers([]);
       setArtifacts([]);
+      setRunMetrics(null);
+      setRunEvaluation(null);
       return;
     }
-    const res = await fetch(`${apiBase}/api/workflows/run/${selectedRunId}/graph`, {
-      credentials: 'include',
-    });
-    if (!res.ok) throw new Error(await readError(res));
-    const graph = (await res.json()) as WorkflowRunGraph;
+    const [graphRes, metricsRes, evaluationRes] = await Promise.all([
+      fetch(`${apiBase}/api/workflows/run/${selectedRunId}/graph`, {
+        credentials: 'include',
+      }),
+      fetch(`${apiBase}/api/workflows/run/${selectedRunId}/metrics`, {
+        credentials: 'include',
+      }),
+      fetch(`${apiBase}/api/workflows/run/${selectedRunId}/evaluation`, {
+        credentials: 'include',
+      }),
+    ]);
+    if (!graphRes.ok) throw new Error(await readError(graphRes));
+    const graph = (await graphRes.json()) as WorkflowRunGraph;
     setRunGraph(graph);
     setPendingTransfers(graph.pendingTransfers || []);
     setArtifacts(graph.artifacts || []);
+    setRunMetrics(metricsRes.ok ? ((await metricsRes.json()) as WorkflowRunMetrics) : null);
+    setRunEvaluation(
+      evaluationRes.ok ? ((await evaluationRes.json()) as WorkflowEvaluation | null) : null,
+    );
   }, [apiBase, selectedRunId]);
 
   const loadTransfers = useCallback(async () => {
@@ -1209,6 +1055,62 @@ export function WorkteamPage({ apiBase, canManage = true }: WorkteamPageProps) {
     void loadWorkflows().catch((err) => setError(String(err)));
     void loadAssistants();
   }, [loadWorkflows, loadAssistants]);
+
+  useEffect(() => {
+    if (workflows.length === 0) {
+      setWorkflowSummaries({});
+      return;
+    }
+    let cancelled = false;
+    const loadSummaries = async () => {
+      const entries = await Promise.all(
+        workflows.map(async (workflow) => {
+          try {
+            const [snapshotRes, runsRes] = await Promise.all([
+              fetch(`${apiBase}/api/workflows/${workflow.id}`, {
+                credentials: 'include',
+              }),
+              fetch(`${apiBase}/api/workflows/${workflow.id}/runs`, {
+                credentials: 'include',
+              }),
+            ]);
+            let workerCount = 0;
+            let edgeCount = 0;
+            let latestRunStatus: WorkflowRunStatus | undefined;
+            let latestRunAt: string | undefined;
+            if (snapshotRes.ok) {
+              const workflowSnapshot =
+                (await snapshotRes.json()) as WorkflowSnapshot;
+              workerCount = workerNodesFromSnapshot(workflowSnapshot).length;
+              edgeCount = visibleEdgesFromSnapshot(workflowSnapshot).length;
+            }
+            if (runsRes.ok) {
+              const workflowRuns = (await runsRes.json()) as WorkflowRunRecord[];
+              const latestRun = workflowRuns[0];
+              latestRunStatus = latestRun?.status;
+              latestRunAt = latestRun?.created_at;
+            }
+            return [
+              workflow.id,
+              { workerCount, edgeCount, latestRunStatus, latestRunAt },
+            ] as const;
+          } catch {
+            return [
+              workflow.id,
+              { workerCount: 0, edgeCount: 0 },
+            ] as const;
+          }
+        }),
+      );
+      if (!cancelled) {
+        setWorkflowSummaries(Object.fromEntries(entries));
+      }
+    };
+    void loadSummaries();
+    return () => {
+      cancelled = true;
+    };
+  }, [apiBase, workflows]);
 
   useEffect(() => {
     if (routeWorkflowId) setActiveWorkflowId(routeWorkflowId);
@@ -1480,9 +1382,37 @@ export function WorkteamPage({ apiBase, canManage = true }: WorkteamPageProps) {
     subscribeAll([`workflow:${selectedRunId}`]);
   }, [selectedRunId, subscribeAll]);
 
-  const selectedRoleNodes = useMemo(
-    () => snapshot?.nodes.filter((node) => node.node_type === 'role') ?? [],
+  const visibleWorkerNodes = useMemo(
+    () => workerNodesFromSnapshot(snapshot),
     [snapshot],
+  );
+
+  const visibleWorkflowEdges = useMemo(
+    () => visibleEdgesFromSnapshot(snapshot),
+    [snapshot],
+  );
+
+  const currentWorkflowConfig = useMemo(
+    () => (snapshot ? parseWorkflowConfig(snapshot.workflow.workflow_config) : null),
+    [snapshot],
+  );
+
+  const filteredWorkflows = useMemo(() => {
+    const query = workflowQuery.trim().toLowerCase();
+    return workflows.filter((workflow) => {
+      const matchesStatus =
+        workflowStatusFilter === 'all' || workflow.status === workflowStatusFilter;
+      const matchesQuery =
+        !query ||
+        workflow.name.toLowerCase().includes(query) ||
+        workflow.description.toLowerCase().includes(query);
+      return matchesStatus && matchesQuery;
+    });
+  }, [workflowQuery, workflowStatusFilter, workflows]);
+
+  const selectedRun = useMemo(
+    () => runs.find((run) => run.id === selectedRunId) ?? null,
+    [runs, selectedRunId],
   );
 
   const setSnapshotNode = useCallback(
@@ -1565,7 +1495,7 @@ export function WorkteamPage({ apiBase, canManage = true }: WorkteamPageProps) {
       const minY = Math.min(box.startY, box.currentY);
       const maxX = Math.max(box.startX, box.currentX);
       const maxY = Math.max(box.startY, box.currentY);
-      const picked = snapshot.nodes
+      const picked = visibleWorkerNodes
         .filter((node) => {
           const left = node.position_x;
           const right = node.position_x + NODE_WIDTH;
@@ -1586,7 +1516,7 @@ export function WorkteamPage({ apiBase, canManage = true }: WorkteamPageProps) {
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
     };
-  }, [apiBase, workflowId, snapshot, setSnapshotNode]);
+  }, [apiBase, workflowId, snapshot, setSnapshotNode, visibleWorkerNodes]);
 
   const applyAutoLayout = async () => {
     if (!workflowId || !snapshot) return;
@@ -1661,188 +1591,70 @@ export function WorkteamPage({ apiBase, canManage = true }: WorkteamPageProps) {
     }
   };
 
-  const createNode = async (nodeType: WorkflowNodeType) => {
+  const ensureWorkerRoleNode = async (): Promise<WorkflowNodeRecord | null> => {
+    if (!workflowId || !snapshot) return null;
+    const existingInternalRole = snapshot.nodes.find((node) => {
+      if (node.node_type !== 'role') return false;
+      const config = parseJsonObject<Record<string, unknown>>(node.config_json);
+      return config.uiHidden === true || node.name === 'Internal worker role';
+    });
+    if (existingInternalRole) return existingInternalRole;
+    const existingRole = snapshot.nodes.find((node) => node.node_type === 'role');
+    if (existingRole) return existingRole;
+    const res = await fetch(`${apiBase}/api/workflows/${workflowId}/nodes`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        node_type: 'role',
+        name: 'Internal worker role',
+        description: 'Internal role used by assistant worker nodes.',
+        config_json: {
+          goal: 'Route assistant worker execution.',
+          backstory: 'Generated by the workflow UI to satisfy the current run graph model.',
+          uiHidden: true,
+        },
+        position_x: 40,
+        position_y: 40,
+      }),
+    });
+    if (!res.ok) throw new Error(await readError(res));
+    return (await res.json()) as WorkflowNodeRecord;
+  };
+
+  const createWorkerNode = async () => {
     if (!workflowId || !snapshot) return;
     setBusy(true);
     setError(null);
     try {
-      const count = snapshot.nodes.filter((node) => node.node_type === nodeType).length;
+      const roleNode = await ensureWorkerRoleNode();
+      if (!roleNode) return;
+      const count = snapshot.nodes.filter((node) => node.node_type === 'task').length;
       const res = await fetch(`${apiBase}/api/workflows/${workflowId}/nodes`, {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          node_type: nodeType,
-          name: nodeType === 'role' ? t('workteam.角色N', { n: count + 1 }) : t('workteam.任务N', { n: count + 1 }),
+          node_type: 'task',
+          name: t('workteam.workerN', { n: count + 1 }),
           description: '',
-          role_node_id:
-            nodeType === 'task' ? snapshot.nodes.find((node) => node.node_type === 'role')?.id || '' : '',
-          config_json:
-            nodeType === 'role'
-              ? { goal: '', backstory: '' }
-              : { prompt: '', expectedOutput: '', timeoutMs: 600000, approvalRequired: false },
-          position_x: nodeType === 'role' ? 60 : 380,
-          position_y: 80 + count * 120,
+          role_node_id: roleNode.id,
+          config_json: {
+            prompt: '',
+            expectedOutput: '',
+            timeoutMs: 600000,
+            approvalRequired: false,
+          },
+          position_x: 120 + (count % 4) * 220,
+          position_y: 100 + Math.floor(count / 4) * 150,
         }),
       });
       if (!res.ok) throw new Error(await readError(res));
+      const node = (await res.json()) as WorkflowNodeRecord;
+      setSelectedNodeId(node.id);
+      setSelectedNodeIds([node.id]);
+      setSelectedEdgeId('');
       await loadSnapshot();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const createNodeFromTemplate = async (
-    template: RoleNodeTemplate | TaskNodeTemplate,
-    nodeType: WorkflowNodeType,
-  ) => {
-    if (!workflowId || !snapshot) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const roleFallback =
-        nodeType === 'task'
-          ? snapshot.nodes.find((node) => node.node_type === 'role')?.id || ''
-          : '';
-      const baseCount = snapshot.nodes.filter((node) => node.node_type === nodeType).length;
-      const body =
-        nodeType === 'role'
-          ? {
-              node_type: 'role' as const,
-              name: template.name,
-              description:
-                'goal' in template ? template.goal : template.description,
-              config_json:
-                'goal' in template
-                  ? {
-                      goal: template.goal,
-                      backstory: template.backstory,
-                    }
-                  : {},
-              position_x: 60,
-              position_y: 80 + baseCount * 140,
-            }
-          : {
-              node_type: 'task' as const,
-              name: template.name,
-              description:
-                'description' in template ? template.description : template.name,
-              role_node_id: roleFallback,
-              config_json:
-                'prompt' in template
-                  ? {
-                      prompt: template.prompt,
-                      expectedOutput: template.expectedOutput,
-                      timeoutMs: template.timeoutMs || 600000,
-                      approvalRequired: template.approvalRequired || false,
-                    }
-                  : {},
-              position_x: 340,
-              position_y: 80 + baseCount * 140,
-            };
-      const res = await fetch(`${apiBase}/api/workflows/${workflowId}/nodes`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      if (!res.ok) throw new Error(await readError(res));
-      await loadSnapshot();
-      setInfo(nodeType === 'role' ? t('workteam.已插入角色模板', { name: template.name }) : t('workteam.已插入任务模板', { name: template.name }));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const createWorkflowGraphTemplate = async (template: WorkflowGraphTemplate) => {
-    if (!workflowId) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const roleNodeIdByKey = new Map<string, string>();
-      const taskNodeIdByKey = new Map<string, string>();
-
-      for (const role of template.roles) {
-        const res = await fetch(`${apiBase}/api/workflows/${workflowId}/nodes`, {
-          method: 'POST',
-          credentials: 'include',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            node_type: 'role',
-            name: role.name,
-            description: role.goal,
-            assistant_id: '',
-            config_json: {
-              goal: role.goal,
-              backstory: role.backstory,
-              templateId: template.id,
-              roleTemplateId: role.id,
-            },
-            position_x: role.position.x,
-            position_y: role.position.y,
-          }),
-        });
-        if (!res.ok) throw new Error(await readError(res));
-        const node = (await res.json()) as WorkflowNodeRecord;
-        roleNodeIdByKey.set(role.key, node.id);
-      }
-
-      for (const task of template.tasks) {
-        const roleNodeId = roleNodeIdByKey.get(task.roleKey) || '';
-        const res = await fetch(`${apiBase}/api/workflows/${workflowId}/nodes`, {
-          method: 'POST',
-          credentials: 'include',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            node_type: 'task',
-            name: task.name,
-            description: task.description,
-            role_node_id: roleNodeId,
-            config_json: {
-              prompt: task.prompt,
-              expectedOutput: task.expectedOutput,
-              timeoutMs: task.timeoutMs || 600000,
-              approvalRequired: task.approvalRequired || false,
-              templateId: template.id,
-              taskTemplateId: task.id,
-            },
-            position_x: task.position.x,
-            position_y: task.position.y,
-          }),
-        });
-        if (!res.ok) throw new Error(await readError(res));
-        const node = (await res.json()) as WorkflowNodeRecord;
-        taskNodeIdByKey.set(task.key, node.id);
-      }
-
-      for (const edge of template.edges) {
-        const sourceNodeId = taskNodeIdByKey.get(edge.sourceTaskKey);
-        const targetNodeId = taskNodeIdByKey.get(edge.targetTaskKey);
-        if (!sourceNodeId || !targetNodeId) continue;
-        const res = await fetch(`${apiBase}/api/workflows/${workflowId}/edges`, {
-          method: 'POST',
-          credentials: 'include',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            source_node_id: sourceNodeId,
-            target_node_id: targetNodeId,
-            direction: edge.direction || 'one_way',
-            label: edge.label || '',
-            config_json:
-              edge.direction === 'two_way'
-                ? { discussionTurns: edge.discussionTurns || 4 }
-                : {},
-          }),
-        });
-        if (!res.ok) throw new Error(await readError(res));
-      }
-
-      await loadSnapshot();
-      setInfo(t('workteam.已插入模板图', { name: template.name }));
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -2078,11 +1890,10 @@ export function WorkteamPage({ apiBase, canManage = true }: WorkteamPageProps) {
   const workflowStats = useMemo(() => {
     if (!snapshot) return null;
     return {
-      roles: snapshot.nodes.filter((node) => node.node_type === 'role').length,
-      tasks: snapshot.nodes.filter((node) => node.node_type === 'task').length,
-      edges: snapshot.edges.length,
+      workers: visibleWorkerNodes.length,
+      edges: visibleWorkflowEdges.length,
     };
-  }, [snapshot]);
+  }, [snapshot, visibleWorkerNodes.length, visibleWorkflowEdges.length]);
 
   const saveCurrentWorkflow = useCallback(
     async (nextStatus?: WorkflowStatus) => {
@@ -2362,72 +2173,164 @@ export function WorkteamPage({ apiBase, canManage = true }: WorkteamPageProps) {
   };
 
   return (
-    <div className="page-view workflow-page">
-      <div className="page-header">
-        <div className="page-header-copy">
-          <h2>{t('pageTitle')}</h2>
-          <p>{t('workteam.图形化多智能体工作台')}</p>
-        </div>
-        <div className="workflow-header-actions">
-          <div className="workflow-header-buttons">
-            {workflowId ? (
+    <div
+      className={`page-view workflow-page ${
+        snapshot ? 'is-workspace' : 'is-library'
+      }`}
+    >
+      <div className="workflow-topbar">
+        <div className="workflow-topbar-title">
+          {snapshot ? (
+            <>
               <button
                 type="button"
-                className="btn-outline"
+                className="btn-outline btn-sm"
                 onClick={() => setActiveWorkflowId('')}
               >
                 {t('workteam.卡片库')}
               </button>
-            ) : null}
-            <button
-              type="button"
-              className="btn-outline btn-sm"
-              onClick={() => setShowWorkflowSettings(true)}
-            >
-              {t('workteam.配置')}
-            </button>
-            <button
-              type="button"
-              className="btn-primary"
-              onClick={() => setShowRunDrawer(true)}
-              disabled={!workflowId || busy}
-            >
-              {t('workteam.运行')}
-            </button>
-            <button
-              type="button"
-              className="btn-outline"
-              onClick={() => void saveCurrentWorkflow()}
-              disabled={!workflowId || !snapshot || busy}
-            >
-              {t('workteam.保存')}
-            </button>
-            <button
-              type="button"
-              className="btn-outline"
-              onClick={() => void publishWorkflow()}
-              disabled={!workflowId || !snapshot || busy}
-            >
-              {t('workteam.发布')}
-            </button>
-          </div>
+              <div className="workflow-title-stack">
+                <input
+                  className="workflow-title-input"
+                  value={snapshot.workflow.name}
+                  onChange={(event) =>
+                    setSnapshot({
+                      ...snapshot,
+                      workflow: {
+                        ...snapshot.workflow,
+                        name: event.target.value,
+                      },
+                    })
+                  }
+                  onBlur={() =>
+                    void fetch(`${apiBase}/api/workflows/${workflowId}`, {
+                      method: 'PUT',
+                      credentials: 'include',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        name: snapshot.workflow.name,
+                        description: snapshot.workflow.description,
+                      }),
+                    }).then(() => loadWorkflows())
+                  }
+                />
+                <textarea
+                  className="workflow-desc-input"
+                  value={snapshot.workflow.description}
+                  onChange={(event) =>
+                    setSnapshot({
+                      ...snapshot,
+                      workflow: {
+                        ...snapshot.workflow,
+                        description: event.target.value,
+                      },
+                    })
+                  }
+                  onBlur={() =>
+                    void fetch(`${apiBase}/api/workflows/${workflowId}`, {
+                      method: 'PUT',
+                      credentials: 'include',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        name: snapshot.workflow.name,
+                        description: snapshot.workflow.description,
+                      }),
+                    }).then(() => loadWorkflows())
+                  }
+                  placeholder={t('workteam.工作流说明')}
+                />
+              </div>
+            </>
+          ) : (
+            <div className="workflow-title-stack">
+              <h2>{t('pageTitle')}</h2>
+            </div>
+          )}
+        </div>
+        <div className="workflow-topbar-controls">
+          {snapshot ? (
+            <>
+              <select
+                value={workflowId}
+                onChange={(event) => setActiveWorkflowId(event.target.value)}
+                aria-label={t('workteam.工作流')}
+              >
+                {workflows.map((workflow) => (
+                  <option key={workflow.id} value={workflow.id}>
+                    {workflow.name}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={() => {
+                  setRunPanelExpanded(true);
+                  void startRun();
+                }}
+                disabled={!workflowId || busy}
+              >
+                {t('workteam.运行')}
+              </button>
+              <button
+                type="button"
+                className="btn-outline"
+                onClick={() => void saveCurrentWorkflow()}
+                disabled={!workflowId || !snapshot || busy}
+              >
+                {t('workteam.保存')}
+              </button>
+              <button
+                type="button"
+                className="btn-outline"
+                onClick={() => void publishWorkflow()}
+                disabled={!workflowId || !snapshot || busy}
+              >
+                {t('workteam.发布')}
+              </button>
+            </>
+          ) : (
+            <>
+              <input
+                value={workflowQuery}
+                onChange={(event) => setWorkflowQuery(event.target.value)}
+                placeholder={t('workteam.搜索工作流')}
+                aria-label={t('workteam.搜索工作流')}
+              />
+              <select
+                value={workflowStatusFilter}
+                onChange={(event) =>
+                  setWorkflowStatusFilter(
+                    event.target.value as WorkflowStatus | 'all',
+                  )
+                }
+                aria-label={t('workteam.状态')}
+              >
+                <option value="all">{t('workteam.全部状态')}</option>
+                <option value="draft">draft</option>
+                <option value="active">active</option>
+                <option value="archived">archived</option>
+              </select>
+            </>
+          )}
         </div>
       </div>
+
       <div className="page-body workflow-body">
         {error ? <div className="workflow-banner error">{error}</div> : null}
         {info ? <div className="workflow-banner info">{info}</div> : null}
 
-        <section className="workflow-shell">
-          <aside className="workflow-sidebar">
-            <div className="workflow-sidebar-section">
-              <h3>{t('workteam.工作流')}</h3>
-              <div className="workflow-create-form">
+        {!snapshot ? (
+          <section className="workflow-library">
+            <div className="workflow-library-header">
+              <h3>{t('workteam.工作流卡片库')}</h3>
+              <div className="workflow-create-inline">
                 <input
                   value={newWorkflowName}
                   onChange={(event) => setNewWorkflowName(event.target.value)}
                   placeholder={t('workteam.新工作流名称')}
                 />
-                <textarea
+                <input
                   value={newWorkflowDesc}
                   onChange={(event) => setNewWorkflowDesc(event.target.value)}
                   placeholder={t('workteam.工作流说明')}
@@ -2435,455 +2338,454 @@ export function WorkteamPage({ apiBase, canManage = true }: WorkteamPageProps) {
                 <button
                   type="button"
                   className="btn-primary"
-                  disabled={!canManage || busy}
+                  disabled={!canManage || busy || !newWorkflowName.trim()}
                   onClick={() => void createWorkflow()}
                 >
                   {t('workteam.新建工作流')}
                 </button>
               </div>
-              <div className="workflow-list">
-                {workflows.map((workflow) => (
+            </div>
+            <div className="workflow-card-grid">
+              {filteredWorkflows.map((workflow) => {
+                const config = parseWorkflowConfig(workflow.workflow_config);
+                const summary = workflowSummaries[workflow.id];
+                return (
                   <button
                     key={workflow.id}
                     type="button"
-                    className={`workflow-list-item${workflow.id === workflowId ? ' selected' : ''}`}
+                    className="workflow-library-card"
                     onClick={() => setActiveWorkflowId(workflow.id)}
                   >
+                    <span className={`workflow-card-status is-${workflow.status}`}>
+                      {workflow.status}
+                    </span>
                     <strong>{workflow.name}</strong>
                     <span>{workflow.description || t('workteam.无描述')}</span>
+                    <div className="workflow-card-meta">
+                      <span>
+                        {summary?.workerCount ?? 0} {t('workteam.节点')}
+                      </span>
+                      <span>
+                        {summary?.edgeCount ?? 0} {t('workteam.连线')}
+                      </span>
+                      <span>{config.visibility}</span>
+                      <span>{config.kind}</span>
+                      <span>
+                        {summary?.latestRunStatus
+                          ? `${summary.latestRunStatus}${
+                              summary.latestRunAt
+                                ? ` · ${fmt(summary.latestRunAt)}`
+                                : ''
+                            }`
+                          : t('workteam.未运行')}
+                      </span>
+                    </div>
                   </button>
-                ))}
-              </div>
-            </div>
-            <div className="workflow-sidebar-section">
-              <h3>{t('workteam.节点模板')}</h3>
-              <div className="workflow-template-list">
-                {roleNodeTemplates.map((template) => (
-                  <button
-                    key={template.id}
-                    type="button"
-                    className="workflow-template-card"
-                    disabled={!workflowId || !canManage || busy}
-                    onClick={() => void createNodeFromTemplate(template, 'role')}
-                  >
-                    <strong>{template.name}</strong>
-                    <span>{template.goal}</span>
-                  </button>
-                ))}
-              </div>
-              <div className="workflow-template-list">
-                {taskNodeTemplates.map((template) => (
-                  <button
-                    key={template.id}
-                    type="button"
-                    className="workflow-template-card task"
-                    disabled={!workflowId || !canManage || busy}
-                    onClick={() => void createNodeFromTemplate(template, 'task')}
-                  >
-                    <strong>{template.name}</strong>
-                    <span>{template.description}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className="workflow-sidebar-section">
-              <h3>{t('workteam.标准图模板')}</h3>
-              <div className="workflow-template-list">
-                {workflowGraphTemplates.map((template) => (
-                  <button
-                    key={template.id}
-                    type="button"
-                    className="workflow-template-card graph"
-                    disabled={!workflowId || !canManage || busy}
-                    onClick={() => void createWorkflowGraphTemplate(template)}
-                  >
-                    <strong>{template.name}</strong>
-                    <span>{t(`workteam.${template.description}`)}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          </aside>
-
-          <main className="workflow-main">
-            {!snapshot ? (
-              <section className="workflow-library">
-                <div className="workflow-library-header">
-                  <div>
-                    <h3>{t('workteam.工作流卡片库')}</h3>
-                    <p>{t('workteam.选择一个工作流进入本页画布详情')}</p>
+                );
+              })}
+              {filteredWorkflows.length === 0 ? (
+                <div className="workflow-empty">
+                  <div className="workflow-empty-copy">
+                    <h3>{t('workteam.先选择或创建一个工作流')}</h3>
                   </div>
-                  <button
-                    type="button"
-                    className="btn-primary"
-                    disabled={!canManage || busy}
-                    onClick={() => setShowWorkflowSettings(true)}
-                  >
-                    {t('workteam.创建工作流')}
-                  </button>
                 </div>
-                <div className="workflow-card-grid">
-                  {workflows.map((workflow) => {
-                    const config = parseWorkflowConfig(workflow.workflow_config);
+              ) : null}
+            </div>
+          </section>
+        ) : (
+          <section className="workflow-workbench">
+            <div className="workflow-workbench-grid">
+              <section className="workflow-canvas-panel">
+                <div className="workflow-canvas-toolbar">
+                  <div className="workflow-canvas-status">
+                    <span className="workflow-metric-chip">
+                      {workflowStats?.workers ?? 0} {t('workteam.节点')} /{' '}
+                      {workflowStats?.edges ?? 0} {t('workteam.连线')}
+                    </span>
+                    <span>
+                      {reconnectState
+                        ? t('workteam.重连模式', {
+                            end:
+                              reconnectState.end === 'source'
+                                ? t('workteam.起点')
+                                : t('workteam.终点'),
+                          })
+                        : connectFromNodeId
+                          ? t('workteam.连接模式')
+                          : selectedNodeIds.length > 1
+                            ? t('workteam.已选中N个节点可批量拖动', {
+                                n: selectedNodeIds.length,
+                              })
+                            : t('workteam.点击节点进入编辑')}
+                    </span>
+                  </div>
+                  <div className="workflow-canvas-actions">
+                    <button
+                      type="button"
+                      className="btn-primary"
+                      onClick={() => void createWorkerNode()}
+                      disabled={!canManage || busy}
+                    >
+                      {t('workteam.添加worker')}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-outline btn-sm"
+                      onClick={() => void applyAutoLayout()}
+                      disabled={!canManage || busy}
+                    >
+                      {t('workteam.自动排版')}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-outline btn-sm"
+                      onClick={() => void validateWorkflow()}
+                      disabled={!canManage || busy}
+                    >
+                      {t('workteam.校验图')}
+                    </button>
+                  </div>
+                </div>
+                <div
+                  ref={canvasRef}
+                  className="workflow-canvas"
+                  onMouseDown={(event) => {
+                    if (event.target !== event.currentTarget) return;
+                    const rect = event.currentTarget.getBoundingClientRect();
+                    const nextBox = {
+                      startX: event.clientX - rect.left,
+                      startY: event.clientY - rect.top,
+                      currentX: event.clientX - rect.left,
+                      currentY: event.clientY - rect.top,
+                    };
+                    selectionBoxRef.current = nextBox;
+                    setSelectionBox(nextBox);
+                  }}
+                >
+                  <svg className="workflow-edge-layer">
+                    <defs>
+                      <marker
+                        id="workflow-arrow"
+                        markerWidth="8"
+                        markerHeight="8"
+                        refX="6"
+                        refY="4"
+                        orient="auto"
+                      >
+                        <path d="M0,0 L8,4 L0,8 z" fill="#64748b" />
+                      </marker>
+                    </defs>
+                    {visibleWorkflowEdges.map((edge) => {
+                      const source = visibleWorkerNodes.find(
+                        (node) => node.id === edge.source_node_id,
+                      );
+                      const target = visibleWorkerNodes.find(
+                        (node) => node.id === edge.target_node_id,
+                      );
+                      if (!source || !target) return null;
+                      const active = edge.id === selectedEdgeId;
+                      return (
+                        <g
+                          key={edge.id}
+                          className="workflow-edge-hitbox"
+                          onClick={() => {
+                            setSelectedEdgeId(edge.id);
+                            setSelectedNodeId('');
+                            setSelectedNodeIds([]);
+                          }}
+                        >
+                          <path
+                            d={edgePath(source, target)}
+                            className={`workflow-edge ${active ? 'selected' : ''}`}
+                            markerEnd="url(#workflow-arrow)"
+                          />
+                          {edge.direction === 'two_way' ? (
+                            <path
+                              d={edgePath(target, source)}
+                              className={`workflow-edge back ${
+                                active ? 'selected' : ''
+                              }`}
+                              markerEnd="url(#workflow-arrow)"
+                            />
+                          ) : null}
+                        </g>
+                      );
+                    })}
+                  </svg>
+
+                  {visibleWorkerNodes.map((node) => {
+                    const runState = runNodeStatusMap.get(node.id);
+                    const assistantName = displayAssistantName(
+                      assistants,
+                      resolveNodeAssistantId(node),
+                    );
                     return (
                       <button
-                        key={workflow.id}
+                        key={node.id}
                         type="button"
-                        className="workflow-library-card"
-                        onClick={() => setActiveWorkflowId(workflow.id)}
+                        className={`workflow-node node-worker${
+                          selectedNodeIds.includes(node.id)
+                            ? ' is-multi-selected'
+                            : ''
+                        }${selectedNodeId === node.id ? ' selected' : ''}`}
+                        style={{
+                          left: node.position_x,
+                          top: node.position_y,
+                          borderColor: nodeAccent(node),
+                        }}
+                        onMouseDown={(event) => {
+                          if (reconnectState || connectFromNodeId) return;
+                          const nextSelectedIds = selectedNodeIds.includes(node.id)
+                            ? selectedNodeIds
+                            : [node.id];
+                          setSelectedNodeIds(nextSelectedIds);
+                          setSelectedNodeId(node.id);
+                          setSelectedEdgeId('');
+                          const rect = event.currentTarget.getBoundingClientRect();
+                          dragRef.current = {
+                            nodeId: node.id,
+                            offsetX: event.clientX - rect.left,
+                            offsetY: event.clientY - rect.top,
+                            activeNodeIds: nextSelectedIds,
+                            originPositions: snapshot.nodes
+                              .filter((item) => nextSelectedIds.includes(item.id))
+                              .map((item) => ({
+                                nodeId: item.id,
+                                x: item.position_x,
+                                y: item.position_y,
+                              })),
+                          };
+                        }}
+                        onClick={(event) => {
+                          if (reconnectState) {
+                            void updateEdge(reconnectState.edgeId, {
+                              [reconnectState.end === 'source'
+                                ? 'source_node_id'
+                                : 'target_node_id']: node.id,
+                            }).then(() => {
+                              setReconnectState(null);
+                              setInfo(t('workteam.连线端点已更新'));
+                            });
+                            return;
+                          }
+                          if (connectFromNodeId && connectFromNodeId !== node.id) {
+                            void createEdge(connectFromNodeId, node.id);
+                            return;
+                          }
+                          if (event.shiftKey) {
+                            setSelectedNodeIds((prev) =>
+                              prev.includes(node.id)
+                                ? prev.filter((item) => item !== node.id)
+                                : [...prev, node.id],
+                            );
+                          } else {
+                            setSelectedNodeIds([node.id]);
+                          }
+                          setSelectedNodeId(node.id);
+                          setSelectedEdgeId('');
+                        }}
                       >
-                        <span className={`workflow-card-status is-${workflow.status}`}>
-                          {workflow.status}
+                        <span className="workflow-node-type">
+                          {t('workteam.助手worker')}
                         </span>
-                        <strong>{workflow.name}</strong>
-                        <span>{workflow.description || t('workteam.无描述')}</span>
-                        <div className="workflow-card-meta">
-                          <span>{config.kind}</span>
-                          <span>{config.visibility}</span>
-                          <span>{Math.round((config.messageDelayMs || 0) / 1000)}s</span>
-                        </div>
+                        <strong>{node.name}</strong>
+                        <span className="workflow-node-meta">
+                          {assistantName || t('workteam.未选择assistant')}
+                        </span>
+                        {runState ? (
+                          <span className={`workflow-run-state is-${runState.status}`}>
+                            {runState.status}
+                          </span>
+                        ) : null}
+                        <span className="workflow-node-actions-inline">
+                          <span
+                            role="button"
+                            tabIndex={0}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setConnectFromNodeId(node.id);
+                            }}
+                            onKeyDown={() => {}}
+                          >
+                            {t('workteam.连接')}
+                          </span>
+                        </span>
                       </button>
                     );
                   })}
-                  {workflows.length === 0 ? (
-                    <div className="workflow-empty">
-                      <div className="workflow-empty-copy">
-                        <h3>{t('workteam.先选择或创建一个工作流')}</h3>
-                        <p>{t('workteam.画布会保持简洁，模板和高级配置都收纳到右上角的配置抽屉里')}</p>
-                      </div>
-                    </div>
+                  {selectionBox ? (
+                    <div
+                      className="workflow-selection-box"
+                      style={{
+                        left: Math.min(selectionBox.startX, selectionBox.currentX),
+                        top: Math.min(selectionBox.startY, selectionBox.currentY),
+                        width: Math.abs(selectionBox.currentX - selectionBox.startX),
+                        height: Math.abs(selectionBox.currentY - selectionBox.startY),
+                      }}
+                    />
                   ) : null}
                 </div>
               </section>
-            ) : (
-              <>
-                <section className="workflow-toolbar">
-                  <div className="workflow-toolbar-left">
-                    <input
-                      className="workflow-title-input"
-                      value={snapshot.workflow.name}
-                      onChange={(event) =>
-                        setSnapshot({
-                          ...snapshot,
-                          workflow: { ...snapshot.workflow, name: event.target.value },
-                        })
+
+              <aside className="workflow-detail-grid">
+                <div className="workflow-inspector">
+                  <h3>{t('workteam.属性面板')}</h3>
+                  {selectedNode ? (
+                    <NodeInspector
+                      key={selectedNode.id}
+                      node={selectedNode}
+                      assistants={assistants}
+                      runNode={selectedRunNode}
+                      canManage={canManage}
+                      busy={busy}
+                      onSave={(body) => void updateNode(selectedNode.id, body)}
+                      onDelete={() => void deleteNode(selectedNode.id)}
+                      onPauseNode={
+                        selectedRunNode
+                          ? () => void nodeRunAction(selectedNode.id, 'pause')
+                          : undefined
                       }
-                      onBlur={() =>
-                        void fetch(`${apiBase}/api/workflows/${workflowId}`, {
-                          method: 'PUT',
-                          credentials: 'include',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({
-                            name: snapshot.workflow.name,
-                            description: snapshot.workflow.description,
-                          }),
-                        }).then(() => loadWorkflows())
+                      onResumeNode={
+                        selectedRunNode
+                          ? () => void nodeRunAction(selectedNode.id, 'resume')
+                          : undefined
+                      }
+                      onRetryNode={
+                        selectedRunNode
+                          ? () => void nodeRunAction(selectedNode.id, 'retry')
+                          : undefined
+                      }
+                      onSaveRunInput={(value) =>
+                        void saveRunNodeField(selectedNode.id, 'input', value)
+                      }
+                      onSaveRunOutput={(value) =>
+                        void saveRunNodeField(selectedNode.id, 'output', value)
                       }
                     />
-                    <textarea
-                      className="workflow-desc-input"
-                      value={snapshot.workflow.description}
-                      onChange={(event) =>
+                  ) : selectedEdge ? (
+                    <EdgeInspector
+                      edge={selectedEdge}
+                      nodes={visibleWorkerNodes}
+                      canManage={canManage}
+                      busy={busy}
+                      onSave={(body) => void updateEdge(selectedEdge.id, body)}
+                      onDelete={() => void deleteEdge(selectedEdge.id)}
+                      onReconnectStart={() =>
+                        startReconnect(selectedEdge.id, 'source')
+                      }
+                      onReconnectEnd={() =>
+                        startReconnect(selectedEdge.id, 'target')
+                      }
+                    />
+                  ) : currentWorkflowConfig ? (
+                    <WorkflowSettingsPanel
+                      snapshot={snapshot}
+                      config={currentWorkflowConfig}
+                      canManage={canManage}
+                      busy={busy}
+                      onWorkflowChange={(patch) =>
                         setSnapshot({
                           ...snapshot,
                           workflow: {
                             ...snapshot.workflow,
-                            description: event.target.value,
+                            ...patch,
                           },
                         })
                       }
-                      onBlur={() =>
-                        void fetch(`${apiBase}/api/workflows/${workflowId}`, {
-                          method: 'PUT',
-                          credentials: 'include',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({
-                            name: snapshot.workflow.name,
-                            description: snapshot.workflow.description,
-                          }),
-                        }).then(() => loadWorkflows())
-                      }
+                      onConfigChange={updateWorkflowConfig}
+                      onSave={() => void saveCurrentWorkflow()}
+                      onPublish={() => void publishWorkflow()}
                     />
-                  </div>
-                  <div className="workflow-toolbar-right">
-                    <div className="workflow-metric-chip">
-                      {workflowStats?.roles ?? 0} {t('workteam.角色')} / {workflowStats?.tasks ?? 0} {t('workteam.任务')} / {workflowStats?.edges ?? 0} {t('workteam.连线')}
+                  ) : null}
+                </div>
+
+                <WorkflowRepositoryPanel
+                  apiBase={apiBase}
+                  workflowId={snapshot.workflow.id}
+                  canManage={canManage}
+                  boundAssistantNames={visibleWorkerNodes
+                    .map((node) =>
+                      displayAssistantName(assistants, resolveNodeAssistantId(node)),
+                    )
+                    .filter(Boolean)}
+                />
+              </aside>
+            </div>
+
+            <section
+              className={`workflow-run-dock${
+                runPanelExpanded ? ' is-expanded' : ''
+              }`}
+            >
+              <button
+                type="button"
+                className="workflow-run-dock-header"
+                onClick={() => setRunPanelExpanded((prev) => !prev)}
+                aria-expanded={runPanelExpanded}
+              >
+                <span>{t('workteam.运行记录')}</span>
+                <strong>{runs.length}</strong>
+                <span>
+                  {selectedRun
+                    ? `${selectedRun.status} · ${fmt(selectedRun.created_at)}`
+                    : t('workteam.未选择运行')}
+                </span>
+              </button>
+              {runPanelExpanded ? (
+                <div className="workflow-run-dock-body">
+                  <section className="workflow-settings-card">
+                    <h3>{t('workteam.启动运行')}</h3>
+                    <textarea
+                      value={runInput}
+                      onChange={(event) => setRunInput(event.target.value)}
+                      placeholder={t('workteam.输入整张图的全局上下文')}
+                    />
+                    <div className="workflow-run-actions">
+                      <button
+                        type="button"
+                        className="btn-primary"
+                        disabled={!workflowId || !canManage || busy}
+                        onClick={() => void startRun()}
+                      >
+                        {t('workteam.启动运行')}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-outline btn-sm"
+                        disabled={!selectedRunId || busy}
+                        onClick={() => void runControl('pause')}
+                      >
+                        {t('workteam.暂停整图')}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-outline btn-sm"
+                        disabled={!selectedRunId || busy}
+                        onClick={() => void runControl('resume')}
+                      >
+                        {t('workteam.继续整图')}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-outline btn-sm"
+                        disabled={!selectedRunId || busy}
+                        onClick={() => void runControl('cancel')}
+                      >
+                        {t('workteam.取消整图')}
+                      </button>
                     </div>
-                    <button type="button" className="btn-primary" onClick={() => void createNode('role')} disabled={!canManage || busy}>
-                      {t('workteam.新增角色节点')}
-                    </button>
-                    <button type="button" className="btn-primary" onClick={() => void createNode('task')} disabled={!canManage || busy}>
-                      {t('workteam.新增任务节点')}
-                    </button>
-                    <button type="button" className="btn-outline btn-sm" onClick={() => void applyAutoLayout()} disabled={!canManage || busy}>
-                      {t('workteam.自动排版')}
-                    </button>
-                    <button type="button" className="btn-outline btn-sm" onClick={() => void validateWorkflow()} disabled={!canManage || busy}>
-                      {t('workteam.校验图')}
-                    </button>
-                  </div>
-                </section>
+                  </section>
 
-                <section className="workflow-canvas-panel">
-                  <div className="workflow-canvas-toolbar">
-                    <span>
-                      {reconnectState
-                        ? t('workteam.重连模式', { end: reconnectState.end === 'source' ? t('workteam.起点') : t('workteam.终点') })
-                        : connectFromNodeId
-                        ? t('workteam.连接模式')
-                        : selectedNodeIds.length > 1
-                          ? t('workteam.已选中N个节点可批量拖动', { n: selectedNodeIds.length })
-                          : t('workteam.点击节点进入编辑')}
-                    </span>
-                  </div>
-                  <div
-                    ref={canvasRef}
-                    className="workflow-canvas"
-                    onMouseDown={(event) => {
-                      if (event.target !== event.currentTarget) return;
-                      const rect = event.currentTarget.getBoundingClientRect();
-                      const nextBox = {
-                        startX: event.clientX - rect.left,
-                        startY: event.clientY - rect.top,
-                        currentX: event.clientX - rect.left,
-                        currentY: event.clientY - rect.top,
-                      };
-                      selectionBoxRef.current = nextBox;
-                      setSelectionBox(nextBox);
-                    }}
-                  >
-                    <svg className="workflow-edge-layer">
-                      <defs>
-                        <marker
-                          id="workflow-arrow"
-                          markerWidth="8"
-                          markerHeight="8"
-                          refX="6"
-                          refY="4"
-                          orient="auto"
-                        >
-                          <path d="M0,0 L8,4 L0,8 z" fill="#64748b" />
-                        </marker>
-                      </defs>
-                      {snapshot.edges.map((edge) => {
-                        const source = snapshot.nodes.find((node) => node.id === edge.source_node_id);
-                        const target = snapshot.nodes.find((node) => node.id === edge.target_node_id);
-                        if (!source || !target) return null;
-                        const active = edge.id === selectedEdgeId;
-                        return (
-                          <g
-                            key={edge.id}
-                            className="workflow-edge-hitbox"
-                            onClick={() => {
-                              setSelectedEdgeId(edge.id);
-                              setSelectedNodeId('');
-                              setSelectedNodeIds([]);
-                            }}
-                          >
-                            <path
-                              d={edgePath(source, target)}
-                              className={`workflow-edge ${active ? 'selected' : ''}`}
-                              markerEnd="url(#workflow-arrow)"
-                            />
-                            {edge.direction === 'two_way' ? (
-                              <path
-                                d={edgePath(target, source)}
-                                className={`workflow-edge back ${active ? 'selected' : ''}`}
-                                markerEnd="url(#workflow-arrow)"
-                              />
-                            ) : null}
-                          </g>
-                        );
-                      })}
-                    </svg>
-
-                    {snapshot.nodes.map((node) => {
-                      const runState = runNodeStatusMap.get(node.id);
-                      return (
-                        <button
-                          key={node.id}
-                          type="button"
-                          className={`workflow-node node-${node.node_type}${selectedNodeIds.includes(node.id) ? ' is-multi-selected' : ''}${selectedNodeId === node.id ? ' selected' : ''}`}
-                          style={{
-                            left: node.position_x,
-                            top: node.position_y,
-                            borderColor: nodeAccent(node),
-                          }}
-                          onMouseDown={(event) => {
-                            if (reconnectState || connectFromNodeId) return;
-                            const nextSelectedIds =
-                              selectedNodeIds.includes(node.id)
-                                ? selectedNodeIds
-                                : [node.id];
-                            setSelectedNodeIds(nextSelectedIds);
-                            setSelectedNodeId(node.id);
-                            setSelectedEdgeId('');
-                            const rect = event.currentTarget.getBoundingClientRect();
-                            dragRef.current = {
-                              nodeId: node.id,
-                              offsetX: event.clientX - rect.left,
-                              offsetY: event.clientY - rect.top,
-                              activeNodeIds: nextSelectedIds,
-                              originPositions: snapshot.nodes
-                                .filter((item) => nextSelectedIds.includes(item.id))
-                                .map((item) => ({
-                                  nodeId: item.id,
-                                  x: item.position_x,
-                                  y: item.position_y,
-                                })),
-                            };
-                          }}
-                          onClick={(event) => {
-                            if (reconnectState) {
-                              void updateEdge(reconnectState.edgeId, {
-                                [reconnectState.end === 'source'
-                                  ? 'source_node_id'
-                                  : 'target_node_id']: node.id,
-                              }).then(() => {
-                                setReconnectState(null);
-                                setInfo(t('workteam.连线端点已更新'));
-                              });
-                              return;
-                            }
-                            if (connectFromNodeId && connectFromNodeId !== node.id) {
-                              void createEdge(connectFromNodeId, node.id);
-                              return;
-                            }
-                            if (event.shiftKey) {
-                              setSelectedNodeIds((prev) =>
-                                prev.includes(node.id)
-                                  ? prev.filter((item) => item !== node.id)
-                                  : [...prev, node.id],
-                              );
-                            } else {
-                              setSelectedNodeIds([node.id]);
-                            }
-                            setSelectedNodeId(node.id);
-                            setSelectedEdgeId('');
-                          }}
-                        >
-                          <span className="workflow-node-type">{node.node_type === 'role' ? t('workteam.角色') : t('workteam.任务')}</span>
-                          <strong>{node.name}</strong>
-                          <span className="workflow-node-meta">{positionLabel(node)}</span>
-                          {runState ? (
-                            <span className={`workflow-run-state is-${runState.status}`}>
-                              {runState.status}
-                            </span>
-                          ) : null}
-                          <span className="workflow-node-actions-inline">
-                            <span
-                              role="button"
-                              tabIndex={0}
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                setConnectFromNodeId(node.id);
-                              }}
-                              onKeyDown={() => {}}
-                            >
-                              {t('workteam.连接')}
-                            </span>
-                          </span>
-                        </button>
-                      );
-                    })}
-                    {selectionBox ? (
-                      <div
-                        className="workflow-selection-box"
-                        style={{
-                          left: Math.min(selectionBox.startX, selectionBox.currentX),
-                          top: Math.min(selectionBox.startY, selectionBox.currentY),
-                          width: Math.abs(selectionBox.currentX - selectionBox.startX),
-                          height: Math.abs(selectionBox.currentY - selectionBox.startY),
-                        }}
-                      />
-                    ) : null}
-                  </div>
-                </section>
-
-                <section className="workflow-detail-grid">
-                  <div className="workflow-inspector">
-                    <h3>{t('workteam.属性面板')}</h3>
-                    {selectedNode ? (
-                      <NodeInspector
-                        key={selectedNode.id}
-                        node={selectedNode}
-                        roleNodes={selectedRoleNodes}
-                        assistants={assistants}
-                        runNode={selectedRunNode}
-                        canManage={canManage}
-                        busy={busy}
-                        onSave={(body) => void updateNode(selectedNode.id, body)}
-                        onDelete={() => void deleteNode(selectedNode.id)}
-                        onPauseNode={
-                          selectedRunNode
-                            ? () => void nodeRunAction(selectedNode.id, 'pause')
-                            : undefined
-                        }
-                        onResumeNode={
-                          selectedRunNode
-                            ? () => void nodeRunAction(selectedNode.id, 'resume')
-                            : undefined
-                        }
-                        onRetryNode={
-                          selectedRunNode
-                            ? () => void nodeRunAction(selectedNode.id, 'retry')
-                            : undefined
-                        }
-                        onSaveRunInput={(value) =>
-                          void saveRunNodeField(selectedNode.id, 'input', value)
-                        }
-                        onSaveRunOutput={(value) =>
-                          void saveRunNodeField(selectedNode.id, 'output', value)
-                        }
-                      />
-                    ) : selectedEdge ? (
-                      <EdgeInspector
-                        edge={selectedEdge}
-                        nodes={snapshot.nodes}
-                        canManage={canManage}
-                        busy={busy}
-                        onSave={(body) => void updateEdge(selectedEdge.id, body)}
-                        onDelete={() => void deleteEdge(selectedEdge.id)}
-                        onReconnectStart={() => startReconnect(selectedEdge.id, 'source')}
-                        onReconnectEnd={() => startReconnect(selectedEdge.id, 'target')}
-                      />
-                    ) : (
-                      <div className="workflow-hint">
-                        {t('workteam.选择一个节点或连线开始编辑')}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="workflow-run-panel">
-                    <h3>{t('workteam.运行台')}</h3>
-                    <div className="workflow-run-create">
-                      <textarea
-                        value={runInput}
-                        onChange={(event) => setRunInput(event.target.value)}
-                        placeholder={t('workteam.输入整张图的全局上下文')}
-                      />
-                      <div className="workflow-run-actions">
-                        <button type="button" className="btn-primary" disabled={!canManage || busy} onClick={() => void startRun()}>
-                          {t('workteam.启动运行')}
-                        </button>
-                        <button type="button" className="btn-outline btn-sm" disabled={!selectedRunId || busy} onClick={() => void runControl('pause')}>
-                          {t('workteam.暂停整图')}
-                        </button>
-                        <button type="button" className="btn-outline btn-sm" disabled={!selectedRunId || busy} onClick={() => void runControl('resume')}>
-                          {t('workteam.继续整图')}
-                        </button>
-                        <button type="button" className="btn-outline btn-sm" disabled={!selectedRunId || busy} onClick={() => void runControl('cancel')}>
-                          {t('workteam.取消整图')}
-                        </button>
-                      </div>
-                    </div>
-
+                  <section className="workflow-settings-card">
+                    <h3>{t('workteam.运行列表')}</h3>
                     <div className="workflow-run-list">
                       {runs.map((run) => (
                         <button
                           key={run.id}
                           type="button"
-                          className={`workflow-run-card${run.id === selectedRunId ? ' selected' : ''}`}
+                          className={`workflow-run-card${
+                            run.id === selectedRunId ? ' selected' : ''
+                          }`}
                           onClick={() => setSelectedRunId(run.id)}
                         >
                           <strong>{run.status}</strong>
@@ -2892,72 +2794,122 @@ export function WorkteamPage({ apiBase, canManage = true }: WorkteamPageProps) {
                         </button>
                       ))}
                     </div>
+                  </section>
 
-                    {runGraph ? (
-                      <div className="workflow-run-graph">
-                        <div className="workflow-run-summary">
-                          <div>{t('workteam.状态')}：{runGraph.run.status}</div>
-                          <div>{t('workteam.开始')}：{runGraph.run.started_at ? fmt(runGraph.run.started_at) : t('workteam.未开始')}</div>
-                          <div>{t('workteam.结束')}：{runGraph.run.completed_at ? fmt(runGraph.run.completed_at) : t('workteam.进行中')}</div>
+                  {runGraph ? (
+                    <section className="workflow-settings-card workflow-run-detail-card">
+                      <h3>{t('workteam.运行详情')}</h3>
+                      <div className="workflow-run-summary">
+                        <div>{t('workteam.状态')}：{runGraph.run.status}</div>
+                        <div>
+                          {t('workteam.开始')}：
+                          {runGraph.run.started_at
+                            ? fmt(runGraph.run.started_at)
+                            : t('workteam.未开始')}
                         </div>
-                        <div className="workflow-run-output">
-                          <h4>{t('workteam.整图输出')}</h4>
-                          <pre>{runGraph.run.output || t('workteam.暂无汇总输出')}</pre>
+                        <div>
+                          {t('workteam.结束')}：
+                          {runGraph.run.completed_at
+                            ? fmt(runGraph.run.completed_at)
+                            : t('workteam.进行中')}
                         </div>
-                        <div className="workflow-run-messages">
-                          <h4>{t('workteam.延迟消息队列')}</h4>
-                          <WorkflowTransferList
-                            transfers={pendingTransfers}
-                            nodes={snapshot.nodes}
-                            canManage={canManage}
-                            busy={busy}
-                            onApprove={(transferId) => void mutateTransfer(transferId, 'approve')}
-                            onEdit={(transfer) => void editTransfer(transfer)}
-                            onCancel={(transferId) => void mutateTransfer(transferId, 'cancel')}
-                            onReleaseNow={(transferId) => void mutateTransfer(transferId, 'release-now')}
-                          />
-                        </div>
-                        <div className="workflow-run-messages">
-                          <h4>{t('workteam.交付产物')}</h4>
-                          <WorkflowArtifactList
-                            artifacts={artifacts}
-                            canManage={canManage}
-                            busy={busy}
-                            onRefresh={() => void loadArtifacts()}
-                            onExport={() => void exportRun()}
-                            onCommitAndPush={() => void commitAndPushRun()}
-                            onPublish={() => void publishRunArtifact()}
-                          />
-                        </div>
+                      </div>
+                      <WorkflowRunHealth
+                        metrics={runMetrics}
+                        evaluation={runEvaluation}
+                      />
+                      <div className="workflow-run-output">
+                        <h4>{t('workteam.整图输出')}</h4>
+                        <pre>
+                          {runGraph.run.output || t('workteam.暂无汇总输出')}
+                        </pre>
+                      </div>
+                      <div className="workflow-run-messages">
+                        <h4>{t('workteam.延迟消息队列')}</h4>
+                        <WorkflowTransferList
+                          transfers={pendingTransfers}
+                          nodes={snapshot.nodes}
+                          canManage={canManage}
+                          busy={busy}
+                          onApprove={(transferId) =>
+                            void mutateTransfer(transferId, 'approve')
+                          }
+                          onEdit={(transfer) => void editTransfer(transfer)}
+                          onCancel={(transferId) =>
+                            void mutateTransfer(transferId, 'cancel')
+                          }
+                          onReleaseNow={(transferId) =>
+                            void mutateTransfer(transferId, 'release-now')
+                          }
+                        />
+                      </div>
+                      <div className="workflow-run-messages">
+                        <h4>{t('workteam.交付产物')}</h4>
+                        <WorkflowArtifactList
+                          artifacts={artifacts}
+                          canManage={canManage}
+                          busy={busy}
+                          onRefresh={() => void loadArtifacts()}
+                          onExport={() => void exportRun()}
+                          onCommitAndPush={() => void commitAndPushRun()}
+                          onPublish={() => void publishRunArtifact()}
+                        />
+                      </div>
+                      <details className="workflow-advanced-details">
+                        <summary>{t('workteam.高级调试信息')}</summary>
                         <div className="workflow-run-messages">
                           <h4>{t('workteam.讨论边')}</h4>
                           {discussionEdgeSummaries.length === 0 ? (
-                            <div className="workflow-hint">{t('workteam.当前运行里还没有双向讨论边消息')}</div>
+                            <div className="workflow-hint">
+                              {t('workteam.当前运行里还没有双向讨论边消息')}
+                            </div>
                           ) : (
                             <div className="workflow-edge-summary-list">
-                              {discussionEdgeSummaries.map(({ edge, count, latestAt, latestPreview, turnCount, sessionStatus }) => (
-                                <button
-                                  key={edge.id}
-                                  type="button"
-                                  className={`workflow-edge-summary-card${selectedEdgeId === edge.id ? ' selected' : ''}`}
-                                  onClick={() => {
-                                    setSelectedEdgeId(edge.id);
-                                    setSelectedNodeId('');
-                                  }}
-                                >
-                                  <strong>
-                                    {displayNodeName(snapshot.nodes, edge.source_node_id)}
-                                    {' <-> '}
-                                    {displayNodeName(snapshot.nodes, edge.target_node_id)}
-                                  </strong>
-                                  <span>
-                                    {t('workteam.个frameN轮', { count, turnCount })}
-                                    {latestAt ? ` · ${fmt(latestAt)}` : ''}
-                                    {sessionStatus ? ` · ${sessionStatus}` : ''}
-                                  </span>
-                                  <p>{latestPreview || t('workteam.暂无内容')}</p>
-                                </button>
-                              ))}
+                              {discussionEdgeSummaries.map(
+                                ({
+                                  edge,
+                                  count,
+                                  latestAt,
+                                  latestPreview,
+                                  turnCount,
+                                  sessionStatus,
+                                }) => (
+                                  <button
+                                    key={edge.id}
+                                    type="button"
+                                    className={`workflow-edge-summary-card${
+                                      selectedEdgeId === edge.id ? ' selected' : ''
+                                    }`}
+                                    onClick={() => {
+                                      setSelectedEdgeId(edge.id);
+                                      setSelectedNodeId('');
+                                    }}
+                                  >
+                                    <strong>
+                                      {displayNodeName(
+                                        snapshot.nodes,
+                                        edge.source_node_id,
+                                      )}
+                                      {' <-> '}
+                                      {displayNodeName(
+                                        snapshot.nodes,
+                                        edge.target_node_id,
+                                      )}
+                                    </strong>
+                                    <span>
+                                      {t('workteam.个frameN轮', {
+                                        count,
+                                        turnCount,
+                                      })}
+                                      {latestAt ? ` · ${fmt(latestAt)}` : ''}
+                                      {sessionStatus ? ` · ${sessionStatus}` : ''}
+                                    </span>
+                                    <p>
+                                      {latestPreview || t('workteam.暂无内容')}
+                                    </p>
+                                  </button>
+                                ),
+                              )}
                             </div>
                           )}
                         </div>
@@ -2967,7 +2919,18 @@ export function WorkteamPage({ apiBase, canManage = true }: WorkteamPageProps) {
                             <>
                               <div className="workflow-hint">
                                 {selectedEdgeSessions.length > 0
-                                  ? t('workteam.当前边共有N个dialogueSession', { count: selectedEdgeSessions.length, status: selectedEdgeSessions.at(-1)?.status || 'active', turnCount: selectedEdgeSessions.at(-1)?.turn_count || 0 })
+                                  ? t(
+                                      'workteam.当前边共有N个dialogueSession',
+                                      {
+                                        count: selectedEdgeSessions.length,
+                                        status:
+                                          selectedEdgeSessions.at(-1)?.status ||
+                                          'active',
+                                        turnCount:
+                                          selectedEdgeSessions.at(-1)
+                                            ?.turn_count || 0,
+                                      },
+                                    )
                                   : t('workteam.当前边还没有独立dialogueSession')}
                               </div>
                               <div className="workflow-message-toolbar">
@@ -2976,18 +2939,26 @@ export function WorkteamPage({ apiBase, canManage = true }: WorkteamPageProps) {
                                   onChange={(event) =>
                                     setEdgeFeedbackText(event.target.value)
                                   }
-                                  placeholder={t('workteam.插入一条feedbackFrame')}
+                                  placeholder={t(
+                                    'workteam.插入一条feedbackFrame',
+                                  )}
                                 />
                                 <select
                                   value={edgeFeedbackDirection}
                                   onChange={(event) =>
                                     setEdgeFeedbackDirection(
-                                      event.target.value as 'forward' | 'reverse',
+                                      event.target.value as
+                                        | 'forward'
+                                        | 'reverse',
                                     )
                                   }
                                 >
-                                  <option value="forward">{t('workteam.正向反馈')}</option>
-                                  <option value="reverse">{t('workteam.反向反馈')}</option>
+                                  <option value="forward">
+                                    {t('workteam.正向反馈')}
+                                  </option>
+                                  <option value="reverse">
+                                    {t('workteam.反向反馈')}
+                                  </option>
                                 </select>
                                 <button
                                   type="button"
@@ -3000,8 +2971,12 @@ export function WorkteamPage({ apiBase, canManage = true }: WorkteamPageProps) {
                               <div className="workflow-message-toolbar">
                                 <input
                                   value={edgeMessageQuery}
-                                  onChange={(event) => setEdgeMessageQuery(event.target.value)}
-                                  placeholder={t('workteam.搜索消息内容来源或目标节点')}
+                                  onChange={(event) =>
+                                    setEdgeMessageQuery(event.target.value)
+                                  }
+                                  placeholder={t(
+                                    'workteam.搜索消息内容来源或目标节点',
+                                  )}
                                 />
                                 <select
                                   value={edgeDirectionFilter}
@@ -3011,43 +2986,82 @@ export function WorkteamPage({ apiBase, canManage = true }: WorkteamPageProps) {
                                     )
                                   }
                                 >
-                                  <option value="all">{t('workteam.全部方向')}</option>
-                                  <option value="forward">{t('workteam.正向')}</option>
-                                  <option value="reverse">{t('workteam.反向')}</option>
+                                  <option value="all">
+                                    {t('workteam.全部方向')}
+                                  </option>
+                                  <option value="forward">
+                                    {t('workteam.正向')}
+                                  </option>
+                                  <option value="reverse">
+                                    {t('workteam.反向')}
+                                  </option>
                                 </select>
                               </div>
                               {edgeMessageGroups.length === 0 ? (
-                                <div className="workflow-hint">{t('workteam.这条边当前没有符合筛选条件的消息')}</div>
+                                <div className="workflow-hint">
+                                  {t('workteam.这条边当前没有符合筛选条件的消息')}
+                                </div>
                               ) : (
                                 edgeMessageGroups.map((group) => {
-                                  const collapsed = collapsedRounds.includes(group.roundKey);
+                                  const collapsed = collapsedRounds.includes(
+                                    group.roundKey,
+                                  );
                                   return (
-                                    <div key={group.roundKey} className="workflow-round-group">
+                                    <div
+                                      key={group.roundKey}
+                                      className="workflow-round-group"
+                                    >
                                       <button
                                         type="button"
                                         className="workflow-round-toggle"
-                                        onClick={() => toggleCollapsedRound(group.roundKey)}
+                                        onClick={() =>
+                                          toggleCollapsedRound(group.roundKey)
+                                        }
                                       >
                                         <strong>{group.label}</strong>
                                         <span>
-                                          {group.messages.length} {t('workteam.条消息')}
-                                          {collapsed ? t('workteam.已折叠') : t('workteam.展开中')}
+                                          {group.messages.length}{' '}
+                                          {t('workteam.条消息')}
+                                          {collapsed
+                                            ? t('workteam.已折叠')
+                                            : t('workteam.展开中')}
                                         </span>
                                       </button>
                                       {!collapsed
                                         ? group.messages.map((message) => (
-                                            <div key={message.id} className="workflow-message-card">
+                                            <div
+                                              key={message.id}
+                                              className="workflow-message-card"
+                                            >
                                               <strong>
-                                                {displayNodeName(snapshot.nodes, message.source_node_id)}
+                                                {displayNodeName(
+                                                  snapshot.nodes,
+                                                  message.source_node_id,
+                                                )}
                                                 {' -> '}
-                                                {displayNodeName(snapshot.nodes, message.target_node_id)}
+                                                {displayNodeName(
+                                                  snapshot.nodes,
+                                                  message.target_node_id,
+                                                )}
                                               </strong>
                                               <span>
-                                                {message.direction === 'two_way' ? t('workteam.双向链路') : t('workteam.单向链路')}
+                                                {message.direction === 'two_way'
+                                                  ? t('workteam.双向链路')
+                                                  : t('workteam.单向链路')}
                                                 {message.turn_index
-                                                  ? ` · ${t('workteam.第N轮', { n: message.turn_index })}`
-                                                  : message.payload.discussionCount
-                                                    ? ` · ${t('workteam.第N轮', { n: message.payload.discussionCount })}`
+                                                  ? ` · ${t(
+                                                      'workteam.第N轮',
+                                                      { n: message.turn_index },
+                                                    )}`
+                                                  : message.payload
+                                                        .discussionCount
+                                                    ? ` · ${t(
+                                                        'workteam.第N轮',
+                                                        {
+                                                          n: message.payload
+                                                            .discussionCount,
+                                                        },
+                                                      )}`
                                                     : ''}
                                                 {' · '}
                                                 {message.frame_type}
@@ -3057,7 +3071,9 @@ export function WorkteamPage({ apiBase, canManage = true }: WorkteamPageProps) {
                                               <pre>
                                                 {message.content_text ||
                                                   message.payload.content ||
-                                                  extractMessageContent(message.payload_json)}
+                                                  extractMessageContent(
+                                                    message.payload_json,
+                                                  )}
                                               </pre>
                                             </div>
                                           ))
@@ -3068,7 +3084,9 @@ export function WorkteamPage({ apiBase, canManage = true }: WorkteamPageProps) {
                               )}
                             </>
                           ) : (
-                            <div className="workflow-hint">{t('workteam.选中一条连线后显示完整往返消息')}</div>
+                            <div className="workflow-hint">
+                              {t('workteam.选中一条连线后显示完整往返消息')}
+                            </div>
                           )}
                         </div>
                         <div className="workflow-run-messages">
@@ -3078,8 +3096,12 @@ export function WorkteamPage({ apiBase, canManage = true }: WorkteamPageProps) {
                               <div className="workflow-message-toolbar">
                                 <input
                                   value={nodeHistoryQuery}
-                                  onChange={(event) => setNodeHistoryQuery(event.target.value)}
-                                  placeholder={t('workteam.搜索输入消息干预或输出')}
+                                  onChange={(event) =>
+                                    setNodeHistoryQuery(event.target.value)
+                                  }
+                                  placeholder={t(
+                                    'workteam.搜索输入消息干预或输出',
+                                  )}
                                 />
                                 <select
                                   value={nodeInputPriorityMode}
@@ -3091,8 +3113,12 @@ export function WorkteamPage({ apiBase, canManage = true }: WorkteamPageProps) {
                                     )
                                   }
                                 >
-                                  <option value="feedback_first">{t('workteam.反馈优先')}</option>
-                                  <option value="chronological">{t('workteam.纯时间顺序')}</option>
+                                  <option value="feedback_first">
+                                    {t('workteam.反馈优先')}
+                                  </option>
+                                  <option value="chronological">
+                                    {t('workteam.纯时间顺序')}
+                                  </option>
                                 </select>
                                 {selectedRunNode?.input_anchor_frame_id ? (
                                   <button
@@ -3106,10 +3132,17 @@ export function WorkteamPage({ apiBase, canManage = true }: WorkteamPageProps) {
                                 ) : null}
                               </div>
                               {filteredNodeHistoryEntries.length === 0 ? (
-                                <div className="workflow-hint">{t('workteam.该节点当前还没有符合筛选条件的历史')}</div>
+                                <div className="workflow-hint">
+                                  {t(
+                                    'workteam.该节点当前还没有符合筛选条件的历史',
+                                  )}
+                                </div>
                               ) : (
                                 filteredNodeHistoryEntries.map((entry) => (
-                                  <div key={entry.id} className={`workflow-message-card is-${entry.kind}`}>
+                                  <div
+                                    key={entry.id}
+                                    className={`workflow-message-card is-${entry.kind}`}
+                                  >
                                     <strong>{entry.title}</strong>
                                     <span>{entry.subtitle}</span>
                                     <pre>{entry.content}</pre>
@@ -3121,7 +3154,11 @@ export function WorkteamPage({ apiBase, canManage = true }: WorkteamPageProps) {
                                         <button
                                           type="button"
                                           className="btn-outline btn-sm"
-                                          onClick={() => void applyHistoryEntryToNodeInput(entry.content)}
+                                          onClick={() =>
+                                            void applyHistoryEntryToNodeInput(
+                                              entry.content,
+                                            )
+                                          }
                                         >
                                           {t('workteam.回填为节点输入')}
                                         </button>
@@ -3130,10 +3167,13 @@ export function WorkteamPage({ apiBase, canManage = true }: WorkteamPageProps) {
                                             type="button"
                                             className="btn-outline btn-sm"
                                             onClick={() =>
-                                              void saveNodeInputConfig(entry.anchorFrameId || '')
+                                              void saveNodeInputConfig(
+                                                entry.anchorFrameId || '',
+                                              )
                                             }
                                           >
-                                            {selectedRunNode?.input_anchor_frame_id === entry.anchorFrameId
+                                            {selectedRunNode?.input_anchor_frame_id ===
+                                            entry.anchorFrameId
                                               ? t('workteam.当前输入基线')
                                               : t('workteam.设为输入基线')}
                                           </button>
@@ -3145,25 +3185,40 @@ export function WorkteamPage({ apiBase, canManage = true }: WorkteamPageProps) {
                               )}
                             </>
                           ) : (
-                            <div className="workflow-hint">{t('workteam.选中节点后显示输入快照讨论消息人工干预和输出快照')}</div>
+                            <div className="workflow-hint">
+                              {t(
+                                'workteam.选中节点后显示输入快照讨论消息人工干预和输出快照',
+                              )}
+                            </div>
                           )}
                         </div>
                         <div className="workflow-run-messages">
                           <h4>{t('workteam.节点执行时间线')}</h4>
                           {selectedNode ? (
                             selectedNodeExecutions.length === 0 ? (
-                              <div className="workflow-hint">{t('workteam.该节点当前还没有独立execution记录')}</div>
+                              <div className="workflow-hint">
+                                {t('workteam.该节点当前还没有独立execution记录')}
+                              </div>
                             ) : (
                               <>
                                 <div className="workflow-execution-list">
                                   {selectedNodeExecutions.map((execution) => (
-                                    <div key={execution.id} className={`workflow-execution-card is-${execution.status}`}>
+                                    <div
+                                      key={execution.id}
+                                      className={`workflow-execution-card is-${execution.status}`}
+                                    >
                                       <strong>{execution.status}</strong>
                                       <span>{fmt(execution.created_at)}</span>
-                                      <span>runtime: {execution.runtime_namespace.slice(0, 8)}…</span>
+                                      <span>
+                                        runtime:{' '}
+                                        {execution.runtime_namespace.slice(0, 8)}…
+                                      </span>
                                       <span>group: {execution.group_folder}</span>
                                       {execution.session_id ? (
-                                        <span>session: {execution.session_id.slice(0, 12)}…</span>
+                                        <span>
+                                          session:{' '}
+                                          {execution.session_id.slice(0, 12)}…
+                                        </span>
                                       ) : null}
                                       {execution.error_text ? (
                                         <pre>{execution.error_text}</pre>
@@ -3186,471 +3241,24 @@ export function WorkteamPage({ apiBase, canManage = true }: WorkteamPageProps) {
                               </>
                             )
                           ) : (
-                            <div className="workflow-hint">{t('workteam.选中节点后显示execution和turnevent日志')}</div>
+                            <div className="workflow-hint">
+                              {t('workteam.选中节点后显示execution和turnevent日志')}
+                            </div>
                           )}
                         </div>
-                      </div>
-                    ) : (
-                      <div className="workflow-hint">{t('workteam.选择一次运行查看节点输入输出消息流和人工干预记录')}</div>
-                    )}
-                  </div>
-                </section>
-
-                <WorkflowRepositoryPanel
-                  apiBase={apiBase}
-                  workflowId={snapshot.workflow.id}
-                  canManage={canManage}
-                  boundAssistantNames={snapshot.nodes
-                    .filter((node) => node.node_type === 'role' && node.assistant_id)
-                    .map((node) => {
-                      const assistant = assistants.find(
-                        (item) => item.id === node.assistant_id,
-                      );
-                      return assistant?.name || node.assistant_id;
-                    })}
-                />
-              </>
-            )}
-          </main>
-        </section>
-        <button
-          type="button"
-          className="workflow-run-rail"
-          onClick={() => setShowRunDrawer(true)}
-          disabled={!workflowId}
-        >
-          <span>{t('workteam.运行记录')}</span>
-          <strong>{runs.length}</strong>
-          <span>{selectedRunId ? runs.find((run) => run.id === selectedRunId)?.status || '' : t('workteam.未选择运行')}</span>
-        </button>
-      </div>
-      <Drawer
-        open={showWorkflowSettings}
-        onClose={() => setShowWorkflowSettings(false)}
-        title={t('workteam.工作流配置')}
-        width={760}
-      >
-        <div className="workflow-settings-drawer">
-          <section className="workflow-settings-card">
-            <h3>{t('workteam.当前工作流')}</h3>
-            {snapshot ? (
-              <>
-                <label>
-                  {t('workteam.名称')}
-                  <input
-                    value={snapshot.workflow.name}
-                    onChange={(event) =>
-                      setSnapshot({
-                        ...snapshot,
-                        workflow: {
-                          ...snapshot.workflow,
-                          name: event.target.value,
-                        },
-                      })
-                    }
-                  />
-                </label>
-                <label>
-                  {t('workteam.描述')}
-                  <textarea
-                    value={snapshot.workflow.description}
-                    onChange={(event) =>
-                      setSnapshot({
-                        ...snapshot,
-                        workflow: {
-                          ...snapshot.workflow,
-                          description: event.target.value,
-                        },
-                      })
-                    }
-                  />
-                </label>
-                <label>
-                  {t('workteam.工作流类型')}
-                  <select
-                    value={parseWorkflowConfig(snapshot.workflow.workflow_config).kind}
-                    onChange={(event) =>
-                      updateWorkflowConfig({ kind: event.target.value as WorkflowKind })
-                    }
-                  >
-                    <option value="general">{t('workteam.通用')}</option>
-                    <option value="repository">{t('workteam.仓库')}</option>
-                    <option value="skill">{t('workteam.技能')}</option>
-                    <option value="mcp">{t('workteam.MCP')}</option>
-                    <option value="system_capability">{t('workteam.系统能力')}</option>
-                  </select>
-                </label>
-                <label>
-                  {t('workteam.可见性')}
-                  <select
-                    value={parseWorkflowConfig(snapshot.workflow.workflow_config).visibility}
-                    onChange={(event) =>
-                      updateWorkflowConfig({
-                        visibility: event.target.value as WorkflowVisibility,
-                      })
-                    }
-                  >
-                    <option value="private">{t('workteam.私有')}</option>
-                    <option value="shared">{t('workteam.共享')}</option>
-                    <option value="system">{t('workteam.系统')}</option>
-                  </select>
-                </label>
-                <label>
-                  {t('workteam.消息延迟毫秒')}
-                  <input
-                    type="number"
-                    min="0"
-                    step="1000"
-                    value={parseWorkflowConfig(snapshot.workflow.workflow_config).messageDelayMs}
-                    onChange={(event) =>
-                      updateWorkflowConfig({
-                        messageDelayMs: Number(event.target.value) || 0,
-                      })
-                    }
-                  />
-                </label>
-                <label className="workflow-inline-toggle">
-                  <input
-                    type="checkbox"
-                    checked={parseWorkflowConfig(snapshot.workflow.workflow_config).artifactPolicy?.exportable !== false}
-                    onChange={(event) =>
-                      updateWorkflowConfig({
-                        artifactPolicy: {
-                          exportable: event.target.checked,
-                        },
-                      })
-                    }
-                  />
-                  {t('workteam.允许导出')}
-                </label>
-                <div className="workflow-settings-actions">
-                  <button
-                    type="button"
-                    className="btn-primary"
-                    disabled={!canManage || busy}
-                    onClick={() => void saveCurrentWorkflow()}
-                  >
-                    {t('workteam.保存')}
-                  </button>
-                  <button
-                    type="button"
-                    className="btn-outline"
-                    disabled={!canManage || busy}
-                    onClick={() => void publishWorkflow()}
-                  >
-                    {t('workteam.发布')}
-                  </button>
-                </div>
-              </>
-            ) : (
-              <div className="workflow-hint">{t('workteam.先创建或选择一个工作流')}</div>
-            )}
-          </section>
-
-          <section className="workflow-settings-card">
-            <h3>{t('workteam.新建工作流')}</h3>
-            <div className="workflow-create-form">
-              <input
-                value={newWorkflowName}
-                onChange={(event) => setNewWorkflowName(event.target.value)}
-                placeholder={t('workteam.新工作流名称')}
-              />
-              <textarea
-                value={newWorkflowDesc}
-                onChange={(event) => setNewWorkflowDesc(event.target.value)}
-                placeholder={t('workteam.工作流说明')}
-              />
-              <button
-                type="button"
-                className="btn-primary"
-                disabled={!canManage || busy}
-                onClick={() => void createWorkflow()}
-              >
-                {t('workteam.新建工作流')}
-              </button>
-            </div>
-          </section>
-
-          <section className="workflow-settings-card">
-            <h3>{t('workteam.节点与模板')}</h3>
-            <div className="workflow-settings-actions">
-              <button
-                type="button"
-                className="btn-outline"
-                disabled={!workflowId || !canManage || busy}
-                onClick={() => void createNode('role')}
-              >
-                {t('workteam.新增角色节点')}
-              </button>
-              <button
-                type="button"
-                className="btn-outline"
-                disabled={!workflowId || !canManage || busy}
-                onClick={() => void createNode('task')}
-              >
-                {t('workteam.新增任务节点')}
-              </button>
-            </div>
-            <details className="workflow-advanced-details">
-              <summary>{t('workteam.模板库')}</summary>
-              <div className="workflow-template-list compact">
-                {roleNodeTemplates.map((template) => (
-                  <button
-                    key={template.id}
-                    type="button"
-                    className="workflow-template-card"
-                    disabled={!workflowId || !canManage || busy}
-                    onClick={() => void createNodeFromTemplate(template, 'role')}
-                  >
-                    <strong>{template.name}</strong>
-                    <span>{template.goal}</span>
-                  </button>
-                ))}
-                {taskNodeTemplates.map((template) => (
-                  <button
-                    key={template.id}
-                    type="button"
-                    className="workflow-template-card task"
-                    disabled={!workflowId || !canManage || busy}
-                    onClick={() => void createNodeFromTemplate(template, 'task')}
-                  >
-                    <strong>{template.name}</strong>
-                    <span>{template.description}</span>
-                  </button>
-                ))}
-                {workflowGraphTemplates.map((template) => (
-                  <button
-                    key={template.id}
-                    type="button"
-                    className="workflow-template-card graph"
-                    disabled={!workflowId || !canManage || busy}
-                    onClick={() => void createWorkflowGraphTemplate(template)}
-                  >
-                    <strong>{template.name}</strong>
-                    <span>{t(`workteam.${template.description}`)}</span>
-                  </button>
-                ))}
-              </div>
-            </details>
-          </section>
-
-          <section className="workflow-settings-card">
-            <h3>{t('workteam.画布工具')}</h3>
-            <div className="workflow-settings-actions">
-              <button
-                type="button"
-                className="btn-outline"
-                disabled={!workflowId || !canManage || busy}
-                onClick={() => void applyAutoLayout()}
-              >
-                {t('workteam.自动排版')}
-              </button>
-              <button
-                type="button"
-                className="btn-outline"
-                disabled={!workflowId || !canManage || busy}
-                onClick={() => void validateWorkflow()}
-              >
-                {t('workteam.校验图')}
-              </button>
-            </div>
-          </section>
-
-          {snapshot ? (
-            <WorkflowRepositoryPanel
-              apiBase={apiBase}
-              workflowId={snapshot.workflow.id}
-              canManage={canManage}
-              boundAssistantNames={snapshot.nodes
-                .filter((node) => node.node_type === 'role' && node.assistant_id)
-                .map((node) => {
-                  const assistant = assistants.find(
-                    (item) => item.id === node.assistant_id,
-                  );
-                  return assistant?.name || node.assistant_id;
-                })}
-            />
-          ) : null}
-        </div>
-      </Drawer>
-
-      <Drawer
-        open={showRunDrawer}
-        onClose={() => setShowRunDrawer(false)}
-        title={t('workteam.运行记录')}
-        width={860}
-      >
-        <div className="workflow-run-drawer">
-          <section className="workflow-settings-card">
-            <h3>{t('workteam.启动运行')}</h3>
-            <textarea
-              value={runInput}
-              onChange={(event) => setRunInput(event.target.value)}
-              placeholder={t('workteam.输入整张图的全局上下文')}
-            />
-            <div className="workflow-run-actions">
-              <button type="button" className="btn-primary" disabled={!workflowId || !canManage || busy} onClick={() => void startRun()}>
-                {t('workteam.启动运行')}
-              </button>
-              <button type="button" className="btn-outline btn-sm" disabled={!selectedRunId || busy} onClick={() => void runControl('pause')}>
-                {t('workteam.暂停整图')}
-              </button>
-              <button type="button" className="btn-outline btn-sm" disabled={!selectedRunId || busy} onClick={() => void runControl('resume')}>
-                {t('workteam.继续整图')}
-              </button>
-              <button type="button" className="btn-outline btn-sm" disabled={!selectedRunId || busy} onClick={() => void runControl('cancel')}>
-                {t('workteam.取消整图')}
-              </button>
-            </div>
-          </section>
-
-          <section className="workflow-settings-card">
-            <h3>{t('workteam.运行列表')}</h3>
-            <div className="workflow-run-list">
-              {runs.map((run) => (
-                <button
-                  key={run.id}
-                  type="button"
-                  className={`workflow-run-card${run.id === selectedRunId ? ' selected' : ''}`}
-                  onClick={() => setSelectedRunId(run.id)}
-                >
-                  <strong>{run.status}</strong>
-                  <span>{fmt(run.created_at)}</span>
-                  <span>{run.id.slice(0, 8)}…</span>
-                </button>
-              ))}
-            </div>
-          </section>
-
-          {runGraph ? (
-            <section className="workflow-settings-card">
-              <h3>{t('workteam.运行详情')}</h3>
-              <div className="workflow-run-summary">
-                <div>{t('workteam.状态')}：{runGraph.run.status}</div>
-                <div>{t('workteam.开始')}：{runGraph.run.started_at ? fmt(runGraph.run.started_at) : t('workteam.未开始')}</div>
-                <div>{t('workteam.结束')}：{runGraph.run.completed_at ? fmt(runGraph.run.completed_at) : t('workteam.进行中')}</div>
-              </div>
-              <div className="workflow-run-output">
-                <h4>{t('workteam.整图输出')}</h4>
-                <pre>{runGraph.run.output || t('workteam.暂无汇总输出')}</pre>
-              </div>
-              <div className="workflow-run-messages">
-                <h4>{t('workteam.延迟消息队列')}</h4>
-                <WorkflowTransferList
-                  transfers={pendingTransfers}
-                  nodes={snapshot?.nodes || []}
-                  canManage={canManage}
-                  busy={busy}
-                  onApprove={(transferId) => void mutateTransfer(transferId, 'approve')}
-                  onEdit={(transfer) => void editTransfer(transfer)}
-                  onCancel={(transferId) => void mutateTransfer(transferId, 'cancel')}
-                  onReleaseNow={(transferId) => void mutateTransfer(transferId, 'release-now')}
-                />
-              </div>
-              <div className="workflow-run-messages">
-                <h4>{t('workteam.交付产物')}</h4>
-                <WorkflowArtifactList
-                  artifacts={artifacts}
-                  canManage={canManage}
-                  busy={busy}
-                  onRefresh={() => void loadArtifacts()}
-                  onExport={() => void exportRun()}
-                  onCommitAndPush={() => void commitAndPushRun()}
-                  onPublish={() => void publishRunArtifact()}
-                />
-              </div>
-              <details className="workflow-advanced-details">
-                <summary>{t('workteam.高级调试信息')}</summary>
-                <div className="workflow-run-messages">
-                  <h4>{t('workteam.讨论边')}</h4>
-                  {discussionEdgeSummaries.length === 0 ? (
-                    <div className="workflow-hint">{t('workteam.当前运行里还没有双向讨论边消息')}</div>
+                      </details>
+                    </section>
                   ) : (
-                    <div className="workflow-edge-summary-list">
-                      {discussionEdgeSummaries.map(({ edge, count, latestAt, latestPreview, turnCount, sessionStatus }) => (
-                        <button
-                          key={edge.id}
-                          type="button"
-                          className={`workflow-edge-summary-card${selectedEdgeId === edge.id ? ' selected' : ''}`}
-                          onClick={() => {
-                            setSelectedEdgeId(edge.id);
-                            setSelectedNodeId('');
-                          }}
-                        >
-                          <strong>
-                            {displayNodeName(snapshot?.nodes, edge.source_node_id)}
-                            {' <-> '}
-                            {displayNodeName(snapshot?.nodes, edge.target_node_id)}
-                          </strong>
-                          <span>
-                            {t('workteam.个frameN轮', { count, turnCount })}
-                            {latestAt ? ` · ${fmt(latestAt)}` : ''}
-                            {sessionStatus ? ` · ${sessionStatus}` : ''}
-                          </span>
-                          <p>{latestPreview || t('workteam.暂无内容')}</p>
-                        </button>
-                      ))}
+                    <div className="workflow-hint">
+                      {t('workteam.选择一次运行查看节点输入输出消息流和人工干预记录')}
                     </div>
                   )}
                 </div>
-                <div className="workflow-run-messages">
-                  <h4>{t('workteam.节点讨论历史')}</h4>
-                  {selectedNode ? (
-                    filteredNodeHistoryEntries.length === 0 ? (
-                      <div className="workflow-hint">{t('workteam.该节点当前还没有符合筛选条件的历史')}</div>
-                    ) : (
-                      filteredNodeHistoryEntries.map((entry) => (
-                        <div key={entry.id} className={`workflow-message-card is-${entry.kind}`}>
-                          <strong>{entry.title}</strong>
-                          <span>{entry.subtitle}</span>
-                          <pre>{entry.content}</pre>
-                        </div>
-                      ))
-                    )
-                  ) : (
-                    <div className="workflow-hint">{t('workteam.选中节点后显示输入快照讨论消息人工干预和输出快照')}</div>
-                  )}
-                </div>
-                <div className="workflow-run-messages">
-                  <h4>{t('workteam.节点执行时间线')}</h4>
-                  {selectedNode ? (
-                    selectedNodeExecutions.length === 0 ? (
-                      <div className="workflow-hint">{t('workteam.该节点当前还没有独立execution记录')}</div>
-                    ) : (
-                      <>
-                        <div className="workflow-execution-list">
-                          {selectedNodeExecutions.map((execution) => (
-                            <div key={execution.id} className={`workflow-execution-card is-${execution.status}`}>
-                              <strong>{execution.status}</strong>
-                              <span>{fmt(execution.created_at)}</span>
-                              <span>runtime: {execution.runtime_namespace.slice(0, 8)}…</span>
-                              <span>group: {execution.group_folder}</span>
-                              {execution.error_text ? <pre>{execution.error_text}</pre> : null}
-                            </div>
-                          ))}
-                        </div>
-                        <div className="workflow-execution-events">
-                          {executionEventViews.map((event) => (
-                            <div key={event.id} className={`workflow-execution-event-card is-${event.tone}`}>
-                              <strong>{event.title}</strong>
-                              <span>{event.subtitle}</span>
-                              <pre>{event.body}</pre>
-                            </div>
-                          ))}
-                        </div>
-                      </>
-                    )
-                  ) : (
-                    <div className="workflow-hint">{t('workteam.选中节点后显示execution和turnevent日志')}</div>
-                  )}
-                </div>
-              </details>
+              ) : null}
             </section>
-          ) : (
-            <div className="workflow-hint">{t('workteam.选择一次运行查看节点输入输出消息流和人工干预记录')}</div>
-          )}
-        </div>
-      </Drawer>
+          </section>
+        )}
+      </div>
     </div>
   );
 }
@@ -3726,6 +3334,53 @@ function WorkflowTransferList({
   );
 }
 
+function WorkflowRunHealth({
+  metrics,
+  evaluation,
+}: {
+  metrics: WorkflowRunMetrics | null;
+  evaluation: WorkflowEvaluation | null;
+}) {
+  if (!metrics && !evaluation) return null;
+  return (
+    <div className="workflow-run-health">
+      {metrics ? (
+        <div className="workflow-metric-grid">
+          <span>Duration {fmtDuration(metrics.durationMs)}</span>
+          <span>Nodes {metrics.nodeRuns}/{metrics.guardrails.maxNodeRuns}</span>
+          <span>Transfers {metrics.transfers}/{metrics.guardrails.maxTransfers}</span>
+          <span>Tool calls {metrics.toolCalls}/{metrics.guardrails.maxToolCalls}</span>
+          <span>Approvals {metrics.approvals}</span>
+          <span>Events {metrics.executionEvents}/{metrics.guardrails.maxExecutionEvents}</span>
+          <span>
+            Context {metrics.maxEstimatedContextCharsPerNode}/
+            {metrics.guardrails.maxEstimatedContextCharsPerNode}
+          </span>
+        </div>
+      ) : null}
+      {metrics?.breakerReason ? (
+        <div className="workflow-health-warning">{metrics.breakerReason}</div>
+      ) : null}
+      {evaluation ? (
+        <div className={`workflow-evaluation is-${evaluation.status}`}>
+          <strong>Evaluation {evaluation.status} · {evaluation.score}</strong>
+          {evaluation.findings.length > 0 ? (
+            <ul>
+              {evaluation.findings.slice(0, 5).map((finding) => (
+                <li key={`${finding.code}:${finding.nodeId || ''}:${finding.message}`}>
+                  {finding.severity}: {finding.message}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <span>No deterministic findings</span>
+          )}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function WorkflowArtifactList({
   artifacts,
   canManage,
@@ -3777,9 +3432,303 @@ function WorkflowArtifactList({
   );
 }
 
+function WorkflowSettingsPanel({
+  snapshot,
+  config,
+  canManage,
+  busy,
+  onWorkflowChange,
+  onConfigChange,
+  onSave,
+  onPublish,
+}: {
+  snapshot: WorkflowSnapshot;
+  config: WorkflowConfig;
+  canManage: boolean;
+  busy: boolean;
+  onWorkflowChange: (
+    patch: Partial<Pick<WorkflowRecord, 'name' | 'description'>>,
+  ) => void;
+  onConfigChange: (patch: Partial<WorkflowConfig>) => void;
+  onSave: () => void;
+  onPublish: () => void;
+}) {
+  const { t } = useTranslation('workteam');
+  const guardrails: WorkflowGuardrailsConfig = config.guardrails || {
+    maxDurationMs: 1800000,
+    concurrentNodes: 2,
+    maxNodeRuns: 50,
+    maxTransfers: 100,
+    maxToolCalls: 200,
+    maxExecutionEvents: 2000,
+    maxEstimatedContextCharsPerNode: 60000,
+  };
+  const toolPolicy: WorkflowToolPolicy = config.toolPolicy || {
+    mode: 'assistant_default',
+    managedSkillIds: [],
+    userSkillIds: [],
+    managedMcpServerIds: [],
+    userMcpServerIds: [],
+    managedKbIds: [],
+    providerOverrideId: '',
+    modelOverride: '',
+  };
+
+  return (
+    <div className="workflow-inspector-body workflow-settings-panel">
+      <label>
+        {t('workteam.名称')}
+        <input
+          value={snapshot.workflow.name}
+          onChange={(event) => onWorkflowChange({ name: event.target.value })}
+        />
+      </label>
+      <label>
+        {t('workteam.描述')}
+        <textarea
+          value={snapshot.workflow.description}
+          onChange={(event) =>
+            onWorkflowChange({ description: event.target.value })
+          }
+        />
+      </label>
+      <div className="workflow-form-row">
+        <label>
+          {t('workteam.工作流类型')}
+          <select
+            value={config.kind}
+            onChange={(event) =>
+              onConfigChange({ kind: event.target.value as WorkflowKind })
+            }
+          >
+            <option value="general">{t('workteam.通用')}</option>
+            <option value="repository">{t('workteam.仓库')}</option>
+            <option value="skill">{t('workteam.技能')}</option>
+            <option value="mcp">{t('workteam.MCP')}</option>
+            <option value="system_capability">
+              {t('workteam.系统能力')}
+            </option>
+          </select>
+        </label>
+        <label>
+          {t('workteam.可见性')}
+          <select
+            value={config.visibility}
+            onChange={(event) =>
+              onConfigChange({
+                visibility: event.target.value as WorkflowVisibility,
+              })
+            }
+          >
+            <option value="private">{t('workteam.私有')}</option>
+            <option value="shared">{t('workteam.共享')}</option>
+            <option value="system">{t('workteam.系统')}</option>
+          </select>
+        </label>
+      </div>
+      <div className="workflow-form-row">
+        <label>
+          {t('workteam.消息延迟毫秒')}
+          <input
+            type="number"
+            min="0"
+            step="1000"
+            value={config.messageDelayMs}
+            onChange={(event) =>
+              onConfigChange({
+                messageDelayMs: Number(event.target.value) || 0,
+              })
+            }
+          />
+        </label>
+        <label className="workflow-inline-toggle">
+          <input
+            type="checkbox"
+            checked={config.artifactPolicy?.exportable !== false}
+            onChange={(event) =>
+              onConfigChange({
+                artifactPolicy: { exportable: event.target.checked },
+              })
+            }
+          />
+          {t('workteam.允许导出')}
+        </label>
+      </div>
+      <details className="workflow-advanced-details" open>
+        <summary>{t('workteam.生产护栏')}</summary>
+        <div className="workflow-guardrails-panel">
+          <label>
+            {t('workteam.最大运行毫秒')}
+            <input
+              type="number"
+              min="1000"
+              value={guardrails.maxDurationMs}
+              onChange={(event) =>
+                onConfigChange({
+                  guardrails: {
+                    ...guardrails,
+                    maxDurationMs: Number(event.target.value) || 1800000,
+                  },
+                })
+              }
+            />
+          </label>
+          <label>
+            {t('workteam.并发节点数')}
+            <input
+              type="number"
+              min="1"
+              value={guardrails.concurrentNodes}
+              onChange={(event) =>
+                onConfigChange({
+                  guardrails: {
+                    ...guardrails,
+                    concurrentNodes: Number(event.target.value) || 1,
+                  },
+                })
+              }
+            />
+          </label>
+          <label>
+            {t('workteam.最大节点运行')}
+            <input
+              type="number"
+              min="1"
+              value={guardrails.maxNodeRuns}
+              onChange={(event) =>
+                onConfigChange({
+                  guardrails: {
+                    ...guardrails,
+                    maxNodeRuns: Number(event.target.value) || 50,
+                  },
+                })
+              }
+            />
+          </label>
+          <label>
+            {t('workteam.最大handoff')}
+            <input
+              type="number"
+              min="0"
+              value={guardrails.maxTransfers}
+              onChange={(event) =>
+                onConfigChange({
+                  guardrails: {
+                    ...guardrails,
+                    maxTransfers: Number(event.target.value) || 0,
+                  },
+                })
+              }
+            />
+          </label>
+          <label>
+            {t('workteam.最大工具调用')}
+            <input
+              type="number"
+              min="0"
+              value={guardrails.maxToolCalls}
+              onChange={(event) =>
+                onConfigChange({
+                  guardrails: {
+                    ...guardrails,
+                    maxToolCalls: Number(event.target.value) || 0,
+                  },
+                })
+              }
+            />
+          </label>
+          <label>
+            {t('workteam.最大事件数')}
+            <input
+              type="number"
+              min="1"
+              value={guardrails.maxExecutionEvents}
+              onChange={(event) =>
+                onConfigChange({
+                  guardrails: {
+                    ...guardrails,
+                    maxExecutionEvents: Number(event.target.value) || 2000,
+                  },
+                })
+              }
+            />
+          </label>
+        </div>
+      </details>
+      <details className="workflow-advanced-details">
+        <summary>{t('workteam.工具策略')}</summary>
+        <label>
+          {t('workteam.工具策略')}
+          <select
+            value={toolPolicy.mode}
+            onChange={(event) =>
+              onConfigChange({
+                toolPolicy: {
+                  ...toolPolicy,
+                  mode: event.target.value as WorkflowToolPolicy['mode'],
+                },
+              })
+            }
+          >
+            <option value="assistant_default">
+              {t('workteam.assistantDefault')}
+            </option>
+            <option value="restricted">{t('workteam.restricted')}</option>
+          </select>
+        </label>
+        <label>
+          {t('workteam.允许的managedSkills')}
+          <input
+            value={(toolPolicy.managedSkillIds || []).join(', ')}
+            onChange={(event) =>
+              onConfigChange({
+                toolPolicy: {
+                  ...toolPolicy,
+                  managedSkillIds: splitCsv(event.target.value),
+                },
+              })
+            }
+          />
+        </label>
+        <label>
+          {t('workteam.允许的mcpServers')}
+          <input
+            value={(toolPolicy.managedMcpServerIds || []).join(', ')}
+            onChange={(event) =>
+              onConfigChange({
+                toolPolicy: {
+                  ...toolPolicy,
+                  managedMcpServerIds: splitCsv(event.target.value),
+                },
+              })
+            }
+          />
+        </label>
+      </details>
+      <div className="workflow-settings-actions">
+        <button
+          type="button"
+          className="btn-primary"
+          disabled={!canManage || busy}
+          onClick={onSave}
+        >
+          {t('workteam.保存')}
+        </button>
+        <button
+          type="button"
+          className="btn-outline"
+          disabled={!canManage || busy}
+          onClick={onPublish}
+        >
+          {t('workteam.发布')}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function NodeInspector({
   node,
-  roleNodes,
   assistants,
   runNode,
   canManage,
@@ -3793,7 +3742,6 @@ function NodeInspector({
   onSaveRunOutput,
 }: {
   node: WorkflowNodeRecord;
-  roleNodes: WorkflowNodeRecord[];
   assistants: AssistantRecord[];
   runNode: WorkflowRunNodeRecord | null;
   canManage: boolean;
@@ -3812,7 +3760,6 @@ function NodeInspector({
   const [name, setName] = useState(node.name);
   const [description, setDescription] = useState(node.description);
   const [assistantId, setAssistantId] = useState(node.assistant_id);
-  const [roleNodeId, setRoleNodeId] = useState(node.role_node_id);
   const [goal, setGoal] = useState(roleConfig.goal || '');
   const [backstory, setBackstory] = useState(roleConfig.backstory || '');
   const [prompt, setPrompt] = useState(taskConfig.prompt || '');
@@ -3827,6 +3774,35 @@ function NodeInspector({
       ? taskConfig.allowedDirectories.join('\n')
       : '',
   );
+  const initialToolPolicy = taskConfig.toolPolicy || {
+    mode: 'assistant_default' as const,
+    managedSkillIds: [],
+    userSkillIds: [],
+    managedMcpServerIds: [],
+    userMcpServerIds: [],
+    managedKbIds: [],
+  };
+  const [toolPolicyMode, setToolPolicyMode] =
+    useState<WorkflowToolPolicy['mode']>(
+      initialToolPolicy.mode === 'restricted'
+        ? 'restricted'
+        : 'assistant_default',
+    );
+  const [managedSkillIds, setManagedSkillIds] = useState(
+    (initialToolPolicy.managedSkillIds || []).join(', '),
+  );
+  const [userSkillIds, setUserSkillIds] = useState(
+    (initialToolPolicy.userSkillIds || []).join(', '),
+  );
+  const [managedMcpServerIds, setManagedMcpServerIds] = useState(
+    (initialToolPolicy.managedMcpServerIds || []).join(', '),
+  );
+  const [userMcpServerIds, setUserMcpServerIds] = useState(
+    (initialToolPolicy.userMcpServerIds || []).join(', '),
+  );
+  const [managedKbIds, setManagedKbIds] = useState(
+    (initialToolPolicy.managedKbIds || []).join(', '),
+  );
   const [runInput, setRunInput] = useState(runNode?.input_snapshot || '');
   const [runOutput, setRunOutput] = useState(runNode?.output_snapshot || '');
 
@@ -3839,7 +3815,9 @@ function NodeInspector({
       <div className="workflow-inspector-body">
       <div className="workflow-inspector-header">
         <span className={`workflow-node-badge type-${node.node_type}`}>
-          {node.node_type === 'role' ? t('workteam.角色节点') : t('workteam.任务节点')}
+          {node.node_type === 'role'
+            ? t('workteam.内部角色')
+            : t('workteam.助手worker')}
         </span>
         <button type="button" onClick={onDelete} disabled={!canManage || busy}>
           {t('workteam.删除节点')}
@@ -3897,23 +3875,12 @@ function NodeInspector({
       ) : (
         <>
           <label>
-            {t('workteam.执行助手')}
+            {t('workteam.选择assistant')}
             <select value={assistantId} onChange={(event) => setAssistantId(event.target.value)}>
-              <option value="">{t('workteam.继承角色助手')}</option>
+              <option value="">{t('workteam.未选择assistant')}</option>
               {assistants.map((assistant) => (
                 <option key={assistant.id} value={assistant.id}>
                   {assistant.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            {t('workteam.角色绑定')}
-            <select value={roleNodeId} onChange={(event) => setRoleNodeId(event.target.value)}>
-              <option value="">{t('workteam.请选择角色节点')}</option>
-              {roleNodes.map((roleNode) => (
-                <option key={roleNode.id} value={roleNode.id}>
-                  {roleNode.name}
                 </option>
               ))}
             </select>
@@ -3929,13 +3896,12 @@ function NodeInspector({
           <button
             type="button"
             className="btn-primary"
-            disabled={!canManage || busy || !roleNodeId.trim()}
+            disabled={!canManage || busy}
             onClick={() =>
               onSave({
                 name,
                 description,
                 assistant_id: assistantId,
-                role_node_id: roleNodeId,
                 config_json: {
                   assistantId: assistantId || undefined,
                   prompt,
@@ -3949,11 +3915,19 @@ function NodeInspector({
                     .split('\n')
                     .map((item) => item.trim())
                     .filter(Boolean),
+                  toolPolicy: {
+                    mode: toolPolicyMode,
+                    managedSkillIds: splitCsv(managedSkillIds),
+                    userSkillIds: splitCsv(userSkillIds),
+                    managedMcpServerIds: splitCsv(managedMcpServerIds),
+                    userMcpServerIds: splitCsv(userMcpServerIds),
+                    managedKbIds: splitCsv(managedKbIds),
+                  },
                 },
               })
             }
           >
-            {t('workteam.保存任务节点')}
+            {t('workteam.保存worker')}
           </button>
 
           <details className="workflow-advanced-details">
@@ -4001,6 +3975,55 @@ function NodeInspector({
                 onChange={(event) => setApprovalRequired(event.target.checked)}
               />
               {t('workteam.需要人工批准')}
+            </label>
+            <label>
+              {t('workteam.工具策略')}
+              <select
+                value={toolPolicyMode}
+                onChange={(event) =>
+                  setToolPolicyMode(event.target.value as WorkflowToolPolicy['mode'])
+                }
+              >
+                <option value="assistant_default">
+                  {t('workteam.assistantDefault')}
+                </option>
+                <option value="restricted">{t('workteam.restricted')}</option>
+              </select>
+            </label>
+            <label>
+              {t('workteam.允许的managedSkills')}
+              <input
+                value={managedSkillIds}
+                onChange={(event) => setManagedSkillIds(event.target.value)}
+              />
+            </label>
+            <label>
+              {t('workteam.允许的userSkills')}
+              <input
+                value={userSkillIds}
+                onChange={(event) => setUserSkillIds(event.target.value)}
+              />
+            </label>
+            <label>
+              {t('workteam.允许的mcpServers')}
+              <input
+                value={managedMcpServerIds}
+                onChange={(event) => setManagedMcpServerIds(event.target.value)}
+              />
+            </label>
+            <label>
+              {t('workteam.允许的userMcpServers')}
+              <input
+                value={userMcpServerIds}
+                onChange={(event) => setUserMcpServerIds(event.target.value)}
+              />
+            </label>
+            <label>
+              {t('workteam.允许的知识库')}
+              <input
+                value={managedKbIds}
+                onChange={(event) => setManagedKbIds(event.target.value)}
+              />
             </label>
           </details>
 

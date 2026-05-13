@@ -73,6 +73,7 @@ import {
   checkWritePermission,
   getAccessMode,
   isReadOnlyShellCommand,
+  mapWorkspacePathsInShellCommand,
   precheckBashCommandPaths,
   resolvePath,
 } from './workspace-permissions.js';
@@ -126,6 +127,7 @@ interface AgentRunInput {
   suppressDefaultSystemPrompt?: boolean;
   suppressScheduledTaskPreamble?: boolean;
   disableDefaultWebSearch?: boolean;
+  toolPolicy?: 'none' | 'readonly' | 'full';
   assistantName?: string;
   secrets?: Record<string, string>;
   managedSkillIds?: string[];
@@ -199,6 +201,8 @@ interface AgentToolCallItemPayload {
   resultText?: string;
   errorText?: string;
   subagentInfo?: AgentSubagentInfo;
+  startedAt?: string;
+  completedAt?: string;
   timestamp: string;
 }
 
@@ -1103,6 +1107,7 @@ class CodexTurnEventEmitter {
       title,
       argumentsText,
       subagentInfo,
+      startedAt: new Date().toISOString(),
       timestamp: new Date().toISOString(),
     });
   }
@@ -1141,6 +1146,7 @@ class CodexTurnEventEmitter {
       argumentsText,
       resultText,
       subagentInfo,
+      completedAt: new Date().toISOString(),
       timestamp: new Date().toISOString(),
     });
   }
@@ -1160,6 +1166,7 @@ class CodexTurnEventEmitter {
       argumentsText,
       errorText,
       subagentInfo,
+      completedAt: new Date().toISOString(),
       timestamp: new Date().toISOString(),
     });
   }
@@ -1322,6 +1329,47 @@ function buildPermissionDenyResult(reason: string) {
   };
 }
 
+type AgentToolPolicy = 'none' | 'readonly' | 'full';
+
+function resolveAgentToolPolicy(agentInput: AgentRunInput): AgentToolPolicy {
+  return agentInput.toolPolicy === 'none' ||
+    agentInput.toolPolicy === 'readonly' ||
+    agentInput.toolPolicy === 'full'
+    ? agentInput.toolPolicy
+    : 'full';
+}
+
+function buildClaudeAllowedTools(
+  input: {
+    agentInput: AgentRunInput;
+    subagentsEnabled: boolean;
+    canCreateSubagents: boolean;
+    allowedMcpTools: string[];
+  },
+): string[] {
+  const toolPolicy = resolveAgentToolPolicy(input.agentInput);
+  if (toolPolicy === 'none') return [];
+  const readonlyTools = ['Bash', 'Read', 'Glob', 'Grep', 'WebSearch', 'WebFetch'];
+  if (toolPolicy === 'readonly') return readonlyTools;
+  return [
+    'Bash',
+    'Read',
+    'Write',
+    'Edit',
+    'Glob',
+    'Grep',
+    'WebSearch',
+    'WebFetch',
+    ...(input.subagentsEnabled ? ['TeamDelete', 'SendMessage'] : []),
+    ...(input.canCreateSubagents ? ['TeamCreate'] : []),
+    'TodoWrite',
+    'ToolSearch',
+    'Skill',
+    'NotebookEdit',
+    ...input.allowedMcpTools,
+  ];
+}
+
 function createSanitizeBashHook(): HookCallback {
   return async (input, _toolUseId, _context) => {
     const preInput = input as PreToolUseHookInput;
@@ -1329,7 +1377,7 @@ function createSanitizeBashHook(): HookCallback {
       command?: string;
       cwd?: string;
     };
-    const command = toolInput?.command;
+    const command = mapWorkspacePathsInShellCommand(toolInput?.command || '');
     const requestedCwd =
       typeof toolInput?.cwd === 'string' ? toolInput.cwd : GROUP_DIR;
     if (!command) return {};
@@ -1920,16 +1968,12 @@ async function runQuery(
               }
             : undefined;
         })(),
-        allowedTools: [
-          'Bash',
-          'Read', 'Write', 'Edit', 'Glob', 'Grep',
-          'WebSearch', 'WebFetch',
-          ...(subagentsEnabled ? ['TeamDelete', 'SendMessage'] : []),
-          ...(canCreateSubagents ? ['TeamCreate'] : []),
-          'TodoWrite', 'ToolSearch', 'Skill',
-          'NotebookEdit',
-          ...allowedMcpTools,
-        ],
+        allowedTools: buildClaudeAllowedTools({
+          agentInput,
+          subagentsEnabled,
+          canCreateSubagents,
+          allowedMcpTools,
+        }),
         env: sdkEnv,
         includePartialMessages: true,
         permissionMode: 'bypassPermissions',
@@ -3814,7 +3858,9 @@ async function runCodexChatCompletionsQuery(
   const apiKey = secrets.CODEX_API_KEY || '';
   const model = secrets.CODEX_MODEL || 'gpt-5.4';
   const instructions = buildResponsesInstructions(cwd, agentInput, prompt);
-  const openAiTools = await buildCodexOpenAiTools();
+  const openAiTools = await buildCodexOpenAiTools({
+    toolPolicy: resolveAgentToolPolicy(agentInput),
+  });
   const historyScope = options?.historyScope || 'shared';
   const history = historyScope === 'ephemeral'
     ? normalizeChatHistory([], instructions)
@@ -4049,7 +4095,9 @@ async function runCodexQuery(
   const apiKey = secrets.CODEX_API_KEY || '';
   const model = secrets.CODEX_MODEL || 'gpt-5.4';
   const instructions = buildResponsesInstructions(cwd, agentInput, prompt);
-  const responsesTools = await buildCodexResponsesTools();
+  const responsesTools = await buildCodexResponsesTools({
+    toolPolicy: resolveAgentToolPolicy(agentInput),
+  });
   const historyScope = options?.historyScope || 'shared';
   const sharedHistory =
     historyScope === 'ephemeral' ? normalizeChatHistory([], instructions) : loadChatCompletionsHistory(instructions);

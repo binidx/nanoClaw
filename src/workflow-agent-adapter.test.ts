@@ -162,4 +162,76 @@ describe('workflow agent adapter', () => {
     ];
     expect(group.assistantId).toBe('assistant-task');
   });
+
+  it('restricts injected tools and provider/model when workflow tool policy is restricted', async () => {
+    resolveAssistantRuntimeConfigMock.mockResolvedValue({
+      managedSkillIds: ['assistant-skill'],
+      managedMcpServerIds: ['assistant-mcp'],
+      userSkillIds: ['assistant-user-skill'],
+      userMcpServerIds: ['assistant-user-mcp'],
+      managedKbIds: ['assistant-kb'],
+      resolvedMcpServers: [
+        {
+          id: 'allowed-mcp',
+          templateServerId: 'allowed-template',
+          name: 'Allowed',
+          command: 'node',
+          args: [],
+          env: {},
+          bindingId: 'binding-1',
+          source: 'assistant_binding',
+        },
+        {
+          id: 'blocked-mcp',
+          templateServerId: 'blocked-template',
+          name: 'Blocked',
+          command: 'node',
+          args: [],
+          env: {},
+          bindingId: 'binding-2',
+          source: 'assistant_binding',
+        },
+      ],
+      projectRootOverride: '/assistant/root',
+      repoBindingDirectories: ['/assistant/root'],
+      providerOverrideId: 'provider-assistant',
+      modelOverride: 'gpt-assistant',
+      instructionsAppend: 'Assistant instruction',
+      instructionsMode: 'append',
+    });
+
+    const result = await executeWorkflowTask({
+      workflowId: 'wf-1',
+      runId: 'run-1',
+      roleNode: roleNode(),
+      taskNode: taskNode(),
+      runInput: 'Run input',
+      upstreamMessages: [],
+      toolPolicy: {
+        mode: 'restricted',
+        managedSkillIds: ['allowed-skill'],
+        managedMcpServerIds: ['allowed-mcp'],
+        userSkillIds: ['allowed-user-skill'],
+        userMcpServerIds: ['allowed-user-mcp'],
+        managedKbIds: ['allowed-kb'],
+        providerOverrideId: 'provider-allowed',
+        modelOverride: 'gpt-allowed',
+      },
+    });
+
+    expect(result.success).toBe(true);
+    const [, input] = runAgentProcessMock.mock.calls[0] as [unknown, Record<string, unknown>];
+    expect(input).toMatchObject({
+      managedSkillIds: ['allowed-skill'],
+      managedMcpServerIds: ['allowed-mcp'],
+      userSkillIds: ['allowed-user-skill'],
+      userMcpServerIds: ['allowed-user-mcp'],
+      managedKbIds: ['allowed-kb'],
+      providerOverrideId: 'provider-allowed',
+      modelOverride: 'gpt-allowed',
+    });
+    expect(input.resolvedManagedMcpServers).toEqual([
+      expect.objectContaining({ id: 'allowed-mcp' }),
+    ]);
+  });
 });

@@ -13,6 +13,8 @@ import type {
 import { WorkflowEventBus } from './event-bus.js';
 import { parseWorkflowConfig } from './config.js';
 import { ensureWorkflowArtifacts } from './artifacts.js';
+import { evaluateAndPersistWorkflowRun } from './evaluation.js';
+import { computeWorkflowRunMetrics } from './metrics.js';
 
 const logger = createModuleLogger('workflow');
 
@@ -241,13 +243,17 @@ export class WorkflowOrchestrator {
     { sourceNodeId: string; targetNodeId: string }
   >();
   private pendingTransferTimers = new Map<string, NodeJS.Timeout>();
+  private edgeLastQueuedAt = new Map<string, number>();
   private scheduleTail: Promise<void> = Promise.resolve();
 
   constructor(workflowId: string) {
     this.workflowId = workflowId;
   }
 
-  static async restore(runId: string): Promise<WorkflowOrchestrator | undefined> {
+  static async restore(
+    runId: string,
+    options: { scheduleTimers?: boolean } = {},
+  ): Promise<WorkflowOrchestrator | undefined> {
     const graph = await db.getWorkflowRunGraph(runId);
     if (!graph) return undefined;
     const orchestrator = new WorkflowOrchestrator(graph.workflow.id);
@@ -277,8 +283,22 @@ export class WorkflowOrchestrator {
           ] => entry[1] !== null,
         ),
     );
+    orchestrator.edgeLastQueuedAt = new Map(
+      graph.edges.map((edge) => {
+        const latestTransfer = graph.pendingTransfers
+          .filter((transfer) => transfer.edge_id === edge.id)
+          .sort((a, b) => a.created_at.localeCompare(b.created_at))
+          .at(-1);
+        return [
+          edge.id,
+          latestTransfer ? Date.parse(latestTransfer.created_at) || 0 : 0,
+        ] as const;
+      }),
+    );
     activeOrchestrators.set(runId, orchestrator);
-    orchestrator.schedulePendingTransferTimers(graph.pendingTransfers);
+    if (options.scheduleTimers !== false && graph.run.status === 'running') {
+      orchestrator.schedulePendingTransferTimers(graph.pendingTransfers);
+    }
     return orchestrator;
   }
 
@@ -371,6 +391,57 @@ export class WorkflowOrchestrator {
     return parseWorkflowConfig(this.workflow).messageDelayMs;
   }
 
+  private workflowGuardrails() {
+    return parseWorkflowConfig(this.workflow).guardrails;
+  }
+
+  private edgeCooldownMs(edge: WorkflowEdgeRecord): number {
+    const source = this.nodesById.get(edge.source_node_id);
+    const target = this.nodesById.get(edge.target_node_id);
+    const values = [source, target]
+      .map((node) => (node ? parseTaskConfig(node).handoffPolicy?.cooldownMs : undefined))
+      .filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
+    if (values.length === 0) return 10_000;
+    return Math.max(0, Math.max(...values.map((value) => Math.floor(value))));
+  }
+
+  private async failRunForGuardrail(reason: string): Promise<void> {
+    if (!this.runId) return;
+    await db.updateWorkflowRun(this.runId, {
+      status: 'failed',
+      output: reason,
+      completed_at: nowIso(),
+    });
+    for (const runNode of await db.listWorkflowRunNodes(this.runId)) {
+      if (runNode.status === 'pending' || runNode.status === 'running') {
+        await db.updateWorkflowRunNode(runNode.id, {
+          status: 'failed',
+          last_error: reason,
+          completed_at: nowIso(),
+        });
+      }
+    }
+    this.runStatus = 'failed';
+    this.eventBus.emit(this.runId, 'run_cancelled', {
+      workflowId: this.workflowId,
+      reason,
+      guardrail: true,
+    });
+    await evaluateAndPersistWorkflowRun(this.runId).catch((err) =>
+      logger.warn({ err, runId: this.runId }, 'workflow evaluation failed'),
+    );
+    activeOrchestrators.delete(this.runId);
+    this.clearPendingTransferTimers();
+    this.eventBus.removeAllForRun(this.runId);
+  }
+
+  private async enforceGuardrails(graph: WorkflowRunGraph): Promise<boolean> {
+    const metrics = computeWorkflowRunMetrics(graph);
+    if (!metrics.breakerReason) return true;
+    await this.failRunForGuardrail(metrics.breakerReason);
+    return false;
+  }
+
   private async queueTransfer(input: {
     edge: WorkflowEdgeRecord;
     transfer: { sourceNodeId: string; targetNodeId: string };
@@ -379,7 +450,12 @@ export class WorkflowOrchestrator {
   }): Promise<WorkflowPendingTransferRecord | null> {
     if (!this.runId) return null;
     const emittedCount = this.recordEdgeMessage(input.edge.id);
-    const delayMs = this.workflowMessageDelayMs();
+    const previousQueuedAt = this.edgeLastQueuedAt.get(input.edge.id) ?? 0;
+    const cooldownRemainingMs = Math.max(
+      0,
+      this.edgeCooldownMs(input.edge) - (Date.now() - previousQueuedAt),
+    );
+    const delayMs = Math.max(this.workflowMessageDelayMs(), cooldownRemainingMs);
     const dueAt = new Date(Date.now() + delayMs).toISOString();
     const payload = {
       edgeId: input.edge.id,
@@ -402,6 +478,7 @@ export class WorkflowOrchestrator {
       delay_ms: delayMs,
       due_at: dueAt,
     });
+    this.edgeLastQueuedAt.set(input.edge.id, Date.now());
     this.eventBus.emit(this.runId, 'message_scheduled', {
       transferId: pending.id,
       edgeId: input.edge.id,
@@ -500,6 +577,7 @@ export class WorkflowOrchestrator {
     if (!this.runId || this.runStatus !== 'running') return;
     const graph = await db.getWorkflowRunGraph(this.runId);
     if (!graph) return;
+    if (!(await this.enforceGuardrails(graph))) return;
     if (await this.releaseDueTransfers(graph)) {
       this.enqueueSchedule();
       return;
@@ -529,7 +607,10 @@ export class WorkflowOrchestrator {
       return;
     }
 
+    let availableSlots = Math.max(0, this.workflowGuardrails().concurrentNodes - this.runningNodeIds.size);
+    if (availableSlots <= 0) return;
     for (const node of tasks) {
+      if (availableSlots <= 0) break;
       if (this.runningNodeIds.has(node.id)) continue;
       const runNode = graph.runNodes.find((item) => item.node_id === node.id);
       if (!runNode || runNode.status !== 'pending') continue;
@@ -544,6 +625,7 @@ export class WorkflowOrchestrator {
         );
       });
       if (!depsReady) continue;
+      availableSlots -= 1;
       void this.executeNode(graph, node).catch((err) => {
         logger.error({ err, runId: this.runId, nodeId: node.id }, 'workflow executeNode failed');
       });
@@ -554,6 +636,25 @@ export class WorkflowOrchestrator {
     if (!this.runId || this.runStatus !== 'running') return;
     const runNode = graph.runNodes.find((item) => item.node_id === node.id);
     if (!runNode) return;
+    const taskConfig = parseTaskConfig(node);
+    if (taskConfig.approvalRequired && runNode.version <= 1) {
+      await db.updateWorkflowRunNode(runNode.id, {
+        status: 'paused',
+        pause_reason: 'Approval required before node execution',
+        version: runNode.version + 1,
+      });
+      this.runStatus = 'paused';
+      await db.updateWorkflowRun(this.runId, { status: 'paused' });
+      this.eventBus.emit(this.runId, 'node_paused', {
+        nodeId: node.id,
+        reason: 'approval_required',
+      });
+      this.eventBus.emit(this.runId, 'run_paused', {
+        workflowId: this.workflowId,
+        reason: 'approval_required',
+      });
+      return;
+    }
     const roleNode = this.nodesById.get(node.role_node_id);
     if (!roleNode || roleNode.node_type !== 'role') {
       await db.updateWorkflowRunNode(runNode.id, {
@@ -572,6 +673,16 @@ export class WorkflowOrchestrator {
     this.runningNodeIds.add(node.id);
     const abortController = new AbortController();
     this.abortControllers.set(node.id, abortController);
+    let timeout: NodeJS.Timeout | undefined;
+    let timeoutExceeded = false;
+    if (typeof taskConfig.timeoutMs === 'number' && Number.isFinite(taskConfig.timeoutMs)) {
+      const timeoutMs = Math.max(1000, Math.floor(taskConfig.timeoutMs));
+      timeout = setTimeout(() => {
+        timeoutExceeded = true;
+        abortController.abort();
+      }, timeoutMs);
+      timeout.unref?.();
+    }
     const upstreamMessages = await this.buildNodeInput(graph, node);
     const inputSnapshot = JSON.stringify({
       runInput: graph.run.input,
@@ -599,8 +710,10 @@ export class WorkflowOrchestrator {
       taskNode: node,
       runInput: graph.run.input,
       upstreamMessages,
+      toolPolicy: parseWorkflowConfig(this.workflow).toolPolicy,
       signal: abortController.signal,
     });
+    if (timeout) clearTimeout(timeout);
     this.runningNodeIds.delete(node.id);
     this.abortControllers.delete(node.id);
 
@@ -618,14 +731,17 @@ export class WorkflowOrchestrator {
     }
 
     if (!result.success) {
+      const error = timeoutExceeded
+        ? `Node timed out after ${taskConfig.timeoutMs}ms`
+        : result.error || 'Task failed';
       await db.updateWorkflowRunNode(runNode.id, {
         status: 'failed',
-        last_error: result.error || 'Task failed',
+        last_error: error,
         completed_at: nowIso(),
       });
       this.eventBus.emit(this.runId, 'node_failed', {
         nodeId: node.id,
-        error: result.error || 'Task failed',
+        error,
       });
       this.enqueueSchedule();
       return;
@@ -858,6 +974,9 @@ export class WorkflowOrchestrator {
       logger.warn({ err, runId: this.runId }, 'workflow artifact generation failed');
     }
     this.runStatus = status;
+    await evaluateAndPersistWorkflowRun(this.runId).catch((err) =>
+      logger.warn({ err, runId: this.runId }, 'workflow evaluation failed'),
+    );
     activeOrchestrators.delete(this.runId);
     this.clearPendingTransferTimers();
     this.eventBus.removeAllForRun(this.runId);
@@ -1240,13 +1359,20 @@ export function validateWorkflowGraph(
 export async function recoverActiveWorkflowRuns(): Promise<number> {
   const runs = await db.listActiveWorkflowRuns();
   for (const run of runs) {
-    const orchestrator = await WorkflowOrchestrator.restore(run.id);
-    if (!orchestrator) continue;
     if (run.status === 'running') {
       await db.updateWorkflowRun(run.id, {
         status: 'paused',
       });
+      for (const runNode of await db.listWorkflowRunNodes(run.id)) {
+        if (runNode.status === 'running') {
+          await db.updateWorkflowRunNode(runNode.id, {
+            status: 'paused',
+            pause_reason: 'Paused during startup recovery',
+          });
+        }
+      }
     }
+    await WorkflowOrchestrator.restore(run.id, { scheduleTimers: false });
   }
   return runs.length;
 }

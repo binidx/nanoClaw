@@ -16,6 +16,11 @@ import {
   ensureWorkflowArtifacts,
   publishWorkflowRun,
 } from '../workflow/artifacts.js';
+import {
+  evaluateAndPersistWorkflowRun,
+  serializeWorkflowEvaluation,
+} from '../workflow/evaluation.js';
+import { computeWorkflowRunMetrics } from '../workflow/metrics.js';
 import { logger } from '../logger.js';
 import type {
   WorkflowEdgeDirection,
@@ -555,6 +560,62 @@ export function registerWorkflowRoutes(
       res.json(await db.getWorkflowRunGraph(runId));
     } catch (err) {
       logger.error({ err }, 'workflow routes: get run graph failed');
+      sendError(res, 500, 'Internal error');
+    }
+  });
+
+  router.get('/workflows/run/:runId/metrics', viewGuard, async (req, res) => {
+    try {
+      const runId = paramId(req.params.runId);
+      const access = await requireRunForUser(runId);
+      if (!access.ok) {
+        sendError(res, access.status, access.message);
+        return;
+      }
+      const graph = await db.getWorkflowRunGraph(runId);
+      if (!graph) {
+        sendError(res, 404, 'Run not found');
+        return;
+      }
+      res.json(computeWorkflowRunMetrics(graph));
+    } catch (err) {
+      logger.error({ err }, 'workflow routes: get run metrics failed');
+      sendError(res, 500, 'Internal error');
+    }
+  });
+
+  router.get('/workflows/run/:runId/evaluation', viewGuard, async (req, res) => {
+    try {
+      const runId = paramId(req.params.runId);
+      const access = await requireRunForUser(runId);
+      if (!access.ok) {
+        sendError(res, access.status, access.message);
+        return;
+      }
+      const evaluation = await db.getWorkflowRunEvaluation(runId);
+      res.json(evaluation ? serializeWorkflowEvaluation(evaluation) : null);
+    } catch (err) {
+      logger.error({ err }, 'workflow routes: get run evaluation failed');
+      sendError(res, 500, 'Internal error');
+    }
+  });
+
+  router.post('/workflows/run/:runId/evaluate', manageGuard, async (req, res) => {
+    try {
+      const runId = paramId(req.params.runId);
+      const access = await requireRunForUser(runId);
+      if (!access.ok) {
+        sendError(res, access.status, access.message);
+        return;
+      }
+      const evaluation = await evaluateAndPersistWorkflowRun(runId);
+      if (!evaluation) {
+        sendError(res, 404, 'Run not found');
+        return;
+      }
+      res.json(evaluation);
+    } catch (err) {
+      logger.error({ err }, 'workflow routes: evaluate run failed');
       sendError(res, 500, 'Internal error');
     }
   });

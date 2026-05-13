@@ -2676,6 +2676,20 @@ export async function runPostgresMigrations(engine: DbEngine): Promise<void> {
     `CREATE INDEX IF NOT EXISTS idx_workflow_artifacts_run ON workflow_artifacts(run_id, artifact_type, created_at)`,
   );
 
+  await safeMigrate(`
+    CREATE TABLE IF NOT EXISTS workflow_run_evaluations (
+      id VARCHAR(64) PRIMARY KEY,
+      run_id VARCHAR(64) NOT NULL,
+      status VARCHAR(64) NOT NULL DEFAULT 'warn',
+      score INT NOT NULL DEFAULT 0,
+      findings_json TEXT NOT NULL DEFAULT '[]',
+      created_at TEXT NOT NULL
+    )
+  `);
+  await safeMigrate(
+    `CREATE INDEX IF NOT EXISTS idx_workflow_run_evaluations_run ON workflow_run_evaluations(run_id, created_at)`,
+  );
+
   // ── ABAC: resource_access, user_permission_overrides, permission_groups ──
   await safeMigrate(`
     CREATE TABLE IF NOT EXISTS resource_access (

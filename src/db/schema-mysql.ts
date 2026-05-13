@@ -2648,6 +2648,18 @@ export async function runMySQLMigrations(engine: DbEngine): Promise<void> {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
 
+  await safeMigrate(`
+    CREATE TABLE IF NOT EXISTS workflow_run_evaluations (
+      id VARCHAR(64) PRIMARY KEY,
+      run_id VARCHAR(64) NOT NULL,
+      status VARCHAR(64) NOT NULL DEFAULT 'warn',
+      score INT NOT NULL DEFAULT 0,
+      findings_json MEDIUMTEXT NOT NULL,
+      created_at VARCHAR(64) NOT NULL,
+      KEY idx_workflow_run_evaluations_run (run_id, created_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+
   // ── ABAC: resource_access, user_permission_overrides, permission_groups ──
   await safeMigrate(`
     CREATE TABLE IF NOT EXISTS resource_access (
