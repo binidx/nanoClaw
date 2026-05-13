@@ -4160,7 +4160,20 @@ function AppShell() {
 
         {page === 'workteam' && (
           <Suspense fallback={<div className="settings-hint">{t('app.db071a')}</div>}>
-            <WorkteamPage apiBase={API} canManage={auth.hasAnyPermission('project.manage', 'workteam.manage') || !auth.multiUserMode} />
+            <WorkteamPage
+              apiBase={API}
+              canManage={
+                auth.hasAnyPermission('project.manage', 'workteam.manage') ||
+                !auth.multiUserMode
+              }
+              canCreateWorkflow={
+                auth.hasAnyPermission(
+                  'project.manage',
+                  'workteam.manage',
+                  'workteam.create',
+                ) || !auth.multiUserMode
+              }
+            />
           </Suspense>
         )}
 

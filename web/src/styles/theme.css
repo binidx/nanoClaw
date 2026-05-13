@@ -13,10 +13,10 @@
   --conv-width: 320px;
   --main-bg: #edf3ff;
   --card-bg: rgba(255, 255, 255, 0.86);
-  --surface-shell: rgba(255, 255, 255, 0.58);
-  --surface-panel: rgba(255, 255, 255, 0.78);
-  --surface-card: rgba(255, 255, 255, 0.88);
-  --surface-card-strong: rgba(255, 255, 255, 0.96);
+  --surface-shell: rgba(255, 255, 255, 0.52);
+  --surface-panel: rgba(255, 255, 255, 0.68);
+  --surface-card: rgba(255, 255, 255, 0.78);
+  --surface-card-strong: rgba(255, 255, 255, 0.9);
   --surface-subtle: rgba(244, 248, 255, 0.88);
   --surface-accent: rgba(91, 118, 255, 0.08);
   --surface-accent-strong: rgba(91, 118, 255, 0.14);
@@ -37,8 +37,8 @@
   --bot-bubble: rgba(255, 255, 255, 0.94);
 
   /* Borders */
-  --border: rgba(152, 171, 208, 0.28);
-  --border-light: rgba(196, 210, 234, 0.36);
+  --border: rgba(255, 255, 255, 0.58);
+  --border-light: rgba(255, 255, 255, 0.46);
 
   /* Input */
   --input-bg: #ffffff;
@@ -96,7 +96,7 @@
   /* Layout shell */
   --layout-shell-padding: 16px;
   --layout-shell-gap: 14px;
-  --panel-radius-lg: 22px;
+  --panel-radius-lg: 26px;
   --control-height-md: 40px;
   --select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 20 20' fill='none'%3E%3Cpath d='M5 7.5L10 12.5L15 7.5' stroke='%2364758B' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
 

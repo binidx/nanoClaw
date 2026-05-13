@@ -23,6 +23,21 @@ function formatEvidenceStatus(value?: string) {
   return 'unknown';
 }
 
+function formatReviewRange(run: Pick<RepoReviewRun, 'baseSha' | 'headSha'>) {
+  const base = String(run.baseSha || '').trim();
+  const head = String(run.headSha || '').trim();
+  if (base && head) return `${base.slice(0, 12)}..${head.slice(0, 12)}`;
+  if (head) return `${head.slice(0, 12)}^!`;
+  if (base) return `${base.slice(0, 12)}..HEAD`;
+  return 'unknown';
+}
+
+function formatBranchConclusionSummary(summary?: string) {
+  return String(summary || '')
+    .trim()
+    .replace(/^分支结论[:：]\s*/u, '');
+}
+
 export function RepoReviewRunDetailModal({
   run,
   loading,
@@ -290,13 +305,13 @@ export function RepoReviewRunDetailModal({
               </strong>
             </div>
             <div className="status-detail-item">
-              <span className="status-detail-label">Subagent tools</span>
+              <span className="status-detail-label">Subagent reads</span>
               <strong className="status-detail-value">
                 {run.executionStats.subagentToolCallCount ?? 0}
               </strong>
             </div>
             <div className="status-detail-item">
-              <span className="status-detail-label">Main tools</span>
+              <span className="status-detail-label">Main reads</span>
               <strong className="status-detail-value">
                 {run.executionStats.mainReadonlyToolCallCount ?? 0}
               </strong>
@@ -304,12 +319,35 @@ export function RepoReviewRunDetailModal({
           </div>
         ) : null}
         <div className="repo-review-run-detail-stack">
+          {(run.summary || run.branch || run.baseSha || run.headSha) && (
+            <RepoReviewDetailCard
+              title="最终结论"
+              summary={`${run.branch || 'unknown'} | ${formatReviewRange(run)}`}
+            >
+              <div className="repo-review-detail-section">
+                <div>
+                  <strong>{formatResultStateLabel(run)}</strong>
+                </div>
+                <div>
+                  审查范围: {run.branch || 'unknown'} | {formatReviewRange(run)}
+                </div>
+                {run.summary ? (
+                  <div>
+                    分支结论：{formatBranchConclusionSummary(run.summary)}
+                  </div>
+                ) : null}
+              </div>
+            </RepoReviewDetailCard>
+          )}
           {run.summary ? (
             <RepoReviewDetailCard
               title={t('runDetail.runSummary')}
-              summary={run.summary}
+              summary={`${run.branch || 'unknown'} | ${formatReviewRange(run)}`}
             >
               <div className="repo-review-detail-section">
+                <div>
+                  审查范围: {run.branch || 'unknown'} | {formatReviewRange(run)}
+                </div>
                 <div>{run.summary}</div>
               </div>
             </RepoReviewDetailCard>

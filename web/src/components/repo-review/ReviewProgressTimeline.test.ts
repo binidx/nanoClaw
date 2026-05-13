@@ -690,7 +690,7 @@ describe('buildReviewProgressEntries', () => {
 });
 
 describe('RepoReviewRunDetailModal evidence stats', () => {
-  it('shows evidence bundle and tool-call status metrics', () => {
+  it('shows evidence bundle and readonly evidence metrics', () => {
     const container = document.createElement('div');
     document.body.appendChild(container);
     const root = createRoot(container);
@@ -744,7 +744,10 @@ describe('RepoReviewRunDetailModal evidence stats', () => {
     expect(container.textContent).toContain('stale');
     expect(container.textContent).toContain('4.0 KB');
     expect(container.textContent).toContain('Changed functions');
-    expect(container.textContent).toContain('Subagent tools');
+    expect(container.textContent).toContain('Subagent reads');
+    expect(container.textContent).toContain('Main reads');
+    expect(container.textContent).toContain('最终结论');
+    expect(container.textContent).toContain('main | base..head');
     root.unmount();
     container.remove();
   });

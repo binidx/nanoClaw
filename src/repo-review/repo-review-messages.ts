@@ -70,6 +70,15 @@ function fullReportLine(label: string, url?: string): string {
   return `完整 CR 报告: ${label}${url ? `\n${url}` : ''}`;
 }
 
+function reviewScopeLine(
+  run: Pick<RepoReviewRun, 'branch' | 'baseSha' | 'headSha'>,
+): string {
+  return `审查范围: ${run.branch || 'unknown'} | ${formatReviewScopeRange({
+    baseSha: run.baseSha,
+    headSha: run.headSha,
+  })}`;
+}
+
 function formatReviewScopeRange(input: {
   baseSha?: string;
   headSha?: string;
@@ -83,9 +92,20 @@ function formatReviewScopeRange(input: {
 }
 
 function inferCodeFenceLanguage(file?: string): string {
-  const ext = String(file || '').split('.').pop()?.toLowerCase() || '';
-  if (ext === 'ts' || ext === 'tsx' || ext === 'js' || ext === 'jsx') return ext;
-  if (ext === 'py' || ext === 'go' || ext === 'rs' || ext === 'java' || ext === 'json') {
+  const ext =
+    String(file || '')
+      .split('.')
+      .pop()
+      ?.toLowerCase() || '';
+  if (ext === 'ts' || ext === 'tsx' || ext === 'js' || ext === 'jsx')
+    return ext;
+  if (
+    ext === 'py' ||
+    ext === 'go' ||
+    ext === 'rs' ||
+    ext === 'java' ||
+    ext === 'json'
+  ) {
     return ext;
   }
   return 'text';
@@ -153,11 +173,12 @@ function formatFindingMarkdown(
         ? '中风险'
         : '低风险';
   const title = finding.title || '未命名问题';
-  const issueType = finding.severity === 'high'
-    ? '问题类型'
-    : finding.severity === 'medium'
-      ? '回归风险'
-      : '代码规范';
+  const issueType =
+    finding.severity === 'high'
+      ? '问题类型'
+      : finding.severity === 'medium'
+        ? '回归风险'
+        : '代码规范';
   const location = finding.file
     ? `${finding.file}${finding.line ? `:${finding.line}` : ''}`
     : '未知';
@@ -234,7 +255,11 @@ export function buildStructuredRepoReviewMarkdown(
     ),
   );
   const scopeLimitations = Array.from(
-    new Set((metadata?.scopeLimitations || []).map((entry) => entry.trim()).filter(Boolean)),
+    new Set(
+      (metadata?.scopeLimitations || [])
+        .map((entry) => entry.trim())
+        .filter(Boolean),
+    ),
   );
 
   const summaryText = branchConclusionLine(run.summary || '模型未返回摘要。');
@@ -314,10 +339,12 @@ export function buildStructuredRepoReviewMarkdown(
       : `建议在合并前优先处理 ${high.length} 个高风险问题。`,
   ];
 
-  return lines.filter((line, index, source) => {
-    if (line !== '') return true;
-    return index === 0 || source[index - 1] !== '';
-  }).join('\n');
+  return lines
+    .filter((line, index, source) => {
+      if (line !== '') return true;
+      return index === 0 || source[index - 1] !== '';
+    })
+    .join('\n');
 }
 
 export function formatActorMention(actor: string): string {
@@ -465,10 +492,7 @@ export function formatRepoReviewMarkdownMessage(
       medium,
       low,
     }),
-    `审查范围: ${run.branch || 'unknown'} | ${formatReviewScopeRange({
-      baseSha: run.baseSha,
-      headSha: run.headSha,
-    })}`,
+    reviewScopeLine(run),
     branchConclusionLine(run.summary),
   ].filter(Boolean);
   const body = resolveRepoReviewVisibleBody(run);
@@ -503,6 +527,7 @@ export function formatRepoReviewShareLinkMessage(
       medium,
       low,
     }),
+    reviewScopeLine(run),
     branchConclusionLine(run.summary),
   ].filter(Boolean);
   if (findings.length > 0) {
@@ -543,12 +568,7 @@ export function formatRepoReviewCompletedMessage(
     `阶段: ${run.stage} | 来源: ${run.source}`,
     run.actor ? `提交人: ${run.actor}` : '',
     run.branch ? `分支: ${run.branch}` : '',
-    run.branch || run.baseSha || run.headSha
-      ? `审查范围: ${run.branch || 'unknown'} | ${formatReviewScopeRange({
-          baseSha: run.baseSha,
-          headSha: run.headSha,
-        })}`
-      : '',
+    run.branch || run.baseSha || run.headSha ? reviewScopeLine(run) : '',
     `提交数: ${commitCount}`,
     `变更文件数: ${run.changedFiles.length}`,
     run.prMrNumber ? `PR/MR: #${run.prMrNumber}` : '',

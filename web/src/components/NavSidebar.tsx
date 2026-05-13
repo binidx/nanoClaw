@@ -48,7 +48,7 @@ export function NavSidebar({
   onLogout,
   canAccessPage,
 }: NavSidebarProps) {
-  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(true);
   const { t, i18n } = useTranslation('nav');
 
   const toggleLanguage = () => {

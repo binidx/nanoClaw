@@ -6,6 +6,7 @@ import {
   buildRepoReviewDiffAwareEvidenceBundle,
   buildRepoReviewEvidenceBundleBlock,
   resolveRepoReviewAgenticSubagentPrompt,
+  splitDiffByFile,
   stripRepoReviewExecutionContext,
 } from './repo-review-run-executor.js';
 import { buildRepoReviewDiffIndex } from './repo-review-diff-index.js';
@@ -525,5 +526,23 @@ describe('repo review evidence bundle context', () => {
 
     expect(resolved.text).toContain('src/a.ts');
     expect(resolved.text).not.toContain('src/b.ts');
+  });
+
+  it('keeps quoted diff paths in fallback file splitting', () => {
+    const diffText = [
+      'diff --git "a/src/foo bar.ts" "b/src/foo bar.ts"',
+      'index 1234567..89abcde 100644',
+      '--- "a/src/foo bar.ts"',
+      '+++ "b/src/foo bar.ts"',
+      '@@ -1 +1 @@',
+      '-export const mode = "before";',
+      '+export const mode = "after";',
+    ].join('\n');
+
+    const parts = splitDiffByFile(diffText);
+
+    expect(parts.get('src/foo bar.ts')).toContain(
+      'diff --git "a/src/foo bar.ts" "b/src/foo bar.ts"',
+    );
   });
 });

@@ -510,23 +510,23 @@ function countRepoReviewToolCalls(
   return count;
 }
 
-function countRepoReviewToolCallItems(
-  turns: RepoReviewAssistantTurn[],
-): number {
-  let count = 0;
-  for (const turn of turns) {
-    for (const item of turn.items) {
-      if (item.type === 'tool_call') count += 1;
-    }
-  }
-  return count;
-}
-
 function normalizeRepoReviewPathValue(value: string): string {
   return value
     .replace(/\\/g, '/')
     .replace(/^\.\/+/, '')
     .trim();
+}
+
+function parseRepoReviewToolCallArgs(
+  rawArgs: string,
+): Record<string, unknown> | null {
+  const text = stringValue(rawArgs);
+  if (!text) return null;
+  try {
+    return JSON.parse(extractJsonObject(text)) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
 }
 
 function extractRepoReviewReadTargetsFromToolCall(
@@ -547,22 +547,74 @@ function extractRepoReviewReadTargetsFromToolCall(
     return [];
   };
   if (title === 'read_file') {
-    try {
-      const parsed = JSON.parse(extractJsonObject(rawArgs)) as Record<
-        string,
-        unknown
-      >;
+    const parsed = parseRepoReviewToolCallArgs(rawArgs);
+    if (parsed) {
       return [
         ...toPaths(parsed.path),
         ...toPaths(parsed.file),
         ...toPaths(parsed.filePath),
         ...toPaths(parsed.files),
       ];
-    } catch {
-      return [];
     }
+    return [];
   }
   return [];
+}
+
+function extractRepoReviewShellCommand(
+  item: RepoReviewAssistantTurn['items'][number],
+): string {
+  if (item.type !== 'tool_call') return '';
+  const title = stringValue(item.title).toLowerCase();
+  if (
+    title !== 'bash' &&
+    title !== 'shell' &&
+    title !== 'terminal' &&
+    title !== 'exec_command'
+  ) {
+    return '';
+  }
+  const parsed = parseRepoReviewToolCallArgs(item.argumentsText || '');
+  if (parsed) {
+    return stringValue(parsed.cmd || parsed.command || parsed.argv);
+  }
+  return stringValue(item.argumentsText);
+}
+
+function isRepoReviewReadonlyEvidenceToolCall(
+  item: RepoReviewAssistantTurn['items'][number],
+): boolean {
+  if (item.type !== 'tool_call') return false;
+  const title = stringValue(item.title).toLowerCase();
+  if (
+    title === 'read_file' ||
+    title === 'rg' ||
+    title === 'grep' ||
+    title === 'glob' ||
+    title === 'find' ||
+    title === 'ls'
+  ) {
+    return true;
+  }
+  const shellCommand = extractRepoReviewShellCommand(item);
+  if (!shellCommand) return false;
+  return /(^|\s)(git\s+(diff|show|log)|rg\b|grep\b|sed\b|nl\b|wc\b|cat\b|head\b|tail\b|find\b|ls\b)/i.test(
+    shellCommand,
+  );
+}
+
+function countRepoReviewReadonlyEvidenceToolCalls(
+  turns: RepoReviewAssistantTurn[],
+): number {
+  let count = 0;
+  for (const turn of turns) {
+    for (const item of turn.items) {
+      if (isRepoReviewReadonlyEvidenceToolCall(item)) {
+        count += 1;
+      }
+    }
+  }
+  return count;
 }
 
 function countRepoReviewOutOfScopeReads(
@@ -6057,14 +6109,13 @@ function scoreRepoReviewEvidenceSnippet(
   return score + nonBoilerplateLines * 3 - boilerplateLines * 2;
 }
 
-function splitDiffByFile(diffText: string): Map<string, string> {
+export function splitDiffByFile(diffText: string): Map<string, string> {
   const result = new Map<string, string>();
-  const parts = diffText.split(/(?=^diff --git )/m);
-  for (const part of parts) {
-    const fileMatch = part.match(/^diff --git a\/(.+?) b\/(.+)/m);
-    if (!fileMatch) continue;
-    const filePath = fileMatch[2]!;
-    result.set(filePath, part);
+  const diffIndex = buildRepoReviewDiffIndex(diffText);
+  for (const entry of diffIndex.entries) {
+    const slice = diffText.slice(entry.startOffset, entry.endOffset).trim();
+    if (!slice) continue;
+    result.set(entry.filePath, slice);
   }
   return result;
 }
@@ -7980,7 +8031,8 @@ async function runRepoReviewAgenticSubagents(input: {
           childTurns,
           task.files,
         );
-        const subagentToolCallCount = countRepoReviewToolCallItems(childTurns);
+        const subagentToolCallCount =
+          countRepoReviewReadonlyEvidenceToolCalls(childTurns);
         if (input.executionStats) {
           input.executionStats.subagentToolCallCount =
             (input.executionStats.subagentToolCallCount || 0) +
@@ -8010,7 +8062,7 @@ async function runRepoReviewAgenticSubagents(input: {
             fullFileFiles: task.fullFileFiles,
           }),
           resultText: [
-            `子代理工具调用数：${subagentToolCallCount}`,
+            `子代理只读补证次数：${subagentToolCallCount}`,
             reviewResult.outputText,
           ].join('\n\n'),
           status: 'completed',
@@ -8030,7 +8082,7 @@ async function runRepoReviewAgenticSubagents(input: {
             ['scope_limitations', augmentedScopeLimitations.length],
             ['timed_out', reviewResult.timedOut],
             ['out_of_scope_reads', outOfScopeReadCount],
-            ['tool_calls', subagentToolCallCount],
+            ['readonly_evidence_calls', subagentToolCallCount],
           ]),
         });
         return {
@@ -8041,7 +8093,8 @@ async function runRepoReviewAgenticSubagents(input: {
         };
       } catch (err) {
         const error = errorMessageForProgress(err);
-        const subagentToolCallCount = countRepoReviewToolCallItems(childTurns);
+        const subagentToolCallCount =
+          countRepoReviewReadonlyEvidenceToolCalls(childTurns);
         if (input.executionStats) {
           input.executionStats.subagentToolCallCount =
             (input.executionStats.subagentToolCallCount || 0) +
@@ -8064,9 +8117,10 @@ async function runRepoReviewAgenticSubagents(input: {
               focus: task.focus,
               fullFileFiles: task.fullFileFiles,
             }),
-          errorText: [`子代理工具调用数：${subagentToolCallCount}`, error].join(
-            '\n\n',
-          ),
+          errorText: [
+            `子代理只读补证次数：${subagentToolCallCount}`,
+            error,
+          ].join('\n\n'),
           status: 'failed',
         });
         await setWorkerTurns();
@@ -8078,7 +8132,7 @@ async function runRepoReviewAgenticSubagents(input: {
           kind: 'subagent',
           error,
           outputText: formatProgressKeyValues([
-            ['tool_calls', subagentToolCallCount],
+            ['readonly_evidence_calls', subagentToolCallCount],
             ['error', error],
           ]),
         });
@@ -8424,7 +8478,7 @@ async function runRepoReviewAgenticReview(input: {
         directTurns = turns;
         if (input.executionStats) {
           input.executionStats.mainReadonlyToolCallCount =
-            countRepoReviewToolCallItems(directTurns);
+            countRepoReviewReadonlyEvidenceToolCalls(directTurns);
         }
         await input.onPhaseProgress({
           planTurns: [],
@@ -8455,8 +8509,16 @@ async function runRepoReviewAgenticReview(input: {
         ['overall', parsed.overall],
         ['summary', parsed.summary],
         ['findings', parsed.findings.length],
+        ['branch', input.prepared.branch || '-'],
         [
-          'main_readonly_tool_calls',
+          'review_range',
+          buildRepoReviewDiffRange({
+            baseSha: input.prepared.baseSha,
+            headSha: input.prepared.headSha,
+          }),
+        ],
+        [
+          'main_readonly_evidence_calls',
           input.executionStats?.mainReadonlyToolCallCount || 0,
         ],
       ]),
@@ -8623,7 +8685,7 @@ async function runRepoReviewAgenticReview(input: {
         ],
         ['failed', subagentResults.filter((result) => result.failed).length],
         [
-          'subagent_tool_calls',
+          'subagent_readonly_evidence_calls',
           input.executionStats?.subagentToolCallCount || 0,
         ],
       ]),
@@ -8700,7 +8762,7 @@ async function runRepoReviewAgenticReview(input: {
       finalTurns = turns;
       if (input.executionStats) {
         input.executionStats.mainReadonlyToolCallCount =
-          countRepoReviewToolCallItems(finalTurns);
+          countRepoReviewReadonlyEvidenceToolCalls(finalTurns);
       }
       await emitProgress();
     },
@@ -8747,8 +8809,16 @@ async function runRepoReviewAgenticReview(input: {
       ['overall', parsed.overall],
       ['summary', parsed.summary],
       ['subagent_results', subagentResults.length],
+      ['branch', input.prepared.branch || '-'],
       [
-        'main_readonly_tool_calls',
+        'review_range',
+        buildRepoReviewDiffRange({
+          baseSha: input.prepared.baseSha,
+          headSha: input.prepared.headSha,
+        }),
+      ],
+      [
+        'main_readonly_evidence_calls',
         input.executionStats?.mainReadonlyToolCallCount || 0,
       ],
     ]),
