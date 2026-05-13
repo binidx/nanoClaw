@@ -126,10 +126,13 @@ interface ManagedSubagent {
   stderrTail: string;
   completedResults: Map<string, string>;
   failedResults: Map<string, string>;
-  waiters: Map<string, {
-    resolve: (value: string) => void;
-    reject: (error: Error) => void;
-  }>;
+  waiters: Map<
+    string,
+    {
+      resolve: (value: string) => void;
+      reject: (error: Error) => void;
+    }
+  >;
   activeRequestId: string | null;
   requestCount: number;
   exited: boolean;
@@ -194,9 +197,18 @@ export const BASE_CODEX_TOOLS_RESPONSES: ResponsesToolDef[] = [
     parameters: {
       type: 'object',
       properties: {
-        command: { type: 'string', description: 'The shell command to execute' },
-        workdir: { type: 'string', description: 'Working directory (optional)' },
-        timeout: { type: 'number', description: 'Timeout in milliseconds (default 30000)' },
+        command: {
+          type: 'string',
+          description: 'The shell command to execute',
+        },
+        workdir: {
+          type: 'string',
+          description: 'Working directory (optional)',
+        },
+        timeout: {
+          type: 'number',
+          description: 'Timeout in milliseconds (default 30000)',
+        },
       },
       required: ['command'],
     },
@@ -212,9 +224,18 @@ export const BASE_CODEX_TOOLS_RESPONSES: ResponsesToolDef[] = [
     parameters: {
       type: 'object',
       properties: {
-        file_path: { type: 'string', description: 'Absolute or relative path to the file' },
-        offset: { type: 'number', description: 'Line number to start reading (1-based)' },
-        limit: { type: 'number', description: 'Maximum number of lines to return' },
+        file_path: {
+          type: 'string',
+          description: 'Absolute or relative path to the file',
+        },
+        offset: {
+          type: 'number',
+          description: 'Line number to start reading (1-based)',
+        },
+        limit: {
+          type: 'number',
+          description: 'Maximum number of lines to return',
+        },
       },
       required: ['file_path'],
     },
@@ -246,7 +267,10 @@ export const BASE_CODEX_TOOLS_RESPONSES: ResponsesToolDef[] = [
       type: 'object',
       properties: {
         file_path: { type: 'string', description: 'Path to the file to edit' },
-        old_string: { type: 'string', description: 'The exact text to find and replace' },
+        old_string: {
+          type: 'string',
+          description: 'The exact text to find and replace',
+        },
         new_string: { type: 'string', description: 'The replacement text' },
       },
       required: ['file_path', 'old_string', 'new_string'],
@@ -263,14 +287,24 @@ export const BASE_CODEX_TOOLS_RESPONSES: ResponsesToolDef[] = [
     parameters: {
       type: 'object',
       properties: {
-        pattern: { type: 'string', description: 'Glob pattern (e.g. "**/*.ts", "src/**/*.js")' },
-        dir: { type: 'string', description: 'Directory to search in (default: cwd)' },
+        pattern: {
+          type: 'string',
+          description: 'Glob pattern (e.g. "**/*.ts", "src/**/*.js")',
+        },
+        dir: {
+          type: 'string',
+          description: 'Directory to search in (default: cwd)',
+        },
         sort_by: {
           type: 'string',
           enum: ['name', 'mtime'],
-          description: 'Sort results by name (default) or modification time (newest first)',
+          description:
+            'Sort results by name (default) or modification time (newest first)',
         },
-        limit: { type: 'number', description: 'Maximum number of results to return (default 200)' },
+        limit: {
+          type: 'number',
+          description: 'Maximum number of results to return (default 200)',
+        },
       },
       required: ['pattern'],
     },
@@ -295,21 +329,42 @@ export const BASE_CODEX_TOOLS_RESPONSES: ResponsesToolDef[] = [
             'Regex pattern to search for. Escape special chars: \\(, \\), \\{, \\[. ' +
             'For literal text, escape all regex metacharacters or the tool will auto-retry as literal if regex fails.',
         },
-        path: { type: 'string', description: 'File or directory to search in (default: cwd)' },
-        include: { type: 'string', description: 'Glob filter, e.g. "*.ts", "*.{ts,tsx}"' },
-        type: { type: 'string', description: 'File type filter, e.g. "ts", "py", "js" — maps to rg --type' },
-        case_insensitive: { type: 'boolean', description: 'Case insensitive search (default false)' },
-        context_lines: { type: 'number', description: 'Lines of context around each match, 0-5 (default 0)' },
+        path: {
+          type: 'string',
+          description: 'File or directory to search in (default: cwd)',
+        },
+        include: {
+          type: 'string',
+          description: 'Glob filter, e.g. "*.ts", "*.{ts,tsx}"',
+        },
+        type: {
+          type: 'string',
+          description:
+            'File type filter, e.g. "ts", "py", "js" — maps to rg --type',
+        },
+        case_insensitive: {
+          type: 'boolean',
+          description: 'Case insensitive search (default false)',
+        },
+        context_lines: {
+          type: 'number',
+          description: 'Lines of context around each match, 0-5 (default 0)',
+        },
         output_mode: {
           type: 'string',
           enum: ['content', 'files_only', 'count'],
           description:
             'content: matching lines (default); files_only: just file paths; count: match counts per file',
         },
-        head_limit: { type: 'number', description: 'Maximum number of result lines/files to return (default 100)' },
+        head_limit: {
+          type: 'number',
+          description:
+            'Maximum number of result lines/files to return (default 100)',
+        },
         multiline: {
           type: 'boolean',
-          description: 'Enable multiline matching where . matches newlines (default false)',
+          description:
+            'Enable multiline matching where . matches newlines (default false)',
         },
       },
       required: ['pattern'],
@@ -325,7 +380,10 @@ export const BASE_CODEX_TOOLS_RESPONSES: ResponsesToolDef[] = [
     parameters: {
       type: 'object',
       properties: {
-        dir_path: { type: 'string', description: 'Absolute or relative path to the directory' },
+        dir_path: {
+          type: 'string',
+          description: 'Absolute or relative path to the directory',
+        },
         depth: { type: 'number', description: 'Maximum depth (default 1)' },
       },
       required: ['dir_path'],
@@ -344,16 +402,19 @@ export const BASE_CODEX_TOOLS_RESPONSES: ResponsesToolDef[] = [
       properties: {
         query: {
           type: 'string',
-          description: 'Keywords to search for (2-6 words work best). Avoid full sentences.',
+          description:
+            'Keywords to search for (2-6 words work best). Avoid full sentences.',
         },
         scope: {
           type: 'string',
           enum: ['group', 'global', 'all'],
-          description: 'Search scope. all searches both group and global memory.',
+          description:
+            'Search scope. all searches both group and global memory.',
         },
         max_results: {
           type: 'number',
-          description: 'Maximum number of snippets to return (default 5, max 8)',
+          description:
+            'Maximum number of snippets to return (default 5, max 8)',
         },
       },
       required: ['query'],
@@ -367,7 +428,10 @@ export const BASE_CODEX_TOOLS_RESPONSES: ResponsesToolDef[] = [
     parameters: {
       type: 'object',
       properties: {
-        path: { type: 'string', description: 'Memory path ref returned by memory_search' },
+        path: {
+          type: 'string',
+          description: 'Memory path ref returned by memory_search',
+        },
         from: { type: 'number', description: 'Starting line number (1-based)' },
         lines: { type: 'number', description: 'Number of lines to read' },
       },
@@ -378,7 +442,7 @@ export const BASE_CODEX_TOOLS_RESPONSES: ResponsesToolDef[] = [
     type: 'function',
     name: 'memory_save',
     description:
-      'Append a durable note to today\'s daily memory file memory/YYYY-MM-DD.md. Default scope is group; global writes are reserved for the main session.',
+      "Append a durable note to today's daily memory file memory/YYYY-MM-DD.md. Default scope is group; global writes are reserved for the main session.",
     parameters: {
       type: 'object',
       properties: {
@@ -389,7 +453,8 @@ export const BASE_CODEX_TOOLS_RESPONSES: ResponsesToolDef[] = [
         scope: {
           type: 'string',
           enum: ['group', 'global'],
-          description: 'Write scope. global is only allowed in the main session.',
+          description:
+            'Write scope. global is only allowed in the main session.',
         },
       },
       required: ['note'],
@@ -415,7 +480,10 @@ export const BASE_CODEX_TOOLS_RESPONSES: ResponsesToolDef[] = [
             type: 'object',
             properties: {
               id: { type: 'string', description: 'Option identifier' },
-              label: { type: 'string', description: 'Display text for this option' },
+              label: {
+                type: 'string',
+                description: 'Display text for this option',
+              },
             },
             required: ['id', 'label'],
           },
@@ -423,11 +491,13 @@ export const BASE_CODEX_TOOLS_RESPONSES: ResponsesToolDef[] = [
         },
         allow_multiple: {
           type: 'boolean',
-          description: 'If true with options, user can select multiple choices (default false).',
+          description:
+            'If true with options, user can select multiple choices (default false).',
         },
         timeout_seconds: {
           type: 'number',
-          description: 'How long to wait for an answer in seconds (default 300, max 300).',
+          description:
+            'How long to wait for an answer in seconds (default 300, max 300).',
         },
       },
       required: ['question'],
@@ -482,10 +552,14 @@ export const BASE_CODEX_TOOLS_RESPONSES: ResponsesToolDef[] = [
     parameters: {
       type: 'object',
       properties: {
-        url: { type: 'string', description: 'Full URL starting with http:// or https:// (no spaces)' },
+        url: {
+          type: 'string',
+          description: 'Full URL starting with http:// or https:// (no spaces)',
+        },
         max_chars: {
           type: 'number',
-          description: 'Maximum number of response characters to include (default 12000)',
+          description:
+            'Maximum number of response characters to include (default 12000)',
         },
         page: {
           type: 'number',
@@ -645,7 +719,8 @@ function getSubagentToolDefs(): ResponsesToolDef[] {
           },
           wait_for_response: {
             type: 'boolean',
-            description: 'Wait for the next sub-agent result. Defaults to true.',
+            description:
+              'Wait for the next sub-agent result. Defaults to true.',
           },
           close_after_response: {
             type: 'boolean',
@@ -659,8 +734,7 @@ function getSubagentToolDefs(): ResponsesToolDef[] {
     {
       type: 'function',
       name: 'TeamDelete',
-      description:
-        'Stop a running sub-agent and clean up its runtime state.',
+      description: 'Stop a running sub-agent and clean up its runtime state.',
       parameters: {
         type: 'object',
         properties: {
@@ -722,7 +796,9 @@ function buildAgentToolDef(): ResponsesToolDef {
 }
 
 function isDefaultWebSearchEnabled(): boolean {
-  return String(process.env.NANOCLAW_WEB_SEARCH_ENABLED || 'true').trim() !== 'false';
+  return (
+    String(process.env.NANOCLAW_WEB_SEARCH_ENABLED || 'true').trim() !== 'false'
+  );
 }
 
 export function getCodexSubagentRuntimeConfig(): CodexSubagentRuntimeConfig {
@@ -760,9 +836,7 @@ function isCodexNativeWebSearchPreferred(): boolean {
   return getRuntimeConfig().provider === 'auto';
 }
 
-function buildNativeWebSearchTool():
-  | ResponsesNativeWebSearchToolDef
-  | null {
+function buildNativeWebSearchTool(): ResponsesNativeWebSearchToolDef | null {
   if (!isCodexNativeWebSearchPreferred()) return null;
   const config = getRuntimeConfig();
   return {
@@ -787,16 +861,16 @@ function isEnabledBaseTool(name: string): boolean {
     return isMemoryWriteAvailable(memoryConfig);
   }
   if (name === 'semantic_search') {
-    return isMemoryReadAvailable(memoryConfig) || isKnowledgeSearchApiConfigured();
+    return (
+      isMemoryReadAvailable(memoryConfig) || isKnowledgeSearchApiConfigured()
+    );
   }
   return true;
 }
 
 type CodexToolPolicy = 'none' | 'readonly' | 'full';
 
-function resolveCodexToolPolicy(
-  value: unknown,
-): CodexToolPolicy {
+function resolveCodexToolPolicy(value: unknown): CodexToolPolicy {
   return value === 'none' || value === 'readonly' || value === 'full'
     ? value
     : 'full';
@@ -838,20 +912,25 @@ async function buildCodexFunctionTools(options?: {
     if (!isCodexToolAllowedByPolicy(tool.name, toolPolicy)) return false;
     if (!isEnabledBaseTool(tool.name)) return false;
     if (options?.omitLocalSearchWeb && tool.name === 'search_web') return false;
-    if (!isDefaultWebSearchEnabled() && tool.name === 'search_web') return false;
+    if (!isDefaultWebSearchEnabled() && tool.name === 'search_web')
+      return false;
     if (!webConfig.fetchEnabled && tool.name === 'fetch_url') return false;
     return true;
   });
   return [
     ...baseTools,
     ...(toolPolicy === 'full' ? getSubagentToolDefs() : []),
-    ...(toolPolicy === 'full' && subagentRuntime.canSpawn ? [buildAgentToolDef()] : []),
-    ...(toolPolicy === 'full' ? mcpTools.map((tool) => ({
-      type: 'function' as const,
-      name: tool.name,
-      description: tool.description,
-      parameters: tool.parameters,
-    })) : []),
+    ...(toolPolicy === 'full' && subagentRuntime.canSpawn
+      ? [buildAgentToolDef()]
+      : []),
+    ...(toolPolicy === 'full'
+      ? mcpTools.map((tool) => ({
+          type: 'function' as const,
+          name: tool.name,
+          description: tool.description,
+          parameters: tool.parameters,
+        }))
+      : []),
   ];
 }
 
@@ -884,14 +963,15 @@ export async function buildCodexOpenAiTools(options?: {
   }));
 }
 
-export const BASE_CODEX_TOOLS_OPENAI: ChatCompletionsToolDef[] = BASE_CODEX_TOOLS_RESPONSES.map((tool) => ({
-  type: 'function',
-  function: {
-    name: tool.name,
-    description: tool.description,
-    parameters: tool.parameters,
-  },
-}));
+export const BASE_CODEX_TOOLS_OPENAI: ChatCompletionsToolDef[] =
+  BASE_CODEX_TOOLS_RESPONSES.map((tool) => ({
+    type: 'function',
+    function: {
+      name: tool.name,
+      description: tool.description,
+      parameters: tool.parameters,
+    },
+  }));
 
 export const __testing = {
   buildNativeWebSearchTool,
@@ -957,8 +1037,7 @@ function truncateToolOutput(name: string, output: string): string {
   if (inputTokens <= maxTokens) return output;
 
   const strategy = getToolTruncationStrategy(name);
-  const notice =
-    `\n...[${name} output truncated: ~${inputTokens} tokens → ~${maxTokens} tokens]...\n`;
+  const notice = `\n...[${name} output truncated: ~${inputTokens} tokens → ~${maxTokens} tokens]...\n`;
   const maxChars = maxTokens * 4;
   const budget = Math.max(0, maxChars - notice.length);
 
@@ -1026,7 +1105,9 @@ export function compactOldToolResults(
     }
     return (
       kept.join('\n') +
-      (kept.length < lines.length ? `\n...(${lines.length - kept.length} more)` : '')
+      (kept.length < lines.length
+        ? `\n...(${lines.length - kept.length} more)`
+        : '')
     );
   }
 
@@ -1192,13 +1273,21 @@ async function executeBash(
     const filtered = filterBashOutput(command, raw);
     if (filtered !== raw) {
       const saved = estimateTokens(raw) - estimateTokens(filtered);
-      log(`bash filter saved ~${saved} tokens (${raw.length} → ${filtered.length} chars)`);
+      log(
+        `bash filter saved ~${saved} tokens (${raw.length} → ${filtered.length} chars)`,
+      );
     }
     return filtered;
   } catch (err: unknown) {
-    const e = err as { stdout?: string; stderr?: string; status?: number; message?: string };
+    const e = err as {
+      stdout?: string;
+      stderr?: string;
+      status?: number;
+      message?: string;
+    };
     const raw = (e.stdout || '') + (e.stderr || '');
-    const out = raw || `Command failed with exit code ${e.status}: ${e.message}`;
+    const out =
+      raw || `Command failed with exit code ${e.status}: ${e.message}`;
     return filterBashOutput(command, out);
   }
 }
@@ -1247,8 +1336,7 @@ async function executeRead(
     .join('\n');
 
   if (!hasExplicitOffset && !hasExplicitLimit && lines.length > 500) {
-    out +=
-      `\n[File has ${lines.length} lines total. Consider using offset/limit for targeted reading.]`;
+    out += `\n[File has ${lines.length} lines total. Consider using offset/limit for targeted reading.]`;
   }
 
   return out;
@@ -1340,7 +1428,9 @@ function buildSubagentPrompt(
     workProfile === 'explorer'
       ? '- Read-only exploration only. Do not modify files.'
       : '- You may implement changes, but stay within the assigned scope and keep edits minimal.',
-    scope ? `- Scope: ${scope}` : '- Scope: only what is necessary for this task.',
+    scope
+      ? `- Scope: ${scope}`
+      : '- Scope: only what is necessary for this task.',
     '- Do not spawn more sub-agents if you have already reached the configured depth limit.',
     '- Return a concise result for the parent agent, including concrete file references when relevant.',
   ];
@@ -1546,7 +1636,9 @@ function resolveManagedSubagentRequestId(
   handle: ManagedSubagent,
   payload: AgentRunOutputPayload,
 ): string | null {
-  const requestId = String(payload.requestId || handle.activeRequestId || '').trim();
+  const requestId = String(
+    payload.requestId || handle.activeRequestId || '',
+  ).trim();
   return requestId || null;
 }
 
@@ -1593,14 +1685,15 @@ function parseManagedSubagentOutput(
     const jsonText = handle.stdoutBuffer
       .slice(start + OUTPUT_START_MARKER.length, end)
       .trim();
-    handle.stdoutBuffer = handle.stdoutBuffer.slice(end + OUTPUT_END_MARKER.length);
+    handle.stdoutBuffer = handle.stdoutBuffer.slice(
+      end + OUTPUT_END_MARKER.length,
+    );
     if (!jsonText) continue;
 
     try {
       const payload = JSON.parse(jsonText) as AgentRunOutputPayload;
       const requestId = resolveManagedSubagentRequestId(handle, payload);
-      const requestKind =
-        payload.requestKind === 'steer' ? 'steer' : 'message';
+      const requestKind = payload.requestKind === 'steer' ? 'steer' : 'message';
       if (payload.status === 'accepted' && requestId) {
         if (handle.activeRequestId !== requestId) {
           handle.activeRequestId = requestId;
@@ -1619,7 +1712,9 @@ function parseManagedSubagentOutput(
         }
         updateManagedSubagentState(
           handle,
-          handle.metadata.mode === 'team' && handle.stopReason === null ? 'idle' : 'running',
+          handle.metadata.mode === 'team' && handle.stopReason === null
+            ? 'idle'
+            : 'running',
           {
             activeRequestId: handle.activeRequestId || undefined,
             lastCompletedRequestId: requestId || undefined,
@@ -1687,15 +1782,14 @@ function writeManagedSubagentPrompt(
     prompt,
     createdAt: new Date().toISOString(),
   };
-  fs.writeFileSync(
-    tempPath,
-    JSON.stringify(payload),
-    'utf8',
-  );
+  fs.writeFileSync(tempPath, JSON.stringify(payload), 'utf8');
   fs.renameSync(tempPath, filePath);
 }
 
-function requestManagedSubagentClose(handle: ManagedSubagent, reason?: string): void {
+function requestManagedSubagentClose(
+  handle: ManagedSubagent,
+  reason?: string,
+): void {
   updateManagedSubagentState(handle, 'stopping', {
     stopRequestedAt: new Date().toISOString(),
     lastError: reason ? undefined : handle.metadata.lastError,
@@ -1714,7 +1808,8 @@ function waitForManagedSubagentResult(
     return Promise.resolve(result);
   }
   if (handle.failedResults.has(requestId)) {
-    const message = handle.failedResults.get(requestId) || 'Sub-agent request failed.';
+    const message =
+      handle.failedResults.get(requestId) || 'Sub-agent request failed.';
     handle.failedResults.delete(requestId);
     return Promise.reject(new Error(message));
   }
@@ -1806,163 +1901,176 @@ async function startManagedSubagent(
   const childId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   pendingSpawnReservations.add(childId);
   try {
-  const runtimePaths = buildManagedSubagentRuntime(cwd, childId);
-  fs.mkdirSync(runtimePaths.groupDir, { recursive: true });
-  fs.mkdirSync(runtimePaths.ipcInputDir, { recursive: true });
-  const groupFolder =
-    options?.agentInput?.groupFolder ||
-    process.env.NANOCLAW_GROUP_FOLDER ||
-    'subagent';
-  const chatJid =
-    options?.agentInput?.chatJid ||
-    process.env.NANOCLAW_CHAT_JID ||
-    'subagent';
-  const now = new Date().toISOString();
-  const initialRequestId = createSubagentRequestId();
-  const depth = runtime.currentDepth + 1;
-  const requesterSessionKey = resolveRequesterSessionKey(groupFolder, chatJid);
-  const topologyRole = resolveTopologyRole(depth, runtime.maxDepth);
-  const controlScope = resolveControlScope(topologyRole);
-  const providerSessionId = `codex:${childId}`;
-
-  const child = spawn(process.execPath, [getChildRunnerEntryPath()], {
-    cwd,
-    env: {
-      ...process.env,
-      NANOCLAW_GROUP_DIR: runtimePaths.groupDir,
-      NANOCLAW_IPC_DIR: runtimePaths.ipcDir,
-      NANOCLAW_SUBAGENT_DEPTH: String(depth),
-      NANOCLAW_SUBAGENT_ROLE: topologyRole,
-      NANOCLAW_SUBAGENT_CONTROL_SCOPE: controlScope,
-      NANOCLAW_CURRENT_SUBAGENT_RUNTIME_ID: childId,
-      NANOCLAW_CURRENT_SUBAGENT_SESSION_KEY: providerSessionId,
-    },
-    stdio: ['pipe', 'pipe', 'pipe'],
-  });
-
-  let resolveExit = () => {};
-  const exitPromise = new Promise<void>((resolve) => {
-    resolveExit = resolve;
-  });
-
-  const handle: ManagedSubagent = {
-    id: childId,
-    name: meta.name,
-    task: meta.task,
-    initialRequestId,
-    runtimeDir: runtimePaths.runtimeDir,
-    ipcInputDir: runtimePaths.ipcInputDir,
-    metadataPath: runtimePaths.metadataPath,
-    proc: child,
-    stdoutBuffer: '',
-    stderrTail: '',
-    completedResults: new Map(),
-    failedResults: new Map(),
-    waiters: new Map(),
-    activeRequestId: initialRequestId,
-    requestCount: 1,
-    exited: false,
-    exitPromise,
-    resolveExit,
-    stopReason: null,
-    metadata: {
-      id: childId,
-      provider: 'codex',
-      mode: meta.mode,
-      runtimeKind: meta.mode === 'team' ? 'managed_session' : 'managed_run',
-      providerSessionId,
-      parentRuntimeId:
-        process.env.NANOCLAW_CURRENT_SUBAGENT_RUNTIME_ID?.trim() || undefined,
-      controllerSessionKey: requesterSessionKey,
-      requesterSessionKey,
-      originTurnId: options?.originTurnId?.trim() || undefined,
-      originToolCallId: options?.originToolCallId?.trim() || undefined,
-      topologyRole,
-      workProfile: meta.workProfile,
-      role: topologyRole,
-      controlScope,
+    const runtimePaths = buildManagedSubagentRuntime(cwd, childId);
+    fs.mkdirSync(runtimePaths.groupDir, { recursive: true });
+    fs.mkdirSync(runtimePaths.ipcInputDir, { recursive: true });
+    const groupFolder =
+      options?.agentInput?.groupFolder ||
+      process.env.NANOCLAW_GROUP_FOLDER ||
+      'subagent';
+    const chatJid =
+      options?.agentInput?.chatJid ||
+      process.env.NANOCLAW_CHAT_JID ||
+      'subagent';
+    const now = new Date().toISOString();
+    const initialRequestId = createSubagentRequestId();
+    const depth = runtime.currentDepth + 1;
+    const requesterSessionKey = resolveRequesterSessionKey(
       groupFolder,
       chatJid,
+    );
+    const topologyRole = resolveTopologyRole(depth, runtime.maxDepth);
+    const controlScope = resolveControlScope(topologyRole);
+    const providerSessionId = `codex:${childId}`;
+
+    const child = spawn(process.execPath, [getChildRunnerEntryPath()], {
+      cwd,
+      env: {
+        ...process.env,
+        NANOCLAW_GROUP_DIR: runtimePaths.groupDir,
+        NANOCLAW_IPC_DIR: runtimePaths.ipcDir,
+        NANOCLAW_SUBAGENT_DEPTH: String(depth),
+        NANOCLAW_SUBAGENT_ROLE: topologyRole,
+        NANOCLAW_SUBAGENT_CONTROL_SCOPE: controlScope,
+        NANOCLAW_CURRENT_SUBAGENT_RUNTIME_ID: childId,
+        NANOCLAW_CURRENT_SUBAGENT_SESSION_KEY: providerSessionId,
+      },
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+
+    let resolveExit = () => {};
+    const exitPromise = new Promise<void>((resolve) => {
+      resolveExit = resolve;
+    });
+
+    const handle: ManagedSubagent = {
+      id: childId,
       name: meta.name,
       task: meta.task,
-      status: 'spawning',
-      depth,
+      initialRequestId,
+      runtimeDir: runtimePaths.runtimeDir,
+      ipcInputDir: runtimePaths.ipcInputDir,
+      metadataPath: runtimePaths.metadataPath,
+      proc: child,
+      stdoutBuffer: '',
+      stderrTail: '',
+      completedResults: new Map(),
+      failedResults: new Map(),
+      waiters: new Map(),
       activeRequestId: initialRequestId,
       requestCount: 1,
-      lastAcceptedRequestId: initialRequestId,
-      lastAcceptedRequestAt: now,
-      lastAcceptedRequestKind: 'message',
-      createdAt: now,
-      updatedAt: now,
-    },
-  };
-  writeManagedSubagentMetadata(handle, {});
-  options?.onSubagentUpdate?.(
-    buildManagedSubagentUpdate(
-      handle,
-      'spawning',
-      `starting sub-agent at depth ${runtime.currentDepth + 1}`,
-    ),
-  );
-
-  child.stdout.setEncoding('utf8');
-  child.stdout.on('data', (chunk: string) => {
-    parseManagedSubagentOutput(handle, chunk);
-  });
-  child.stderr.setEncoding('utf8');
-  child.stderr.on('data', (chunk: string) => {
-    handle.stderrTail = `${handle.stderrTail}${chunk}`.slice(-4_000);
-  });
-  child.once('spawn', () => {
-    updateManagedSubagentState(handle, 'running', {
-      pid: child.pid,
-    });
-    options?.onSubagentUpdate?.(buildManagedSubagentUpdate(handle, 'running'));
-    child.stdin.end(JSON.stringify(buildChildAgentInput(prompt, cwd, initialRequestId, options)));
-  });
-  child.once('error', (error) => {
-    handle.exited = true;
-    handle.resolveExit();
-    updateManagedSubagentState(handle, 'failed', {
-      completedAt: new Date().toISOString(),
-      lastError: error.message,
-    });
+      exited: false,
+      exitPromise,
+      resolveExit,
+      stopReason: null,
+      metadata: {
+        id: childId,
+        provider: 'codex',
+        mode: meta.mode,
+        runtimeKind: meta.mode === 'team' ? 'managed_session' : 'managed_run',
+        providerSessionId,
+        parentRuntimeId:
+          process.env.NANOCLAW_CURRENT_SUBAGENT_RUNTIME_ID?.trim() || undefined,
+        controllerSessionKey: requesterSessionKey,
+        requesterSessionKey,
+        originTurnId: options?.originTurnId?.trim() || undefined,
+        originToolCallId: options?.originToolCallId?.trim() || undefined,
+        topologyRole,
+        workProfile: meta.workProfile,
+        role: topologyRole,
+        controlScope,
+        groupFolder,
+        chatJid,
+        name: meta.name,
+        task: meta.task,
+        status: 'spawning',
+        depth,
+        activeRequestId: initialRequestId,
+        requestCount: 1,
+        lastAcceptedRequestId: initialRequestId,
+        lastAcceptedRequestAt: now,
+        lastAcceptedRequestKind: 'message',
+        createdAt: now,
+        updatedAt: now,
+      },
+    };
+    writeManagedSubagentMetadata(handle, {});
     options?.onSubagentUpdate?.(
-      buildManagedSubagentUpdate(handle, 'failed', error.message),
+      buildManagedSubagentUpdate(
+        handle,
+        'spawning',
+        `starting sub-agent at depth ${runtime.currentDepth + 1}`,
+      ),
     );
-    rejectAllManagedSubagentWaiters(handle, error.message);
-    cleanupManagedSubagent(handle);
-  });
-  child.once('close', (code) => {
-    handle.exited = true;
-    handle.resolveExit();
-    handle.activeRequestId = null;
-    const success = code === 0;
-    const finalStatus: SubagentRuntimeStatus = success
-      ? handle.stopReason === 'stopped'
-        ? 'stopped'
-        : 'completed'
-      : 'failed';
-    updateManagedSubagentState(handle, finalStatus, {
-      status: finalStatus,
-      completedAt: new Date().toISOString(),
-      stoppedAt: finalStatus === 'stopped' ? new Date().toISOString() : undefined,
-      exitCode: code,
-      activeRequestId: undefined,
-      ...(finalStatus === 'failed'
-        ? {
-            lastError: summarizeChildFailure('', handle.stderrTail),
-          }
-        : {}),
-    });
-    rejectAllManagedSubagentWaiters(handle, summarizeChildFailure('', handle.stderrTail));
-    cleanupManagedSubagent(handle);
-  });
 
-  pendingSpawnReservations.delete(childId);
-  managedSubagents.set(handle.id, handle);
-  installManagedSubagentCleanup();
-  return handle;
+    child.stdout.setEncoding('utf8');
+    child.stdout.on('data', (chunk: string) => {
+      parseManagedSubagentOutput(handle, chunk);
+    });
+    child.stderr.setEncoding('utf8');
+    child.stderr.on('data', (chunk: string) => {
+      handle.stderrTail = `${handle.stderrTail}${chunk}`.slice(-4_000);
+    });
+    child.once('spawn', () => {
+      updateManagedSubagentState(handle, 'running', {
+        pid: child.pid,
+      });
+      options?.onSubagentUpdate?.(
+        buildManagedSubagentUpdate(handle, 'running'),
+      );
+      child.stdin.end(
+        JSON.stringify(
+          buildChildAgentInput(prompt, cwd, initialRequestId, options),
+        ),
+      );
+    });
+    child.once('error', (error) => {
+      handle.exited = true;
+      handle.resolveExit();
+      updateManagedSubagentState(handle, 'failed', {
+        completedAt: new Date().toISOString(),
+        lastError: error.message,
+      });
+      options?.onSubagentUpdate?.(
+        buildManagedSubagentUpdate(handle, 'failed', error.message),
+      );
+      rejectAllManagedSubagentWaiters(handle, error.message);
+      cleanupManagedSubagent(handle);
+    });
+    child.once('close', (code) => {
+      handle.exited = true;
+      handle.resolveExit();
+      handle.activeRequestId = null;
+      const success = code === 0;
+      const finalStatus: SubagentRuntimeStatus = success
+        ? handle.stopReason === 'stopped'
+          ? 'stopped'
+          : 'completed'
+        : 'failed';
+      updateManagedSubagentState(handle, finalStatus, {
+        status: finalStatus,
+        completedAt: new Date().toISOString(),
+        stoppedAt:
+          finalStatus === 'stopped' ? new Date().toISOString() : undefined,
+        exitCode: code,
+        activeRequestId: undefined,
+        ...(finalStatus === 'failed'
+          ? {
+              lastError: summarizeChildFailure('', handle.stderrTail),
+            }
+          : {}),
+      });
+      rejectAllManagedSubagentWaiters(
+        handle,
+        summarizeChildFailure('', handle.stderrTail),
+      );
+      cleanupManagedSubagent(handle);
+    });
+
+    pendingSpawnReservations.delete(childId);
+    managedSubagents.set(handle.id, handle);
+    installManagedSubagentCleanup();
+    return handle;
   } catch (err) {
     pendingSpawnReservations.delete(childId);
     throw err;
@@ -1989,12 +2097,15 @@ async function executeTeamCreate(
     );
   }
 
-  const task = String(input.prompt || input.task || input.description || '').trim();
+  const task = String(
+    input.prompt || input.task || input.description || '',
+  ).trim();
   if (!task) {
     throw new Error('TeamCreate requires a non-empty prompt.');
   }
   const keepAlive = input.keep_alive === true;
-  const name = String(input.name || input.label || 'Subagent').trim() || 'Subagent';
+  const name =
+    String(input.name || input.label || 'Subagent').trim() || 'Subagent';
   const workProfile = normalizeSubagentWorkProfile(input.role);
   const prompt = [
     `You are ${name}, a NanoClaw sub-agent.`,
@@ -2037,7 +2148,9 @@ async function executeSendMessage(
   if (!agentId) {
     throw new Error('SendMessage requires agent_id.');
   }
-  const prompt = String(input.prompt || input.message || input.text || '').trim();
+  const prompt = String(
+    input.prompt || input.message || input.text || '',
+  ).trim();
   if (!prompt) {
     throw new Error('SendMessage requires a non-empty prompt.');
   }
@@ -2047,9 +2160,7 @@ async function executeSendMessage(
     throw new Error(`Sub-agent ${handle.name} is no longer running.`);
   }
   if (handle.activeRequestId) {
-    throw new Error(
-      `Sub-agent ${handle.name} already has an active request.`,
-    );
+    throw new Error(`Sub-agent ${handle.name} already has an active request.`);
   }
 
   options?.onSubagentUpdate?.(
@@ -2075,7 +2186,9 @@ async function executeSendMessage(
   ].join('\n');
 }
 
-async function executeTeamDelete(input: Record<string, unknown>): Promise<string> {
+async function executeTeamDelete(
+  input: Record<string, unknown>,
+): Promise<string> {
   const agentId = String(input.agent_id || '').trim();
   if (!agentId) {
     throw new Error('TeamDelete requires agent_id.');
@@ -2147,7 +2260,9 @@ async function executeAgentSubagent(
   const SUBAGENT_MAX_TIMEOUT_MS = 60 * 60_000;
   const rawTimeout = input.timeout_ms;
   const requestedTimeout =
-    typeof rawTimeout === 'number' && Number.isFinite(rawTimeout) && rawTimeout > 0
+    typeof rawTimeout === 'number' &&
+    Number.isFinite(rawTimeout) &&
+    rawTimeout > 0
       ? Math.floor(rawTimeout)
       : SUBAGENT_DEFAULT_TIMEOUT_MS;
   const timeoutMs = Math.min(
@@ -2169,7 +2284,9 @@ async function executeAgentSubagent(
   } catch (err) {
     if (timeoutFired) {
       const msg =
-        err instanceof Error ? err.message : `Agent sub-agent timed out after ${timeoutMs}ms`;
+        err instanceof Error
+          ? err.message
+          : `Agent sub-agent timed out after ${timeoutMs}ms`;
       rejectManagedSubagentWaiter(handle, requestId, msg);
       handle.stopReason = 'stopped';
       requestManagedSubagentClose(handle);
@@ -2278,12 +2395,17 @@ async function executeEdit(
     );
   }
 
-  const updated = content.slice(0, idx) + newStr + content.slice(idx + oldStr.length);
+  const updated =
+    content.slice(0, idx) + newStr + content.slice(idx + oldStr.length);
   fs.writeFileSync(filePath, updated, 'utf-8');
   return `File edited: ${filePath}`;
 }
 
-function finalizeGlobPaths(paths: string[], sortBy: string, limit: number): string {
+function finalizeGlobPaths(
+  paths: string[],
+  sortBy: string,
+  limit: number,
+): string {
   const unique = [...new Set(paths)];
   let sorted: string[];
   if (sortBy === 'mtime') {
@@ -2312,7 +2434,9 @@ async function executeGlob(
   options?: CodexToolExecutionOptions,
 ): Promise<string> {
   const pattern = input.pattern as string;
-  const dir = (input.dir as string) ? resolvePath(input.dir as string, cwd) : cwd;
+  const dir = (input.dir as string)
+    ? resolvePath(input.dir as string, cwd)
+    : cwd;
   const sortByRaw = (input.sort_by as string) || 'name';
   const sortBy = sortByRaw === 'mtime' ? 'mtime' : 'name';
   const limit = Math.min(Math.max(Number(input.limit) || 200, 1), 500);
@@ -2328,7 +2452,11 @@ async function executeGlob(
     function walk(d: string, depth: number): void {
       if (depth > 8 || results.length > limit * 2) return;
       let entries: fs.Dirent[];
-      try { entries = fs.readdirSync(d, { withFileTypes: true }); } catch { return; }
+      try {
+        entries = fs.readdirSync(d, { withFileTypes: true });
+      } catch {
+        return;
+      }
       for (const entry of entries) {
         if (SKIP_DIRS.has(entry.name)) continue;
         const full = path.join(d, entry.name);
@@ -2345,15 +2473,23 @@ async function executeGlob(
       log('glob: rg not found, using Node.js fallback');
       const result = nodeFsGlob();
       if (result === '(no matches)') return result;
-      return '⚠ ripgrep (rg) not installed, using Node.js fallback (slower, max depth 8). Install: https://github.com/BurntSushi/ripgrep#installation\n' + result;
+      return (
+        '⚠ ripgrep (rg) not installed, using Node.js fallback (slower, max depth 8). Install: https://github.com/BurntSushi/ripgrep#installation\n' +
+        result
+      );
     }
 
     const rgArgs = ['--files', '--glob', pattern, dir];
     const spawned = spawnSync('rg', rgArgs, {
-      cwd: dir, encoding: 'utf-8', timeout: 10000, maxBuffer: 256 * 1024,
+      cwd: dir,
+      encoding: 'utf-8',
+      timeout: 10000,
+      maxBuffer: 256 * 1024,
     });
     if (spawned.error) {
-      log(`glob: rg failed (${spawned.error.message}), falling back to Node.js`);
+      log(
+        `glob: rg failed (${spawned.error.message}), falling back to Node.js`,
+      );
       _cmdCache.set('rg', false);
       const result = nodeFsGlob();
       if (result === '(no matches)') return result;
@@ -2382,7 +2518,11 @@ function escapeRegExp(s: string): string {
 }
 
 function globToRegex(glob: string): RegExp {
-  const re = glob.replace(/\*\*/g, '<<DSTAR>>').replace(/\*/g, '[^/]*').replace(/<<DSTAR>>/g, '.*').replace(/\?/g, '.');
+  const re = glob
+    .replace(/\*\*/g, '<<DSTAR>>')
+    .replace(/\*/g, '[^/]*')
+    .replace(/<<DSTAR>>/g, '.*')
+    .replace(/\?/g, '.');
   return new RegExp(re);
 }
 
@@ -2391,7 +2531,9 @@ function isCommandAvailable(cmd: string): boolean {
   if (_cmdCache.has(cmd)) return _cmdCache.get(cmd)!;
   try {
     const r = spawnSync(cmd, ['--version'], {
-      encoding: 'utf-8', timeout: 5000, stdio: 'pipe',
+      encoding: 'utf-8',
+      timeout: 5000,
+      stdio: 'pipe',
     });
     const ok = !r.error;
     _cmdCache.set(cmd, ok);
@@ -2404,24 +2546,46 @@ function isCommandAvailable(cmd: string): boolean {
 }
 
 const SKIP_DIRS = new Set([
-  'node_modules', '.git', 'dist', 'build', '.next', '__pycache__',
-  '.venv', 'venv', '.tox', 'target', 'vendor', '.cache',
+  'node_modules',
+  '.git',
+  'dist',
+  'build',
+  '.next',
+  '__pycache__',
+  '.venv',
+  'venv',
+  '.tox',
+  'target',
+  'vendor',
+  '.cache',
 ]);
 
 const FILE_TYPE_EXTS: Record<string, string[]> = {
-  ts: ['.ts', '.tsx'], js: ['.js', '.jsx', '.mjs', '.cjs'],
-  py: ['.py'], go: ['.go'], rust: ['.rs'], java: ['.java'],
-  css: ['.css', '.scss', '.less'], html: ['.html', '.htm'],
-  json: ['.json'], yaml: ['.yaml', '.yml'], md: ['.md'],
-  c: ['.c', '.h'], cpp: ['.cpp', '.cc', '.cxx', '.hpp', '.hxx'],
+  ts: ['.ts', '.tsx'],
+  js: ['.js', '.jsx', '.mjs', '.cjs'],
+  py: ['.py'],
+  go: ['.go'],
+  rust: ['.rs'],
+  java: ['.java'],
+  css: ['.css', '.scss', '.less'],
+  html: ['.html', '.htm'],
+  json: ['.json'],
+  yaml: ['.yaml', '.yml'],
+  md: ['.md'],
+  c: ['.c', '.h'],
+  cpp: ['.cpp', '.cc', '.cxx', '.hpp', '.hxx'],
 };
 
 function nodeGrepFallback(
   searchPath: string,
   pattern: string,
   opts: {
-    include?: string; fileType?: string; caseInsensitive?: boolean;
-    contextLines?: number; outputMode?: string; headLimit?: number;
+    include?: string;
+    fileType?: string;
+    caseInsensitive?: boolean;
+    contextLines?: number;
+    outputMode?: string;
+    headLimit?: number;
   },
 ): string {
   let re: RegExp;
@@ -2452,11 +2616,18 @@ function nodeGrepFallback(
   function walkAndSearch(dir: string, depth: number): void {
     if (depth > 12 || totalMatches > limit * 3) return;
     let entries: fs.Dirent[];
-    try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
     for (const entry of entries) {
       if (SKIP_DIRS.has(entry.name)) continue;
       const full = path.join(dir, entry.name);
-      if (entry.isDirectory()) { walkAndSearch(full, depth + 1); continue; }
+      if (entry.isDirectory()) {
+        walkAndSearch(full, depth + 1);
+        continue;
+      }
       if (!entry.isFile() || !shouldInclude(full)) continue;
       try {
         const content = fs.readFileSync(full, 'utf-8');
@@ -2481,7 +2652,9 @@ function nodeGrepFallback(
           }
         }
         if (fileMatches > 0) fileCounts.set(full, fileMatches);
-      } catch { /* unreadable file */ }
+      } catch {
+        /* unreadable file */
+      }
     }
   }
 
@@ -2507,7 +2680,9 @@ function nodeGrepFallback(
           }
         }
         fileCounts.set(searchPath, totalMatches);
-      } catch { /* unreadable */ }
+      } catch {
+        /* unreadable */
+      }
     }
   } else if (stat?.isDirectory()) {
     walkAndSearch(searchPath, 0);
@@ -2519,17 +2694,25 @@ function nodeGrepFallback(
     ? '(pattern treated as literal text — original regex was invalid)\n'
     : '';
 
-  if (mode === 'files_only') return prefix + [...fileCounts.keys()].slice(0, limit).join('\n');
+  if (mode === 'files_only')
+    return prefix + [...fileCounts.keys()].slice(0, limit).join('\n');
   if (mode === 'count') {
-    return prefix + [...fileCounts.entries()]
-      .slice(0, limit)
-      .map(([f, c]) => `${f}:${c}`)
-      .join('\n');
+    return (
+      prefix +
+      [...fileCounts.entries()]
+        .slice(0, limit)
+        .map(([f, c]) => `${f}:${c}`)
+        .join('\n')
+    );
   }
 
   const output = results.slice(0, limit * 2).join('\n');
   if (results.length > limit * 2) {
-    return prefix + output + `\n... (truncated, refine pattern or increase head_limit)`;
+    return (
+      prefix +
+      output +
+      `\n... (truncated, refine pattern or increase head_limit)`
+    );
   }
   return prefix + output;
 }
@@ -2540,7 +2723,9 @@ async function executeGrep(
   options?: CodexToolExecutionOptions,
 ): Promise<string> {
   const pattern = input.pattern as string;
-  const searchPath = (input.path as string) ? resolvePath(input.path as string, cwd) : cwd;
+  const searchPath = (input.path as string)
+    ? resolvePath(input.path as string, cwd)
+    : cwd;
   const perm = await checkPermissionOrEscalate(
     searchPath,
     options?.originToolCallId || `grep_${Date.now()}`,
@@ -2566,9 +2751,15 @@ async function executeGrep(
   if (!isCommandAvailable('rg')) {
     log('grep: rg not found, using Node.js fallback');
     const fallback = nodeGrepFallback(searchPath, pattern, {
-      include, fileType, caseInsensitive, contextLines, outputMode, headLimit,
+      include,
+      fileType,
+      caseInsensitive,
+      contextLines,
+      outputMode,
+      headLimit,
     });
-    const warn = '⚠ ripgrep (rg) not installed, using slower Node.js fallback. Install: https://github.com/BurntSushi/ripgrep#installation\n';
+    const warn =
+      '⚠ ripgrep (rg) not installed, using slower Node.js fallback. Install: https://github.com/BurntSushi/ripgrep#installation\n';
     return fallback === '(no matches)' ? fallback : warn + fallback;
   }
 
@@ -2593,26 +2784,45 @@ async function executeGrep(
       maxBuffer: 512 * 1024,
     });
     if (spawned.error) {
-      log(`grep: rg failed (${spawned.error.message}), falling back to Node.js`);
+      log(
+        `grep: rg failed (${spawned.error.message}), falling back to Node.js`,
+      );
       _cmdCache.set('rg', false);
       const fallback = nodeGrepFallback(searchPath, pattern, {
-        include, fileType, caseInsensitive, contextLines, outputMode, headLimit,
+        include,
+        fileType,
+        caseInsensitive,
+        contextLines,
+        outputMode,
+        headLimit,
       });
-      const warn = '⚠ ripgrep (rg) failed, using slower Node.js fallback. Install: https://github.com/BurntSushi/ripgrep#installation\n';
+      const warn =
+        '⚠ ripgrep (rg) failed, using slower Node.js fallback. Install: https://github.com/BurntSushi/ripgrep#installation\n';
       return fallback === '(no matches)' ? fallback : warn + fallback;
     }
     if (spawned.status === 2) {
       const stderr = String(spawned.stderr || '').slice(0, 300);
-      const isRegexError = /regex|parse|syntax|unterminated|invalid/i.test(stderr);
+      const isRegexError = /regex|parse|syntax|unterminated|invalid/i.test(
+        stderr,
+      );
       if (isRegexError) {
-        log(`grep: regex error, retrying with --fixed-strings: ${stderr.slice(0, 100)}`);
-        const fixedArgs = ['-F', ...rgArgs.filter((a) => a !== '-U' && a !== '--multiline-dotall')];
+        log(
+          `grep: regex error, retrying with --fixed-strings: ${stderr.slice(0, 100)}`,
+        );
+        const fixedArgs = [
+          '-F',
+          ...rgArgs.filter((a) => a !== '-U' && a !== '--multiline-dotall'),
+        ];
         const fixedSpawned = spawnSync('rg', fixedArgs, {
-          cwd, encoding: 'utf-8', timeout: 15_000, maxBuffer: 512 * 1024,
+          cwd,
+          encoding: 'utf-8',
+          timeout: 15_000,
+          maxBuffer: 512 * 1024,
         });
         if (fixedSpawned.status === 0 || fixedSpawned.status === 1) {
           const fixedOut = String(fixedSpawned.stdout || '').trimEnd();
-          const prefix = '(pattern treated as literal text — original regex was invalid)\n';
+          const prefix =
+            '(pattern treated as literal text — original regex was invalid)\n';
           return fixedOut ? prefix + fixedOut : '(no matches)';
         }
       }
@@ -2667,10 +2877,12 @@ async function executeListDir(
   function walk(dir: string, depth: number, prefix: string): void {
     if (depth > maxDepth || entries.length > 200) return;
     try {
-      const items = fs.readdirSync(dir, { withFileTypes: true })
-        .filter(e => e.name !== 'node_modules' && e.name !== '.git')
+      const items = fs
+        .readdirSync(dir, { withFileTypes: true })
+        .filter((e) => e.name !== 'node_modules' && e.name !== '.git')
         .sort((a, b) => {
-          if (a.isDirectory() !== b.isDirectory()) return a.isDirectory() ? -1 : 1;
+          if (a.isDirectory() !== b.isDirectory())
+            return a.isDirectory() ? -1 : 1;
           return a.name.localeCompare(b.name);
         });
       for (const item of items) {
@@ -2680,14 +2892,18 @@ async function executeListDir(
           walk(path.join(dir, item.name), depth + 1, prefix + '  ');
         }
       }
-    } catch { /* permission error, skip */ }
+    } catch {
+      /* permission error, skip */
+    }
   }
 
   walk(dirPath, 1, '');
   return entries.join('\n') || '(empty directory)';
 }
 
-async function executeMemorySearch(input: Record<string, unknown>): Promise<string> {
+async function executeMemorySearch(
+  input: Record<string, unknown>,
+): Promise<string> {
   if (!isMemoryReadAvailable()) {
     return `Error: ${getMemoryReadDisabledMessage()}`;
   }
@@ -2709,7 +2925,9 @@ async function executeMemorySearch(input: Record<string, unknown>): Promise<stri
   ).renderedText;
 }
 
-async function executeMemoryGet(input: Record<string, unknown>): Promise<string> {
+async function executeMemoryGet(
+  input: Record<string, unknown>,
+): Promise<string> {
   if (!isMemoryReadAvailable()) {
     return `Error: ${getMemoryReadDisabledMessage()}`;
   }
@@ -2735,7 +2953,9 @@ async function executeMemoryGet(input: Record<string, unknown>): Promise<string>
 
 function executeMemorySave(input: Record<string, unknown>): string {
   const note = String(input.note || '').trim();
-  const scopeRaw = String(input.scope || 'group').trim().toLowerCase();
+  const scopeRaw = String(input.scope || 'group')
+    .trim()
+    .toLowerCase();
   const scope = scopeRaw === 'global' ? 'global' : 'group';
   const disabledMessage = getMemoryWriteDisabledMessage(scope);
   if (disabledMessage) {
@@ -2753,18 +2973,32 @@ async function executeAskUser(input: Record<string, unknown>): Promise<string> {
   if (!question) return 'Error: question is required';
   const options = Array.isArray(input.options)
     ? (input.options as Array<{ id?: string; label?: string }>)
-        .filter((o) => typeof o?.id === 'string' && typeof o?.label === 'string')
+        .filter(
+          (o) => typeof o?.id === 'string' && typeof o?.label === 'string',
+        )
         .map((o) => ({ id: String(o.id), label: String(o.label) }))
     : undefined;
   const allowMultiple = input.allow_multiple === true;
-  const timeoutSeconds = typeof input.timeout_seconds === 'number' ? input.timeout_seconds : undefined;
-  return askUser({ question, options, allow_multiple: allowMultiple, timeout_seconds: timeoutSeconds });
+  const timeoutSeconds =
+    typeof input.timeout_seconds === 'number'
+      ? input.timeout_seconds
+      : undefined;
+  return askUser({
+    question,
+    options,
+    allow_multiple: allowMultiple,
+    timeout_seconds: timeoutSeconds,
+  });
 }
 
-async function executeSearchWeb(input: Record<string, unknown>): Promise<string> {
+async function executeSearchWeb(
+  input: Record<string, unknown>,
+): Promise<string> {
   const rawQuery = String(input.query || '').trim();
   if (rawQuery.split(/\s+/).length > 15) {
-    log(`search_web: query has ${rawQuery.split(/\s+/).length} words — consider using fewer keywords`);
+    log(
+      `search_web: query has ${rawQuery.split(/\s+/).length} words — consider using fewer keywords`,
+    );
   }
   return searchWeb({
     query: rawQuery,
@@ -2778,7 +3012,9 @@ async function executeSearchWeb(input: Record<string, unknown>): Promise<string>
   });
 }
 
-async function executeFetchUrl(input: Record<string, unknown>): Promise<string> {
+async function executeFetchUrl(
+  input: Record<string, unknown>,
+): Promise<string> {
   let url = String(input.url || '').trim();
   if (url.startsWith('//')) {
     url = 'https:' + url;
@@ -2857,7 +3093,10 @@ function diagnosticMatchesRequestedPaths(
       const st = fs.statSync(req);
       if (st.isFile()) {
         if (path.resolve(req) === norm) return true;
-        if (path.basename(norm) === path.basename(req) && norm.endsWith(path.sep + path.basename(req))) {
+        if (
+          path.basename(norm) === path.basename(req) &&
+          norm.endsWith(path.sep + path.basename(req))
+        ) {
           return true;
         }
       }
@@ -2908,7 +3147,9 @@ async function executeReadLints(
     const tscPaths = collectLintFilePaths(resolvedPaths, /\.[tj]sx?$/i);
     if (tscPaths.length > 0) {
       if (!isCommandAvailable('npx')) {
-        errors.push('⚠ npx not found — TypeScript checking unavailable. Install Node.js to enable.');
+        errors.push(
+          '⚠ npx not found — TypeScript checking unavailable. Install Node.js to enable.',
+        );
       } else {
         try {
           let tsconfigPath = '';
@@ -2924,7 +3165,14 @@ async function executeReadLints(
             dir = parent;
           }
           const tscArgs = tsconfigPath
-            ? ['tsc', '--project', tsconfigPath, '--noEmit', '--pretty', 'false']
+            ? [
+                'tsc',
+                '--project',
+                tsconfigPath,
+                '--noEmit',
+                '--pretty',
+                'false',
+              ]
             : ['tsc', '--noEmit', '--pretty', 'false', ...tscPaths];
           const spawned = spawnSync('npx', tscArgs, {
             cwd,
@@ -2966,10 +3214,18 @@ async function executeReadLints(
     const pyPaths = collectLintFilePaths(resolvedPaths, /\.py$/i);
     if (pyPaths.length > 0) {
       if (!isCommandAvailable('ruff')) {
-        errors.push('⚠ ruff not found — Python linting unavailable. Install: pip install ruff');
+        errors.push(
+          '⚠ ruff not found — Python linting unavailable. Install: pip install ruff',
+        );
       } else {
         try {
-          const ruffArgs = ['check', ...(shouldFix ? ['--fix'] : []), '--output-format', 'json', ...pyPaths];
+          const ruffArgs = [
+            'check',
+            ...(shouldFix ? ['--fix'] : []),
+            '--output-format',
+            'json',
+            ...pyPaths,
+          ];
           const spawned = spawnSync('ruff', ruffArgs, {
             cwd,
             timeout: 30_000,
@@ -3008,7 +3264,9 @@ async function executeReadLints(
             }
           }
         } catch (err) {
-          errors.push(`Python lint error: ${err instanceof Error ? err.message : String(err)}`);
+          errors.push(
+            `Python lint error: ${err instanceof Error ? err.message : String(err)}`,
+          );
         }
       }
     }
@@ -3018,7 +3276,9 @@ async function executeReadLints(
     const goFiles = collectLintFilePaths(resolvedPaths, /\.go$/i);
     if (goFiles.length > 0) {
       if (!isCommandAvailable('go')) {
-        errors.push('⚠ go not found — Go linting unavailable. Install: https://go.dev/dl/');
+        errors.push(
+          '⚠ go not found — Go linting unavailable. Install: https://go.dev/dl/',
+        );
       } else {
         try {
           const goSpawned = spawnSync('go', ['vet', ...goFiles], {
@@ -3057,7 +3317,9 @@ async function executeReadLints(
             }
           }
         } catch (err) {
-          errors.push(`Go lint error: ${err instanceof Error ? err.message : String(err)}`);
+          errors.push(
+            `Go lint error: ${err instanceof Error ? err.message : String(err)}`,
+          );
         }
       }
     }
@@ -3067,7 +3329,9 @@ async function executeReadLints(
     const rsFiles = collectLintFilePaths(resolvedPaths, /\.rs$/i);
     if (rsFiles.length > 0) {
       if (!isCommandAvailable('cargo')) {
-        errors.push('⚠ cargo not found — Rust checking unavailable. Install: https://rustup.rs/');
+        errors.push(
+          '⚠ cargo not found — Rust checking unavailable. Install: https://rustup.rs/',
+        );
       } else {
         try {
           let cargoDir = path.dirname(rsFiles[0]);
@@ -3080,13 +3344,17 @@ async function executeReadLints(
             }
             cargoDir = parent;
           }
-          const cargoSpawned = spawnSync('cargo', ['check', '--message-format=short'], {
-            cwd: cargoDir,
-            timeout: 120_000,
-            encoding: 'utf-8',
-            maxBuffer: 2 * 1024 * 1024,
-            shell: false,
-          });
+          const cargoSpawned = spawnSync(
+            'cargo',
+            ['check', '--message-format=short'],
+            {
+              cwd: cargoDir,
+              timeout: 120_000,
+              encoding: 'utf-8',
+              maxBuffer: 2 * 1024 * 1024,
+              shell: false,
+            },
+          );
           if (cargoSpawned.error) {
             errors.push(`⚠ cargo check failed: ${cargoSpawned.error.message}`);
           } else {
@@ -3142,15 +3410,14 @@ async function executeSemanticSearch(
 ): Promise<string> {
   const query = String(input.query || '').trim();
   if (!query) return 'Error: query is required.';
-  const scopeRaw = String(input.scope || 'all').trim().toLowerCase();
+  const scopeRaw = String(input.scope || 'all')
+    .trim()
+    .toLowerCase();
   const scope =
     scopeRaw === 'knowledge' || scopeRaw === 'memory' ? scopeRaw : 'all';
   const maxResults = Math.max(
     1,
-    Math.min(
-      typeof input.max_results === 'number' ? input.max_results : 8,
-      15,
-    ),
+    Math.min(typeof input.max_results === 'number' ? input.max_results : 8, 15),
   );
 
   const sections: string[] = [];
@@ -3173,7 +3440,11 @@ async function executeSemanticSearch(
           sections.push(
             `   ${r.content.slice(0, 300)}${r.content.length > 300 ? '...' : ''}\n`,
           );
-          if (r.kind === 'wiki' && Array.isArray(r.evidenceChunks) && r.evidenceChunks.length > 0) {
+          if (
+            r.kind === 'wiki' &&
+            Array.isArray(r.evidenceChunks) &&
+            r.evidenceChunks.length > 0
+          ) {
             sections.push('   Evidence:');
             for (const [evidenceIndex, chunk] of r.evidenceChunks.entries()) {
               sections.push(

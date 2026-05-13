@@ -284,12 +284,16 @@ export interface AssistantTurn {
   clientKey?: string;
   groupKey?: string;
   groupLabel?: string;
+  parentToolCallId?: string;
+  ownerKind?: 'main' | 'subagent' | 'worker' | 'reducer' | 'formatter';
+  ownerLabel?: string;
   phase?:
     | 'worker'
     | 'timeout_followup'
     | 'main_agent_review'
     | 'main_agent_fallback_review'
-    | 'reducer';
+    | 'reducer'
+    | 'formatter';
   runId?: string;
   timestamp: string;
   items: TurnItem[];
@@ -342,10 +346,7 @@ export type ConversationItem =
       turn: AssistantTurn;
     };
 
-export type ApprovalDecision =
-  | 'allow-once'
-  | 'deny'
-  | 'expired';
+export type ApprovalDecision = 'allow-once' | 'deny' | 'expired';
 
 export type ApprovalScope = 'current_tool_call' | 'current_runtime';
 
@@ -892,6 +893,9 @@ export interface RepoReviewFinding {
   codeSnippet?: string;
   fixCode?: string;
   evidence?: string;
+  evidenceKey?: string;
+  codeSnippetSource?: 'model' | 'diff' | 'workspace' | 'unavailable';
+  needsSnippetHydration?: boolean;
   title: string;
   detail: string;
   suggestion?: string;
@@ -1035,7 +1039,14 @@ export interface RepoReviewRun {
 export interface RepoReviewProgressStep {
   id: string;
   label: string;
-  kind?: 'stage' | 'main' | 'subagent' | 'extractor' | 'worker' | 'reducer';
+  kind?:
+    | 'stage'
+    | 'main'
+    | 'subagent'
+    | 'extractor'
+    | 'formatter'
+    | 'worker'
+    | 'reducer';
   status: 'queued' | 'running' | 'completed' | 'failed' | 'skipped';
   startedAt: string;
   activeStartedAt?: string;
@@ -1679,7 +1690,8 @@ export const BASIC_CONFIG_DEFAULTS: BasicConfigState = {
   LDAP_BIND_PASSWORD: '',
   LDAP_SEARCH_BASE: '',
   LDAP_SEARCH_FILTER: '(sAMAccountName=%(user)s)',
-  LDAP_ATTRIBUTE_MAP: '{"username":"sAMAccountName","name":"cn","email":"mail"}',
+  LDAP_ATTRIBUTE_MAP:
+    '{"username":"sAMAccountName","name":"cn","email":"mail"}',
   LDAP_FALLBACK_LOCAL: true,
   LDAP_DEFAULT_ROLE: '',
   KB_LLM_CONCURRENCY: '4',
@@ -1729,7 +1741,13 @@ export type SettingsTab =
 // Live2D Types
 // ---------------------------------------------------------------------------
 
-export type Live2DEmotion = 'happy' | 'sad' | 'angry' | 'surprised' | 'thinking' | 'neutral';
+export type Live2DEmotion =
+  | 'happy'
+  | 'sad'
+  | 'angry'
+  | 'surprised'
+  | 'thinking'
+  | 'neutral';
 
 export interface Live2DModelInfo {
   id: string;

@@ -217,6 +217,9 @@ export interface RepoReviewRunFinding {
   codeSnippet?: string;
   fixCode?: string;
   evidence?: string;
+  evidenceKey?: string;
+  codeSnippetSource?: 'model' | 'diff' | 'workspace' | 'unavailable';
+  needsSnippetHydration?: boolean;
   title: string;
   detail: string;
   suggestion?: string;
@@ -295,6 +298,7 @@ export type RepoReviewProgressStepKind =
   | 'main'
   | 'subagent'
   | 'extractor'
+  | 'formatter'
   | 'worker'
   | 'reducer';
 
@@ -303,7 +307,15 @@ export type RepoReviewTurnPhase =
   | 'timeout_followup'
   | 'main_agent_review'
   | 'main_agent_fallback_review'
-  | 'reducer';
+  | 'reducer'
+  | 'formatter';
+
+export type RepoReviewTurnOwnerKind =
+  | 'main'
+  | 'subagent'
+  | 'worker'
+  | 'reducer'
+  | 'formatter';
 
 export interface RepoReviewProgressStep {
   id: string;
@@ -583,6 +595,9 @@ export interface RepoReviewAssistantTurn {
   clientKey?: string;
   groupKey?: string;
   groupLabel?: string;
+  parentToolCallId?: string;
+  ownerKind?: RepoReviewTurnOwnerKind;
+  ownerLabel?: string;
   phase?: RepoReviewTurnPhase;
   timestamp: string;
   items: AgentTurnItemPayload[];
@@ -785,10 +800,17 @@ export const REPO_REVIEW_AUTO_SYNC_LOOP_INTERVAL_MS = 60_000;
 export const REPO_REVIEW_ALL_BRANCHES_ACTIVE_WINDOW_DAYS = 14;
 export const REPO_REVIEW_SYNC_PREPARATION_CONCURRENCY = 3;
 export const REPO_REVIEW_FULL_FILE_REVIEW_CONCURRENCY = 4;
-export const REPO_REVIEW_REMOTE_WORKSPACE_CLONE_TIMEOUT_MS =
-  Math.max(10_000, Number(process.env.NANOCLAW_REVIEW_CLONE_TIMEOUT_MS) || 120_000);
-export const REPO_REVIEW_REMOTE_WORKSPACE_GIT_TIMEOUT_MS =
-  Math.max(5_000, Number(process.env.NANOCLAW_REVIEW_GIT_TIMEOUT_MS) || 30_000);
+export const REPO_REVIEW_REMOTE_WORKSPACE_CLONE_TIMEOUT_MS = Math.max(
+  10_000,
+  Number(process.env.NANOCLAW_REVIEW_CLONE_TIMEOUT_MS) || 120_000,
+);
+export const REPO_REVIEW_REMOTE_WORKSPACE_GIT_TIMEOUT_MS = Math.max(
+  5_000,
+  Number(process.env.NANOCLAW_REVIEW_GIT_TIMEOUT_MS) || 30_000,
+);
 export const REPO_REVIEW_REMOTE_WORKSPACE_CLONE_DEPTH = 64;
-export const REPO_REVIEW_PERMISSION_DENIED_MESSAGE =
-  t('errors.auto_398a59', {}, undefined);
+export const REPO_REVIEW_PERMISSION_DENIED_MESSAGE = t(
+  'errors.auto_398a59',
+  {},
+  undefined,
+);

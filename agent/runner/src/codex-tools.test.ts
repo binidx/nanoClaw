@@ -58,10 +58,7 @@ import {
   buildCodexResponsesTools,
   executeTool,
 } from './codex-tools.js';
-import {
-  executeCodexMcpTool,
-  listCodexMcpTools,
-} from './codex-mcp-tools.js';
+import { executeCodexMcpTool, listCodexMcpTools } from './codex-mcp-tools.js';
 import { setApprovalEventEmitter } from './mutation-approval.js';
 import { spawn, spawnSync } from 'child_process';
 
@@ -85,7 +82,24 @@ const rgAvailable = (() => {
 
 const createdPaths: string[] = [];
 
+function denyApprovalRequestsForTest() {
+  setApprovalEventEmitter({
+    emitApprovalRequest: (request) => {
+      const responsesDir = path.join(testIpcDir, 'approvals', 'responses');
+      fs.mkdirSync(responsesDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(responsesDir, `${request.id}.json`),
+        JSON.stringify({
+          decision: 'deny',
+          resolvedAt: new Date().toISOString(),
+        }),
+      );
+    },
+  });
+}
+
 afterEach(() => {
+  setApprovalEventEmitter(null);
   vi.unstubAllEnvs();
   vi.clearAllMocks();
   __testing.resetManagedSubagentsForTests();
@@ -148,6 +162,33 @@ describe('codex web tool selection', () => {
 
     expect(functionToolNames).toContain('search_web');
     expect(functionToolNames).toContain('fetch_url');
+  });
+
+  it('hides all local tools when toolPolicy is none', async () => {
+    const responsesTools = await buildCodexResponsesTools({
+      toolPolicy: 'none',
+    });
+    const chatTools = await buildCodexOpenAiTools({ toolPolicy: 'none' });
+
+    expect(responsesTools).toEqual([]);
+    expect(chatTools).toEqual([]);
+  });
+
+  it('keeps only read-only tools when toolPolicy is readonly', async () => {
+    vi.stubEnv('NANOCLAW_WEB_SEARCH_ENABLED', 'true');
+    vi.stubEnv('NANOCLAW_SUBAGENTS_ENABLED', '1');
+    vi.stubEnv('NANOCLAW_SUBAGENTS_MAX_DEPTH', '2');
+
+    const tools = await buildCodexOpenAiTools({ toolPolicy: 'readonly' });
+    const names = tools.map((tool) => tool.function.name);
+
+    expect(names).toContain('bash');
+    expect(names).toContain('read_file');
+    expect(names).toContain('grep');
+    expect(names).not.toContain('write_file');
+    expect(names).not.toContain('edit_file');
+    expect(names).not.toContain('Agent');
+    expect(names).not.toContain('TeamCreate');
   });
 });
 
@@ -229,6 +270,51 @@ describe('codex subagent tool gating', () => {
     expect(names).not.toContain('Agent');
     expect(names).toContain('SendMessage');
     expect(names).toContain('TeamDelete');
+  });
+});
+
+describe('codex bash workspace path mapping', () => {
+  it('executes commands that reference /workspace/extra inside the command body', async () => {
+    const tempRoot = path.join(process.cwd(), 'tmp');
+    fs.mkdirSync(tempRoot, { recursive: true });
+    const tempDir = fs.mkdtempSync(path.join(tempRoot, 'nanoclaw-extra-'));
+    createdPaths.push(tempDir);
+    vi.stubEnv('NANOCLAW_EXTRA_DIR', tempDir);
+
+    const output = await executeTool(
+      'bash',
+      { command: 'cd /workspace/extra && pwd' },
+      process.cwd(),
+      {
+        agentInput: {
+          groupFolder: 'review-room',
+          chatJid: 'review@g.us',
+          isMain: false,
+          workingDirectory: process.cwd(),
+          toolPolicy: 'readonly',
+        },
+      },
+    );
+
+    expect(output.trim()).toBe(tempDir);
+  });
+
+  it('rejects tools disabled by toolPolicy at execution time', async () => {
+    const output = await executeTool(
+      'read_file',
+      { file_path: 'package.json' },
+      process.cwd(),
+      {
+        agentInput: {
+          groupFolder: 'review-room',
+          chatJid: 'review@g.us',
+          isMain: false,
+          toolPolicy: 'none',
+        },
+      },
+    );
+
+    expect(output).toContain('disabled by the current tool policy (none)');
   });
 });
 
@@ -564,7 +650,9 @@ describe('codex persistent subagent tools', () => {
       { prompt: 'Inspect another module', name: 'Builder', keep_alive: true },
       process.cwd(),
     );
-    expect(secondCreateOutput).toContain('Maximum active sub-agent limit reached');
+    expect(secondCreateOutput).toContain(
+      'Maximum active sub-agent limit reached',
+    );
   });
 });
 
@@ -588,7 +676,7 @@ describe('codex tool output limits', () => {
 
     expect(output.length).toBeLessThanOrEqual(250_000);
     expect(output).toContain('[read_file output truncated:');
-    expect(output).toContain('chars → ~250000');
+    expect(output).toContain('→ ~62500 tokens');
   });
 });
 
@@ -610,6 +698,7 @@ describe('codex workspace path enforcement', () => {
 
     vi.stubEnv('NANOCLAW_EXTRA_DIR', extraRoot);
     vi.stubEnv('NANOCLAW_ALLOWED_DIRS', JSON.stringify([sharedDir]));
+    vi.stubEnv('NANOCLAW_ACCESS_MODE', 'allowlist');
 
     const output = await executeTool(
       'read_file',
@@ -642,6 +731,8 @@ describe('codex workspace path enforcement', () => {
 
     vi.stubEnv('NANOCLAW_EXTRA_DIR', extraRoot);
     vi.stubEnv('NANOCLAW_ALLOWED_DIRS', JSON.stringify([allowedDir]));
+    vi.stubEnv('NANOCLAW_ACCESS_MODE', 'allowlist');
+    denyApprovalRequestsForTest();
 
     const output = await executeTool(
       'read_file',
@@ -670,6 +761,7 @@ describe('codex workspace path enforcement', () => {
 
     vi.stubEnv('NANOCLAW_ALLOWED_DIRS', JSON.stringify([allowedDir]));
     vi.stubEnv('NANOCLAW_PROJECT_ROOT', allowedDir);
+    vi.stubEnv('NANOCLAW_ACCESS_MODE', 'allowlist');
 
     const output = await executeTool(
       'bash',
@@ -697,7 +789,10 @@ describe('codex workspace path enforcement', () => {
     fs.writeFileSync(path.join(groupDir, 'note.txt'), 'group note', 'utf8');
 
     vi.stubEnv('NANOCLAW_GROUP_DIR', groupDir);
+    vi.stubEnv('NANOCLAW_PROJECT_ROOT', '');
     vi.stubEnv('NANOCLAW_ALLOWED_DIRS', JSON.stringify([groupDir]));
+    vi.stubEnv('NANOCLAW_ACCESS_MODE', 'allowlist');
+    denyApprovalRequestsForTest();
 
     const output = await executeTool(
       'read_file',
@@ -883,31 +978,38 @@ describe('codex tool execution coverage', () => {
     expect(output.trim()).toBe('(no matches)');
   });
 
-  it.skipIf(!rgAvailable)('grep returns matching lines for a regex pattern', async () => {
-    const filePath = path.join(tmpDir, 'sample.log');
-    fs.writeFileSync(
-      filePath,
-      ['line one', 'needle here', 'line three'].join('\n'),
-      'utf8',
-    );
-    const output = await executeTool(
-      'grep',
-      { pattern: 'needle', path: tmpDir },
-      tmpDir,
-    );
-    expect(output).toContain('needle here');
-  });
+  it.skipIf(!rgAvailable)(
+    'grep returns matching lines for a regex pattern',
+    async () => {
+      const filePath = path.join(tmpDir, 'sample.log');
+      fs.writeFileSync(
+        filePath,
+        ['line one', 'needle here', 'line three'].join('\n'),
+        'utf8',
+      );
+      const output = await executeTool(
+        'grep',
+        { pattern: 'needle', path: tmpDir },
+        tmpDir,
+      );
+      expect(output).toContain('needle here');
+    },
+  );
 
   it.skipIf(!rgAvailable)(
     'grep returns (no matches) when the pattern does not match',
     async () => {
-    fs.writeFileSync(path.join(tmpDir, 'empty-ish.txt'), 'nothing to see', 'utf8');
-    const output = await executeTool(
-      'grep',
-      { pattern: 'zzzznotfound', path: tmpDir },
-      tmpDir,
-    );
-    expect(output.trim()).toBe('(no matches)');
+      fs.writeFileSync(
+        path.join(tmpDir, 'empty-ish.txt'),
+        'nothing to see',
+        'utf8',
+      );
+      const output = await executeTool(
+        'grep',
+        { pattern: 'zzzznotfound', path: tmpDir },
+        tmpDir,
+      );
+      expect(output.trim()).toBe('(no matches)');
     },
   );
 
@@ -925,7 +1027,11 @@ describe('codex tool execution coverage', () => {
 
   it('list_dir walks nested directories when depth > 1', async () => {
     fs.mkdirSync(path.join(tmpDir, 'outer', 'inner'), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, 'outer', 'inner', 'leaf.txt'), 'x', 'utf8');
+    fs.writeFileSync(
+      path.join(tmpDir, 'outer', 'inner', 'leaf.txt'),
+      'x',
+      'utf8',
+    );
     const output = await executeTool(
       'list_dir',
       { dir_path: tmpDir, depth: 3 },
@@ -941,7 +1047,11 @@ describe('codex tool execution coverage', () => {
     async () => {
       const tsPath = path.join(tmpDir, 'valid.ts');
       fs.writeFileSync(tsPath, 'export const value: number = 1;\n', 'utf8');
-      const output = await executeTool('read_lints', { paths: [tsPath] }, tmpDir);
+      const output = await executeTool(
+        'read_lints',
+        { paths: [tsPath] },
+        tmpDir,
+      );
       expect(typeof output).toBe('string');
       expect(output.length).toBeGreaterThan(0);
     },
@@ -950,7 +1060,11 @@ describe('codex tool execution coverage', () => {
   it('read_lints reports no lint targets when paths are missing on disk', async () => {
     const missing = path.join(tmpDir, 'missing.ts');
     expect(fs.existsSync(missing)).toBe(false);
-    const output = await executeTool('read_lints', { paths: [missing] }, tmpDir);
+    const output = await executeTool(
+      'read_lints',
+      { paths: [missing] },
+      tmpDir,
+    );
     expect(output).toContain('No lint issues found');
   });
 
@@ -974,21 +1088,26 @@ describe('codex tool execution coverage', () => {
     expect(output).toContain('query');
   });
 
-  it.skipIf(!rgAvailable)('grep output truncation uses the per-tool 100K limit', async () => {
-    const filePath = path.join(tmpDir, 'wide.log');
-    const lineLength = 400;
-    const lineCount = 450;
-    const body = Array.from({ length: lineCount }, (_, i) =>
-      `${String(i).padStart(5, '0')}:HIT:${'x'.repeat(Math.max(0, lineLength - 10))}`,
-    ).join('\n');
-    fs.writeFileSync(filePath, `${body}\n`, 'utf8');
-    const output = await executeTool(
-      'grep',
-      { pattern: 'HIT', path: filePath, head_limit: 500 },
-      tmpDir,
-    );
-    expect(output).toContain('[grep output truncated:');
-    expect(output).toContain('~100000');
-    expect(output).not.toContain('~250000');
-  });
+  it.skipIf(!rgAvailable)(
+    'grep output truncation uses the per-tool 100K limit',
+    async () => {
+      const filePath = path.join(tmpDir, 'wide.log');
+      const lineLength = 400;
+      const lineCount = 450;
+      const body = Array.from(
+        { length: lineCount },
+        (_, i) =>
+          `${String(i).padStart(5, '0')}:HIT:${'x'.repeat(Math.max(0, lineLength - 10))}`,
+      ).join('\n');
+      fs.writeFileSync(filePath, `${body}\n`, 'utf8');
+      const output = await executeTool(
+        'grep',
+        { pattern: 'HIT', path: filePath, head_limit: 500 },
+        tmpDir,
+      );
+      expect(output).toContain('[grep output truncated:');
+      expect(output).toContain('~25000');
+      expect(output).not.toContain('~62500');
+    },
+  );
 });

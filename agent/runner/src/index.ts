@@ -16,7 +16,12 @@
 
 import fs from 'fs';
 import path from 'path';
-import { query, HookCallback, PreCompactHookInput, PreToolUseHookInput } from '@anthropic-ai/claude-agent-sdk';
+import {
+  query,
+  HookCallback,
+  PreCompactHookInput,
+  PreToolUseHookInput,
+} from '@anthropic-ai/claude-agent-sdk';
 import { fileURLToPath } from 'url';
 import {
   buildUploadSystemPromptAppend,
@@ -240,9 +245,24 @@ type AgentTurnItemPayload =
 
 type AgentTurnEventPayload =
   | { type: 'turn.started'; turnId: string; timestamp: string }
-  | { type: 'item.started'; turnId: string; item: AgentTurnItemPayload; timestamp: string }
-  | { type: 'item.updated'; turnId: string; item: AgentTurnItemPayload; timestamp: string }
-  | { type: 'item.completed'; turnId: string; item: AgentTurnItemPayload; timestamp: string }
+  | {
+      type: 'item.started';
+      turnId: string;
+      item: AgentTurnItemPayload;
+      timestamp: string;
+    }
+  | {
+      type: 'item.updated';
+      turnId: string;
+      item: AgentTurnItemPayload;
+      timestamp: string;
+    }
+  | {
+      type: 'item.completed';
+      turnId: string;
+      item: AgentTurnItemPayload;
+      timestamp: string;
+    }
   | { type: 'turn.completed'; turnId: string; timestamp: string }
   | { type: 'turn.failed'; turnId: string; error: string; timestamp: string };
 
@@ -352,7 +372,10 @@ interface IpcQueuedMessage {
 }
 
 function getMaxToolIterations(secrets: Record<string, string>): number {
-  const raw = secrets.CODEX_MAX_TOOL_ITERATIONS || process.env.CODEX_MAX_TOOL_ITERATIONS || '';
+  const raw =
+    secrets.CODEX_MAX_TOOL_ITERATIONS ||
+    process.env.CODEX_MAX_TOOL_ITERATIONS ||
+    '';
   const parsed = Number.parseInt(raw, 10);
   if (!Number.isFinite(parsed)) return 120;
   return Math.max(4, Math.min(parsed, 500));
@@ -388,7 +411,10 @@ function resolveAgentWorkingDirectory(agentInput: AgentRunInput): string {
     { prefix: '/workspace/global', hostRoot: GLOBAL_DIR },
     { prefix: '/workspace/extra', hostRoot: EXTRA_DIR },
     { prefix: '/workspace/uploads', hostRoot: UPLOADS_DIR },
-    { prefix: '/workspace/project', hostRoot: process.env.NANOCLAW_PROJECT_ROOT || '' },
+    {
+      prefix: '/workspace/project',
+      hostRoot: process.env.NANOCLAW_PROJECT_ROOT || '',
+    },
   ].filter((entry) => entry.hostRoot);
 
   for (const mapping of mappings) {
@@ -396,7 +422,9 @@ function resolveAgentWorkingDirectory(agentInput: AgentRunInput): string {
       normalized === mapping.prefix ||
       normalized.startsWith(`${mapping.prefix}/`)
     ) {
-      const suffix = normalized.slice(mapping.prefix.length).replace(/^\/+/, '');
+      const suffix = normalized
+        .slice(mapping.prefix.length)
+        .replace(/^\/+/, '');
       return suffix
         ? path.join(mapping.hostRoot, ...suffix.split('/'))
         : mapping.hostRoot;
@@ -439,7 +467,9 @@ class MessageStream {
         yield this.queue.shift()!;
       }
       if (this.done) return;
-      await new Promise<void>(r => { this.waiting = r; });
+      await new Promise<void>((r) => {
+        this.waiting = r;
+      });
       this.waiting = null;
     }
   }
@@ -449,7 +479,9 @@ async function readStdin(): Promise<string> {
   return new Promise((resolve, reject) => {
     let data = '';
     process.stdin.setEncoding('utf8');
-    process.stdin.on('data', chunk => { data += chunk; });
+    process.stdin.on('data', (chunk) => {
+      data += chunk;
+    });
     process.stdin.on('end', () => resolve(data));
     process.stdin.on('error', reject);
   });
@@ -516,8 +548,13 @@ function buildClaudeSystemPromptAppend(
   if (agentInput?.suppressDefaultSystemPrompt) {
     return '';
   }
-  const normalizedPrompt = promptInput ? normalizePromptInput(promptInput) : null;
-  if (normalizedPrompt?.stableSystemPrompt || normalizedPrompt?.volatileSystemPrompt) {
+  const normalizedPrompt = promptInput
+    ? normalizePromptInput(promptInput)
+    : null;
+  if (
+    normalizedPrompt?.stableSystemPrompt ||
+    normalizedPrompt?.volatileSystemPrompt
+  ) {
     return [
       normalizedPrompt.stableSystemPrompt,
       normalizedPrompt.volatileSystemPrompt,
@@ -542,7 +579,8 @@ function buildClaudeSystemPromptAppend(
 
 function formatEventBody(value: unknown, limit = 400): string | undefined {
   if (value == null) return undefined;
-  const text = typeof value === 'string' ? value : JSON.stringify(value, null, 2);
+  const text =
+    typeof value === 'string' ? value : JSON.stringify(value, null, 2);
   const trimmed = text.trim();
   return trimmed ? truncateForEvent(trimmed, limit) : undefined;
 }
@@ -552,14 +590,17 @@ function parseJsonObject(value: string | undefined): Record<string, unknown> {
   try {
     const parsed = JSON.parse(value);
     return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
-      ? parsed as Record<string, unknown>
+      ? (parsed as Record<string, unknown>)
       : {};
   } catch {
     return {};
   }
 }
 
-function getStringArg(args: Record<string, unknown>, ...keys: string[]): string {
+function getStringArg(
+  args: Record<string, unknown>,
+  ...keys: string[]
+): string {
   for (const key of keys) {
     const value = args[key];
     if (typeof value === 'string' && value.trim()) return value.trim();
@@ -576,7 +617,9 @@ function isSubagentToolName(toolName: string): boolean {
   );
 }
 
-function parseToolArgs(rawArgs: string | Record<string, unknown> | undefined): Record<string, unknown> {
+function parseToolArgs(
+  rawArgs: string | Record<string, unknown> | undefined,
+): Record<string, unknown> {
   if (!rawArgs) return {};
   return typeof rawArgs === 'string' ? parseJsonObject(rawArgs) : rawArgs;
 }
@@ -591,8 +634,14 @@ function buildSubagentInfo(
   const args = parseToolArgs(rawArgs);
   const task = getStringArg(args, 'prompt', 'task', 'description');
   const agentName =
-    getStringArg(args, 'name', 'label', 'description', 'agentName', 'agent_id') ||
-    (toolName === 'TeamDelete' ? '子代理清理' : '子代理');
+    getStringArg(
+      args,
+      'name',
+      'label',
+      'description',
+      'agentName',
+      'agent_id',
+    ) || (toolName === 'TeamDelete' ? '子代理清理' : '子代理');
   const runtimeId =
     update?.runtimeId || getStringArg(args, 'agent_id', 'runtime_id');
   const provider =
@@ -601,7 +650,8 @@ function buildSubagentInfo(
       ? process.env.AI_PROVIDER
       : undefined);
   const topologyRole = update?.topologyRole || update?.role;
-  const workProfile = update?.workProfile ||
+  const workProfile =
+    update?.workProfile ||
     (() => {
       const rawValue =
         getStringArg(args, 'agent_type') || getStringArg(args, 'role');
@@ -674,14 +724,10 @@ function mergeSubagentInfo(
     topologyRole: next.topologyRole || existing.topologyRole,
     workProfile: next.workProfile || existing.workProfile,
     role:
-      next.topologyRole ||
-      next.role ||
-      existing.topologyRole ||
-      existing.role,
+      next.topologyRole || next.role || existing.topologyRole || existing.role,
     controlScope: next.controlScope || existing.controlScope,
     mode: next.mode || existing.mode,
-    depth:
-      typeof next.depth === 'number' ? next.depth : existing.depth,
+    depth: typeof next.depth === 'number' ? next.depth : existing.depth,
     chatJid: next.chatJid || existing.chatJid,
     requestCount:
       typeof next.requestCount === 'number'
@@ -699,16 +745,26 @@ function mergeSubagentInfo(
 function summarizeBashPurpose(command: string): string | null {
   const normalized = command.trim().replace(/\s+/g, ' ').toLowerCase();
   if (!normalized) return null;
-  if (normalized.startsWith('git status --short') || normalized === 'git status -s') {
+  if (
+    normalized.startsWith('git status --short') ||
+    normalized === 'git status -s'
+  ) {
     return '检查工作区未提交改动';
   }
   if (normalized.includes('git diff --stat')) {
     return '统计本地改动规模';
   }
-  if (normalized.includes('git rev-list') && normalized.includes('--left-right') && normalized.includes('--count')) {
+  if (
+    normalized.includes('git rev-list') &&
+    normalized.includes('--left-right') &&
+    normalized.includes('--count')
+  ) {
     return '确认当前分支与远端的同步状态';
   }
-  if (normalized.startsWith('git status -sb') || normalized.startsWith('git branch -vv')) {
+  if (
+    normalized.startsWith('git status -sb') ||
+    normalized.startsWith('git branch -vv')
+  ) {
     return '确认当前分支与远端的同步状态';
   }
   if (normalized.startsWith('git log')) {
@@ -720,10 +776,19 @@ function summarizeBashPurpose(command: string): string | null {
   if (normalized.startsWith('ls') || normalized.startsWith('find ')) {
     return '查看目录结构';
   }
-  if (normalized.startsWith('cat ') || normalized.startsWith('sed ') || normalized.startsWith('head ') || normalized.startsWith('tail ')) {
+  if (
+    normalized.startsWith('cat ') ||
+    normalized.startsWith('sed ') ||
+    normalized.startsWith('head ') ||
+    normalized.startsWith('tail ')
+  ) {
     return '读取文件内容';
   }
-  if (normalized.startsWith('npm test') || normalized.startsWith('pnpm test') || normalized.startsWith('yarn test')) {
+  if (
+    normalized.startsWith('npm test') ||
+    normalized.startsWith('pnpm test') ||
+    normalized.startsWith('yarn test')
+  ) {
     return '运行测试验证当前改动';
   }
   if (normalized.startsWith('git diff')) {
@@ -732,7 +797,10 @@ function summarizeBashPurpose(command: string): string | null {
   return '执行命令并收集信息';
 }
 
-function summarizeToolPurpose(toolName: string, args: Record<string, unknown>): string | null {
+function summarizeToolPurpose(
+  toolName: string,
+  args: Record<string, unknown>,
+): string | null {
   switch (toolName) {
     case 'bash':
       return summarizeBashPurpose(getStringArg(args, 'command'));
@@ -767,9 +835,7 @@ function summarizeToolPurpose(toolName: string, args: Record<string, unknown>): 
   }
 }
 
-const NOISY_TOOL_PURPOSES = new Set([
-  '执行命令并收集信息',
-]);
+const NOISY_TOOL_PURPOSES = new Set(['执行命令并收集信息']);
 
 const NOISY_TOOL_RESULTS = new Set([
   '已经拿到命令执行结果',
@@ -784,13 +850,19 @@ const NOISY_TOOL_RESULTS = new Set([
   '没有找到匹配的文件',
 ]);
 
-function summarizeToolPurposes(calls: Array<{ name: string; args: Record<string, unknown> }>): string | null {
-  const purposes = [...new Set(calls
-    .map((entry) => summarizeToolPurpose(entry.name, entry.args))
-    .filter((value): value is string => {
-      if (!value) return false;
-      return !NOISY_TOOL_PURPOSES.has(value);
-    }))];
+function summarizeToolPurposes(
+  calls: Array<{ name: string; args: Record<string, unknown> }>,
+): string | null {
+  const purposes = [
+    ...new Set(
+      calls
+        .map((entry) => summarizeToolPurpose(entry.name, entry.args))
+        .filter((value): value is string => {
+          if (!value) return false;
+          return !NOISY_TOOL_PURPOSES.has(value);
+        }),
+    ),
+  ];
 
   if (purposes.length === 0) return null;
   if (purposes.length === 1) return purposes[0];
@@ -798,7 +870,10 @@ function summarizeToolPurposes(calls: Array<{ name: string; args: Record<string,
   return `${purposes.slice(0, 2).join('、')}等操作`;
 }
 
-function buildPlanningReasoningText(toolPurposeSummary: string | null, toolCount: number): string | null {
+function buildPlanningReasoningText(
+  toolPurposeSummary: string | null,
+  toolCount: number,
+): string | null {
   if (toolPurposeSummary) {
     return `我先${toolPurposeSummary}，确认情况后再继续处理`;
   }
@@ -813,14 +888,25 @@ function summarizePromptForReasoning(_prompt: string): string {
 function summarizeBashResult(command: string, output: string): string | null {
   const normalized = command.trim().replace(/\s+/g, ' ').toLowerCase();
   const trimmed = output.trim();
-  if (normalized.startsWith('git status --short') || normalized === 'git status -s') {
+  if (
+    normalized.startsWith('git status --short') ||
+    normalized === 'git status -s'
+  ) {
     const count = trimmed ? trimmed.split(/\r?\n/).filter(Boolean).length : 0;
-    return count > 0 ? `发现本地仍有 ${count} 个未提交改动条目` : '工作区没有未提交改动';
+    return count > 0
+      ? `发现本地仍有 ${count} 个未提交改动条目`
+      : '工作区没有未提交改动';
   }
   if (normalized.includes('git diff --stat')) {
-    return trimmed ? '已经拿到本地改动涉及的文件与改动规模' : '本地没有可统计的差异';
+    return trimmed
+      ? '已经拿到本地改动涉及的文件与改动规模'
+      : '本地没有可统计的差异';
   }
-  if (normalized.includes('git rev-list') && normalized.includes('--left-right') && normalized.includes('--count')) {
+  if (
+    normalized.includes('git rev-list') &&
+    normalized.includes('--left-right') &&
+    normalized.includes('--count')
+  ) {
     const match = trimmed.match(/^(\d+)\s+(\d+)$/);
     if (match) {
       const behind = Number(match[1]);
@@ -830,7 +916,10 @@ function summarizeBashResult(command: string, output: string): string | null {
     }
     return '已经确认当前分支与远端的同步状态';
   }
-  if (normalized.startsWith('git status -sb') || normalized.startsWith('git branch -vv')) {
+  if (
+    normalized.startsWith('git status -sb') ||
+    normalized.startsWith('git branch -vv')
+  ) {
     return '已经确认当前分支与远端的同步状态';
   }
   if (normalized.startsWith('git diff')) {
@@ -845,13 +934,22 @@ function summarizeBashResult(command: string, output: string): string | null {
   if (normalized.startsWith('ls') || normalized.startsWith('find ')) {
     return '已经拿到目录结构';
   }
-  if (normalized.startsWith('cat ') || normalized.startsWith('sed ') || normalized.startsWith('head ') || normalized.startsWith('tail ')) {
+  if (
+    normalized.startsWith('cat ') ||
+    normalized.startsWith('sed ') ||
+    normalized.startsWith('head ') ||
+    normalized.startsWith('tail ')
+  ) {
     return '已经读取目标文件内容';
   }
   return null;
 }
 
-function summarizeToolResult(toolName: string, args: Record<string, unknown>, output: string): string | null {
+function summarizeToolResult(
+  toolName: string,
+  args: Record<string, unknown>,
+  output: string,
+): string | null {
   switch (toolName) {
     case 'bash':
       return summarizeBashResult(getStringArg(args, 'command'), output);
@@ -862,32 +960,33 @@ function summarizeToolResult(toolName: string, args: Record<string, unknown>, ou
       return null;
     case 'Agent':
     case 'TeamCreate':
-      return /^Error:/i.test(output)
-        ? '子代理执行失败'
-        : '已经拿到子代理结果';
+      return /^Error:/i.test(output) ? '子代理执行失败' : '已经拿到子代理结果';
     case 'SendMessage':
       return /^Error:/i.test(output)
         ? '子代理继续协作失败'
         : '已经拿到子代理回复';
     case 'TeamDelete':
-      return /^Error:/i.test(output)
-        ? '子代理停止失败'
-        : '子代理已停止';
+      return /^Error:/i.test(output) ? '子代理停止失败' : '子代理已停止';
     default:
       return null;
   }
 }
 
 function summarizeToolResults(results: Array<string | null>): string | null {
-  const summaries = [...new Set(results.filter((value): value is string => {
-    if (!value) return false;
-    return !NOISY_TOOL_RESULTS.has(value);
-  }))];
+  const summaries = [
+    ...new Set(
+      results.filter((value): value is string => {
+        if (!value) return false;
+        return !NOISY_TOOL_RESULTS.has(value);
+      }),
+    ),
+  ];
   if (summaries.length === 0) {
     return null;
   }
   if (summaries.length === 1) return `${summaries[0]}，我继续往下分析`;
-  if (summaries.length === 2) return `${summaries[0]}；${summaries[1]}。我继续整理后续结论`;
+  if (summaries.length === 2)
+    return `${summaries[0]}；${summaries[1]}。我继续整理后续结论`;
   return `${summaries.slice(0, 2).join('；')}；其余检查也已完成，我继续整理结论`;
 }
 
@@ -919,7 +1018,9 @@ function emitTurnEvent(event: {
   });
 }
 
-function emitApprovalRequest(approvalRequest: AgentApprovalRequestPayload): void {
+function emitApprovalRequest(
+  approvalRequest: AgentApprovalRequestPayload,
+): void {
   writeOutput({
     status: 'success',
     result: null,
@@ -968,12 +1069,14 @@ class CodexTurnEventEmitter {
 
   private reasoningSeq = 0;
   private assistantSeq = 0;
-  private activeReasoning: { id: string; title: string; text?: string } | null = null;
+  private activeReasoning: { id: string; title: string; text?: string } | null =
+    null;
   private activeAssistant: { id: string; text: string } | null = null;
   private finished = false;
 
   constructor(turnId?: string) {
-    this.turnId = turnId || `turn_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    this.turnId =
+      turnId || `turn_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     emitTurnEvent({ type: 'turn.started', turnId: this.turnId });
   }
 
@@ -1000,7 +1103,10 @@ class CodexTurnEventEmitter {
     if (!this.activeReasoning) return;
     const nextTitle = title ?? this.activeReasoning.title;
     const nextText = text;
-    if (this.activeReasoning.title === nextTitle && this.activeReasoning.text === nextText) {
+    if (
+      this.activeReasoning.title === nextTitle &&
+      this.activeReasoning.text === nextText
+    ) {
       return;
     }
     this.activeReasoning = {
@@ -1216,7 +1322,8 @@ interface ClaudeStreamEvent {
 }
 
 function extractClaudeAssistantText(message: unknown): string {
-  const content = (message as { message?: { content?: ClaudeContentBlock[] } })?.message?.content;
+  const content = (message as { message?: { content?: ClaudeContentBlock[] } })
+    ?.message?.content;
   if (!Array.isArray(content)) return '';
   return content
     .filter(
@@ -1231,7 +1338,8 @@ function extractClaudeAssistantText(message: unknown): string {
 function extractClaudeToolUseBlocks(
   message: unknown,
 ): Array<{ id: string; name: string; input?: unknown }> {
-  const content = (message as { message?: { content?: ClaudeContentBlock[] } })?.message?.content;
+  const content = (message as { message?: { content?: ClaudeContentBlock[] } })
+    ?.message?.content;
   if (!Array.isArray(content)) return [];
   return content
     .filter(
@@ -1247,7 +1355,10 @@ function extractClaudeToolUseBlocks(
     }));
 }
 
-function getSessionSummary(sessionId: string, transcriptPath: string): string | null {
+function getSessionSummary(
+  sessionId: string,
+  transcriptPath: string,
+): string | null {
   const projectDir = path.dirname(transcriptPath);
   const indexPath = path.join(projectDir, 'sessions-index.json');
 
@@ -1257,13 +1368,17 @@ function getSessionSummary(sessionId: string, transcriptPath: string): string | 
   }
 
   try {
-    const index: SessionsIndex = JSON.parse(fs.readFileSync(indexPath, 'utf-8'));
-    const entry = index.entries.find(e => e.sessionId === sessionId);
+    const index: SessionsIndex = JSON.parse(
+      fs.readFileSync(indexPath, 'utf-8'),
+    );
+    const entry = index.entries.find((e) => e.sessionId === sessionId);
     if (entry?.summary) {
       return entry.summary;
     }
   } catch (err) {
-    log(`Failed to read sessions index: ${err instanceof Error ? err.message : String(err)}`);
+    log(
+      `Failed to read sessions index: ${err instanceof Error ? err.message : String(err)}`,
+    );
   }
 
   return null;
@@ -1302,12 +1417,18 @@ function createPreCompactHook(assistantName?: string): HookCallback {
       const filename = `${date}-${name}.md`;
       const filePath = path.join(conversationsDir, filename);
 
-      const markdown = formatTranscriptMarkdown(messages, summary, assistantName);
+      const markdown = formatTranscriptMarkdown(
+        messages,
+        summary,
+        assistantName,
+      );
       fs.writeFileSync(filePath, markdown);
 
       log(`Archived conversation to ${filePath}`);
     } catch (err) {
-      log(`Failed to archive transcript: ${err instanceof Error ? err.message : String(err)}`);
+      log(
+        `Failed to archive transcript: ${err instanceof Error ? err.message : String(err)}`,
+      );
     }
 
     return {};
@@ -1339,17 +1460,22 @@ function resolveAgentToolPolicy(agentInput: AgentRunInput): AgentToolPolicy {
     : 'full';
 }
 
-function buildClaudeAllowedTools(
-  input: {
-    agentInput: AgentRunInput;
-    subagentsEnabled: boolean;
-    canCreateSubagents: boolean;
-    allowedMcpTools: string[];
-  },
-): string[] {
+function buildClaudeAllowedTools(input: {
+  agentInput: AgentRunInput;
+  subagentsEnabled: boolean;
+  canCreateSubagents: boolean;
+  allowedMcpTools: string[];
+}): string[] {
   const toolPolicy = resolveAgentToolPolicy(input.agentInput);
   if (toolPolicy === 'none') return [];
-  const readonlyTools = ['Bash', 'Read', 'Glob', 'Grep', 'WebSearch', 'WebFetch'];
+  const readonlyTools = [
+    'Bash',
+    'Read',
+    'Glob',
+    'Grep',
+    'WebSearch',
+    'WebFetch',
+  ];
   if (toolPolicy === 'readonly') return readonlyTools;
   return [
     'Bash',
@@ -1529,9 +1655,12 @@ function parseTranscript(content: string): ParsedMessage[] {
     try {
       const entry = JSON.parse(line);
       if (entry.type === 'user' && entry.message?.content) {
-        const text = typeof entry.message.content === 'string'
-          ? entry.message.content
-          : entry.message.content.map((c: { text?: string }) => c.text || '').join('');
+        const text =
+          typeof entry.message.content === 'string'
+            ? entry.message.content
+            : entry.message.content
+                .map((c: { text?: string }) => c.text || '')
+                .join('');
         if (text) messages.push({ role: 'user', content: text });
       } else if (entry.type === 'assistant' && entry.message?.content) {
         const textParts = entry.message.content
@@ -1540,22 +1669,26 @@ function parseTranscript(content: string): ParsedMessage[] {
         const text = textParts.join('');
         if (text) messages.push({ role: 'assistant', content: text });
       }
-    } catch {
-    }
+    } catch {}
   }
 
   return messages;
 }
 
-function formatTranscriptMarkdown(messages: ParsedMessage[], title?: string | null, assistantName?: string): string {
+function formatTranscriptMarkdown(
+  messages: ParsedMessage[],
+  title?: string | null,
+  assistantName?: string,
+): string {
   const now = new Date();
-  const formatDateTime = (d: Date) => d.toLocaleString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-    hour12: true
-  });
+  const formatDateTime = (d: Date) =>
+    d.toLocaleString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+    });
 
   const lines: string[] = [];
   lines.push(`# ${title || 'Conversation'}`);
@@ -1566,10 +1699,11 @@ function formatTranscriptMarkdown(messages: ParsedMessage[], title?: string | nu
   lines.push('');
 
   for (const msg of messages) {
-    const sender = msg.role === 'user' ? 'User' : (assistantName || 'Assistant');
-    const content = msg.content.length > 2000
-      ? msg.content.slice(0, 2000) + '...'
-      : msg.content;
+    const sender = msg.role === 'user' ? 'User' : assistantName || 'Assistant';
+    const content =
+      msg.content.length > 2000
+        ? msg.content.slice(0, 2000) + '...'
+        : msg.content;
     lines.push(`**${sender}**: ${content}`);
     lines.push('');
   }
@@ -1582,7 +1716,11 @@ function formatTranscriptMarkdown(messages: ParsedMessage[], title?: string | nu
  */
 function shouldClose(): boolean {
   if (fs.existsSync(IPC_INPUT_CLOSE_SENTINEL)) {
-    try { fs.unlinkSync(IPC_INPUT_CLOSE_SENTINEL); } catch { /* ignore */ }
+    try {
+      fs.unlinkSync(IPC_INPUT_CLOSE_SENTINEL);
+    } catch {
+      /* ignore */
+    }
     return true;
   }
   return false;
@@ -1605,8 +1743,9 @@ function shiftNextIpcRequestId(): string | undefined {
 function drainIpcInput(): AgentPromptInput[] {
   try {
     fs.mkdirSync(IPC_INPUT_DIR, { recursive: true });
-    const files = fs.readdirSync(IPC_INPUT_DIR)
-      .filter(f => f.endsWith('.json'))
+    const files = fs
+      .readdirSync(IPC_INPUT_DIR)
+      .filter((f) => f.endsWith('.json'))
       .sort();
 
     const messages: AgentPromptInput[] = [];
@@ -1628,8 +1767,14 @@ function drainIpcInput(): AgentPromptInput[] {
           }
         }
       } catch (err) {
-        log(`Failed to process input file ${file}: ${err instanceof Error ? err.message : String(err)}`);
-        try { fs.unlinkSync(filePath); } catch { /* ignore */ }
+        log(
+          `Failed to process input file ${file}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+        try {
+          fs.unlinkSync(filePath);
+        } catch {
+          /* ignore */
+        }
       }
     }
     return messages;
@@ -1700,7 +1845,9 @@ async function runQuery(
     }
     const messages = drainIpcInput();
     for (const promptInput of messages) {
-      log(`Piping IPC message into active query (${getPromptTextLength(promptInput)} chars)`);
+      log(
+        `Piping IPC message into active query (${getPromptTextLength(promptInput)} chars)`,
+      );
       stream.push(promptInput);
     }
     setTimeout(pollIpcDuringQuery, IPC_POLL_MS);
@@ -1739,7 +1886,10 @@ async function runQuery(
   if (fs.existsSync(EXTRA_DIR)) {
     for (const entry of fs.readdirSync(EXTRA_DIR)) {
       const fullPath = path.join(EXTRA_DIR, entry);
-      if (fs.statSync(fullPath).isDirectory() && !extraDirs.includes(fullPath)) {
+      if (
+        fs.statSync(fullPath).isDirectory() &&
+        !extraDirs.includes(fullPath)
+      ) {
         extraDirs.push(fullPath);
       }
     }
@@ -1775,7 +1925,9 @@ async function runQuery(
           : [];
         const env: Record<string, string> = {};
         if (obj.env && typeof obj.env === 'object' && !Array.isArray(obj.env)) {
-          for (const [k, v] of Object.entries(obj.env as Record<string, unknown>)) {
+          for (const [k, v] of Object.entries(
+            obj.env as Record<string, unknown>,
+          )) {
             if (typeof v === 'string') env[k] = v;
           }
         }
@@ -1803,7 +1955,9 @@ async function runQuery(
     ]),
   );
   if (Object.keys(externalMcpServers).length > 0) {
-    log(`Loaded external MCP servers: ${Object.keys(externalMcpServers).join(', ')}`);
+    log(
+      `Loaded external MCP servers: ${Object.keys(externalMcpServers).join(', ')}`,
+    );
   }
 
   const turnStream = new CodexTurnEventEmitter(agentInput.preferredTurnId);
@@ -1918,7 +2072,11 @@ async function runQuery(
       );
       return;
     }
-    activeToolCalls.set(id, { title, argumentsText, subagentInfo: nextSubagentInfo });
+    activeToolCalls.set(id, {
+      title,
+      argumentsText,
+      subagentInfo: nextSubagentInfo,
+    });
     turnStream.startToolCall(id, title, argumentsText, nextSubagentInfo);
   };
   const flushRemainingToolCalls = () => {
@@ -1995,27 +2153,39 @@ async function runQuery(
               NANOCLAW_INTERNAL_API_TOKEN:
                 process.env.NANOCLAW_INTERNAL_API_TOKEN || '',
               NANOCLAW_USER_ID: process.env.NANOCLAW_USER_ID || '',
-              NANOCLAW_AVAILABLE_KB_META: process.env.NANOCLAW_AVAILABLE_KB_META || '',
+              NANOCLAW_AVAILABLE_KB_META:
+                process.env.NANOCLAW_AVAILABLE_KB_META || '',
               ...collectForwardedMemoryEnv(),
             },
           },
         },
         hooks: {
-          PreCompact: [{ hooks: [createPreCompactHook(agentInput.assistantName)] }],
+          PreCompact: [
+            { hooks: [createPreCompactHook(agentInput.assistantName)] },
+          ],
           PreToolUse: [
             { matcher: 'Bash', hooks: [createSanitizeBashHook()] },
-            { matcher: 'Write', hooks: [createSanitizeFileMutationHook('Write')] },
-            { matcher: 'Edit', hooks: [createSanitizeFileMutationHook('Edit')] },
+            {
+              matcher: 'Write',
+              hooks: [createSanitizeFileMutationHook('Write')],
+            },
+            {
+              matcher: 'Edit',
+              hooks: [createSanitizeFileMutationHook('Edit')],
+            },
             {
               matcher: 'NotebookEdit',
               hooks: [createSanitizeFileMutationHook('NotebookEdit')],
             },
           ],
         },
-      }
+      },
     })) {
       messageCount++;
-      const msgType = message.type === 'system' ? `system/${(message as { subtype?: string }).subtype}` : message.type;
+      const msgType =
+        message.type === 'system'
+          ? `system/${(message as { subtype?: string }).subtype}`
+          : message.type;
       log(`[msg #${messageCount}] type=${msgType}`);
 
       if (message.type === 'assistant' && 'uuid' in message) {
@@ -2043,7 +2213,10 @@ async function runQuery(
             event.content_block?.type === 'redacted_thinking'
           ) {
             thinkingBlocks.set(blockIndex, event.content_block.text || '');
-            turnStream.startReasoning('思考中', event.content_block.text || undefined);
+            turnStream.startReasoning(
+              '思考中',
+              event.content_block.text || undefined,
+            );
           }
           if (
             event.content_block?.type === 'tool_use' ||
@@ -2060,7 +2233,10 @@ async function runQuery(
               (event.content_block.input ?? {}) as Record<string, unknown>,
             );
           }
-          if (event.content_block?.type === 'text' && event.content_block.text) {
+          if (
+            event.content_block?.type === 'text' &&
+            event.content_block.text
+          ) {
             turnStream.appendAssistantDelta(event.content_block.text);
             writeOutput({
               status: 'success',
@@ -2126,7 +2302,10 @@ async function runQuery(
         ensureToolCallStarted(
           message.tool_use_id,
           message.tool_name,
-          formatEventBody({ elapsed_seconds: message.elapsed_time_seconds }, 320),
+          formatEventBody(
+            { elapsed_seconds: message.elapsed_time_seconds },
+            320,
+          ),
         );
       }
 
@@ -2161,9 +2340,14 @@ async function runQuery(
         }
       }
 
-      if (message.type === 'system' && message.subtype === 'task_notification') {
+      if (
+        message.type === 'system' &&
+        message.subtype === 'task_notification'
+      ) {
         const toolCallId = message.tool_use_id || message.task_id;
-        log(`Task notification: task=${message.task_id} status=${message.status} summary=${message.summary}`);
+        log(
+          `Task notification: task=${message.task_id} status=${message.status} summary=${message.summary}`,
+        );
         if (message.status === 'failed') {
           closeToolCall(toolCallId, 'failed', message.summary);
         } else {
@@ -2173,8 +2357,11 @@ async function runQuery(
 
       if (message.type === 'result') {
         resultCount++;
-        const textResult = 'result' in message ? (message as { result?: string }).result : null;
-        log(`Result #${resultCount}: subtype=${message.subtype}${textResult ? ` text=${textResult.slice(0, 200)}` : ''}`);
+        const textResult =
+          'result' in message ? (message as { result?: string }).result : null;
+        log(
+          `Result #${resultCount}: subtype=${message.subtype}${textResult ? ` text=${textResult.slice(0, 200)}` : ''}`,
+        );
         flushRemainingToolCalls();
         turnStream.completeTurn();
         writeOutput({
@@ -2196,8 +2383,15 @@ async function runQuery(
   }
 
   ipcPolling = false;
-  log(`Query done. Messages: ${messageCount}, results: ${resultCount}, lastAssistantUuid: ${lastAssistantUuid || 'none'}, closedDuringQuery: ${closedDuringQuery}`);
-  return { newSessionId, lastAssistantUuid, closedDuringQuery, deferredMessages };
+  log(
+    `Query done. Messages: ${messageCount}, results: ${resultCount}, lastAssistantUuid: ${lastAssistantUuid || 'none'}, closedDuringQuery: ${closedDuringQuery}`,
+  );
+  return {
+    newSessionId,
+    lastAssistantUuid,
+    closedDuringQuery,
+    deferredMessages,
+  };
 }
 
 // ────────────────────────────────────────────────
@@ -2287,7 +2481,10 @@ class CodexApiError extends Error {
   code?: string;
   retryable: boolean;
 
-  constructor(message: string, opts?: { status?: number; code?: string; retryable?: boolean }) {
+  constructor(
+    message: string,
+    opts?: { status?: number; code?: string; retryable?: boolean },
+  ) {
     super(message);
     this.name = 'CodexApiError';
     this.status = opts?.status;
@@ -2348,7 +2545,9 @@ function readJsonFile<T>(filePath: string): T | undefined {
     if (!fs.existsSync(filePath)) return undefined;
     return JSON.parse(fs.readFileSync(filePath, 'utf-8')) as T;
   } catch (error) {
-    log(`Failed to read JSON file ${filePath}: ${error instanceof Error ? error.message : String(error)}`);
+    log(
+      `Failed to read JSON file ${filePath}: ${error instanceof Error ? error.message : String(error)}`,
+    );
     return undefined;
   }
 }
@@ -2362,10 +2561,15 @@ function writeJsonFile(filePath: string, value: unknown): void {
 }
 
 function loadCodexCompatibilityState(): CodexCompatibilityState | undefined {
-  return readJsonFile<CodexCompatibilityState>(path.join(getCodexCompatDir(), CODEX_COMPAT_MODE_FILE));
+  return readJsonFile<CodexCompatibilityState>(
+    path.join(getCodexCompatDir(), CODEX_COMPAT_MODE_FILE),
+  );
 }
 
-function saveCodexCompatibilityState(mode: CodexCompatibilityMode, reason?: string): void {
+function saveCodexCompatibilityState(
+  mode: CodexCompatibilityMode,
+  reason?: string,
+): void {
   writeJsonFile(path.join(getCodexCompatDir(), CODEX_COMPAT_MODE_FILE), {
     mode,
     reason,
@@ -2377,20 +2581,27 @@ function normalizeChatHistory(
   messages: ChatCompletionsMessage[] | undefined,
   instructions: string,
 ): ChatCompletionsMessage[] {
-  const normalized = Array.isArray(messages) ? messages.filter((message) => {
-    if (!message || typeof message !== 'object') return false;
-    return message.role === 'system'
-      || message.role === 'user'
-      || message.role === 'assistant'
-      || message.role === 'tool';
-  }) : [];
+  const normalized = Array.isArray(messages)
+    ? messages.filter((message) => {
+        if (!message || typeof message !== 'object') return false;
+        return (
+          message.role === 'system' ||
+          message.role === 'user' ||
+          message.role === 'assistant' ||
+          message.role === 'tool'
+        );
+      })
+    : [];
 
-  const trimmed = normalized[0]?.role === 'system' ? normalized.slice(1) : normalized;
+  const trimmed =
+    normalized[0]?.role === 'system' ? normalized.slice(1) : normalized;
   const recent = trimmed.slice(-MAX_CHAT_HISTORY_MESSAGES);
   return [{ role: 'system', content: instructions }, ...recent];
 }
 
-function loadChatCompletionsHistory(instructions: string): ChatCompletionsMessage[] {
+function loadChatCompletionsHistory(
+  instructions: string,
+): ChatCompletionsMessage[] {
   const state = readJsonFile<ChatCompletionsHistoryState>(
     path.join(getCodexCompatDir(), CODEX_CHAT_HISTORY_FILE),
   );
@@ -2411,12 +2622,16 @@ const COMPACT_TOOL_HISTORY_KEEP_RECENT = 6;
 const COMPACT_TOOL_HISTORY_TOKEN_BUDGET = 8000;
 const COMPACT_TOOL_OLD_MAX_TOKENS = 200;
 
-function buildToolCallNameLookup(messages: ChatCompletionsMessage[]): Map<string, string> {
+function buildToolCallNameLookup(
+  messages: ChatCompletionsMessage[],
+): Map<string, string> {
   const byId = new Map<string, string>();
   for (const message of messages) {
-    if (message.role !== 'assistant' || !Array.isArray(message.tool_calls)) continue;
+    if (message.role !== 'assistant' || !Array.isArray(message.tool_calls))
+      continue;
     for (const call of message.tool_calls) {
-      if (call?.id && call.function?.name) byId.set(call.id, call.function.name);
+      if (call?.id && call.function?.name)
+        byId.set(call.id, call.function.name);
     }
   }
   return byId;
@@ -2428,7 +2643,9 @@ function getChatCompletionsToolContentText(
   if (typeof content === 'string') return content;
   if (!Array.isArray(content)) return '';
   return content
-    .filter((part): part is ChatCompletionsTextContentPart => part?.type === 'text')
+    .filter(
+      (part): part is ChatCompletionsTextContentPart => part?.type === 'text',
+    )
     .map((part) => String(part.text || ''))
     .join('\n');
 }
@@ -2438,7 +2655,9 @@ function getChatCompletionsToolContentText(
  * Recent tool results are kept intact; older results are progressively
  * compressed so total tool-result tokens stay within budget.
  */
-function compactToolResultsForApi(messages: ChatCompletionsMessage[]): ChatCompletionsMessage[] {
+function compactToolResultsForApi(
+  messages: ChatCompletionsMessage[],
+): ChatCompletionsMessage[] {
   const toolIndices: number[] = [];
   for (let i = 0; i < messages.length; i++) {
     if (messages[i].role === 'tool') toolIndices.push(i);
@@ -2448,16 +2667,24 @@ function compactToolResultsForApi(messages: ChatCompletionsMessage[]): ChatCompl
   const namesByCallId = buildToolCallNameLookup(messages);
 
   let recentTokens = 0;
-  const recentSet = new Set(toolIndices.slice(-COMPACT_TOOL_HISTORY_KEEP_RECENT));
+  const recentSet = new Set(
+    toolIndices.slice(-COMPACT_TOOL_HISTORY_KEEP_RECENT),
+  );
   for (const idx of recentSet) {
-    recentTokens += estimateTokens(getChatCompletionsToolContentText(messages[idx].content));
+    recentTokens += estimateTokens(
+      getChatCompletionsToolContentText(messages[idx].content),
+    );
   }
 
-  const oldBudget = Math.max(0, COMPACT_TOOL_HISTORY_TOKEN_BUDGET - recentTokens);
+  const oldBudget = Math.max(
+    0,
+    COMPACT_TOOL_HISTORY_TOKEN_BUDGET - recentTokens,
+  );
   const oldIndices = toolIndices.slice(0, -COMPACT_TOOL_HISTORY_KEEP_RECENT);
-  const oldMaxChars = oldBudget > 0
-    ? Math.max(200, Math.floor((oldBudget / oldIndices.length) * 4))
-    : COMPACT_TOOL_OLD_MAX_TOKENS * 4;
+  const oldMaxChars =
+    oldBudget > 0
+      ? Math.max(200, Math.floor((oldBudget / oldIndices.length) * 4))
+      : COMPACT_TOOL_OLD_MAX_TOKENS * 4;
 
   let changed = false;
   const next = messages.map((message, index) => {
@@ -2515,7 +2742,9 @@ function normalizeResponsesUsage(
   };
 }
 
-function normalizeChatCompletionsUsage(usage: unknown): AgentRunnerAiUsageLog | null {
+function normalizeChatCompletionsUsage(
+  usage: unknown,
+): AgentRunnerAiUsageLog | null {
   if (!usage || typeof usage !== 'object') return null;
   const usageRecord = usage as {
     prompt_tokens?: number;
@@ -2549,7 +2778,9 @@ function parseCodexApiError(status: number, body: string): CodexApiError {
 function isRetryableCodexError(error: unknown): boolean {
   if (error instanceof CodexApiError) return error.retryable;
   const message = error instanceof Error ? error.message : String(error);
-  return /(ECONNRESET|ETIMEDOUT|fetch failed|socket hang up|network error)/i.test(message);
+  return /(ECONNRESET|ETIMEDOUT|fetch failed|socket hang up|network error)/i.test(
+    message,
+  );
 }
 
 function sleep(ms: number): Promise<void> {
@@ -2573,7 +2804,9 @@ async function fetchCodexApiWithRetry(
       }
       lastError = apiError;
       const delayMs = 500 * attempt;
-      log(`${label} failed with retryable error on attempt ${attempt}/${maxAttempts}: ${apiError.message}`);
+      log(
+        `${label} failed with retryable error on attempt ${attempt}/${maxAttempts}: ${apiError.message}`,
+      );
       await sleep(delayMs);
     } catch (error) {
       if (!isRetryableCodexError(error) || attempt >= maxAttempts) {
@@ -2581,7 +2814,9 @@ async function fetchCodexApiWithRetry(
       }
       lastError = error;
       const delayMs = 500 * attempt;
-      log(`${label} network retry ${attempt}/${maxAttempts}: ${error instanceof Error ? error.message : String(error)}`);
+      log(
+        `${label} network retry ${attempt}/${maxAttempts}: ${error instanceof Error ? error.message : String(error)}`,
+      );
       await sleep(delayMs);
     }
   }
@@ -2699,7 +2934,10 @@ async function withCodexProviderRequest<T>(
   }
 }
 
-function parseSkillSummary(content: string): { title: string; description: string } {
+function parseSkillSummary(content: string): {
+  title: string;
+  description: string;
+} {
   const lines = content.split(/\r?\n/);
   let title = '';
   let description = '';
@@ -2848,8 +3086,13 @@ function buildResponsesInstructions(
   if (agentInput?.suppressDefaultSystemPrompt) {
     return '';
   }
-  const normalizedPrompt = promptInput ? normalizePromptInput(promptInput) : null;
-  if (normalizedPrompt?.stableSystemPrompt || normalizedPrompt?.volatileSystemPrompt) {
+  const normalizedPrompt = promptInput
+    ? normalizePromptInput(promptInput)
+    : null;
+  if (
+    normalizedPrompt?.stableSystemPrompt ||
+    normalizedPrompt?.volatileSystemPrompt
+  ) {
     return [
       normalizedPrompt.stableSystemPrompt,
       normalizedPrompt.volatileSystemPrompt,
@@ -2982,8 +3225,7 @@ async function executeCodexToolBatch(
   const allSubagentSpawnCalls =
     toolCalls.length > 1 &&
     toolCalls.every(
-      (toolCall) =>
-        toolCall.name === 'Agent' || toolCall.name === 'TeamCreate',
+      (toolCall) => toolCall.name === 'Agent' || toolCall.name === 'TeamCreate',
     );
   if (allSubagentSpawnCalls) {
     return Promise.all(
@@ -3060,7 +3302,9 @@ function buildStructuredUploadSystemPromptAppend(
   return lines.join('\n');
 }
 
-function normalizePromptPayload(promptInput: AgentPromptInput): AgentPromptPayload {
+function normalizePromptPayload(
+  promptInput: AgentPromptInput,
+): AgentPromptPayload {
   if (typeof promptInput === 'string') {
     return { text: promptInput };
   }
@@ -3123,7 +3367,9 @@ function normalizePromptInput(promptInput: AgentPromptInput): {
   const files = resolveUploadedPromptFiles(promptInput?.uploadedFiles);
   const contextText = Array.isArray(promptInput?.contextBlocks)
     ? promptInput.contextBlocks
-        .map((block) => (typeof block?.content === 'string' ? block.content.trim() : ''))
+        .map((block) =>
+          typeof block?.content === 'string' ? block.content.trim() : '',
+        )
         .filter(Boolean)
         .join('\n\n')
     : '';
@@ -3374,7 +3620,9 @@ function buildDirectUploadBridgeContext(
     .join('\n');
 }
 
-function getPromptLogContext(promptInput: AgentPromptInput): AgentPromptLogContext {
+function getPromptLogContext(
+  promptInput: AgentPromptInput,
+): AgentPromptLogContext {
   const normalized = normalizePromptInput(promptInput);
   return {
     stableSystemPrompt: normalized.stableSystemPrompt,
@@ -3392,10 +3640,7 @@ function getAnthropicAuthHeaders(
   secrets: Record<string, string>,
   extra: Record<string, string> = {},
 ): Record<string, string> {
-  const token =
-    secrets.ANTHROPIC_AUTH_TOKEN ||
-    secrets.ANTHROPIC_API_KEY ||
-    '';
+  const token = secrets.ANTHROPIC_AUTH_TOKEN || secrets.ANTHROPIC_API_KEY || '';
   const headers: Record<string, string> = {
     'anthropic-version': '2023-06-01',
     ...extra,
@@ -3538,7 +3783,9 @@ async function runClaudeUploadedFilesQuery(
 
     if (!resp.ok) {
       const body = await resp.text().catch(() => '');
-      throw new Error(`Anthropic Messages API failed: ${resp.status} ${body}`.trim());
+      throw new Error(
+        `Anthropic Messages API failed: ${resp.status} ${body}`.trim(),
+      );
     }
 
     const text = await consumeAnthropicMessagesSse(resp, async (delta) => {
@@ -3568,7 +3815,9 @@ function buildAppendedSystemPrompt(
   baseAppend: string | undefined,
   uploadPromptAppend: string,
 ): string | undefined {
-  const sections = [baseAppend?.trim() || '', uploadPromptAppend.trim()].filter(Boolean);
+  const sections = [baseAppend?.trim() || '', uploadPromptAppend.trim()].filter(
+    Boolean,
+  );
   if (sections.length === 0) return undefined;
   return sections.join('\n\n');
 }
@@ -3582,7 +3831,9 @@ async function uploadCodexFile(
   try {
     bytes = fs.readFileSync(file.path);
   } catch (error) {
-    log(`Failed to read uploaded file ${file.path}: ${error instanceof Error ? error.message : String(error)}`);
+    log(
+      `Failed to read uploaded file ${file.path}: ${error instanceof Error ? error.message : String(error)}`,
+    );
     return null;
   }
 
@@ -3611,7 +3862,7 @@ async function uploadCodexFile(
       body: form,
     }),
   );
-  const payload = await resp.json() as { id?: string };
+  const payload = (await resp.json()) as { id?: string };
   const fileId = typeof payload.id === 'string' ? payload.id.trim() : '';
   if (!fileId) {
     throw new Error(`Codex file upload returned no file id for ${file.name}`);
@@ -3624,13 +3875,16 @@ async function buildCodexAttachmentPart(
   apiKey: string,
   file: UploadedPromptFile,
 ): Promise<ChatCompletionsContentPart | null> {
-  const mimeType = file.mimeType?.trim().toLowerCase() || 'application/octet-stream';
+  const mimeType =
+    file.mimeType?.trim().toLowerCase() || 'application/octet-stream';
   if (mimeType.startsWith('image/')) {
     let bytes: Buffer;
     try {
       bytes = fs.readFileSync(file.path);
     } catch (error) {
-      log(`Failed to read uploaded image ${file.path}: ${error instanceof Error ? error.message : String(error)}`);
+      log(
+        `Failed to read uploaded image ${file.path}: ${error instanceof Error ? error.message : String(error)}`,
+      );
       return null;
     }
     if (bytes.length === 0) return null;
@@ -3684,11 +3938,18 @@ async function buildCodexUserMessageContent(
 }
 
 function extractAssistantText(item?: ResponsesSseEvent['item']): string {
-  if (!item || item.type !== 'message' || item.role !== 'assistant' || !item.content) {
+  if (
+    !item ||
+    item.type !== 'message' ||
+    item.role !== 'assistant' ||
+    !item.content
+  ) {
     return '';
   }
   return item.content
-    .filter((entry) => entry.type === 'output_text' && typeof entry.text === 'string')
+    .filter(
+      (entry) => entry.type === 'output_text' && typeof entry.text === 'string',
+    )
     .map((entry) => entry.text || '')
     .join('');
 }
@@ -3806,7 +4067,8 @@ async function consumeChatCompletionsSse(
       };
 
       if (toolDelta.id) existing.id = toolDelta.id;
-      if (toolDelta.function?.name) existing.function.name = toolDelta.function.name;
+      if (toolDelta.function?.name)
+        existing.function.name = toolDelta.function.name;
       if (toolDelta.function?.arguments) {
         existing.function.arguments += toolDelta.function.arguments;
       }
@@ -3862,9 +4124,10 @@ async function runCodexChatCompletionsQuery(
     toolPolicy: resolveAgentToolPolicy(agentInput),
   });
   const historyScope = options?.historyScope || 'shared';
-  const history = historyScope === 'ephemeral'
-    ? normalizeChatHistory([], instructions)
-    : loadChatCompletionsHistory(instructions);
+  const history =
+    historyScope === 'ephemeral'
+      ? normalizeChatHistory([], instructions)
+      : loadChatCompletionsHistory(instructions);
   history.push({
     role: 'user',
     content: await buildCodexUserMessageContent(prompt, apiBase, apiKey),
@@ -3878,7 +4141,8 @@ async function runCodexChatCompletionsQuery(
 
   const MAX_TOOL_ITERATIONS = getMaxToolIterations(secrets);
   let nextReasoningTitle = '分析请求';
-  let nextReasoningText: string | null = summarizePromptForReasoning(reasoningPrompt);
+  let nextReasoningText: string | null =
+    summarizePromptForReasoning(reasoningPrompt);
 
   try {
     let closedByUser = false;
@@ -3888,8 +4152,13 @@ async function runCodexChatCompletionsQuery(
         closedByUser = true;
         break;
       }
-      log(`Codex Chat Completions call #${iteration} (${history.length} messages)...`);
-      if (nextReasoningText && !(iteration === 1 && nextReasoningTitle === '分析请求')) {
+      log(
+        `Codex Chat Completions call #${iteration} (${history.length} messages)...`,
+      );
+      if (
+        nextReasoningText &&
+        !(iteration === 1 && nextReasoningTitle === '分析请求')
+      ) {
         turnStream.startReasoning(nextReasoningTitle, nextReasoningText);
       }
 
@@ -3925,7 +4194,7 @@ async function runCodexChatCompletionsQuery(
               () => ({
                 method: 'POST',
                 headers: buildCodexRequestHeaders(apiKey, {
-                  'Accept': 'text/event-stream',
+                  Accept: 'text/event-stream',
                 }),
                 body: JSON.stringify({
                   model,
@@ -4028,14 +4297,19 @@ async function runCodexChatCompletionsQuery(
         ),
       }));
       const toolPurposeSummary = summarizeToolPurposes(plannedToolCalls);
-      const planningReasoningText = buildPlanningReasoningText(toolPurposeSummary, turn.toolCalls.length);
+      const planningReasoningText = buildPlanningReasoningText(
+        toolPurposeSummary,
+        turn.toolCalls.length,
+      );
       if (planningReasoningText) {
         turnStream.startReasoning('规划下一步', planningReasoningText);
       }
       const toolResultSummaries: string[] = [];
 
       for (const toolCall of plannedToolCalls) {
-        log(`  → ${toolCall.name}(${JSON.stringify(toolCall.args).slice(0, 200)})`);
+        log(
+          `  → ${toolCall.name}(${JSON.stringify(toolCall.args).slice(0, 200)})`,
+        );
       }
       const executedToolCalls = await executeCodexToolBatch(
         plannedToolCalls,
@@ -4068,9 +4342,12 @@ async function runCodexChatCompletionsQuery(
       return { result: '' };
     }
 
-    const error = new CodexApiError(`Codex exceeded ${MAX_TOOL_ITERATIONS} tool iterations`, {
-      retryable: false,
-    });
+    const error = new CodexApiError(
+      `Codex exceeded ${MAX_TOOL_ITERATIONS} tool iterations`,
+      {
+        retryable: false,
+      },
+    );
     turnStream.failTurn(error.message);
     throw error;
   } catch (error) {
@@ -4100,7 +4377,9 @@ async function runCodexQuery(
   });
   const historyScope = options?.historyScope || 'shared';
   const sharedHistory =
-    historyScope === 'ephemeral' ? normalizeChatHistory([], instructions) : loadChatCompletionsHistory(instructions);
+    historyScope === 'ephemeral'
+      ? normalizeChatHistory([], instructions)
+      : loadChatCompletionsHistory(instructions);
   const normalizedPrompt = normalizePromptInput(prompt);
   const promptLogContext = getPromptLogContext(prompt);
   const promptText = getUploadAwareUserPrompt(
@@ -4124,7 +4403,8 @@ async function runCodexQuery(
   let iteration = 0;
   const MAX_TOOL_ITERATIONS = getMaxToolIterations(secrets);
   let nextReasoningTitle = '分析请求';
-  let nextReasoningText: string | null = summarizePromptForReasoning(promptText);
+  let nextReasoningText: string | null =
+    summarizePromptForReasoning(promptText);
 
   try {
     let closedByUser = false;
@@ -4135,8 +4415,13 @@ async function runCodexQuery(
         break;
       }
       iteration++;
-      log(`Codex Responses API call #${iteration} (${inputItems.length} input item(s))...`);
-      if (nextReasoningText && !(iteration === 1 && nextReasoningTitle === '分析请求')) {
+      log(
+        `Codex Responses API call #${iteration} (${inputItems.length} input item(s))...`,
+      );
+      if (
+        nextReasoningText &&
+        !(iteration === 1 && nextReasoningTitle === '分析请求')
+      ) {
         turnStream.startReasoning(nextReasoningTitle, nextReasoningText);
       }
 
@@ -4193,7 +4478,7 @@ async function runCodexQuery(
               () => ({
                 method: 'POST',
                 headers: buildCodexRequestHeaders(apiKey, {
-                  'Accept': 'text/event-stream',
+                  Accept: 'text/event-stream',
                 }),
                 body: JSON.stringify(payload),
               }),
@@ -4211,7 +4496,10 @@ async function runCodexQuery(
                     turnStream.startToolCall(
                       event.item.id,
                       'web_search',
-                      formatEventBody({ status: event.item.status || 'in_progress' }, 320),
+                      formatEventBody(
+                        { status: event.item.status || 'in_progress' },
+                        320,
+                      ),
                     );
                   }
                   break;
@@ -4233,7 +4521,11 @@ async function runCodexQuery(
                       320,
                     );
                     if (!activeWebSearchCallIds.has(event.item.id)) {
-                      turnStream.startToolCall(event.item.id, 'web_search', argumentsText);
+                      turnStream.startToolCall(
+                        event.item.id,
+                        'web_search',
+                        argumentsText,
+                      );
                     }
                     turnStream.completeToolCall(
                       event.item.id,
@@ -4245,7 +4537,11 @@ async function runCodexQuery(
                     );
                     activeWebSearchCallIds.delete(event.item.id);
                   }
-                  if (event.item?.type === 'function_call' && event.item.call_id && event.item.name) {
+                  if (
+                    event.item?.type === 'function_call' &&
+                    event.item.call_id &&
+                    event.item.name
+                  ) {
                     toolCalls.push({
                       type: 'function_call',
                       call_id: event.item.call_id,
@@ -4258,17 +4554,22 @@ async function runCodexQuery(
                   break;
                 }
                 case 'response.failed': {
-                  const message = event.response?.error?.message || 'Codex response.failed';
+                  const message =
+                    event.response?.error?.message || 'Codex response.failed';
                   throw new Error(message);
                 }
                 case 'response.incomplete': {
-                  const reason = event.response?.incomplete_details?.reason || 'unknown';
+                  const reason =
+                    event.response?.incomplete_details?.reason || 'unknown';
                   throw new Error(`Codex incomplete response: ${reason}`);
                 }
                 case 'response.completed':
                   completedResponseId = event.response?.id || latestResponseId;
-                  responseUsage = normalizeResponsesUsage(event.response?.usage);
-                  if (completedResponseId) latestResponseId = completedResponseId;
+                  responseUsage = normalizeResponsesUsage(
+                    event.response?.usage,
+                  );
+                  if (completedResponseId)
+                    latestResponseId = completedResponseId;
                   break;
                 default:
                   break;
@@ -4321,7 +4622,8 @@ async function runCodexQuery(
         usage: responseUsage,
       });
 
-      const iterationAssistantText = streamedAssistantText || fallbackAssistantText;
+      const iterationAssistantText =
+        streamedAssistantText || fallbackAssistantText;
       if (iterationAssistantText) {
         turnStream.completeAssistantMessage(iterationAssistantText);
       } else {
@@ -4371,20 +4673,30 @@ async function runCodexQuery(
         id: toolCall.call_id,
         name: toolCall.name,
         args: parseJsonObject(toolCall.arguments),
-        argumentsText: formatEventBody(parseJsonObject(toolCall.arguments), 320),
+        argumentsText: formatEventBody(
+          parseJsonObject(toolCall.arguments),
+          320,
+        ),
       }));
       const toolPurposeSummary = summarizeToolPurposes(plannedToolCalls);
-      const planningReasoningText = buildPlanningReasoningText(toolPurposeSummary, toolCalls.length);
+      const planningReasoningText = buildPlanningReasoningText(
+        toolPurposeSummary,
+        toolCalls.length,
+      );
       if (planningReasoningText) {
         turnStream.startReasoning('规划下一步', planningReasoningText);
       }
-      log(`Executing ${toolCalls.length} tool(s): ${toolCalls.map((tool) => tool.name).join(', ')}`);
+      log(
+        `Executing ${toolCalls.length} tool(s): ${toolCalls.map((tool) => tool.name).join(', ')}`,
+      );
 
       const toolResultSummaries: string[] = [];
       inputItems = [];
 
       for (const toolCall of plannedToolCalls) {
-        log(`  → ${toolCall.name}(${JSON.stringify(toolCall.args).slice(0, 200)})`);
+        log(
+          `  → ${toolCall.name}(${JSON.stringify(toolCall.args).slice(0, 200)})`,
+        );
       }
       const executedToolCalls = await executeCodexToolBatch(
         plannedToolCalls,
@@ -4417,7 +4729,9 @@ async function runCodexQuery(
       return { result: '' };
     }
 
-    const error = new Error(`Codex exceeded ${MAX_TOOL_ITERATIONS} tool iterations`);
+    const error = new Error(
+      `Codex exceeded ${MAX_TOOL_ITERATIONS} tool iterations`,
+    );
     turnStream.failTurn(error.message);
     throw error;
   } catch (error) {
@@ -4442,7 +4756,8 @@ async function runCodexTurn(
 ): Promise<CodexTurnResult> {
   const compatibilityState = loadCodexCompatibilityState();
   const nativeWebSearchPreferred =
-    String(process.env.NANOCLAW_WEB_SEARCH_ENABLED || 'true').trim() !== 'false' &&
+    String(process.env.NANOCLAW_WEB_SEARCH_ENABLED || 'true').trim() !==
+      'false' &&
     String(process.env.NANOCLAW_WEB_SEARCH_PROVIDER || 'auto')
       .trim()
       .toLowerCase() === 'auto';
@@ -4506,7 +4821,9 @@ async function runCodexTurn(
   ) {
     saveCodexCompatibilityState('chat_completions', reason);
   }
-  log(`Codex compatibility mode active (${reason}), using chat/completions history`);
+  log(
+    `Codex compatibility mode active (${reason}), using chat/completions history`,
+  );
   return runCodexChatCompletionsQuery(
     prompt,
     secrets,
@@ -4528,7 +4845,11 @@ async function main(): Promise<void> {
   try {
     const stdinData = await readStdin();
     agentInput = JSON.parse(stdinData);
-    try { fs.unlinkSync('/tmp/input.json'); } catch { /* may not exist */ }
+    try {
+      fs.unlinkSync('/tmp/input.json');
+    } catch {
+      /* may not exist */
+    }
     log(`Received input for group: ${agentInput.groupFolder}`);
   } catch (err) {
     const msg = `Failed to parse input: ${err instanceof Error ? err.message : String(err)}`;
@@ -4551,11 +4872,15 @@ async function main(): Promise<void> {
   log(`AI Provider: ${provider}`);
 
   if (provider === 'codex') {
-    log(`Codex config: BASE_URL=${secrets.CODEX_BASE_URL}, MODEL=${secrets.CODEX_MODEL}, HAS_KEY=${secrets.CODEX_API_KEY ? 'yes' : 'no'}`);
+    log(
+      `Codex config: BASE_URL=${secrets.CODEX_BASE_URL}, MODEL=${secrets.CODEX_MODEL}, HAS_KEY=${secrets.CODEX_API_KEY ? 'yes' : 'no'}`,
+    );
     await mainCodex(agentInput, secrets);
   } else {
     const sdkEnv: Record<string, string | undefined> = { ...process.env };
-    log(`API config: BASE_URL=${process.env.ANTHROPIC_BASE_URL || '(default)'}, MODEL=${process.env.ANTHROPIC_MODEL || '(default)'}, AUTH_TOKEN=${process.env.ANTHROPIC_AUTH_TOKEN ? '***' + process.env.ANTHROPIC_AUTH_TOKEN.slice(-4) : '(none)'}, secrets_count=${Object.keys(secrets).length}`);
+    log(
+      `API config: BASE_URL=${process.env.ANTHROPIC_BASE_URL || '(default)'}, MODEL=${process.env.ANTHROPIC_MODEL || '(default)'}, AUTH_TOKEN=${process.env.ANTHROPIC_AUTH_TOKEN ? '***' + process.env.ANTHROPIC_AUTH_TOKEN.slice(-4) : '(none)'}, secrets_count=${Object.keys(secrets).length}`,
+    );
     await mainClaude(agentInput, sdkEnv);
   }
 }
@@ -4563,11 +4888,19 @@ async function main(): Promise<void> {
 /**
  * Codex mode: direct API calls via fetch, simple chat loop.
  */
-async function mainCodex(agentInput: AgentRunInput, secrets: Record<string, string>): Promise<void> {
+async function mainCodex(
+  agentInput: AgentRunInput,
+  secrets: Record<string, string>,
+): Promise<void> {
   fs.mkdirSync(IPC_INPUT_DIR, { recursive: true });
-  try { fs.unlinkSync(IPC_INPUT_CLOSE_SENTINEL); } catch { /* ignore */ }
+  try {
+    fs.unlinkSync(IPC_INPUT_CLOSE_SENTINEL);
+  } catch {
+    /* ignore */
+  }
 
-  const isEphemeralScheduledTask = agentInput.isScheduledTask && !agentInput.sessionId;
+  const isEphemeralScheduledTask =
+    agentInput.isScheduledTask && !agentInput.sessionId;
   let prompt: AgentPromptInput = agentInput.prompt;
   if (agentInput.isScheduledTask && !agentInput.suppressScheduledTaskPreamble) {
     prompt = buildScheduledTaskPrompt(normalizePromptPayload(prompt));
@@ -4614,7 +4947,10 @@ async function mainCodex(agentInput: AgentRunInput, secrets: Record<string, stri
         newSessionId: previousResponseId,
       });
 
-      if (shouldClose()) { log('Close sentinel, exiting'); break; }
+      if (shouldClose()) {
+        log('Close sentinel, exiting');
+        break;
+      }
 
       if (isEphemeralScheduledTask) {
         log('Ephemeral scheduled task completed, exiting');
@@ -4623,7 +4959,10 @@ async function mainCodex(agentInput: AgentRunInput, secrets: Record<string, stri
 
       log('Waiting for next IPC message...');
       const nextMessage = await waitForIpcMessage();
-      if (nextMessage === null) { log('Close sentinel, exiting'); break; }
+      if (nextMessage === null) {
+        log('Close sentinel, exiting');
+        break;
+      }
 
       log(`Got new message (${getPromptTextLength(nextMessage)} chars)`);
       prompt = nextMessage;
@@ -4644,7 +4983,10 @@ async function mainCodex(agentInput: AgentRunInput, secrets: Record<string, stri
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     log(`[API-ERROR] Codex error: ${msg}`);
-    const details: AgentErrorDetails = { category: 'api-error', provider: 'codex' };
+    const details: AgentErrorDetails = {
+      category: 'api-error',
+      provider: 'codex',
+    };
     if (err instanceof CodexApiError) {
       details.apiStatus = err.status;
       details.apiBody = msg.slice(0, 500);
@@ -4664,15 +5006,23 @@ async function mainCodex(agentInput: AgentRunInput, secrets: Record<string, stri
 /**
  * Claude mode: full agent via claude-agent-sdk.
  */
-async function mainClaude(agentInput: AgentRunInput, sdkEnv: Record<string, string | undefined>): Promise<void> {
+async function mainClaude(
+  agentInput: AgentRunInput,
+  sdkEnv: Record<string, string | undefined>,
+): Promise<void> {
   const __dirname = path.dirname(fileURLToPath(import.meta.url));
   const mcpServerPath = path.join(__dirname, 'ipc-mcp-stdio.js');
 
-  const isEphemeralScheduledTask = agentInput.isScheduledTask && !agentInput.sessionId;
+  const isEphemeralScheduledTask =
+    agentInput.isScheduledTask && !agentInput.sessionId;
   let sessionId = agentInput.sessionId;
   let activeRequestId = agentInput.requestId;
   fs.mkdirSync(IPC_INPUT_DIR, { recursive: true });
-  try { fs.unlinkSync(IPC_INPUT_CLOSE_SENTINEL); } catch { /* ignore */ }
+  try {
+    fs.unlinkSync(IPC_INPUT_CLOSE_SENTINEL);
+  } catch {
+    /* ignore */
+  }
 
   let prompt: AgentPromptInput = agentInput.prompt;
   if (agentInput.isScheduledTask && !agentInput.suppressScheduledTaskPreamble) {
@@ -4694,7 +5044,9 @@ async function mainClaude(agentInput: AgentRunInput, sdkEnv: Record<string, stri
         : prompt;
       bridgeContextForNextTurn = '';
 
-      log(`Starting query (session: ${sessionId || 'new'}, resumeAt: ${resumeAt || 'latest'})...`);
+      log(
+        `Starting query (session: ${sessionId || 'new'}, resumeAt: ${resumeAt || 'latest'})...`,
+      );
 
       if (hasUploadedFiles(promptForTurn)) {
         const result = await runClaudeUploadedFilesQuery(
@@ -4731,7 +5083,8 @@ async function mainClaude(agentInput: AgentRunInput, sdkEnv: Record<string, stri
           resumeAt,
         );
         if (queryResult.newSessionId) sessionId = queryResult.newSessionId;
-        if (queryResult.lastAssistantUuid) resumeAt = queryResult.lastAssistantUuid;
+        if (queryResult.lastAssistantUuid)
+          resumeAt = queryResult.lastAssistantUuid;
         if (queryResult.deferredMessages.length > 0) {
           deferredMessages.push(...queryResult.deferredMessages);
         }
@@ -4752,7 +5105,9 @@ async function mainClaude(agentInput: AgentRunInput, sdkEnv: Record<string, stri
       if (deferredMessages.length > 0) {
         prompt = deferredMessages.shift()!;
         activeRequestId = shiftNextIpcRequestId();
-        log(`Starting deferred upload-bearing message (${getPromptTextLength(prompt)} chars)`);
+        log(
+          `Starting deferred upload-bearing message (${getPromptTextLength(prompt)} chars)`,
+        );
         continue;
       }
 
@@ -4763,16 +5118,25 @@ async function mainClaude(agentInput: AgentRunInput, sdkEnv: Record<string, stri
 
       log('Query ended, waiting for next IPC message...');
       const nextMessage = await waitForIpcMessage();
-      if (nextMessage === null) { log('Close sentinel received, exiting'); break; }
+      if (nextMessage === null) {
+        log('Close sentinel received, exiting');
+        break;
+      }
 
-      log(`Got new message (${getPromptTextLength(nextMessage)} chars), starting new query`);
+      log(
+        `Got new message (${getPromptTextLength(nextMessage)} chars), starting new query`,
+      );
       prompt = nextMessage;
       activeRequestId = shiftNextIpcRequestId();
     }
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : String(err);
-    const category = /timeout|ETIMEDOUT/i.test(errorMessage) ? 'timeout' as const : 'crash' as const;
-    log(`[${category === 'timeout' ? 'TIMEOUT' : 'CRASH'}] Agent error: ${errorMessage}`);
+    const category = /timeout|ETIMEDOUT/i.test(errorMessage)
+      ? ('timeout' as const)
+      : ('crash' as const);
+    log(
+      `[${category === 'timeout' ? 'TIMEOUT' : 'CRASH'}] Agent error: ${errorMessage}`,
+    );
     writeOutput({
       status: 'error',
       result: null,

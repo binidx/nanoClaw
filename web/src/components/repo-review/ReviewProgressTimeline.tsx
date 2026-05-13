@@ -81,7 +81,11 @@ const ToolCallDurationLabel = memo(function ToolCallDurationLabel({
           ? fallbackMs
           : Number.NaN
       : now;
-  if (!Number.isFinite(startedMs) || !Number.isFinite(endMs) || endMs < startedMs) {
+  if (
+    !Number.isFinite(startedMs) ||
+    !Number.isFinite(endMs) ||
+    endMs < startedMs
+  ) {
     return null;
   }
   const durationMs = Math.max(0, endMs - startedMs);
@@ -92,14 +96,18 @@ const ToolCallDurationLabel = memo(function ToolCallDurationLabel({
   ]
     .filter(Boolean)
     .join('\n');
-  return <span className="turn-item-duration" title={title || undefined}>{label}</span>;
+  return (
+    <span className="turn-item-duration" title={title || undefined}>
+      {label}
+    </span>
+  );
 });
 
 function getProgressStepKindLabel(step: RepoReviewProgressStep) {
   if (step.kind === 'worker') return 'Worker';
   if (step.kind === 'reducer') return '收敛';
   if (step.kind === 'subagent') return '子代理';
-  if (step.kind === 'extractor') return '格式化';
+  if (step.kind === 'extractor' || step.kind === 'formatter') return '格式化';
   if (step.kind === 'main') return '主代理';
   if (step.kind === 'stage') return '阶段';
   if (
@@ -124,6 +132,7 @@ function getReviewTurnPhaseLabel(phase?: string) {
   if (phase === 'main_agent_review') return '主代理';
   if (phase === 'main_agent_fallback_review') return '主代理补审';
   if (phase === 'reducer') return '收敛';
+  if (phase === 'formatter') return '格式化';
   return '';
 }
 
@@ -150,7 +159,8 @@ function buildProgressStepToolCallItem(
     outputSections.length > 0 ? outputSections.join('\n\n') : undefined;
   const inputText = step.inputText?.trim() || step.detail?.trim() || undefined;
   const effectiveStartedAt =
-    step.activeStartedAt || (step.status === 'queued' ? undefined : step.startedAt);
+    step.activeStartedAt ||
+    (step.status === 'queued' ? undefined : step.startedAt);
   return {
     id: `progress-step:${step.id}`,
     type: 'tool_call',
@@ -183,10 +193,10 @@ export function hasRepoReviewVisibleProgress(run: RepoReviewRun) {
   }
   return Boolean(
     run.reviewProgress &&
-      ((run.reviewProgress.steps?.length || 0) > 0 ||
-        run.reviewProgress.turnCount > 0 ||
-        run.reviewProgress.latestAssistantText ||
-        run.reviewProgress.latestErrorText),
+    ((run.reviewProgress.steps?.length || 0) > 0 ||
+      run.reviewProgress.turnCount > 0 ||
+      run.reviewProgress.latestAssistantText ||
+      run.reviewProgress.latestErrorText),
   );
 }
 
@@ -243,14 +253,14 @@ export function buildReviewProgressEntries(run: RepoReviewRun) {
   > = [];
 
   for (const step of run.reviewProgress?.steps || []) {
-      entries.push({
-        key: `${run.id}:progress-step:${step.id}`,
-        kind: 'progress_step',
-        timestamp: step.activeStartedAt || step.startedAt || run.createdAt,
-        item: step,
-        groupKey: step.id,
-        groupLabel: step.label,
-      });
+    entries.push({
+      key: `${run.id}:progress-step:${step.id}`,
+      kind: 'progress_step',
+      timestamp: step.activeStartedAt || step.startedAt || run.createdAt,
+      item: step,
+      groupKey: step.id,
+      groupLabel: step.label,
+    });
   }
 
   for (const turn of run.reviewTurns) {
@@ -313,7 +323,8 @@ export function buildReviewProgressEntries(run: RepoReviewRun) {
 
   if (
     run.reviewProgress &&
-    (run.reviewProgress.latestAssistantText || run.reviewProgress.latestErrorText)
+    (run.reviewProgress.latestAssistantText ||
+      run.reviewProgress.latestErrorText)
   ) {
     const timestamp = run.updatedAt || run.startedAt || run.createdAt;
     const latestAssistantEntry = [...entries]
@@ -324,21 +335,21 @@ export function buildReviewProgressEntries(run: RepoReviewRun) {
       .find((entry) => entry.kind === 'turn_error');
     const shouldAppendAssistantSnapshot = Boolean(
       run.reviewProgress.latestAssistantText &&
-        (
-          !latestAssistantEntry ||
-          timestamp > latestAssistantEntry.timestamp ||
-          latestAssistantEntry.item.text !== run.reviewProgress.latestAssistantText
-        ),
+      (!latestAssistantEntry ||
+        timestamp > latestAssistantEntry.timestamp ||
+        latestAssistantEntry.item.text !==
+          run.reviewProgress.latestAssistantText),
     );
     const shouldAppendErrorSnapshot = Boolean(
       run.reviewProgress.latestErrorText &&
-        (
-          !latestErrorEntry ||
-          timestamp > latestErrorEntry.timestamp ||
-          latestErrorEntry.error !== run.reviewProgress.latestErrorText
-        ),
+      (!latestErrorEntry ||
+        timestamp > latestErrorEntry.timestamp ||
+        latestErrorEntry.error !== run.reviewProgress.latestErrorText),
     );
-    if (shouldAppendAssistantSnapshot && run.reviewProgress.latestAssistantText) {
+    if (
+      shouldAppendAssistantSnapshot &&
+      run.reviewProgress.latestAssistantText
+    ) {
       entries.push({
         key: `${run.id}:progress-snapshot:assistant:${timestamp}`,
         kind: 'assistant_message',
@@ -416,24 +427,24 @@ export function ReviewProgressTimeline({
         >
           <summary className="turn-item-header turn-item-summary">
             <span className="turn-item-summary-icon" aria-hidden="true" />
-              <div className="turn-item-summary-main">
-                <div className="turn-item-summary-top">
-                  <span className="turn-item-kind tool_call">{kindLabel}</span>
-                  {phaseLabel ? (
-                    <span className="repo-review-progress-turn-tag">
-                      {phaseLabel}
-                    </span>
-                  ) : null}
-                  <span className="turn-item-title">{item.title}</span>
-                  <ToolCallDurationLabel
-                    startedAt={item.startedAt}
-                    completedAt={item.completedAt}
-                    timestamp={item.timestamp}
-                    status={item.status}
-                  />
-                  <span className={`turn-item-status ${item.status}`}>
-                    {getTurnItemStatusLabel(item.status)}
+            <div className="turn-item-summary-main">
+              <div className="turn-item-summary-top">
+                <span className="turn-item-kind tool_call">{kindLabel}</span>
+                {phaseLabel ? (
+                  <span className="repo-review-progress-turn-tag">
+                    {phaseLabel}
                   </span>
+                ) : null}
+                <span className="turn-item-title">{item.title}</span>
+                <ToolCallDurationLabel
+                  startedAt={item.startedAt}
+                  completedAt={item.completedAt}
+                  timestamp={item.timestamp}
+                  status={item.status}
+                />
+                <span className={`turn-item-status ${item.status}`}>
+                  {getTurnItemStatusLabel(item.status)}
+                </span>
               </div>
               <span className="turn-item-preview">
                 {truncateReviewPreview(
@@ -462,7 +473,9 @@ export function ReviewProgressTimeline({
                 ) : null}
                 {item.resultText ? (
                   <div className="turn-item-section">
-                    <div className="turn-item-label">{t('timeline.result')}</div>
+                    <div className="turn-item-label">
+                      {t('timeline.result')}
+                    </div>
                     <pre className="turn-item-code">{item.resultText}</pre>
                   </div>
                 ) : null}
@@ -520,7 +533,9 @@ export function ReviewProgressTimeline({
     });
   }
 
-  const renderTimelineEntry = (entry: Exclude<ReviewProgressEntry, { kind: 'progress_step' }>) => {
+  const renderTimelineEntry = (
+    entry: Exclude<ReviewProgressEntry, { kind: 'progress_step' }>,
+  ) => {
     const phaseLabel = getReviewTurnPhaseLabel(entry.phase);
     if (entry.kind === 'assistant_message') {
       return (
@@ -564,7 +579,9 @@ export function ReviewProgressTimeline({
                 </summary>
                 <div className="turn-item-body turn-item-body-response">
                   <div className="turn-item-section">
-                    <div className="turn-item-label">{t('timeline.content')}</div>
+                    <div className="turn-item-label">
+                      {t('timeline.content')}
+                    </div>
                     <div className="assistant-activity-text assistant-activity-text-block">
                       <span className="assistant-activity-body">
                         {entry.item.text}
@@ -639,7 +656,10 @@ export function ReviewProgressTimeline({
                   </div>
                   <span className="turn-item-preview assistant-reasoning-summary-text">
                     {truncateReviewPreview(
-                      formatReviewReasoningText(entry.item.title, entry.item.text),
+                      formatReviewReasoningText(
+                        entry.item.title,
+                        entry.item.text,
+                      ),
                     )}
                   </span>
                 </div>
@@ -735,7 +755,10 @@ export function ReviewProgressTimeline({
           usedGroupKeys.add(entry.groupKey);
         }
         return (
-          <div key={`step-group:${entry.key}`} className="repo-review-progress-step-group">
+          <div
+            key={`step-group:${entry.key}`}
+            className="repo-review-progress-step-group"
+          >
             {renderToolCallNode({
               key: entry.key,
               item: buildProgressStepToolCallItem(entry.item),

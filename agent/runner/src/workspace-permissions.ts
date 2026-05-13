@@ -206,9 +206,7 @@ function unwrapTransparentReadOnlyShellWrapper(command: string): string {
   }
 
   for (;;) {
-    const cdMatch = normalized.match(
-      /^cd\s+[^;&|]+?\s*(?:&&|;)\s*([\s\S]+)$/i,
-    );
+    const cdMatch = normalized.match(/^cd\s+[^;&|]+?\s*(?:&&|;)\s*([\s\S]+)$/i);
     if (!cdMatch) break;
     normalized = cdMatch[1]!.trim();
   }

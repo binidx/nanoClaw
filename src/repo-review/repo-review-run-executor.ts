@@ -6,6 +6,7 @@ import path from 'path';
 
 import { AGENT_TIMEOUT, DATA_DIR } from '../config.js';
 import { isDuplicateKeyError } from '../db/sql-adapters.js';
+import { loadCodeIndexSnapshot } from '../db/code-index-db.js';
 
 import {
   backfillConversationParticipantsFromMessages,
@@ -165,6 +166,7 @@ import type {
   QueuedRepoReviewBranchResultSummary,
   QueuedRepoReviewSingleBranchResult,
 } from './repo-review-model.js';
+import type { CodeIndexSnapshot } from '../code-intelligence/code-index-types.js';
 import type {
   LocalGitRemoteMetadataCacheEntry,
   LocalGitRemoteMetadataInput,
@@ -1457,6 +1459,8 @@ function normalizeReviewTurnItem(item: unknown): AgentTurnItemPayload | null {
       resultText: stringValue(record.resultText),
       errorText: stringValue(record.errorText),
       subagentInfo,
+      startedAt: stringValue(record.startedAt) || undefined,
+      completedAt: stringValue(record.completedAt) || undefined,
       timestamp,
     };
   }
@@ -1492,14 +1496,27 @@ function normalizeReviewTurns(value: unknown): RepoReviewAssistantTurn[] {
       rawPhase === 'timeout_followup' ||
       rawPhase === 'main_agent_review' ||
       rawPhase === 'main_agent_fallback_review' ||
-      rawPhase === 'reducer'
+      rawPhase === 'reducer' ||
+      rawPhase === 'formatter'
         ? rawPhase
+        : undefined;
+    const rawOwnerKind = stringValue(record.ownerKind);
+    const ownerKind =
+      rawOwnerKind === 'main' ||
+      rawOwnerKind === 'subagent' ||
+      rawOwnerKind === 'worker' ||
+      rawOwnerKind === 'reducer' ||
+      rawOwnerKind === 'formatter'
+        ? rawOwnerKind
         : undefined;
     turns.push({
       id,
       clientKey: stringValue(record.clientKey) || undefined,
       groupKey: stringValue(record.groupKey) || undefined,
       groupLabel: stringValue(record.groupLabel) || undefined,
+      parentToolCallId: stringValue(record.parentToolCallId) || undefined,
+      ownerKind,
+      ownerLabel: stringValue(record.ownerLabel) || undefined,
       phase,
       timestamp,
       items,
@@ -1534,6 +1551,9 @@ function upsertReviewTurn(
               groupKey: context.groupKey,
               groupLabel: context.groupLabel,
               phase: context.phase,
+              parentToolCallId: context.parentToolCallId,
+              ownerKind: context.ownerKind,
+              ownerLabel: context.ownerLabel,
             }
           : {}),
       },
@@ -1549,6 +1569,10 @@ function upsertReviewTurn(
           groupKey: next[index]?.groupKey || context.groupKey,
           groupLabel: next[index]?.groupLabel || context.groupLabel,
           phase: next[index]?.phase || context.phase,
+          parentToolCallId:
+            next[index]?.parentToolCallId || context.parentToolCallId,
+          ownerKind: next[index]?.ownerKind || context.ownerKind,
+          ownerLabel: next[index]?.ownerLabel || context.ownerLabel,
         }
       : {}),
   };
@@ -1587,6 +1611,9 @@ function upsertReviewTurnItem(
           groupKey: turn.groupKey || context.groupKey,
           groupLabel: turn.groupLabel || context.groupLabel,
           phase: turn.phase || context.phase,
+          parentToolCallId: turn.parentToolCallId || context.parentToolCallId,
+          ownerKind: turn.ownerKind || context.ownerKind,
+          ownerLabel: turn.ownerLabel || context.ownerLabel,
         }
       : {}),
   };
@@ -1614,6 +1641,10 @@ function markReviewTurnCompleted(
           groupKey: next[index]?.groupKey || context.groupKey,
           groupLabel: next[index]?.groupLabel || context.groupLabel,
           phase: next[index]?.phase || context.phase,
+          parentToolCallId:
+            next[index]?.parentToolCallId || context.parentToolCallId,
+          ownerKind: next[index]?.ownerKind || context.ownerKind,
+          ownerLabel: next[index]?.ownerLabel || context.ownerLabel,
         }
       : {}),
   };
@@ -1838,6 +1869,7 @@ function buildRepoReviewSyntheticSubagentToolTurn(input: {
   parentRuntimeId?: string;
   originTurnId?: string;
   originToolCallId?: string;
+  groupKey?: string;
   label: string;
   task: string;
   argumentsText?: string;
@@ -1849,6 +1881,12 @@ function buildRepoReviewSyntheticSubagentToolTurn(input: {
   const timestamp = input.timestamp || new Date().toISOString();
   return {
     id: input.turnId,
+    groupKey: input.groupKey || input.turnId,
+    groupLabel: input.label,
+    parentToolCallId: input.originToolCallId,
+    ownerKind: 'subagent',
+    ownerLabel: input.label,
+    phase: 'worker',
     timestamp,
     isLive: input.status === 'in_progress',
     isCompleted: input.status !== 'in_progress',
@@ -1861,6 +1899,8 @@ function buildRepoReviewSyntheticSubagentToolTurn(input: {
         argumentsText: capRepoReviewSyntheticToolText(input.argumentsText),
         resultText: capRepoReviewSyntheticToolText(input.resultText),
         errorText: capRepoReviewSyntheticToolText(input.errorText),
+        startedAt: timestamp,
+        ...(input.status !== 'in_progress' ? { completedAt: timestamp } : {}),
         timestamp,
       },
     ],
@@ -2335,6 +2375,9 @@ interface RepoReviewTurnContext {
   groupKey: string;
   groupLabel: string;
   phase: NonNullable<RepoReviewAssistantTurn['phase']>;
+  parentToolCallId?: string;
+  ownerKind?: RepoReviewAssistantTurn['ownerKind'];
+  ownerLabel?: string;
 }
 
 function applyReviewTurnEvent(
@@ -2353,7 +2396,13 @@ function applyReviewTurnEvent(
     return upsertReviewTurnItem(turns, event, context);
   }
   if (event.type === 'turn.completed') {
-    return markReviewTurnCompleted(turns, event.turnId, event.timestamp, undefined, context);
+    return markReviewTurnCompleted(
+      turns,
+      event.turnId,
+      event.timestamp,
+      undefined,
+      context,
+    );
   }
   if (event.type === 'turn.failed') {
     return markReviewTurnCompleted(
@@ -3268,6 +3317,31 @@ function parseReviewResult(text: string): {
               stringValue(entry.codeSnippet || entry.code_snippet) || undefined,
             fixCode: stringValue(entry.fixCode || entry.fix_code) || undefined,
             evidence: stringValue(entry.evidence) || undefined,
+            evidenceKey:
+              stringValue(entry.evidenceKey || entry.evidence_key) || undefined,
+            codeSnippetSource:
+              stringValue(
+                entry.codeSnippetSource || entry.code_snippet_source,
+              ) === 'model' ||
+              stringValue(
+                entry.codeSnippetSource || entry.code_snippet_source,
+              ) === 'diff' ||
+              stringValue(
+                entry.codeSnippetSource || entry.code_snippet_source,
+              ) === 'workspace' ||
+              stringValue(
+                entry.codeSnippetSource || entry.code_snippet_source,
+              ) === 'unavailable'
+                ? (stringValue(
+                    entry.codeSnippetSource || entry.code_snippet_source,
+                  ) as RepoReviewRunFinding['codeSnippetSource'])
+                : stringValue(entry.codeSnippet || entry.code_snippet)
+                  ? 'model'
+                  : undefined,
+            needsSnippetHydration: normalizeBoolean(
+              entry.needsSnippetHydration || entry.needs_snippet_hydration,
+              !stringValue(entry.codeSnippet || entry.code_snippet),
+            ),
             title: stringValue(entry.title) || 'Issue',
             detail: stringValue(entry.detail) || stringValue(entry.description),
             suggestion: stringValue(entry.suggestion) || undefined,
@@ -4702,6 +4776,170 @@ function buildRepoReviewDiffSummaryBlock(input: {
   return lines.length > 0 ? lines.join('\n') : '- (none)';
 }
 
+export function buildRepoReviewCodeIndexContextBlock(input: {
+  snapshot: CodeIndexSnapshot | null;
+  repositoryId: string;
+  branch: string;
+  headSha?: string;
+  changedFiles: string[];
+}): string {
+  const branch = normalizeBranchName(input.branch || '');
+  if (!input.snapshot) {
+    return [
+      'Code Index 上下文：unavailable',
+      `repository_id: ${input.repositoryId}`,
+      `branch: ${branch || '(unknown)'}`,
+      'reason: missing_snapshot',
+    ].join('\n');
+  }
+
+  const snapshot = input.snapshot;
+  const meta = snapshot.meta;
+  const sourceHeadSha = stringValue(meta.sourceHeadSha);
+  const headSha = stringValue(input.headSha);
+  const isReady = meta.status === 'ready' && meta.stage === 'complete';
+  const isStale = Boolean(
+    sourceHeadSha &&
+    headSha &&
+    sourceHeadSha !== headSha &&
+    !headSha.startsWith(sourceHeadSha) &&
+    !sourceHeadSha.startsWith(headSha),
+  );
+  const fileByPath = new Map(
+    snapshot.files.map((file) => [file.relativePath, file]),
+  );
+  const functionsByFile = new Map<string, typeof snapshot.functions>();
+  for (const fn of snapshot.functions) {
+    const entries = functionsByFile.get(fn.filePath) || [];
+    entries.push(fn);
+    functionsByFile.set(fn.filePath, entries);
+  }
+  const functionById = new Map(snapshot.functions.map((fn) => [fn.id, fn]));
+  const incomingByFile = new Map<string, number>();
+  const outgoingByFile = new Map<string, number>();
+  for (const edge of snapshot.functionEdges) {
+    const from = functionById.get(edge.fromFunctionId);
+    const to = functionById.get(edge.toFunctionId);
+    if (from?.filePath) {
+      outgoingByFile.set(
+        from.filePath,
+        (outgoingByFile.get(from.filePath) || 0) + 1,
+      );
+    }
+    if (to?.filePath) {
+      incomingByFile.set(
+        to.filePath,
+        (incomingByFile.get(to.filePath) || 0) + 1,
+      );
+    }
+  }
+
+  const lines = [
+    'Code Index 上下文：',
+    `status: ${isReady ? 'ready' : meta.status}`,
+    `stage: ${meta.stage}`,
+    `source_branch: ${meta.sourceBranch || meta.branch || branch || '(unknown)'}`,
+    `source_head_sha: ${sourceHeadSha || '(unknown)'}`,
+    `freshness: ${isStale ? 'stale' : 'current_or_unknown'}`,
+    `changed_files_with_index: ${input.changedFiles.filter((file) => fileByPath.has(file)).length}/${input.changedFiles.length}`,
+    '',
+    '变更文件角色与依赖摘要：',
+  ];
+
+  for (const filePath of input.changedFiles.slice(0, 32)) {
+    const file = fileByPath.get(filePath);
+    if (!file) {
+      lines.push(`- ${filePath}: no_index_entry`);
+      continue;
+    }
+    const symbols = (functionsByFile.get(filePath) || []).slice(0, 8);
+    lines.push(
+      [
+        `- ${filePath}`,
+        `language=${file.language || 'text'}`,
+        `lines=${file.lineCount}`,
+        `imports=${file.importCount}`,
+        `exports=${file.exportCount}`,
+        `rank=${file.rank}`,
+        `incoming_calls=${incomingByFile.get(filePath) || 0}`,
+        `outgoing_calls=${outgoingByFile.get(filePath) || 0}`,
+      ].join(' | '),
+    );
+    if (file.summary) {
+      lines.push(`  summary: ${trimContextBlock(file.summary, 400)}`);
+    }
+    if (symbols.length > 0) {
+      lines.push(
+        `  symbols: ${symbols
+          .map((fn) => `${fn.kind} ${fn.name}@${fn.line}`)
+          .join(', ')}`,
+      );
+    }
+  }
+
+  if (input.changedFiles.length > 32) {
+    lines.push(
+      `- ...(还有 ${input.changedFiles.length - 32} 个变更文件未展开)`,
+    );
+  }
+  if (isStale) {
+    lines.push(
+      '',
+      '注意：Code Index 的 head 与本次审查 head 不一致，只作为低权重导航线索，结论仍以 diff/worktree 为准。',
+    );
+  }
+  return lines.join('\n');
+}
+
+async function enrichReviewPreparedContextWithCodeIndex(input: {
+  repository: RepoReviewRepository;
+  prepared: ReviewPreparedContext;
+}): Promise<ReviewPreparedContext> {
+  const branch = normalizeBranchName(input.prepared.branch || '');
+  if (!branch || input.prepared.changedFiles.length === 0) {
+    return input.prepared;
+  }
+  try {
+    const snapshot = await loadCodeIndexSnapshot(input.repository.id, branch);
+    const block = buildRepoReviewCodeIndexContextBlock({
+      snapshot,
+      repositoryId: input.repository.id,
+      branch,
+      headSha: input.prepared.headSha,
+      changedFiles: input.prepared.changedFiles,
+    });
+    return {
+      ...input.prepared,
+      projectContextBlocks: [
+        ...input.prepared.projectContextBlocks,
+        block,
+      ].filter(Boolean),
+    };
+  } catch (err) {
+    logger.warn(
+      {
+        err,
+        repositoryId: input.repository.id,
+        branch,
+      },
+      'Failed to build repo review Code Index context',
+    );
+    return {
+      ...input.prepared,
+      projectContextBlocks: [
+        ...input.prepared.projectContextBlocks,
+        buildRepoReviewCodeIndexContextBlock({
+          snapshot: null,
+          repositoryId: input.repository.id,
+          branch,
+          headSha: input.prepared.headSha,
+          changedFiles: input.prepared.changedFiles,
+        }),
+      ],
+    };
+  }
+}
+
 const REPO_REVIEW_EVIDENCE_MAX_LINES = 28;
 const REPO_REVIEW_EVIDENCE_CONTEXT_BEFORE = 3;
 const REPO_REVIEW_EVIDENCE_CONTEXT_AFTER = 6;
@@ -4997,6 +5235,24 @@ function splitDiffByFile(diffText: string): Map<string, string> {
   return result;
 }
 
+async function readRepoReviewWorkspaceFile(filePath: string): Promise<{
+  content: string;
+  source: 'workspace' | 'omitted' | 'unavailable';
+}> {
+  try {
+    const stat = await fs.promises.stat(filePath);
+    if (!stat.isFile()) return { content: '', source: 'omitted' };
+    if (stat.size > REPO_REVIEW_AGENTIC_DEFAULT_MAX_FULL_FILE_BYTES_PER_FILE) {
+      return { content: '', source: 'omitted' };
+    }
+    const buffer = await fs.promises.readFile(filePath);
+    if (buffer.includes(0)) return { content: '', source: 'omitted' };
+    return { content: buffer.toString('utf8'), source: 'workspace' };
+  } catch {
+    return { content: '', source: 'unavailable' };
+  }
+}
+
 async function buildRepoReviewFindingEvidence(input: {
   repository: RepoReviewRepository;
   run: RepoReviewRun;
@@ -5113,6 +5369,124 @@ async function buildRepoReviewFindingEvidence(input: {
   }
 
   return evidence;
+}
+
+async function hydrateRepoReviewFindingSnippets(input: {
+  findings: RepoReviewRunFinding[];
+  prepared: ReviewPreparedContext;
+  workspacePath?: string | null;
+}): Promise<RepoReviewRunFinding[]> {
+  const diffIndex =
+    input.prepared.diffIndex ||
+    buildRepoReviewDiffIndex(input.prepared.diffText || '');
+  return Promise.all(
+    input.findings.map(async (finding) => {
+      const evidenceKey =
+        finding.evidenceKey || buildRepoReviewFindingEvidenceKey(finding);
+      if (finding.codeSnippet?.trim()) {
+        return {
+          ...finding,
+          evidenceKey,
+          codeSnippetSource: finding.codeSnippetSource || 'model',
+          needsSnippetHydration: false,
+        };
+      }
+      const filePath = stringValue(finding.file);
+      if (!filePath) {
+        return {
+          ...finding,
+          evidenceKey,
+          codeSnippetSource: 'unavailable' as const,
+          needsSnippetHydration: true,
+        };
+      }
+
+      const diffSlice =
+        getRepoReviewDiffSlice(diffIndex, [filePath]) ||
+        buildFilteredDiff(
+          input.prepared.diffText,
+          new Set([filePath]),
+          diffIndex,
+        );
+      const hunks = parseRepoReviewDiffHunks(diffSlice);
+      const searchTerms = buildRepoReviewFindingSearchTerms(finding);
+      let bestSnippet = '';
+      let bestSource: RepoReviewRunFinding['codeSnippetSource'] = 'unavailable';
+
+      if (input.workspacePath) {
+        const fullPath = path.resolve(input.workspacePath, filePath);
+        try {
+          const read = await readRepoReviewWorkspaceFile(fullPath);
+          if (read.content.trim() && hunks.length > 0) {
+            let bestScore = Number.NEGATIVE_INFINITY;
+            for (const hunk of hunks) {
+              const snippet = extractRepoReviewFinalCodeSnippet(
+                read.content,
+                hunk,
+                searchTerms,
+              );
+              const score =
+                scoreRepoReviewEvidenceHunk(hunk, searchTerms) +
+                scoreRepoReviewEvidenceSnippet(snippet, searchTerms);
+              if (score > bestScore) {
+                bestScore = score;
+                bestSnippet = snippet;
+                bestSource = 'workspace';
+              }
+            }
+          } else if (read.content.trim()) {
+            const lineNumber = Number.parseInt(
+              String(finding.line || '').match(/\d+/)?.[0] || '',
+              10,
+            );
+            const lines = read.content.replace(/\r\n/g, '\n').split('\n');
+            if (Number.isFinite(lineNumber) && lineNumber > 0) {
+              const start = Math.max(
+                1,
+                lineNumber - REPO_REVIEW_EVIDENCE_CONTEXT_BEFORE,
+              );
+              const end = Math.min(
+                lines.length,
+                lineNumber + REPO_REVIEW_EVIDENCE_CONTEXT_AFTER,
+              );
+              bestSnippet = trimRepoReviewEvidenceSnippet(
+                lines.slice(start - 1, end).join('\n'),
+              );
+              bestSource = 'workspace';
+            }
+          }
+        } catch {
+          // Diff fallback below still gives the formatter a concrete snippet.
+        }
+      }
+
+      if (!bestSnippet && hunks.length > 0) {
+        let bestHunkText = '';
+        let bestHunkScore = Number.NEGATIVE_INFINITY;
+        for (const hunk of hunks) {
+          const score = scoreRepoReviewEvidenceHunk(hunk, searchTerms);
+          if (score > bestHunkScore) {
+            bestHunkScore = score;
+            bestHunkText = hunk.text;
+          }
+        }
+        if (bestHunkText) {
+          bestSnippet = trimRepoReviewEvidenceSnippet(
+            extractAfterStateFromDiffHunk(bestHunkText),
+          );
+          bestSource = 'diff';
+        }
+      }
+
+      return {
+        ...finding,
+        evidenceKey,
+        ...(bestSnippet ? { codeSnippet: bestSnippet } : {}),
+        codeSnippetSource: bestSource,
+        needsSnippetHydration: !bestSnippet,
+      };
+    }),
+  );
 }
 
 function sanitizePreparedContext(
@@ -5725,8 +6099,7 @@ export async function resolveReviewPrompt(
     input.reviewMode === 'direct'
       ? [
           '本次由主代理直接审查，不会再进入后续补充子代理阶段。',
-          '如果需要全文确认，请直接使用只读工具核对相关文件，不要等待后续阶段。',
-          '必须至少执行一次工具取证，再给出结论。',
+          '优先使用系统已准备的 diff/evidence；如果需要全文确认，请直接使用只读工具核对相关文件，不要等待后续阶段。',
         ].join('\n')
       : input.profile.includeFullFileContext
         ? [
@@ -5921,6 +6294,10 @@ function buildRepoReviewAgenticPromptVariables(input: {
     diffSummaryBlock: buildRepoReviewDiffSummaryBlock({
       prepared: input.prepared,
     }),
+    projectContextBlock:
+      input.prepared.projectContextBlocks.length > 0
+        ? `项目上下文：\n${input.prepared.projectContextBlocks.join('\n\n')}`
+        : '项目上下文：暂无补充上下文。',
     changedFileCount: input.prepared.changedFiles.length,
     changedFiles:
       input.prepared.changedFiles.length > 0
@@ -6267,6 +6644,14 @@ async function runRepoReviewMainPlan(input: {
           runtimeNamespace: `${input.runId}:main-plan:${attempt + 1}`,
           workspacePath: input.workspacePath,
           userId: input.userId,
+          toolPolicy: 'readonly',
+          turnContext: {
+            groupKey: 'agentic_main_plan',
+            groupLabel: '主代理制定审查计划',
+            phase: 'main_agent_review',
+            ownerKind: 'main',
+            ownerLabel: '主代理',
+          },
           onTurnProgress: input.onTurnProgress,
           onStatusEvent: buildRepoReviewAgentStatusProgressHandler({
             id: 'agentic_main_plan',
@@ -6646,6 +7031,7 @@ async function runRepoReviewAgenticSubagents(input: {
           toolCallId,
           runtimeId: runtimeNamespace,
           parentRuntimeId: input.runId,
+          groupKey: stepId,
           label: `子代理 ${index + 1}/${input.tasks.length}`,
           task: task.files.length === 1 ? task.files[0]! : task.title,
           argumentsText: buildRepoReviewSubagentPromptPreview({
@@ -6666,6 +7052,15 @@ async function runRepoReviewAgenticSubagents(input: {
           runtimeNamespace,
           workspacePath: input.workspacePath,
           userId: input.userId,
+          toolPolicy: 'none',
+          turnContext: {
+            groupKey: stepId,
+            groupLabel: `子代理 ${index + 1}/${input.tasks.length}`,
+            phase: 'worker',
+            parentToolCallId: toolCallId,
+            ownerKind: 'subagent',
+            ownerLabel: `子代理 ${index + 1}/${input.tasks.length}`,
+          },
           timeoutMs: REPO_REVIEW_SUBAGENT_TIMEOUT_MS,
           timeoutGraceMs: REPO_REVIEW_SUBAGENT_TIMEOUT_GRACE_MS,
           timeoutFollowupPrompt: buildRepoReviewSubagentTimeoutFollowupPrompt({
@@ -6717,6 +7112,7 @@ async function runRepoReviewAgenticSubagents(input: {
           toolCallId,
           runtimeId: runtimeNamespace,
           parentRuntimeId: input.runId,
+          groupKey: stepId,
           label: `子代理 ${index + 1}/${input.tasks.length}`,
           task: task.files.length === 1 ? task.files[0]! : task.title,
           argumentsText: buildRepoReviewSubagentPromptPreview({
@@ -6759,6 +7155,7 @@ async function runRepoReviewAgenticSubagents(input: {
           toolCallId,
           runtimeId: runtimeNamespace,
           parentRuntimeId: input.runId,
+          groupKey: stepId,
           label: `子代理 ${index + 1}/${input.tasks.length}`,
           task: task.files.length === 1 ? task.files[0]! : task.title,
           argumentsText: resolvedPromptText,
@@ -6989,6 +7386,14 @@ async function extractRepoReviewStructuredResult(input: {
           workspacePath: input.workspacePath,
           userId: input.userId,
           attachWorkspace: false,
+          toolPolicy: 'none',
+          turnContext: {
+            groupKey: 'agentic_structured_extract',
+            groupLabel: '格式化整理',
+            phase: 'formatter',
+            ownerKind: 'formatter',
+            ownerLabel: '格式化整理',
+          },
           onTurnProgress: input.onTurnProgress,
           onStatusEvent: buildRepoReviewAgentStatusProgressHandler({
             id: 'agentic_structured_extract',
@@ -7102,6 +7507,8 @@ async function runRepoReviewAgenticReview(input: {
         groupKey: 'agentic_main_summary',
         groupLabel: '主代理直接审查',
         phase: 'main_agent_review',
+        ownerKind: 'main',
+        ownerLabel: '主代理',
       },
       onTurnProgress: async (turns) => {
         directTurns = turns;
@@ -7364,6 +7771,8 @@ async function runRepoReviewAgenticReview(input: {
       groupKey: 'agentic_main_summary',
       groupLabel: '主代理汇总结论',
       phase: 'main_agent_fallback_review',
+      ownerKind: 'main',
+      ownerLabel: '主代理',
     },
     onTurnProgress: async (turns) => {
       finalTurns = turns;
@@ -7404,7 +7813,9 @@ async function runRepoReviewAgenticReview(input: {
     id: 'agentic_main_summary',
     label: '主代理汇总结论',
     status: 'completed',
-    detail: usedExtractor ? '主代理报告已生成，已通过 formatter 兜底结构化' : '主代理已直接生成结构化结论',
+    detail: usedExtractor
+      ? '主代理报告已生成，已通过 formatter 兜底结构化'
+      : '主代理已直接生成结构化结论',
     kind: 'main',
     outputText: formatProgressKeyValues([
       ['overall', parsed.overall],
@@ -8808,6 +9219,7 @@ async function runSupplementalFullFileReviewBatchWorkers(input: {
           toolCallId,
           runtimeId: runtimeNamespace,
           parentRuntimeId: input.runId,
+          groupKey: stepId,
           label,
           task: manifest.filePath,
           resultText: JSON.stringify(hydrated, null, 2),
@@ -8858,6 +9270,7 @@ async function runSupplementalFullFileReviewBatchWorkers(input: {
         toolCallId,
         runtimeId: runtimeNamespace,
         parentRuntimeId: input.runId,
+        groupKey: stepId,
         label,
         task: hydrated.filePath,
         argumentsText: buildRepoReviewSubagentPromptPreview({
@@ -8879,6 +9292,15 @@ async function runSupplementalFullFileReviewBatchWorkers(input: {
             workspacePath: input.workspacePath,
             userId: input.userId,
             attachWorkspace: false,
+            toolPolicy: 'none',
+            turnContext: {
+              groupKey: stepId,
+              groupLabel: label,
+              phase: 'worker',
+              parentToolCallId: toolCallId,
+              ownerKind: 'subagent',
+              ownerLabel: label,
+            },
             onTurnProgress: async (turns) => {
               childTurns = turns;
               await setWorkerTurns();
@@ -8910,6 +9332,7 @@ async function runSupplementalFullFileReviewBatchWorkers(input: {
           toolCallId,
           runtimeId: runtimeNamespace,
           parentRuntimeId: input.runId,
+          groupKey: stepId,
           label,
           task: hydrated.filePath,
           argumentsText: buildRepoReviewSubagentPromptPreview({
@@ -8944,6 +9367,7 @@ async function runSupplementalFullFileReviewBatchWorkers(input: {
           toolCallId,
           runtimeId: runtimeNamespace,
           parentRuntimeId: input.runId,
+          groupKey: stepId,
           label,
           task: hydrated.filePath,
           argumentsText: buildRepoReviewSubagentPromptPreview({
@@ -10338,6 +10762,7 @@ async function runReviewAgent(input: {
   onTimeoutFollowupDispatched?: () => void | Promise<void>;
   onStatusEvent?: (event: AgentEventPayload) => Promise<void>;
   attachWorkspace?: boolean;
+  toolPolicy?: AgentRunInput['toolPolicy'];
   turnContext?: RepoReviewTurnContext;
 }): Promise<{
   outputText: string;
@@ -10367,6 +10792,7 @@ async function runReviewAgent(input: {
     // "do not mention task creation/configuration" hard directives).
     suppressScheduledTaskPreamble: true,
     disableDefaultWebSearch: true,
+    toolPolicy: input.toolPolicy || 'readonly',
     assistantName: await getAssistantName(),
     runtimeNamespace: input.runtimeNamespace || input.runId,
     managedSkillIds: input.profile.skillIds,
@@ -10742,8 +11168,9 @@ async function prepareReviewContext(
   profile: RepoReviewProfile,
   event: RepoReviewEvent,
 ): Promise<ReviewPreparedContext> {
+  let prepared: ReviewPreparedContext;
   if (event.diffText && event.changedFiles?.length) {
-    return sanitizePreparedContext(
+    prepared = sanitizePreparedContext(
       {
         diffText: event.diffText,
         changedFiles: event.changedFiles,
@@ -10758,20 +11185,21 @@ async function prepareReviewContext(
       },
       profile,
     );
-  }
-  if (event.source === 'local-hook') {
-    return sanitizePreparedContext(
+  } else if (event.source === 'local-hook') {
+    prepared = sanitizePreparedContext(
       await resolveLocalReviewContext(repository, profile, event),
       profile,
     );
+  } else {
+    prepared = sanitizePreparedContext(
+      await resolveRemoteReviewContext(
+        await requireRepository(repository.id),
+        event,
+      ),
+      profile,
+    );
   }
-  return sanitizePreparedContext(
-    await resolveRemoteReviewContext(
-      await requireRepository(repository.id),
-      event,
-    ),
-    profile,
-  );
+  return enrichReviewPreparedContextWithCodeIndex({ repository, prepared });
 }
 
 function computeBlocking(
@@ -11901,15 +12329,15 @@ async function executeRepoReviewEvent(
           },
         );
       }
-    executionStats = buildInitialRepoReviewExecutionStats({
-      diffText: prepared.diffText,
-      changedFiles: prepared.changedFiles,
-    });
-    const activeExecutionStats = executionStats;
-    const maxWorkerCount = await resolveRepoReviewMaxSubagents();
-    await persistReviewProgress();
-    activeExecutionStats.totalReadBudgetBytes =
-      REPO_REVIEW_AGENTIC_DEFAULT_MAX_TOTAL_READ_BYTES;
+      executionStats = buildInitialRepoReviewExecutionStats({
+        diffText: prepared.diffText,
+        changedFiles: prepared.changedFiles,
+      });
+      const activeExecutionStats = executionStats;
+      const maxWorkerCount = await resolveRepoReviewMaxSubagents();
+      await persistReviewProgress();
+      activeExecutionStats.totalReadBudgetBytes =
+        REPO_REVIEW_AGENTIC_DEFAULT_MAX_TOTAL_READ_BYTES;
       activeExecutionStats.maxFullFileBytesPerFile =
         REPO_REVIEW_AGENTIC_DEFAULT_MAX_FULL_FILE_BYTES_PER_FILE;
       await setProgressStep(
@@ -11988,39 +12416,42 @@ async function executeRepoReviewEvent(
       throwIfRepoReviewRunCancelled(runRecord.id);
       reviewTurns = agenticReview.reviewTurns;
       parsed = agenticReview.parsed;
+      const hydratedFindings = await hydrateRepoReviewFindingSnippets({
+        findings: parsed.findings,
+        prepared,
+        workspacePath: reviewWorkspacePath,
+      });
       finalReview = {
         overall: parsed.overall,
         summary: parsed.summary,
-        findings: parsed.findings,
+        findings: hydratedFindings,
         fileReviews: parsed.fileReviews,
         scopeLimitations: parsed.scopeLimitations,
         suggestions: parsed.suggestions,
         recommendedBlock: parsed.recommendedBlock,
       };
-      const finalMarkdownBody =
-        stringValue(parsed.markdownBody) ||
-        buildStructuredRepoReviewMarkdown(
-          {
-            summary: finalReview.summary,
-            findings: finalReview.findings,
-            fileReviews: finalReview.fileReviews,
-            commitReviews: parsed.commitReviews,
-            suggestions: finalReview.suggestions,
-          } as unknown as Pick<
-            RepoReviewRun,
-            'summary' | 'findings' | 'commitReviews' | 'suggestions'
-          >,
-          {
-            repositoryName: repository.name,
-            branch: prepared.branch,
-            baseSha: prepared.baseSha,
-            headSha: prepared.headSha,
-            actor: prepared.actor,
-            stage: event.stage,
-            prMrNumber: event.prMrNumber,
-            scopeLimitations: finalReview.scopeLimitations,
-          },
-        );
+      const finalMarkdownBody = buildStructuredRepoReviewMarkdown(
+        {
+          summary: finalReview.summary,
+          findings: finalReview.findings,
+          fileReviews: finalReview.fileReviews,
+          commitReviews: parsed.commitReviews,
+          suggestions: finalReview.suggestions,
+        } as unknown as Pick<
+          RepoReviewRun,
+          'summary' | 'findings' | 'commitReviews' | 'suggestions'
+        >,
+        {
+          repositoryName: repository.name,
+          branch: prepared.branch,
+          baseSha: prepared.baseSha,
+          headSha: prepared.headSha,
+          actor: prepared.actor,
+          stage: event.stage,
+          prMrNumber: event.prMrNumber,
+          scopeLimitations: finalReview.scopeLimitations,
+        },
+      );
       const blocking = computeBlocking(
         profile,
         finalReview.overall,
@@ -14478,9 +14909,7 @@ const reviewExecutionQueue =
     },
   });
 
-export async function enqueueRemoteRepoReview(
-  event: RepoReviewEvent,
-): Promise<{
+export async function enqueueRemoteRepoReview(event: RepoReviewEvent): Promise<{
   queued: boolean;
   reused: boolean;
   runId?: string | undefined;

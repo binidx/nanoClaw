@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
-import { isReadOnlyShellCommand } from './workspace-permissions.js';
+import {
+  isReadOnlyShellCommand,
+  mapWorkspacePathsInShellCommand,
+} from './workspace-permissions.js';
 
 describe('workspace permission shell command classification', () => {
   it('treats transparent shell wrappers around read-only review commands as read-only', () => {
@@ -10,7 +13,9 @@ describe('workspace permission shell command classification', () => {
       ),
     ).toBe(true);
     expect(
-      isReadOnlyShellCommand("sh -c 'cd /workspace/extra && rg authenticate src'"),
+      isReadOnlyShellCommand(
+        "sh -c 'cd /workspace/extra && rg authenticate src'",
+      ),
     ).toBe(true);
   });
 
@@ -21,5 +26,25 @@ describe('workspace permission shell command classification', () => {
     expect(
       isReadOnlyShellCommand("sh -c 'cd /workspace/extra && touch changed.ts'"),
     ).toBe(false);
+  });
+
+  it('maps virtual /workspace paths inside shell commands before execution', () => {
+    const previous = process.env.NANOCLAW_EXTRA_DIR;
+    process.env.NANOCLAW_EXTRA_DIR = '/tmp/nanoclaw-review-worktree';
+    try {
+      expect(
+        mapWorkspacePathsInShellCommand(
+          'git -C /workspace/extra diff -- src/app.ts && cd /workspace/extra',
+        ),
+      ).toBe(
+        'git -C /tmp/nanoclaw-review-worktree diff -- src/app.ts && cd /tmp/nanoclaw-review-worktree',
+      );
+    } finally {
+      if (previous === undefined) {
+        delete process.env.NANOCLAW_EXTRA_DIR;
+      } else {
+        process.env.NANOCLAW_EXTRA_DIR = previous;
+      }
+    }
   });
 });

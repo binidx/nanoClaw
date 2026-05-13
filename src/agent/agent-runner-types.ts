@@ -43,6 +43,7 @@ export interface AgentRunInput {
    */
   suppressScheduledTaskPreamble?: boolean;
   disableDefaultWebSearch?: boolean;
+  toolPolicy?: 'none' | 'readonly' | 'full';
   assistantName?: string;
   secrets?: Record<string, string>;
   runtimeNamespace?: string;
@@ -137,6 +138,8 @@ export interface AgentToolCallItemPayload {
   resultText?: string;
   errorText?: string;
   subagentInfo?: AgentSubagentInfo;
+  startedAt?: string;
+  completedAt?: string;
   timestamp: string;
 }
 
