@@ -49,7 +49,11 @@ function buildWorkflowRegisteredGroup(input: {
     folder,
     trigger: '@workflow',
     added_at: new Date().toISOString(),
-    assistantId: input.roleNode.assistant_id?.trim() || null,
+    assistantId:
+      input.taskNode.assistant_id?.trim() ||
+      parseTaskConfig(input.taskNode).assistantId?.trim() ||
+      input.roleNode.assistant_id?.trim() ||
+      null,
     requiresTrigger: false,
     isMain: false,
   };
@@ -112,7 +116,7 @@ export function buildTaskPrompt(
 ${roleNode.name}
 
 ## Goal
-${roleCfg.goal || roleNode.description || 'Complete the assigned workflow responsibilities.'}
+${taskCfg.goal || roleCfg.goal || roleNode.description || 'Complete the assigned workflow responsibilities.'}
 
 ## Backstory
 ${roleCfg.backstory || ''}

@@ -1,5 +1,12 @@
 export type WorkflowNodeType = 'role' | 'task';
 export type WorkflowEdgeDirection = 'one_way' | 'two_way';
+export type WorkflowKind =
+  | 'repository'
+  | 'skill'
+  | 'mcp'
+  | 'system_capability'
+  | 'general';
+export type WorkflowVisibility = 'private' | 'shared' | 'system';
 export type WorkflowRunStatus =
   | 'pending'
   | 'running'
@@ -26,6 +33,11 @@ export type WorkflowMessageFrameType =
   | 'manual_output_override'
   | 'feedback'
   | 'intervention';
+export type WorkflowPendingTransferStatus =
+  | 'pending'
+  | 'approved'
+  | 'cancelled'
+  | 'sent';
 export type WorkflowEventType =
   | 'run_started'
   | 'run_paused'
@@ -38,8 +50,31 @@ export type WorkflowEventType =
   | 'node_resumed'
   | 'input_updated'
   | 'output_updated'
+  | 'message_scheduled'
+  | 'message_cancelled'
   | 'message_sent'
+  | 'artifact_created'
   | 'intervention';
+
+export interface WorkflowArtifactPolicy {
+  exportable: boolean;
+  commitToBranch?: boolean;
+  publishTarget?: 'skill' | 'mcp' | 'system';
+}
+
+export interface WorkflowRepositoryPolicy {
+  required?: boolean;
+  bindingKey?: string;
+}
+
+export interface WorkflowConfig {
+  kind: WorkflowKind;
+  visibility: WorkflowVisibility;
+  repositoryPolicy?: WorkflowRepositoryPolicy;
+  artifactPolicy: WorkflowArtifactPolicy;
+  messageDelayMs: number;
+  publishTarget?: 'skill' | 'mcp' | 'system';
+}
 
 export interface WorkflowRecord {
   id: string;
@@ -187,10 +222,45 @@ export interface WorkflowMessageFrameRecord {
   created_at: string;
 }
 
+export interface WorkflowPendingTransferRecord {
+  id: string;
+  run_id: string;
+  edge_id: string;
+  source_node_id: string;
+  target_node_id: string;
+  direction: WorkflowEdgeDirection;
+  message_type: string;
+  status: WorkflowPendingTransferStatus;
+  content_text: string;
+  payload_json: string;
+  delay_ms: number;
+  due_at: string;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+  released_at: string;
+  sent_at: string;
+  cancelled_at: string;
+}
+
+export interface WorkflowArtifactRecord {
+  id: string;
+  run_id: string;
+  artifact_type: string;
+  name: string;
+  summary: string;
+  content_text: string;
+  payload_json: string;
+  status: string;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface CreateWorkflowInput {
   name: string;
   description?: string;
-  workflow_config?: Record<string, unknown>;
+  workflow_config?: Record<string, unknown> | WorkflowConfig;
 }
 
 export interface CreateWorkflowNodeInput {
@@ -231,6 +301,8 @@ export interface WorkflowRunGraph {
   executionEvents: WorkflowNodeExecutionEventRecord[];
   dialogueSessions: WorkflowDialogueSessionRecord[];
   messageFrames: WorkflowMessageFrameRecord[];
+  pendingTransfers: WorkflowPendingTransferRecord[];
+  artifacts: WorkflowArtifactRecord[];
 }
 
 export interface RoleNodeConfig {
@@ -240,6 +312,8 @@ export interface RoleNodeConfig {
 }
 
 export interface TaskNodeConfig {
+  assistantId?: string;
+  goal?: string;
   prompt?: string;
   expectedOutput?: string;
   timeoutMs?: number;
@@ -248,6 +322,11 @@ export interface TaskNodeConfig {
   modelOverride?: string;
   instructionsAppend?: string;
   allowedDirectories?: string[];
+  handoffPolicy?: {
+    maxTurns: number;
+    cooldownMs: number;
+    exposeToolCalls: false;
+  };
 }
 
 export interface WorkflowEdgeConfig {

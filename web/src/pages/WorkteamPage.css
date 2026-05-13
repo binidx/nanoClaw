@@ -1525,11 +1525,157 @@
   justify-content: center;
 }
 
+.workflow-library {
+  padding: 22px;
+}
+
+.workflow-library-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+  margin-bottom: 18px;
+}
+
+.workflow-library-header h3 {
+  margin: 0 0 6px;
+  font-size: 22px;
+}
+
+.workflow-library-header p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+.workflow-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 14px;
+}
+
+.workflow-library-card {
+  min-height: 156px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  text-align: left;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-panel);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.workflow-library-card:hover {
+  border-color: rgba(79, 70, 229, 0.42);
+  box-shadow: 0 14px 28px rgba(15, 23, 42, 0.08);
+  transform: translateY(-1px);
+}
+
+.workflow-library-card strong {
+  font-size: 16px;
+}
+
+.workflow-library-card > span:not(.workflow-card-status) {
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.workflow-card-status {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.workflow-card-meta {
+  margin-top: auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.workflow-card-meta span {
+  padding: 4px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: rgba(15, 23, 42, 0.04);
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.workflow-transfer-list,
+.workflow-artifact-list {
+  display: grid;
+  gap: 10px;
+}
+
+.workflow-transfer-card,
+.workflow-artifact-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.workflow-transfer-card.is-pending {
+  border-color: rgba(245, 158, 11, 0.38);
+}
+
+.workflow-transfer-card.is-sent,
+.workflow-artifact-card.is-ready,
+.workflow-artifact-card.is-published,
+.workflow-artifact-card.is-pushed {
+  border-color: rgba(16, 185, 129, 0.36);
+}
+
+.workflow-transfer-card-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.workflow-transfer-card p,
+.workflow-artifact-card p {
+  margin: 8px 0;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+}
+
+.workflow-transfer-card small,
+.workflow-artifact-card span {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.workflow-transfer-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+
+.workflow-artifact-panel {
+  display: grid;
+  gap: 12px;
+}
+
 [data-theme='dark'] .workflow-empty {
   border-color: rgba(36, 50, 71, 0.9);
   background:
     radial-gradient(circle at top, rgba(99, 102, 241, 0.08), transparent 24%),
     rgba(15, 23, 42, 0.72);
+}
+
+[data-theme='dark'] .workflow-library-card,
+[data-theme='dark'] .workflow-transfer-card,
+[data-theme='dark'] .workflow-artifact-card {
+  background: rgba(15, 23, 42, 0.72);
 }
 
 button {

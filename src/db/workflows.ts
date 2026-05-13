@@ -17,8 +17,11 @@ import type {
   WorkflowNodeExecutionEventRecord,
   WorkflowDialogueSessionRecord,
   WorkflowMessageFrameRecord,
+  WorkflowPendingTransferRecord,
+  WorkflowArtifactRecord,
   WorkflowSnapshot,
 } from '../workflow/types.js';
+import { normalizeWorkflowConfig } from '../workflow/config.js';
 
 function genId(): string {
   return crypto.randomUUID();
@@ -39,7 +42,7 @@ export async function createWorkflow(
     description: input.description ?? '',
     user_id: getCurrentUserId(),
     status: 'draft',
-    workflow_config: JSON.stringify(input.workflow_config ?? {}),
+    workflow_config: JSON.stringify(normalizeWorkflowConfig(input.workflow_config ?? {})),
     created_at: ts,
     updated_at: ts,
   };
@@ -1023,6 +1026,194 @@ export async function listWorkflowMessageFrames(
   return rows as WorkflowMessageFrameRecord[];
 }
 
+export async function createWorkflowPendingTransfer(input: {
+  run_id: string;
+  edge_id: string;
+  source_node_id: string;
+  target_node_id: string;
+  direction: 'one_way' | 'two_way';
+  message_type: string;
+  content_text: string;
+  payload_json: string;
+  delay_ms: number;
+  due_at: string;
+}): Promise<WorkflowPendingTransferRecord> {
+  const ts = now();
+  const record: WorkflowPendingTransferRecord = {
+    id: genId(),
+    run_id: input.run_id,
+    edge_id: input.edge_id,
+    source_node_id: input.source_node_id,
+    target_node_id: input.target_node_id,
+    direction: input.direction,
+    message_type: input.message_type,
+    status: 'pending',
+    content_text: input.content_text,
+    payload_json: input.payload_json,
+    delay_ms: input.delay_ms,
+    due_at: input.due_at,
+    created_by: getCurrentUserId(),
+    created_at: ts,
+    updated_at: ts,
+    released_at: '',
+    sent_at: '',
+    cancelled_at: '',
+  };
+  await dba.prepare(`
+    INSERT INTO workflow_pending_transfers (
+      id, run_id, edge_id, source_node_id, target_node_id, direction, message_type,
+      status, content_text, payload_json, delay_ms, due_at, created_by, created_at,
+      updated_at, released_at, sent_at, cancelled_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    record.id,
+    record.run_id,
+    record.edge_id,
+    record.source_node_id,
+    record.target_node_id,
+    record.direction,
+    record.message_type,
+    record.status,
+    record.content_text,
+    record.payload_json,
+    record.delay_ms,
+    record.due_at,
+    record.created_by,
+    record.created_at,
+    record.updated_at,
+    record.released_at,
+    record.sent_at,
+    record.cancelled_at,
+  );
+  return record;
+}
+
+export async function getWorkflowPendingTransfer(
+  id: string,
+): Promise<WorkflowPendingTransferRecord | undefined> {
+  const row = await dba
+    .prepare(`SELECT * FROM workflow_pending_transfers WHERE id = ?`)
+    .get(id);
+  return row as WorkflowPendingTransferRecord | undefined;
+}
+
+export async function listWorkflowPendingTransfers(
+  runId: string,
+): Promise<WorkflowPendingTransferRecord[]> {
+  const rows = await dba.prepare(
+    `SELECT * FROM workflow_pending_transfers WHERE run_id = ? ORDER BY created_at`,
+  ).all(runId);
+  return rows as WorkflowPendingTransferRecord[];
+}
+
+export async function updateWorkflowPendingTransfer(
+  id: string,
+  updates: Partial<
+    Pick<
+      WorkflowPendingTransferRecord,
+      | 'status'
+      | 'content_text'
+      | 'payload_json'
+      | 'due_at'
+      | 'updated_at'
+      | 'released_at'
+      | 'sent_at'
+      | 'cancelled_at'
+    >
+  >,
+): Promise<void> {
+  const sets: string[] = [];
+  const params: unknown[] = [];
+  if (updates.status !== undefined) {
+    sets.push('status = ?');
+    params.push(updates.status);
+  }
+  if (updates.content_text !== undefined) {
+    sets.push('content_text = ?');
+    params.push(updates.content_text);
+  }
+  if (updates.payload_json !== undefined) {
+    sets.push('payload_json = ?');
+    params.push(updates.payload_json);
+  }
+  if (updates.due_at !== undefined) {
+    sets.push('due_at = ?');
+    params.push(updates.due_at);
+  }
+  if (updates.released_at !== undefined) {
+    sets.push('released_at = ?');
+    params.push(updates.released_at);
+  }
+  if (updates.sent_at !== undefined) {
+    sets.push('sent_at = ?');
+    params.push(updates.sent_at);
+  }
+  if (updates.cancelled_at !== undefined) {
+    sets.push('cancelled_at = ?');
+    params.push(updates.cancelled_at);
+  }
+  if (sets.length === 0) return;
+  sets.push('updated_at = ?');
+  params.push(updates.updated_at ?? now());
+  params.push(id);
+  await dba
+    .prepare(`UPDATE workflow_pending_transfers SET ${sets.join(', ')} WHERE id = ?`)
+    .run(...params);
+}
+
+export async function createWorkflowArtifact(input: {
+  run_id: string;
+  artifact_type: string;
+  name: string;
+  summary?: string;
+  content_text?: string;
+  payload_json?: string;
+  status?: string;
+}): Promise<WorkflowArtifactRecord> {
+  const ts = now();
+  const record: WorkflowArtifactRecord = {
+    id: genId(),
+    run_id: input.run_id,
+    artifact_type: input.artifact_type,
+    name: input.name,
+    summary: input.summary ?? '',
+    content_text: input.content_text ?? '',
+    payload_json: input.payload_json ?? '{}',
+    status: input.status ?? 'ready',
+    created_by: getCurrentUserId(),
+    created_at: ts,
+    updated_at: ts,
+  };
+  await dba.prepare(`
+    INSERT INTO workflow_artifacts (
+      id, run_id, artifact_type, name, summary, content_text, payload_json,
+      status, created_by, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    record.id,
+    record.run_id,
+    record.artifact_type,
+    record.name,
+    record.summary,
+    record.content_text,
+    record.payload_json,
+    record.status,
+    record.created_by,
+    record.created_at,
+    record.updated_at,
+  );
+  return record;
+}
+
+export async function listWorkflowArtifacts(
+  runId: string,
+): Promise<WorkflowArtifactRecord[]> {
+  const rows = await dba.prepare(
+    `SELECT * FROM workflow_artifacts WHERE run_id = ? ORDER BY created_at`,
+  ).all(runId);
+  return rows as WorkflowArtifactRecord[];
+}
+
 export async function createWorkflowFeedbackFrame(input: {
   run_id: string;
   edge_id: string;
@@ -1080,6 +1271,8 @@ export async function getWorkflowRunGraph(
     executionEvents,
     dialogueSessions,
     messageFrames,
+    pendingTransfers,
+    artifacts,
   ] = await Promise.all([
     listWorkflowNodes(workflow.id),
     listWorkflowEdges(workflow.id),
@@ -1090,6 +1283,8 @@ export async function getWorkflowRunGraph(
     listWorkflowNodeExecutionEvents(run.id),
     listWorkflowDialogueSessions(run.id),
     listWorkflowMessageFrames(run.id),
+    listWorkflowPendingTransfers(run.id),
+    listWorkflowArtifacts(run.id),
   ]);
   return {
     run,
@@ -1103,5 +1298,7 @@ export async function getWorkflowRunGraph(
     executionEvents,
     dialogueSessions,
     messageFrames,
+    pendingTransfers,
+    artifacts,
   };
 }

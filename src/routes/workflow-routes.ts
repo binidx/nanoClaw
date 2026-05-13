@@ -9,15 +9,28 @@ import {
   getWorkflowOrchestrator,
   validateWorkflowGraph,
 } from '../workflow/orchestrator.js';
+import { normalizeWorkflowConfig, parseWorkflowConfig } from '../workflow/config.js';
+import {
+  buildWorkflowExportBundle,
+  commitAndPushWorkflowRun,
+  ensureWorkflowArtifacts,
+  publishWorkflowRun,
+} from '../workflow/artifacts.js';
 import { logger } from '../logger.js';
 import type {
   WorkflowEdgeDirection,
+  WorkflowConfig,
   WorkflowNodeType,
   WorkflowRecord,
 } from '../workflow/types.js';
 
 export interface WorkflowRouteOptions {
   requirePermission: import('../auth/auth-middleware.js').RequirePermissionFn;
+  auditMutation?: (
+    req: Request,
+    operation: string,
+    risk?: 'normal' | 'high',
+  ) => void;
 }
 
 function paramId(raw: string | string[] | undefined): string {
@@ -53,6 +66,30 @@ function findWorkflowNode(
   return snapshot?.nodes.find((node) => node.id === nodeId);
 }
 
+function requiresSystemWorkflowAdmin(config: WorkflowConfig): boolean {
+  return (
+    config.kind === 'system_capability' ||
+    config.visibility === 'system' ||
+    config.publishTarget === 'system' ||
+    config.artifactPolicy.publishTarget === 'system'
+  );
+}
+
+async function runPermissionGuard(
+  guard: ReturnType<WorkflowRouteOptions['requirePermission']>,
+  req: Request,
+  res: Response,
+): Promise<boolean> {
+  let nextCalled = false;
+  let nextError: unknown;
+  await guard(req, res, (err?: unknown) => {
+    nextCalled = true;
+    nextError = err;
+  });
+  if (nextError) throw nextError;
+  return nextCalled && !res.headersSent;
+}
+
 async function requireWorkflowForUser(workflowId: string) {
   const workflow = await db.getWorkflow(workflowId);
   if (!workflow) {
@@ -78,6 +115,10 @@ export function registerWorkflowRoutes(
 ): void {
   const viewGuard = opts.requirePermission('project.view', 'workteam.view');
   const manageGuard = opts.requirePermission('project.manage', 'workteam.manage');
+  const systemWorkflowGuard = opts.requirePermission(
+    'admin.settings.write',
+    'marketplace.manage_sources',
+  );
   const router = Router();
 
   router.get('/workflows', viewGuard, async (_req, res) => {
@@ -95,14 +136,21 @@ export function registerWorkflowRoutes(
         sendError(res, 400, 'name is required');
         return;
       }
+      const workflowConfig =
+        req.body?.workflow_config && typeof req.body.workflow_config === 'object'
+          ? normalizeWorkflowConfig(req.body.workflow_config)
+          : normalizeWorkflowConfig({});
+      if (
+        requiresSystemWorkflowAdmin(workflowConfig) &&
+        !(await runPermissionGuard(systemWorkflowGuard, req, res))
+      ) {
+        return;
+      }
       const workflow = await db.createWorkflow({
         name: req.body.name.trim(),
         description:
           typeof req.body?.description === 'string' ? req.body.description : undefined,
-        workflow_config:
-          req.body?.workflow_config && typeof req.body.workflow_config === 'object'
-            ? (req.body.workflow_config as Record<string, unknown>)
-            : undefined,
+        workflow_config: workflowConfig,
       });
       res.json(workflow);
     } catch (err) {
@@ -142,8 +190,17 @@ export function registerWorkflowRoutes(
       if (typeof req.body?.status === 'string') {
         patch.status = req.body.status as WorkflowRecord['status'];
       }
+      let nextConfig = parseWorkflowConfig(access.workflow);
       if (req.body?.workflow_config && typeof req.body.workflow_config === 'object') {
-        patch.workflow_config = JSON.stringify(req.body.workflow_config);
+        nextConfig = normalizeWorkflowConfig(req.body.workflow_config);
+        patch.workflow_config = JSON.stringify(nextConfig);
+      }
+      if (
+        (requiresSystemWorkflowAdmin(parseWorkflowConfig(access.workflow)) ||
+          requiresSystemWorkflowAdmin(nextConfig)) &&
+        !(await runPermissionGuard(systemWorkflowGuard, req, res))
+      ) {
+        return;
       }
       await db.updateWorkflow(workflowId, patch);
       res.json({ ok: true });
@@ -200,10 +257,6 @@ export function registerWorkflowRoutes(
       }
       const assistantId = normalizedString(req.body?.assistant_id);
       const roleNodeId = normalizedString(req.body?.role_node_id);
-      if (req.body?.assistant_id !== undefined && req.body.node_type !== 'role') {
-        sendError(res, 400, 'assistant_id can only be set on role nodes');
-        return;
-      }
       if (req.body.node_type === 'task') {
         if (!roleNodeId) {
           sendError(res, 400, 'role_node_id is required for task nodes');
@@ -291,10 +344,6 @@ export function registerWorkflowRoutes(
       if (req.body?.assistant_id !== undefined) {
         if (typeof req.body.assistant_id !== 'string') {
           sendError(res, 400, 'assistant_id must be a string');
-          return;
-        }
-        if (existingNode.node_type !== 'role') {
-          sendError(res, 400, 'assistant_id can only be set on role nodes');
           return;
         }
         const assistantId = normalizedString(req.body?.assistant_id);
@@ -507,6 +556,170 @@ export function registerWorkflowRoutes(
     } catch (err) {
       logger.error({ err }, 'workflow routes: get run graph failed');
       sendError(res, 500, 'Internal error');
+    }
+  });
+
+  router.get('/workflows/run/:runId/transfers', viewGuard, async (req, res) => {
+    try {
+      const runId = paramId(req.params.runId);
+      const access = await requireRunForUser(runId);
+      if (!access.ok) {
+        sendError(res, access.status, access.message);
+        return;
+      }
+      res.json(await db.listWorkflowPendingTransfers(runId));
+    } catch (err) {
+      logger.error({ err }, 'workflow routes: list transfers failed');
+      sendError(res, 500, 'Internal error');
+    }
+  });
+
+  const mutateTransfer = (
+    action: 'approve' | 'edit' | 'cancel' | 'release-now',
+    handler: (
+      orchestrator: WorkflowOrchestrator,
+      transferId: string,
+      req: Request,
+    ) => Promise<void>,
+  ) => {
+    router.post(
+      `/workflows/run/:runId/transfers/:transferId/${action}`,
+      manageGuard,
+      async (req: Request, res: Response) => {
+        try {
+          const runId = paramId(req.params.runId);
+          const transferId = paramId(req.params.transferId);
+          const access = await requireRunForUser(runId);
+          if (!access.ok) {
+            sendError(res, access.status, access.message);
+            return;
+          }
+          const transfer = await db.getWorkflowPendingTransfer(transferId);
+          if (!transfer || transfer.run_id !== runId) {
+            sendError(res, 404, 'Transfer not found');
+            return;
+          }
+          const orchestrator =
+            getWorkflowOrchestrator(runId) ?? (await WorkflowOrchestrator.restore(runId));
+          if (!orchestrator) {
+            sendError(res, 500, 'Failed to restore orchestrator');
+            return;
+          }
+          await handler(orchestrator, transferId, req);
+          res.json({ ok: true });
+        } catch (err) {
+          logger.error({ err }, `workflow routes: transfer ${action} failed`);
+          sendError(res, 400, err instanceof Error ? err.message : 'Internal error');
+        }
+      },
+    );
+  };
+
+  mutateTransfer('approve', async (orchestrator, transferId) => {
+    await orchestrator.approveTransfer(transferId);
+  });
+  mutateTransfer('edit', async (orchestrator, transferId, req) => {
+    if (typeof req.body?.content !== 'string' || !req.body.content.trim()) {
+      throw new Error('content is required');
+    }
+    await orchestrator.editTransfer(transferId, req.body.content.trim());
+  });
+  mutateTransfer('cancel', async (orchestrator, transferId) => {
+    await orchestrator.cancelTransfer(transferId);
+  });
+  mutateTransfer('release-now', async (orchestrator, transferId) => {
+    await orchestrator.releaseTransferNow(transferId);
+  });
+
+  router.get('/workflows/run/:runId/artifacts', viewGuard, async (req, res) => {
+    try {
+      const runId = paramId(req.params.runId);
+      const access = await requireRunForUser(runId);
+      if (!access.ok) {
+        sendError(res, access.status, access.message);
+        return;
+      }
+      res.json(await ensureWorkflowArtifacts(runId));
+    } catch (err) {
+      logger.error({ err }, 'workflow routes: artifacts failed');
+      sendError(res, 500, 'Internal error');
+    }
+  });
+
+  router.get('/workflows/run/:runId/export', viewGuard, async (req, res) => {
+    try {
+      const runId = paramId(req.params.runId);
+      const access = await requireRunForUser(runId);
+      if (!access.ok) {
+        sendError(res, access.status, access.message);
+        return;
+      }
+      const bundle = await buildWorkflowExportBundle(runId);
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename="workflow-${runId}.json"`,
+      );
+      res.send(JSON.stringify(bundle, null, 2));
+    } catch (err) {
+      logger.error({ err }, 'workflow routes: export failed');
+      sendError(res, 500, 'Internal error');
+    }
+  });
+
+  router.post('/workflows/run/:runId/commit-and-push', manageGuard, async (req, res) => {
+    try {
+      opts.auditMutation?.(req, 'workflows.commit-and-push', 'high');
+      const runId = paramId(req.params.runId);
+      const access = await requireRunForUser(runId);
+      if (!access.ok) {
+        sendError(res, access.status, access.message);
+        return;
+      }
+      const artifact = await commitAndPushWorkflowRun(runId);
+      res.json({ ok: artifact.status === 'pushed', artifact });
+    } catch (err) {
+      logger.error({ err }, 'workflow routes: commit-and-push failed');
+      sendError(res, 400, err instanceof Error ? err.message : 'Internal error');
+    }
+  });
+
+  router.post('/workflows/run/:runId/publish', manageGuard, async (req, res) => {
+    try {
+      opts.auditMutation?.(req, 'workflows.publish', 'high');
+      const runId = paramId(req.params.runId);
+      const access = await requireRunForUser(runId);
+      if (!access.ok) {
+        sendError(res, access.status, access.message);
+        return;
+      }
+      const target =
+        req.body?.target === 'skill' ||
+        req.body?.target === 'mcp' ||
+        req.body?.target === 'system'
+          ? req.body.target
+          : undefined;
+      const config = parseWorkflowConfig(access.workflow);
+      const effectiveTarget =
+        target ||
+        config.artifactPolicy.publishTarget ||
+        config.publishTarget ||
+        (config.kind === 'mcp'
+          ? 'mcp'
+          : config.kind === 'system_capability'
+            ? 'system'
+            : 'skill');
+      if (
+        (effectiveTarget === 'system' || requiresSystemWorkflowAdmin(config)) &&
+        !(await runPermissionGuard(systemWorkflowGuard, req, res))
+      ) {
+        return;
+      }
+      const artifact = await publishWorkflowRun({ runId, target });
+      res.json({ ok: true, artifact });
+    } catch (err) {
+      logger.error({ err }, 'workflow routes: publish failed');
+      sendError(res, 400, err instanceof Error ? err.message : 'Internal error');
     }
   });
 

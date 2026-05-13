@@ -19,6 +19,10 @@ Workflow Workbench 是 Workteam 的图形化替代层。它把原先“智能体
   负责任务节点调度、消息传播、整图暂停恢复、节点级暂停恢复、输入输出覆写与重试。
 - `src/workflow/event-bus.ts`
   将 workflow run 事件通过 WebSocket 推送到 `workflow:<runId>` 订阅通道。
+- `src/workflow/config.ts`
+  规范化 `workflow_config`，包括工作流类型、可见性、消息延迟、仓库策略和产物策略。
+- `src/workflow/artifacts.ts`
+  生成运行摘要 / bundle，并支持导出、发布和仓库分支提交推送。
 
 ## 数据模型
 
@@ -34,8 +38,12 @@ Workflow Workbench 是 Workteam 的图形化替代层。它把原先“智能体
   运行中每个任务节点的状态、输入快照、输出快照和错误信息。
 - `workflow_run_messages`
   节点间真实消息流。
+- `workflow_pending_transfers`
+  agent 间延迟 handoff 队列；到期自动发送，发送前可人工批准、编辑、取消或立即放行。
 - `workflow_run_interventions`
   用户在运行态对输入 / 输出进行修改时的审计记录。
+- `workflow_artifacts`
+  运行结束后的摘要、bundle、提交推送和发布记录。
 
 ## 执行语义
 
@@ -46,6 +54,8 @@ Workflow Workbench 是 Workteam 的图形化替代层。它把原先“智能体
 - 当边上插入 `feedback frame` 后，目标节点会重新进入下一轮执行，并在输入构建时优先读取这些 feedback frame。
 - 运行中的任务节点支持选择某个 message frame 作为下一轮输入基线，并可切换 `反馈优先` / `纯时间顺序` 两种输入优先级规则。
 - 任务节点支持节点级执行覆盖：`providerOverrideId`、`modelOverride`、`instructionsAppend`、`allowedDirectories`，并优先于 assistant 默认执行配置生效。
+- 任务节点可直接绑定助手；执行时 worker 节点助手优先于角色节点助手，节点覆写继续优先于助手默认运行配置。
+- 跨节点消息默认进入延迟 transfer 队列；默认延迟为 15 秒，可通过工作流配置调整为 0 以兼容即时运行。
 - 节点 execution 事件在运行台中会按 turn/tool/approval/ask/reasoning 语义解析为可读 timeline，而不再只显示原始 JSON。
 - 任务节点必须绑定角色节点。
 - 任务输入由两部分组成：
@@ -64,19 +74,22 @@ Workflow Workbench 是 Workteam 的图形化替代层。它把原先“智能体
 - 修改节点输入快照并保持暂停态
 - 修改节点输出快照并将该输出继续向下游传播
 - 重试节点
+- 查看 / 批准 / 编辑 / 取消 / 立即放行 pending transfer
+- 查看 artifacts、导出 bundle、提交推送、发布能力
 
 ## 前端工作台
 
 `web/src/pages/WorkteamPage.tsx` 现在承载 Workflow Workbench：
 
-- 左栏：工作流列表与新建入口
+- 入口：工作流卡片库；点击卡片后在同一页面进入详情画布，不做页面跳转
+- 左栏：新建入口、节点模板和标准图模板
 - 中央：可拖拽节点画布、框选多节点、批量拖动、自动排版、消息流连线与连线重连
 - 右栏：节点 / 连线属性面板
-- 底部：运行列表、整图输入、整图输出、基于 dialogue session / message frame 的讨论边摘要与边级消息面板、支持一键回填为节点输入的节点讨论历史，以及节点独立 execution / event 时间线
+- 底部：运行列表、整图输入、整图输出、pending transfer 队列、产物交付、基于 dialogue session / message frame 的讨论边摘要与边级消息面板、支持一键回填为节点输入的节点讨论历史，以及节点独立 execution / event 时间线
 
 ## 已知限制
 
-- 双向边目前是“可见消息链路 + 手动续跑友好”的实现，不做自动多轮对话循环。
+- 双向边会按预算自动继续对话；并发起始节点可能导致最后发言方不对称，预算限制的是边上自动 handoff 消息数。
 - 角色与任务采用双层模型，而不是统一通用节点系统。
 - 旧 Workteam 表和旧 API 仍在仓库中保留，但新页面和新运行流程已经切到 `/api/workflows/**`。
 - 旧 Workteam 现已提供 `POST /api/workteam/:id/migrate-to-workflow` 迁移入口，可将 team/agent/task 结构转换为 workflow 定义并复制仓库绑定。

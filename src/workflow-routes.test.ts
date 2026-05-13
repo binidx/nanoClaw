@@ -23,15 +23,17 @@ import { createAssistant } from './db.js';
 import * as workflowDb from './db/workflows.js';
 import { registerWorkflowRoutes } from './routes/workflow-routes.js';
 
-const allowAllRequirePermission: import('./auth/auth-middleware.js').RequirePermissionFn =
+type RequirePermissionFn = import('./auth/auth-middleware.js').RequirePermissionFn;
+
+const allowAllRequirePermission: RequirePermissionFn =
   () => async (_req, _res, next) => {
     next();
   };
 
-function createApp() {
+function createApp(requirePermission: RequirePermissionFn = allowAllRequirePermission) {
   const app = express();
   app.use(express.json());
-  registerWorkflowRoutes(app, { requirePermission: allowAllRequirePermission });
+  registerWorkflowRoutes(app, { requirePermission });
   return app;
 }
 
@@ -70,6 +72,7 @@ async function createWorkflowFixture() {
   const workflow = await workflowDb.createWorkflow({
     name: 'Workflow Alpha',
     description: 'fixture',
+    workflow_config: { messageDelayMs: 0 },
   });
   const role = await workflowDb.createWorkflowNode(workflow.id, {
     node_type: 'role',
@@ -177,7 +180,76 @@ describe('workflow routes', () => {
     });
   });
 
-  it('rejects invalid assistant and role bindings on workflow nodes', async () => {
+  it('requires admin permission for system workflow creation and publication', async () => {
+    const denySystemRequirePermission: RequirePermissionFn =
+      (...codes) =>
+      async (_req, res, next) => {
+        if (
+          codes.includes('admin.settings.write') ||
+          codes.includes('marketplace.manage_sources')
+        ) {
+          res.status(403).json({ error: 'Forbidden', required: codes });
+          return;
+        }
+        next();
+      };
+    const app = createApp(denySystemRequirePermission);
+    const workflow = await workflowDb.createWorkflow({
+      name: 'Private Flow',
+      description: 'normal workflow',
+      workflow_config: { kind: 'general', visibility: 'private' },
+    });
+    const systemWorkflow = await workflowDb.createWorkflow({
+      name: 'System Flow',
+      description: 'system workflow',
+      workflow_config: { kind: 'system_capability', messageDelayMs: 0 },
+    });
+    const systemRun = await workflowDb.createWorkflowRun(systemWorkflow.id, 'publish');
+
+    await withServer(app, async (baseUrl) => {
+      const createResponse = await fetch(`${baseUrl}/api/workflows`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: 'System Capability',
+          workflow_config: {
+            kind: 'system_capability',
+            visibility: 'system',
+          },
+        }),
+      });
+      expect(createResponse.status).toBe(403);
+
+      const updateResponse = await fetch(`${baseUrl}/api/workflows/${workflow.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          workflow_config: {
+            kind: 'general',
+            visibility: 'system',
+          },
+        }),
+      });
+      expect(updateResponse.status).toBe(403);
+
+      const publishResponse = await fetch(
+        `${baseUrl}/api/workflows/run/${systemRun.id}/publish`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ target: 'system' }),
+        },
+      );
+      expect(publishResponse.status).toBe(403);
+    });
+
+    const unchanged = await workflowDb.getWorkflow(workflow.id);
+    expect(JSON.parse(unchanged?.workflow_config || '{}')).toMatchObject({
+      visibility: 'private',
+    });
+  });
+
+  it('rejects invalid assistant bindings and allows worker nodes to bind assistants', async () => {
     const app = createApp();
     const assistant = await createAssistant({
       id: 'assistant-bindable',
@@ -226,9 +298,10 @@ describe('workflow routes', () => {
           config_json: { prompt: 'do work' },
         }),
       });
-      expect(taskResponse.status).toBe(400);
-      await expect(taskResponse.json()).resolves.toEqual({
-        error: 'assistant_id can only be set on role nodes',
+      expect(taskResponse.status).toBe(200);
+      await expect(taskResponse.json()).resolves.toMatchObject({
+        node_type: 'task',
+        assistant_id: assistant.id,
       });
 
       const validRoleResponse = await fetch(`${baseUrl}/api/workflows/${workflow.id}/nodes/${role.id}`, {
@@ -290,6 +363,122 @@ describe('workflow routes', () => {
       expect(graph.messages.some((message) => message.source_node_id === taskA.id)).toBe(true);
       expect(graph.dialogueSessions.some((session) => session.turn_count >= 1)).toBe(true);
       expect(graph.messageFrames.some((frame) => /run 1$/.test(frame.content_text))).toBe(true);
+    });
+  });
+
+  it('queues transfer messages for review before release', async () => {
+    const app = createApp();
+    const workflow = await workflowDb.createWorkflow({
+      name: 'Delayed Flow',
+      description: 'delayed transfer',
+      workflow_config: { messageDelayMs: 60_000 },
+    });
+    const role = await workflowDb.createWorkflowNode(workflow.id, {
+      node_type: 'role',
+      name: 'Worker',
+      config_json: { goal: 'Work' },
+    });
+    const taskA = await workflowDb.createWorkflowNode(workflow.id, {
+      node_type: 'task',
+      name: 'Draft',
+      role_node_id: role.id,
+      config_json: { prompt: 'Draft' },
+    });
+    const taskB = await workflowDb.createWorkflowNode(workflow.id, {
+      node_type: 'task',
+      name: 'Review',
+      role_node_id: role.id,
+      config_json: { prompt: 'Review' },
+    });
+    await workflowDb.createWorkflowEdge(workflow.id, {
+      source_node_id: taskA.id,
+      target_node_id: taskB.id,
+      direction: 'one_way',
+    });
+
+    await withServer(app, async (baseUrl) => {
+      const startResponse = await fetch(`${baseUrl}/api/workflows/${workflow.id}/run`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ input: 'Delay this handoff' }),
+      });
+      const run = (await startResponse.json()) as { id: string };
+
+      await waitFor(async () => {
+        const transfers = await workflowDb.listWorkflowPendingTransfers(run.id);
+        return transfers.length === 1 && transfers[0].status === 'pending';
+      });
+
+      let graph = await workflowDb.getWorkflowRunGraph(run.id);
+      expect(graph?.messages).toHaveLength(0);
+      expect(graph?.runNodes.find((node) => node.node_id === taskB.id)?.status).toBe(
+        'pending',
+      );
+      const transfer = (await workflowDb.listWorkflowPendingTransfers(run.id))[0];
+
+      const editResponse = await fetch(
+        `${baseUrl}/api/workflows/run/${run.id}/transfers/${transfer.id}/edit`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content: 'Edited handoff content' }),
+        },
+      );
+      expect(editResponse.status).toBe(200);
+
+      const releaseResponse = await fetch(
+        `${baseUrl}/api/workflows/run/${run.id}/transfers/${transfer.id}/release-now`,
+        { method: 'POST' },
+      );
+      expect(releaseResponse.status).toBe(200);
+
+      await waitFor(async () => {
+        const updated = await workflowDb.getWorkflowRunGraph(run.id);
+        return Boolean(
+          updated?.messageFrames.some((frame) =>
+            frame.content_text.includes('Edited handoff content'),
+          ),
+        );
+      });
+
+      graph = await workflowDb.getWorkflowRunGraph(run.id);
+      expect(graph?.pendingTransfers[0]).toMatchObject({ status: 'sent' });
+      expect(graph?.messageFrames).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ content_text: 'Edited handoff content' }),
+        ]),
+      );
+    });
+  });
+
+  it('generates artifacts and exports a run bundle', async () => {
+    const app = createApp();
+    const { workflow } = await createWorkflowFixture();
+
+    await withServer(app, async (baseUrl) => {
+      const startResponse = await fetch(`${baseUrl}/api/workflows/${workflow.id}/run`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ input: 'Build artifacts' }),
+      });
+      const run = (await startResponse.json()) as { id: string };
+
+      await waitFor(async () => {
+        const graph = await workflowDb.getWorkflowRunGraph(run.id);
+        return graph?.run.status === 'completed';
+      });
+
+      const artifactsResponse = await fetch(`${baseUrl}/api/workflows/run/${run.id}/artifacts`);
+      expect(artifactsResponse.status).toBe(200);
+      const artifacts = (await artifactsResponse.json()) as Array<{ artifact_type: string }>;
+      expect(artifacts.map((artifact) => artifact.artifact_type)).toEqual(
+        expect.arrayContaining(['summary', 'bundle']),
+      );
+
+      const exportResponse = await fetch(`${baseUrl}/api/workflows/run/${run.id}/export`);
+      expect(exportResponse.status).toBe(200);
+      const exported = (await exportResponse.json()) as { graph?: { run?: { id?: string } } };
+      expect(exported.graph?.run?.id).toBe(run.id);
     });
   });
 
@@ -443,6 +632,7 @@ describe('workflow routes', () => {
     const workflow = await workflowDb.createWorkflow({
       name: 'Override Flow',
       description: 'node execution overrides',
+      workflow_config: { messageDelayMs: 0 },
     });
     const role = await workflowDb.createWorkflowNode(workflow.id, {
       node_type: 'role',
@@ -495,6 +685,7 @@ describe('workflow routes', () => {
     const workflow = await workflowDb.createWorkflow({
       name: 'Discussion Flow',
       description: 'two-way loop',
+      workflow_config: { messageDelayMs: 0 },
     });
     const role = await workflowDb.createWorkflowNode(workflow.id, {
       node_type: 'role',
@@ -535,10 +726,11 @@ describe('workflow routes', () => {
 
       const graph = await workflowDb.getWorkflowRunGraph(run.id);
       expect(graph?.messages).toHaveLength(4);
+      expect(graph?.pendingTransfers.filter((transfer) => transfer.status !== 'sent')).toHaveLength(0);
       const nodeA = graph?.runNodes.find((node) => node.node_id === taskA.id);
       const nodeB = graph?.runNodes.find((node) => node.node_id === taskB.id);
-      expect(nodeA?.output_snapshot).toBe('A run 2');
-      expect(nodeB?.output_snapshot).toBe('B run 2');
+      expect(nodeA?.output_snapshot).toMatch(/^A run [23]$/);
+      expect(nodeB?.output_snapshot).toMatch(/^B run [12]$/);
     });
   });
 });

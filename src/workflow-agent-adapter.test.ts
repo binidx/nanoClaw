@@ -78,6 +78,16 @@ function taskNode(): WorkflowNodeRecord {
   };
 }
 
+function taskNodeWithAssistant(): WorkflowNodeRecord {
+  return {
+    ...taskNode(),
+    assistant_id: 'assistant-task',
+    config_json: JSON.stringify({
+      prompt: 'Implement the feature',
+    }),
+  };
+}
+
 describe('workflow agent adapter', () => {
   beforeEach(() => {
     _initTestDatabase();
@@ -133,5 +143,23 @@ describe('workflow agent adapter', () => {
       node_id: 'task-1',
       session_id: 'session-node',
     });
+  });
+
+  it('uses a worker assistant binding ahead of the role assistant', async () => {
+    const result = await executeWorkflowTask({
+      workflowId: 'wf-1',
+      runId: 'run-1',
+      roleNode: roleNode(),
+      taskNode: taskNodeWithAssistant(),
+      runInput: 'Run input',
+      upstreamMessages: [],
+    });
+
+    expect(result.success).toBe(true);
+    expect(resolveAssistantRuntimeConfigMock).toHaveBeenCalledTimes(1);
+    const [group] = resolveAssistantRuntimeConfigMock.mock.calls[0] as [
+      { assistantId?: string | null },
+    ];
+    expect(group.assistantId).toBe('assistant-task');
   });
 });

@@ -3094,6 +3094,47 @@ export function createSchema(database: Database.Database): void {
       created_at TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_workflow_message_frames_run ON workflow_message_frames(run_id, edge_id, created_at);
+
+    CREATE TABLE IF NOT EXISTS workflow_pending_transfers (
+      id TEXT PRIMARY KEY,
+      run_id TEXT NOT NULL,
+      edge_id TEXT NOT NULL,
+      source_node_id TEXT NOT NULL DEFAULT '',
+      target_node_id TEXT NOT NULL DEFAULT '',
+      direction TEXT NOT NULL DEFAULT 'one_way',
+      message_type TEXT NOT NULL DEFAULT 'node_output',
+      status TEXT NOT NULL DEFAULT 'pending',
+      content_text TEXT NOT NULL DEFAULT '',
+      payload_json TEXT NOT NULL DEFAULT '{}',
+      delay_ms INTEGER NOT NULL DEFAULT 0,
+      due_at TEXT NOT NULL DEFAULT '',
+      created_by TEXT NOT NULL DEFAULT '__system__',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      released_at TEXT NOT NULL DEFAULT '',
+      sent_at TEXT NOT NULL DEFAULT '',
+      cancelled_at TEXT NOT NULL DEFAULT ''
+    );
+    CREATE INDEX IF NOT EXISTS idx_workflow_pending_transfers_run
+      ON workflow_pending_transfers(run_id, created_at);
+    CREATE INDEX IF NOT EXISTS idx_workflow_pending_transfers_status_due
+      ON workflow_pending_transfers(run_id, status, due_at);
+
+    CREATE TABLE IF NOT EXISTS workflow_artifacts (
+      id TEXT PRIMARY KEY,
+      run_id TEXT NOT NULL,
+      artifact_type TEXT NOT NULL,
+      name TEXT NOT NULL,
+      summary TEXT NOT NULL DEFAULT '',
+      content_text TEXT NOT NULL DEFAULT '',
+      payload_json TEXT NOT NULL DEFAULT '{}',
+      status TEXT NOT NULL DEFAULT 'ready',
+      created_by TEXT NOT NULL DEFAULT '__system__',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_workflow_artifacts_run
+      ON workflow_artifacts(run_id, artifact_type, created_at);
   `);
 
   // ── ABAC: resource_access, user_permission_overrides, permission_groups ──

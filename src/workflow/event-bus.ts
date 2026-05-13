@@ -39,7 +39,7 @@ export class WorkflowEventBus {
       timestamp: new Date().toISOString(),
     };
     this.emitter.emit(channelForRun(runId), envelope);
-    if (event === 'message_sent') {
+    if (event === 'message_sent' && payload.persisted !== true) {
       const edgeId = typeof payload.edgeId === 'string' ? payload.edgeId : '';
       const sourceNodeId =
         typeof payload.sourceNodeId === 'string' ? payload.sourceNodeId : '';

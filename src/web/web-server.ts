@@ -905,7 +905,7 @@ export function createWebServer(opts: WebServerOptions) {
   });
 
   registerWorkteamSupportRoutes(app, { requirePermission });
-  registerWorkflowRoutes(app, { requirePermission });
+  registerWorkflowRoutes(app, { requirePermission, auditMutation });
 
   registerShareRoutes(app, { requirePermission });
 

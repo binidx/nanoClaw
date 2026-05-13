@@ -87,3 +87,10 @@
 - 将 Repo Review 当前稳定行为补充为“主代理直审”与“worker 后主代理补审”双主路径；`reducer` 调整为结构化解析失败时的兜底整理器，而非每次 run 的必经阶段。
 - 明确 `runs-summary` 与 `runs/:id/detail` 的可观测性边界：前者主要返回 `reviewProgress`，后者才返回完整 `reviewTurns` 和 tool-call 流。
 - 更新 `docs/RepoReview.md` 与 feature map 入口描述，避免把“列表里只看到主代理卡片”误判成“后端没有工具调用流”。
+
+## [2026-05-13] update | Workflow 延迟 transfer 与产物闭环
+
+- Workflow Workbench 稳定边界新增 `src/workflow/config.ts` 与 `src/workflow/artifacts.ts`。
+- `src/db/workflows.ts` / `schema-*` 新增 `workflow_pending_transfers` 和 `workflow_artifacts`，用于 agent 间延迟消息干预、导出、发布与仓库提交推送。
+- `web/src/pages/WorkteamPage.tsx` 入口改为本页工作流卡片库，运行台展示 pending transfer 队列和交付产物操作。
+- 将 feature map 元数据同步到当前已提交代码 `source_head_sha=0e32466c00f38407e135d4ba6d06a33e7c39ca7f`；本次 Workflow 重构仍包含未提交实现变更，freshness 检查会继续列出相关脏文件作为提示。

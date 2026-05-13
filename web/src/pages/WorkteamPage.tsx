@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useLocation, useNavigate } from 'react-router-dom';
-import { getUrlSubPath, navPageToPath } from '../router/paths';
+import { useLocation } from 'react-router-dom';
+import { getUrlSubPath } from '../router/paths';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { Drawer } from '../components/common/Drawer';
 import { WorkflowRepositoryPanel } from '../components/repository/WorkflowRepositoryPanel';
@@ -15,6 +15,8 @@ export interface WorkteamPageProps {
 type WorkflowStatus = 'draft' | 'active' | 'archived';
 type WorkflowNodeType = 'role' | 'task';
 type WorkflowEdgeDirection = 'one_way' | 'two_way';
+type WorkflowKind = 'repository' | 'skill' | 'mcp' | 'system_capability' | 'general';
+type WorkflowVisibility = 'private' | 'shared' | 'system';
 type WorkflowRunStatus =
   | 'pending'
   | 'running'
@@ -40,6 +42,22 @@ interface WorkflowRecord {
   workflow_config: string;
   created_at: string;
   updated_at: string;
+}
+
+interface WorkflowConfig {
+  kind?: WorkflowKind;
+  visibility?: WorkflowVisibility;
+  messageDelayMs?: number;
+  artifactPolicy?: {
+    exportable?: boolean;
+    commitToBranch?: boolean;
+    publishTarget?: 'skill' | 'mcp' | 'system';
+  };
+  repositoryPolicy?: {
+    required?: boolean;
+    bindingKey?: string;
+  };
+  publishTarget?: 'skill' | 'mcp' | 'system';
 }
 
 interface WorkflowNodeRecord {
@@ -187,6 +205,41 @@ interface WorkflowNodeExecutionEventRecord {
   created_at: string;
 }
 
+interface WorkflowPendingTransferRecord {
+  id: string;
+  run_id: string;
+  edge_id: string;
+  source_node_id: string;
+  target_node_id: string;
+  direction: WorkflowEdgeDirection;
+  message_type: string;
+  status: 'pending' | 'approved' | 'cancelled' | 'sent';
+  content_text: string;
+  payload_json: string;
+  delay_ms: number;
+  due_at: string;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+  released_at: string;
+  sent_at: string;
+  cancelled_at: string;
+}
+
+interface WorkflowArtifactRecord {
+  id: string;
+  run_id: string;
+  artifact_type: string;
+  name: string;
+  summary: string;
+  content_text: string;
+  payload_json: string;
+  status: string;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
 interface WorkflowExecutionEventView {
   id: string;
   title: string;
@@ -213,6 +266,8 @@ interface WorkflowRunGraph {
   executionEvents: WorkflowNodeExecutionEventRecord[];
   dialogueSessions: WorkflowDialogueSessionRecord[];
   messageFrames: WorkflowMessageFrameRecord[];
+  pendingTransfers: WorkflowPendingTransferRecord[];
+  artifacts: WorkflowArtifactRecord[];
 }
 
 interface AssistantRecord {
@@ -226,6 +281,8 @@ interface RoleConfig {
 }
 
 interface TaskConfig {
+  assistantId?: string;
+  goal?: string;
   prompt?: string;
   expectedOutput?: string;
   timeoutMs?: number;
@@ -234,6 +291,11 @@ interface TaskConfig {
   modelOverride?: string;
   instructionsAppend?: string;
   allowedDirectories?: string[];
+  handoffPolicy?: {
+    maxTurns: number;
+    cooldownMs: number;
+    exposeToolCalls: false;
+  };
 }
 
 interface EdgeConfig {
@@ -630,6 +692,23 @@ function parseAssistantListPayload(value: unknown): AssistantRecord[] {
   return [];
 }
 
+function parseWorkflowConfig(raw: string): WorkflowConfig {
+  const value = parseJsonObject<WorkflowConfig>(raw);
+  return {
+    kind: value.kind || 'general',
+    visibility: value.visibility || 'private',
+    messageDelayMs:
+      typeof value.messageDelayMs === 'number' ? value.messageDelayMs : 15000,
+    artifactPolicy: {
+      exportable: value.artifactPolicy?.exportable !== false,
+      commitToBranch: Boolean(value.artifactPolicy?.commitToBranch),
+      publishTarget: value.artifactPolicy?.publishTarget,
+    },
+    repositoryPolicy: value.repositoryPolicy || {},
+    publishTarget: value.publishTarget,
+  };
+}
+
 function readErrorTextDefault(status: number): string {
   return `Request failed (${status})`;
 }
@@ -983,14 +1062,15 @@ function displayNodeName(
 export function WorkteamPage({ apiBase, canManage = true }: WorkteamPageProps) {
   const { t } = useTranslation('workteam');
   const location = useLocation();
-  const navigate = useNavigate();
   const roleNodeTemplates = useMemo(() => buildRoleNodeTemplates(t), [t]);
   const taskNodeTemplates = useMemo(() => buildTaskNodeTemplates(t), [t]);
   const workflowGraphTemplates = useMemo(
     () => buildWorkflowGraphTemplates(roleNodeTemplates, taskNodeTemplates, t),
     [roleNodeTemplates, taskNodeTemplates, t],
   );
-  const workflowId = getUrlSubPath(location.pathname);
+  const routeWorkflowId = getUrlSubPath(location.pathname);
+  const [activeWorkflowId, setActiveWorkflowId] = useState(routeWorkflowId);
+  const workflowId = activeWorkflowId;
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const dragRef = useRef<DragState | null>(null);
   const selectionBoxRef = useRef<SelectionBoxState | null>(null);
@@ -1000,6 +1080,8 @@ export function WorkteamPage({ apiBase, canManage = true }: WorkteamPageProps) {
   const [runs, setRuns] = useState<WorkflowRunRecord[]>([]);
   const [selectedRunId, setSelectedRunId] = useState<string>('');
   const [runGraph, setRunGraph] = useState<WorkflowRunGraph | null>(null);
+  const [pendingTransfers, setPendingTransfers] = useState<WorkflowPendingTransferRecord[]>([]);
+  const [artifacts, setArtifacts] = useState<WorkflowArtifactRecord[]>([]);
   const [assistants, setAssistants] = useState<AssistantRecord[]>([]);
   const [selectedNodeId, setSelectedNodeId] = useState<string>('');
   const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>([]);
@@ -1053,6 +1135,7 @@ export function WorkteamPage({ apiBase, canManage = true }: WorkteamPageProps) {
   const loadRuns = useCallback(async () => {
     if (!workflowId) {
       setRuns([]);
+      setSelectedRunId('');
       return;
     }
     const res = await fetch(`${apiBase}/api/workflows/${workflowId}/runs`, {
@@ -1061,7 +1144,9 @@ export function WorkteamPage({ apiBase, canManage = true }: WorkteamPageProps) {
     if (!res.ok) throw new Error(await readError(res));
     const list = (await res.json()) as WorkflowRunRecord[];
     setRuns(list);
-    if (!selectedRunId && list.length > 0) {
+    if (list.length === 0) {
+      setSelectedRunId('');
+    } else if (!selectedRunId || !list.some((run) => run.id === selectedRunId)) {
       setSelectedRunId(list[0].id);
     }
   }, [apiBase, workflowId, selectedRunId]);
@@ -1069,13 +1154,42 @@ export function WorkteamPage({ apiBase, canManage = true }: WorkteamPageProps) {
   const loadRunGraph = useCallback(async () => {
     if (!selectedRunId) {
       setRunGraph(null);
+      setPendingTransfers([]);
+      setArtifacts([]);
       return;
     }
     const res = await fetch(`${apiBase}/api/workflows/run/${selectedRunId}/graph`, {
       credentials: 'include',
     });
     if (!res.ok) throw new Error(await readError(res));
-    setRunGraph((await res.json()) as WorkflowRunGraph);
+    const graph = (await res.json()) as WorkflowRunGraph;
+    setRunGraph(graph);
+    setPendingTransfers(graph.pendingTransfers || []);
+    setArtifacts(graph.artifacts || []);
+  }, [apiBase, selectedRunId]);
+
+  const loadTransfers = useCallback(async () => {
+    if (!selectedRunId) {
+      setPendingTransfers([]);
+      return;
+    }
+    const res = await fetch(`${apiBase}/api/workflows/run/${selectedRunId}/transfers`, {
+      credentials: 'include',
+    });
+    if (!res.ok) throw new Error(await readError(res));
+    setPendingTransfers((await res.json()) as WorkflowPendingTransferRecord[]);
+  }, [apiBase, selectedRunId]);
+
+  const loadArtifacts = useCallback(async () => {
+    if (!selectedRunId) {
+      setArtifacts([]);
+      return;
+    }
+    const res = await fetch(`${apiBase}/api/workflows/run/${selectedRunId}/artifacts`, {
+      credentials: 'include',
+    });
+    if (!res.ok) throw new Error(await readError(res));
+    setArtifacts((await res.json()) as WorkflowArtifactRecord[]);
   }, [apiBase, selectedRunId]);
 
   const loadAssistants = useCallback(async () => {
@@ -1097,12 +1211,19 @@ export function WorkteamPage({ apiBase, canManage = true }: WorkteamPageProps) {
   }, [loadWorkflows, loadAssistants]);
 
   useEffect(() => {
+    if (routeWorkflowId) setActiveWorkflowId(routeWorkflowId);
+  }, [routeWorkflowId]);
+
+  useEffect(() => {
     setSelectedRunId('');
     setSelectedNodeId('');
     setSelectedNodeIds([]);
     setSelectedEdgeId('');
     setConnectFromNodeId('');
     setReconnectState(null);
+    setRunGraph(null);
+    setPendingTransfers([]);
+    setArtifacts([]);
     void loadSnapshot().catch((err) => setError(String(err)));
     void loadRuns().catch((err) => setError(String(err)));
   }, [loadSnapshot, loadRuns, workflowId]);
@@ -1532,7 +1653,7 @@ export function WorkteamPage({ apiBase, canManage = true }: WorkteamPageProps) {
       setNewWorkflowName('');
       setNewWorkflowDesc('');
       await loadWorkflows();
-      navigate(navPageToPath('workteam', created.id));
+      setActiveWorkflowId(created.id);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -1976,6 +2097,7 @@ export function WorkteamPage({ apiBase, canManage = true }: WorkteamPageProps) {
           body: JSON.stringify({
             name: snapshot.workflow.name,
             description: snapshot.workflow.description,
+            workflow_config: parseWorkflowConfig(snapshot.workflow.workflow_config),
             ...(nextStatus ? { status: nextStatus } : {}),
           }),
         });
@@ -2108,6 +2230,103 @@ export function WorkteamPage({ apiBase, canManage = true }: WorkteamPageProps) {
     }
   };
 
+  const mutateTransfer = async (
+    transferId: string,
+    action: 'approve' | 'cancel' | 'release-now',
+  ) => {
+    if (!selectedRunId) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(
+        `${apiBase}/api/workflows/run/${selectedRunId}/transfers/${transferId}/${action}`,
+        {
+          method: 'POST',
+          credentials: 'include',
+        },
+      );
+      if (!res.ok) throw new Error(await readError(res));
+      await loadTransfers();
+      await loadRunGraph();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const editTransfer = async (transfer: WorkflowPendingTransferRecord) => {
+    if (!selectedRunId) return;
+    const next = window.prompt(t('workteam.编辑待发送消息'), transfer.content_text);
+    if (next == null || !next.trim()) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(
+        `${apiBase}/api/workflows/run/${selectedRunId}/transfers/${transfer.id}/edit`,
+        {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content: next.trim() }),
+        },
+      );
+      if (!res.ok) throw new Error(await readError(res));
+      await loadTransfers();
+      await loadRunGraph();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const exportRun = async () => {
+    if (!selectedRunId) return;
+    window.open(`${apiBase}/api/workflows/run/${selectedRunId}/export`, '_blank');
+  };
+
+  const commitAndPushRun = async () => {
+    if (!selectedRunId) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`${apiBase}/api/workflows/run/${selectedRunId}/commit-and-push`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+      if (!res.ok) throw new Error(await readError(res));
+      const payload = (await res.json()) as { ok?: boolean; artifact?: WorkflowArtifactRecord };
+      await loadArtifacts();
+      setInfo(payload.ok ? t('workteam.工作流产物已提交推送') : t('workteam.工作流产物已生成但推送失败'));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const publishRunArtifact = async () => {
+    if (!selectedRunId) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`${apiBase}/api/workflows/run/${selectedRunId}/publish`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      if (!res.ok) throw new Error(await readError(res));
+      await loadArtifacts();
+      setInfo(t('workteam.工作流产物已发布'));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const startReconnect = useCallback(
     (edgeId: string, end: 'source' | 'target') => {
       setReconnectState({ edgeId, end });
@@ -2118,6 +2337,30 @@ export function WorkteamPage({ apiBase, canManage = true }: WorkteamPageProps) {
     [],
   );
 
+  const updateWorkflowConfig = (patch: Partial<WorkflowConfig>) => {
+    if (!snapshot) return;
+    const current = parseWorkflowConfig(snapshot.workflow.workflow_config);
+    const next = {
+      ...current,
+      ...patch,
+      artifactPolicy: {
+        ...current.artifactPolicy,
+        ...patch.artifactPolicy,
+      },
+      repositoryPolicy: {
+        ...current.repositoryPolicy,
+        ...patch.repositoryPolicy,
+      },
+    };
+    setSnapshot({
+      ...snapshot,
+      workflow: {
+        ...snapshot.workflow,
+        workflow_config: JSON.stringify(next),
+      },
+    });
+  };
+
   return (
     <div className="page-view workflow-page">
       <div className="page-header">
@@ -2126,21 +2369,16 @@ export function WorkteamPage({ apiBase, canManage = true }: WorkteamPageProps) {
           <p>{t('workteam.图形化多智能体工作台')}</p>
         </div>
         <div className="workflow-header-actions">
-          <div className="workflow-workflow-picker">
-            <select
-              value={workflowId}
-              onChange={(event) => {
-                const nextId = event.target.value;
-                navigate(nextId ? navPageToPath('workteam', nextId) : navPageToPath('workteam'));
-              }}
-            >
-              <option value="">{t('workteam.请选择工作流')}</option>
-              {workflows.map((workflow) => (
-                <option key={workflow.id} value={workflow.id}>
-                  {workflow.name}
-                </option>
-              ))}
-            </select>
+          <div className="workflow-header-buttons">
+            {workflowId ? (
+              <button
+                type="button"
+                className="btn-outline"
+                onClick={() => setActiveWorkflowId('')}
+              >
+                {t('workteam.卡片库')}
+              </button>
+            ) : null}
             <button
               type="button"
               className="btn-outline btn-sm"
@@ -2148,8 +2386,6 @@ export function WorkteamPage({ apiBase, canManage = true }: WorkteamPageProps) {
             >
               {t('workteam.配置')}
             </button>
-          </div>
-          <div className="workflow-header-buttons">
             <button
               type="button"
               className="btn-primary"
@@ -2211,7 +2447,7 @@ export function WorkteamPage({ apiBase, canManage = true }: WorkteamPageProps) {
                     key={workflow.id}
                     type="button"
                     className={`workflow-list-item${workflow.id === workflowId ? ' selected' : ''}`}
-                    onClick={() => navigate(navPageToPath('workteam', workflow.id))}
+                    onClick={() => setActiveWorkflowId(workflow.id)}
                   >
                     <strong>{workflow.name}</strong>
                     <span>{workflow.description || t('workteam.无描述')}</span>
@@ -2271,30 +2507,54 @@ export function WorkteamPage({ apiBase, canManage = true }: WorkteamPageProps) {
 
           <main className="workflow-main">
             {!snapshot ? (
-              <div className="workflow-empty">
-                <div className="workflow-empty-copy">
-                  <h3>{t('workteam.先选择或创建一个工作流')}</h3>
-                  <p>{t('workteam.画布会保持简洁，模板和高级配置都收纳到右上角的配置抽屉里')}</p>
-                  <div className="workflow-empty-actions">
-                    <button
-                      type="button"
-                      className="btn-primary"
-                      disabled={!canManage || busy}
-                      onClick={() => setShowWorkflowSettings(true)}
-                    >
-                      {t('workteam.创建工作流')}
-                    </button>
-                    <button
-                      type="button"
-                      className="btn-outline"
-                      disabled={!canManage || busy}
-                      onClick={() => setShowWorkflowSettings(true)}
-                    >
-                      {t('workteam.打开配置')}
-                    </button>
+              <section className="workflow-library">
+                <div className="workflow-library-header">
+                  <div>
+                    <h3>{t('workteam.工作流卡片库')}</h3>
+                    <p>{t('workteam.选择一个工作流进入本页画布详情')}</p>
                   </div>
+                  <button
+                    type="button"
+                    className="btn-primary"
+                    disabled={!canManage || busy}
+                    onClick={() => setShowWorkflowSettings(true)}
+                  >
+                    {t('workteam.创建工作流')}
+                  </button>
                 </div>
-              </div>
+                <div className="workflow-card-grid">
+                  {workflows.map((workflow) => {
+                    const config = parseWorkflowConfig(workflow.workflow_config);
+                    return (
+                      <button
+                        key={workflow.id}
+                        type="button"
+                        className="workflow-library-card"
+                        onClick={() => setActiveWorkflowId(workflow.id)}
+                      >
+                        <span className={`workflow-card-status is-${workflow.status}`}>
+                          {workflow.status}
+                        </span>
+                        <strong>{workflow.name}</strong>
+                        <span>{workflow.description || t('workteam.无描述')}</span>
+                        <div className="workflow-card-meta">
+                          <span>{config.kind}</span>
+                          <span>{config.visibility}</span>
+                          <span>{Math.round((config.messageDelayMs || 0) / 1000)}s</span>
+                        </div>
+                      </button>
+                    );
+                  })}
+                  {workflows.length === 0 ? (
+                    <div className="workflow-empty">
+                      <div className="workflow-empty-copy">
+                        <h3>{t('workteam.先选择或创建一个工作流')}</h3>
+                        <p>{t('workteam.画布会保持简洁，模板和高级配置都收纳到右上角的配置抽屉里')}</p>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              </section>
             ) : (
               <>
                 <section className="workflow-toolbar">
@@ -2645,6 +2905,31 @@ export function WorkteamPage({ apiBase, canManage = true }: WorkteamPageProps) {
                           <pre>{runGraph.run.output || t('workteam.暂无汇总输出')}</pre>
                         </div>
                         <div className="workflow-run-messages">
+                          <h4>{t('workteam.延迟消息队列')}</h4>
+                          <WorkflowTransferList
+                            transfers={pendingTransfers}
+                            nodes={snapshot.nodes}
+                            canManage={canManage}
+                            busy={busy}
+                            onApprove={(transferId) => void mutateTransfer(transferId, 'approve')}
+                            onEdit={(transfer) => void editTransfer(transfer)}
+                            onCancel={(transferId) => void mutateTransfer(transferId, 'cancel')}
+                            onReleaseNow={(transferId) => void mutateTransfer(transferId, 'release-now')}
+                          />
+                        </div>
+                        <div className="workflow-run-messages">
+                          <h4>{t('workteam.交付产物')}</h4>
+                          <WorkflowArtifactList
+                            artifacts={artifacts}
+                            canManage={canManage}
+                            busy={busy}
+                            onRefresh={() => void loadArtifacts()}
+                            onExport={() => void exportRun()}
+                            onCommitAndPush={() => void commitAndPushRun()}
+                            onPublish={() => void publishRunArtifact()}
+                          />
+                        </div>
+                        <div className="workflow-run-messages">
                           <h4>{t('workteam.讨论边')}</h4>
                           {discussionEdgeSummaries.length === 0 ? (
                             <div className="workflow-hint">{t('workteam.当前运行里还没有双向讨论边消息')}</div>
@@ -2980,6 +3265,64 @@ export function WorkteamPage({ apiBase, canManage = true }: WorkteamPageProps) {
                     }
                   />
                 </label>
+                <label>
+                  {t('workteam.工作流类型')}
+                  <select
+                    value={parseWorkflowConfig(snapshot.workflow.workflow_config).kind}
+                    onChange={(event) =>
+                      updateWorkflowConfig({ kind: event.target.value as WorkflowKind })
+                    }
+                  >
+                    <option value="general">{t('workteam.通用')}</option>
+                    <option value="repository">{t('workteam.仓库')}</option>
+                    <option value="skill">{t('workteam.技能')}</option>
+                    <option value="mcp">{t('workteam.MCP')}</option>
+                    <option value="system_capability">{t('workteam.系统能力')}</option>
+                  </select>
+                </label>
+                <label>
+                  {t('workteam.可见性')}
+                  <select
+                    value={parseWorkflowConfig(snapshot.workflow.workflow_config).visibility}
+                    onChange={(event) =>
+                      updateWorkflowConfig({
+                        visibility: event.target.value as WorkflowVisibility,
+                      })
+                    }
+                  >
+                    <option value="private">{t('workteam.私有')}</option>
+                    <option value="shared">{t('workteam.共享')}</option>
+                    <option value="system">{t('workteam.系统')}</option>
+                  </select>
+                </label>
+                <label>
+                  {t('workteam.消息延迟毫秒')}
+                  <input
+                    type="number"
+                    min="0"
+                    step="1000"
+                    value={parseWorkflowConfig(snapshot.workflow.workflow_config).messageDelayMs}
+                    onChange={(event) =>
+                      updateWorkflowConfig({
+                        messageDelayMs: Number(event.target.value) || 0,
+                      })
+                    }
+                  />
+                </label>
+                <label className="workflow-inline-toggle">
+                  <input
+                    type="checkbox"
+                    checked={parseWorkflowConfig(snapshot.workflow.workflow_config).artifactPolicy?.exportable !== false}
+                    onChange={(event) =>
+                      updateWorkflowConfig({
+                        artifactPolicy: {
+                          exportable: event.target.checked,
+                        },
+                      })
+                    }
+                  />
+                  {t('workteam.允许导出')}
+                </label>
                 <div className="workflow-settings-actions">
                   <button
                     type="button"
@@ -3191,6 +3534,31 @@ export function WorkteamPage({ apiBase, canManage = true }: WorkteamPageProps) {
                 <h4>{t('workteam.整图输出')}</h4>
                 <pre>{runGraph.run.output || t('workteam.暂无汇总输出')}</pre>
               </div>
+              <div className="workflow-run-messages">
+                <h4>{t('workteam.延迟消息队列')}</h4>
+                <WorkflowTransferList
+                  transfers={pendingTransfers}
+                  nodes={snapshot?.nodes || []}
+                  canManage={canManage}
+                  busy={busy}
+                  onApprove={(transferId) => void mutateTransfer(transferId, 'approve')}
+                  onEdit={(transfer) => void editTransfer(transfer)}
+                  onCancel={(transferId) => void mutateTransfer(transferId, 'cancel')}
+                  onReleaseNow={(transferId) => void mutateTransfer(transferId, 'release-now')}
+                />
+              </div>
+              <div className="workflow-run-messages">
+                <h4>{t('workteam.交付产物')}</h4>
+                <WorkflowArtifactList
+                  artifacts={artifacts}
+                  canManage={canManage}
+                  busy={busy}
+                  onRefresh={() => void loadArtifacts()}
+                  onExport={() => void exportRun()}
+                  onCommitAndPush={() => void commitAndPushRun()}
+                  onPublish={() => void publishRunArtifact()}
+                />
+              </div>
               <details className="workflow-advanced-details">
                 <summary>{t('workteam.高级调试信息')}</summary>
                 <div className="workflow-run-messages">
@@ -3295,6 +3663,118 @@ function extractMessageContent(raw: string): string {
   } catch {
     return raw;
   }
+}
+
+function WorkflowTransferList({
+  transfers,
+  nodes,
+  canManage,
+  busy,
+  onApprove,
+  onEdit,
+  onCancel,
+  onReleaseNow,
+}: {
+  transfers: WorkflowPendingTransferRecord[];
+  nodes: WorkflowNodeRecord[];
+  canManage: boolean;
+  busy: boolean;
+  onApprove: (transferId: string) => void;
+  onEdit: (transfer: WorkflowPendingTransferRecord) => void;
+  onCancel: (transferId: string) => void;
+  onReleaseNow: (transferId: string) => void;
+}) {
+  const { t } = useTranslation('workteam');
+  const editable = (transfer: WorkflowPendingTransferRecord) =>
+    transfer.status === 'pending' || transfer.status === 'approved';
+  if (transfers.length === 0) {
+    return <div className="workflow-hint">{t('workteam.暂无待发送handoff消息')}</div>;
+  }
+  return (
+    <div className="workflow-transfer-list">
+      {transfers.map((transfer) => (
+        <div key={transfer.id} className={`workflow-transfer-card is-${transfer.status}`}>
+          <div className="workflow-transfer-card-head">
+            <strong>
+              {displayNodeName(nodes, transfer.source_node_id)} → {displayNodeName(nodes, transfer.target_node_id)}
+            </strong>
+            <span>{transfer.status}</span>
+          </div>
+          <p>{transfer.content_text || t('workteam.无内容')}</p>
+          <small>
+            {t('workteam.计划发送')} {transfer.due_at ? fmt(transfer.due_at) : '-'}
+          </small>
+          {editable(transfer) ? (
+            <div className="workflow-transfer-actions">
+              <button type="button" className="btn-outline btn-sm" disabled={!canManage || busy} onClick={() => onApprove(transfer.id)}>
+                {t('workteam.批准')}
+              </button>
+              <button type="button" className="btn-outline btn-sm" disabled={!canManage || busy} onClick={() => onEdit(transfer)}>
+                {t('workteam.编辑')}
+              </button>
+              <button type="button" className="btn-outline btn-sm" disabled={!canManage || busy} onClick={() => onCancel(transfer.id)}>
+                {t('workteam.取消')}
+              </button>
+              <button type="button" className="btn-primary btn-sm" disabled={!canManage || busy} onClick={() => onReleaseNow(transfer.id)}>
+                {t('workteam.立即放行')}
+              </button>
+            </div>
+          ) : null}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function WorkflowArtifactList({
+  artifacts,
+  canManage,
+  busy,
+  onRefresh,
+  onExport,
+  onCommitAndPush,
+  onPublish,
+}: {
+  artifacts: WorkflowArtifactRecord[];
+  canManage: boolean;
+  busy: boolean;
+  onRefresh: () => void;
+  onExport: () => void;
+  onCommitAndPush: () => void;
+  onPublish: () => void;
+}) {
+  const { t } = useTranslation('workteam');
+  return (
+    <div className="workflow-artifact-panel">
+      <div className="workflow-settings-actions">
+        <button type="button" className="btn-outline btn-sm" disabled={busy} onClick={onRefresh}>
+          {t('workteam.刷新产物')}
+        </button>
+        <button type="button" className="btn-outline btn-sm" disabled={busy} onClick={onExport}>
+          {t('workteam.导出')}
+        </button>
+        <button type="button" className="btn-outline btn-sm" disabled={!canManage || busy} onClick={onCommitAndPush}>
+          {t('workteam.提交推送')}
+        </button>
+        <button type="button" className="btn-primary btn-sm" disabled={!canManage || busy} onClick={onPublish}>
+          {t('workteam.发布能力')}
+        </button>
+      </div>
+      {artifacts.length === 0 ? (
+        <div className="workflow-hint">{t('workteam.暂无产物')}</div>
+      ) : (
+        <div className="workflow-artifact-list">
+          {artifacts.map((artifact) => (
+            <div key={artifact.id} className={`workflow-artifact-card is-${artifact.status}`}>
+              <strong>{artifact.name}</strong>
+              <span>{artifact.artifact_type} · {artifact.status}</span>
+              <p>{artifact.summary}</p>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function NodeInspector({
@@ -3417,6 +3897,17 @@ function NodeInspector({
       ) : (
         <>
           <label>
+            {t('workteam.执行助手')}
+            <select value={assistantId} onChange={(event) => setAssistantId(event.target.value)}>
+              <option value="">{t('workteam.继承角色助手')}</option>
+              {assistants.map((assistant) => (
+                <option key={assistant.id} value={assistant.id}>
+                  {assistant.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
             {t('workteam.角色绑定')}
             <select value={roleNodeId} onChange={(event) => setRoleNodeId(event.target.value)}>
               <option value="">{t('workteam.请选择角色节点')}</option>
@@ -3443,8 +3934,10 @@ function NodeInspector({
               onSave({
                 name,
                 description,
+                assistant_id: assistantId,
                 role_node_id: roleNodeId,
                 config_json: {
+                  assistantId: assistantId || undefined,
                   prompt,
                   expectedOutput,
                   timeoutMs: Number(timeoutMs) || 600000,

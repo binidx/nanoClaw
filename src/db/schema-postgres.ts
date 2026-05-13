@@ -2628,6 +2628,54 @@ export async function runPostgresMigrations(engine: DbEngine): Promise<void> {
     `CREATE INDEX IF NOT EXISTS idx_workflow_message_frames_run ON workflow_message_frames(run_id, edge_id, created_at)`,
   );
 
+  await safeMigrate(`
+    CREATE TABLE IF NOT EXISTS workflow_pending_transfers (
+      id VARCHAR(64) PRIMARY KEY,
+      run_id VARCHAR(64) NOT NULL,
+      edge_id VARCHAR(64) NOT NULL,
+      source_node_id VARCHAR(64) NOT NULL DEFAULT '',
+      target_node_id VARCHAR(64) NOT NULL DEFAULT '',
+      direction VARCHAR(64) NOT NULL DEFAULT 'one_way',
+      message_type VARCHAR(64) NOT NULL DEFAULT 'node_output',
+      status VARCHAR(64) NOT NULL DEFAULT 'pending',
+      content_text TEXT NOT NULL DEFAULT '',
+      payload_json TEXT NOT NULL DEFAULT '{}',
+      delay_ms INT NOT NULL DEFAULT 0,
+      due_at TEXT NOT NULL DEFAULT '',
+      created_by VARCHAR(64) NOT NULL DEFAULT '__system__',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      released_at TEXT NOT NULL DEFAULT '',
+      sent_at TEXT NOT NULL DEFAULT '',
+      cancelled_at TEXT NOT NULL DEFAULT ''
+    )
+  `);
+  await safeMigrate(
+    `CREATE INDEX IF NOT EXISTS idx_workflow_pending_transfers_run ON workflow_pending_transfers(run_id, created_at)`,
+  );
+  await safeMigrate(
+    `CREATE INDEX IF NOT EXISTS idx_workflow_pending_transfers_status_due ON workflow_pending_transfers(run_id, status, due_at)`,
+  );
+
+  await safeMigrate(`
+    CREATE TABLE IF NOT EXISTS workflow_artifacts (
+      id VARCHAR(64) PRIMARY KEY,
+      run_id VARCHAR(64) NOT NULL,
+      artifact_type VARCHAR(64) NOT NULL,
+      name VARCHAR(128) NOT NULL,
+      summary TEXT NOT NULL DEFAULT '',
+      content_text TEXT NOT NULL DEFAULT '',
+      payload_json TEXT NOT NULL DEFAULT '{}',
+      status VARCHAR(64) NOT NULL DEFAULT 'ready',
+      created_by VARCHAR(64) NOT NULL DEFAULT '__system__',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `);
+  await safeMigrate(
+    `CREATE INDEX IF NOT EXISTS idx_workflow_artifacts_run ON workflow_artifacts(run_id, artifact_type, created_at)`,
+  );
+
   // ── ABAC: resource_access, user_permission_overrides, permission_groups ──
   await safeMigrate(`
     CREATE TABLE IF NOT EXISTS resource_access (

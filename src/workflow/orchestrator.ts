@@ -8,8 +8,11 @@ import type {
   WorkflowRecord,
   WorkflowRunGraph,
   WorkflowRunRecord,
+  WorkflowPendingTransferRecord,
 } from './types.js';
 import { WorkflowEventBus } from './event-bus.js';
+import { parseWorkflowConfig } from './config.js';
+import { ensureWorkflowArtifacts } from './artifacts.js';
 
 const logger = createModuleLogger('workflow');
 
@@ -24,6 +27,11 @@ function parseTaskConfig(node: WorkflowNodeRecord): {
   expectedOutput?: string;
   timeoutMs?: number;
   approvalRequired?: boolean;
+  handoffPolicy?: {
+    maxTurns: number;
+    cooldownMs: number;
+    exposeToolCalls: false;
+  };
 } {
   try {
     return JSON.parse(node.config_json || '{}') as {
@@ -31,6 +39,11 @@ function parseTaskConfig(node: WorkflowNodeRecord): {
       expectedOutput?: string;
       timeoutMs?: number;
       approvalRequired?: boolean;
+      handoffPolicy?: {
+        maxTurns: number;
+        cooldownMs: number;
+        exposeToolCalls: false;
+      };
     };
   } catch {
     return {};
@@ -56,6 +69,24 @@ function getDiscussionTurnBudget(edge: WorkflowEdgeRecord): number {
   return Math.max(0, Math.floor(value));
 }
 
+function getEffectiveDiscussionTurnBudget(
+  edge: WorkflowEdgeRecord,
+  nodesById: Map<string, WorkflowNodeRecord>,
+): number {
+  const edgeBudget = getDiscussionTurnBudget(edge);
+  const sourceBudget = parseTaskConfig(nodesById.get(edge.source_node_id) ?? {
+    config_json: '{}',
+  } as WorkflowNodeRecord).handoffPolicy?.maxTurns;
+  const targetBudget = parseTaskConfig(nodesById.get(edge.target_node_id) ?? {
+    config_json: '{}',
+  } as WorkflowNodeRecord).handoffPolicy?.maxTurns;
+  const nodeBudgets = [sourceBudget, targetBudget].filter(
+    (value): value is number => typeof value === 'number' && Number.isFinite(value),
+  );
+  if (nodeBudgets.length === 0) return edgeBudget;
+  return Math.max(0, Math.min(edgeBudget, ...nodeBudgets.map((value) => Math.floor(value))));
+}
+
 function countMessagesForEdge(
   messages: Array<{ payload_json: string }>,
   edgeId: string,
@@ -70,6 +101,15 @@ function countMessagesForEdge(
     }
   }
   return total;
+}
+
+function countTransfersForEdge(
+  transfers: Array<{ edge_id: string; status: string }>,
+  edgeId: string,
+): number {
+  return transfers.filter(
+    (transfer) => transfer.edge_id === edgeId && transfer.status !== 'cancelled',
+  ).length;
 }
 
 function getLatestMessageForEdge(
@@ -120,6 +160,25 @@ function inboundMap(edges: WorkflowEdgeRecord[]): Map<string, WorkflowEdgeRecord
     map.set(edge.target_node_id, list);
   }
   return map;
+}
+
+function isTransferUnresolved(transfer: WorkflowPendingTransferRecord): boolean {
+  return transfer.status === 'pending' || transfer.status === 'approved';
+}
+
+function hasUnresolvedInboundTransfer(
+  graph: WorkflowRunGraph,
+  edge: WorkflowEdgeRecord,
+  sourceNodeId: string,
+  targetNodeId: string,
+): boolean {
+  return graph.pendingTransfers.some(
+    (transfer) =>
+      transfer.edge_id === edge.id &&
+      transfer.source_node_id === sourceNodeId &&
+      transfer.target_node_id === targetNodeId &&
+      isTransferUnresolved(transfer),
+  );
 }
 
 function resolveRuntimeTransfer(
@@ -181,6 +240,7 @@ export class WorkflowOrchestrator {
     string,
     { sourceNodeId: string; targetNodeId: string }
   >();
+  private pendingTransferTimers = new Map<string, NodeJS.Timeout>();
   private scheduleTail: Promise<void> = Promise.resolve();
 
   constructor(workflowId: string) {
@@ -197,7 +257,13 @@ export class WorkflowOrchestrator {
     orchestrator.edges = graph.edges;
     orchestrator.runStatus = graph.run.status;
     orchestrator.edgeMessageCounts = new Map(
-      graph.edges.map((edge) => [edge.id, countMessagesForEdge(graph.messages, edge.id)]),
+      graph.edges.map((edge) => [
+        edge.id,
+        Math.max(
+          countMessagesForEdge(graph.messages, edge.id),
+          countTransfersForEdge(graph.pendingTransfers, edge.id),
+        ),
+      ]),
     );
     orchestrator.edgeLastTransfers = new Map(
       graph.edges
@@ -212,6 +278,7 @@ export class WorkflowOrchestrator {
         ),
     );
     activeOrchestrators.set(runId, orchestrator);
+    orchestrator.schedulePendingTransferTimers(graph.pendingTransfers);
     return orchestrator;
   }
 
@@ -255,6 +322,38 @@ export class WorkflowOrchestrator {
       });
   }
 
+  private schedulePendingTransferTimer(transfer: WorkflowPendingTransferRecord): void {
+    if (!isTransferUnresolved(transfer)) return;
+    const existing = this.pendingTransferTimers.get(transfer.id);
+    if (existing) clearTimeout(existing);
+    this.pendingTransferTimers.delete(transfer.id);
+    const dueMs = Date.parse(transfer.due_at);
+    const delayMs = Number.isFinite(dueMs)
+      ? Math.max(0, dueMs - Date.now())
+      : 0;
+    const timer = setTimeout(() => {
+      this.pendingTransferTimers.delete(transfer.id);
+      this.enqueueSchedule();
+    }, delayMs);
+    timer.unref?.();
+    this.pendingTransferTimers.set(transfer.id, timer);
+  }
+
+  private schedulePendingTransferTimers(
+    transfers: WorkflowPendingTransferRecord[],
+  ): void {
+    for (const transfer of transfers) {
+      this.schedulePendingTransferTimer(transfer);
+    }
+  }
+
+  private clearPendingTransferTimers(): void {
+    for (const timer of this.pendingTransferTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.pendingTransferTimers.clear();
+  }
+
   private recordEdgeMessage(edgeId: string): number {
     const next = (this.edgeMessageCounts.get(edgeId) ?? 0) + 1;
     this.edgeMessageCounts.set(edgeId, next);
@@ -268,10 +367,143 @@ export class WorkflowOrchestrator {
     this.edgeLastTransfers.set(edgeId, transfer);
   }
 
+  private workflowMessageDelayMs(): number {
+    return parseWorkflowConfig(this.workflow).messageDelayMs;
+  }
+
+  private async queueTransfer(input: {
+    edge: WorkflowEdgeRecord;
+    transfer: { sourceNodeId: string; targetNodeId: string };
+    content: string;
+    messageType: string;
+  }): Promise<WorkflowPendingTransferRecord | null> {
+    if (!this.runId) return null;
+    const emittedCount = this.recordEdgeMessage(input.edge.id);
+    const delayMs = this.workflowMessageDelayMs();
+    const dueAt = new Date(Date.now() + delayMs).toISOString();
+    const payload = {
+      edgeId: input.edge.id,
+      sourceNodeId: input.transfer.sourceNodeId,
+      targetNodeId: input.transfer.targetNodeId,
+      direction: input.edge.direction,
+      messageType: input.messageType,
+      discussionCount: emittedCount,
+      content: input.content,
+    };
+    const pending = await db.createWorkflowPendingTransfer({
+      run_id: this.runId,
+      edge_id: input.edge.id,
+      source_node_id: input.transfer.sourceNodeId,
+      target_node_id: input.transfer.targetNodeId,
+      direction: input.edge.direction,
+      message_type: input.messageType,
+      content_text: input.content,
+      payload_json: JSON.stringify(payload),
+      delay_ms: delayMs,
+      due_at: dueAt,
+    });
+    this.eventBus.emit(this.runId, 'message_scheduled', {
+      transferId: pending.id,
+      edgeId: input.edge.id,
+      sourceNodeId: input.transfer.sourceNodeId,
+      targetNodeId: input.transfer.targetNodeId,
+      direction: input.edge.direction,
+      messageType: input.messageType,
+      discussionCount: emittedCount,
+      dueAt,
+      delayMs,
+    });
+    if (delayMs <= 0) {
+      await this.sendPendingTransfer(pending);
+    } else {
+      this.schedulePendingTransferTimer(pending);
+    }
+    return pending;
+  }
+
+  private async sendPendingTransfer(
+    transfer: WorkflowPendingTransferRecord,
+  ): Promise<boolean> {
+    if (!this.runId || transfer.run_id !== this.runId) return false;
+    const latest = await db.getWorkflowPendingTransfer(transfer.id);
+    if (!latest || !isTransferUnresolved(latest)) return false;
+    const payload = (() => {
+      try {
+        return JSON.parse(latest.payload_json || '{}') as Record<string, unknown>;
+      } catch {
+        return {};
+      }
+    })();
+    const content =
+      typeof payload.content === 'string' ? payload.content : latest.content_text;
+    const persisted = await db.recordWorkflowRuntimeFrame({
+      run_id: latest.run_id,
+      edge_id: latest.edge_id,
+      source_node_id: latest.source_node_id,
+      target_node_id: latest.target_node_id,
+      direction: latest.direction,
+      frame_type: latest.message_type,
+      content_text: content,
+      payload_json: JSON.stringify({
+        ...payload,
+        content,
+        transferId: latest.id,
+      }),
+      message_type: latest.message_type,
+    });
+    const sentAt = nowIso();
+    await db.updateWorkflowPendingTransfer(latest.id, {
+      status: 'sent',
+      sent_at: sentAt,
+    });
+    const discussionCount =
+      typeof payload.discussionCount === 'number'
+        ? payload.discussionCount
+        : (this.edgeMessageCounts.get(latest.edge_id) ?? 0);
+    this.recordEdgeTransfer(latest.edge_id, {
+      sourceNodeId: latest.source_node_id,
+      targetNodeId: latest.target_node_id,
+    });
+    this.eventBus.emit(this.runId, 'message_sent', {
+      ...payload,
+      transferId: latest.id,
+      messageId: persisted.message.id,
+      frameId: persisted.frame.id,
+      edgeId: latest.edge_id,
+      sourceNodeId: latest.source_node_id,
+      targetNodeId: latest.target_node_id,
+      direction: latest.direction,
+      messageType: latest.message_type,
+      discussionCount,
+      content,
+      persisted: true,
+    });
+    return true;
+  }
+
+  private async releaseDueTransfers(graph: WorkflowRunGraph): Promise<boolean> {
+    const now = Date.now();
+    let sent = false;
+    for (const transfer of graph.pendingTransfers) {
+      if (!isTransferUnresolved(transfer)) continue;
+      const dueMs = Date.parse(transfer.due_at);
+      if (!Number.isFinite(dueMs) || dueMs > now) {
+        this.schedulePendingTransferTimer(transfer);
+        continue;
+      }
+      sent = (await this.sendPendingTransfer(transfer)) || sent;
+    }
+    return sent;
+  }
+
   private async runSchedule(): Promise<void> {
     if (!this.runId || this.runStatus !== 'running') return;
     const graph = await db.getWorkflowRunGraph(this.runId);
     if (!graph) return;
+    if (await this.releaseDueTransfers(graph)) {
+      this.enqueueSchedule();
+      return;
+    }
     const tasks = graph.nodes.filter((node) => node.node_type === 'task');
     const inbound = inboundMap(directedEdges(graph.edges));
     const completed = new Set(
@@ -286,6 +518,10 @@ export class WorkflowOrchestrator {
       return;
     }
     if (pending.length === 0 && this.runningNodeIds.size === 0) {
+      if (graph.pendingTransfers.some(isTransferUnresolved)) {
+        this.schedulePendingTransferTimers(graph.pendingTransfers);
+        return;
+      }
       if (await this.queueDeferredTwoWayFollowUp(graph)) {
         return;
       }
@@ -298,7 +534,15 @@ export class WorkflowOrchestrator {
       const runNode = graph.runNodes.find((item) => item.node_id === node.id);
       if (!runNode || runNode.status !== 'pending') continue;
       const deps = inbound.get(node.id) ?? [];
-      const depsReady = deps.every((edge) => completed.has(edge.source_node_id));
+      const depsReady = deps.every((edge) => {
+        if (!completed.has(edge.source_node_id)) return false;
+        return !hasUnresolvedInboundTransfer(
+          graph,
+          edge,
+          edge.source_node_id,
+          node.id,
+        );
+      });
       if (!depsReady) continue;
       void this.executeNode(graph, node).catch((err) => {
         logger.error({ err, runId: this.runId, nodeId: node.id }, 'workflow executeNode failed');
@@ -369,6 +613,10 @@ export class WorkflowOrchestrator {
       return;
     }
 
+    if (this.runStatus !== 'running') {
+      return;
+    }
+
     if (!result.success) {
       await db.updateWorkflowRunNode(runNode.id, {
         status: 'failed',
@@ -406,16 +654,11 @@ export class WorkflowOrchestrator {
         } => entry.transfer !== null,
       );
     for (const { edge, transfer } of outEdges) {
-      const emittedCount = this.recordEdgeMessage(edge.id);
-      this.recordEdgeTransfer(edge.id, transfer);
-      this.eventBus.emit(this.runId, 'message_sent', {
-        edgeId: edge.id,
-        sourceNodeId: transfer.sourceNodeId,
-        targetNodeId: transfer.targetNodeId,
-        direction: edge.direction,
-        messageType: 'node_output',
-        discussionCount: emittedCount,
+      await this.queueTransfer({
+        edge,
+        transfer,
         content: result.output,
+        messageType: 'node_output',
       });
     }
     this.enqueueSchedule();
@@ -426,8 +669,13 @@ export class WorkflowOrchestrator {
   ): Promise<boolean> {
     if (!this.runId) return false;
     for (const edge of graph.edges.filter((item) => item.direction === 'two_way')) {
-      const budget = getDiscussionTurnBudget(edge);
-      const count = this.edgeMessageCounts.get(edge.id) ?? countMessagesForEdge(graph.messages, edge.id);
+      const budget = getEffectiveDiscussionTurnBudget(edge, this.nodesById);
+      const count =
+        this.edgeMessageCounts.get(edge.id) ??
+        Math.max(
+          countMessagesForEdge(graph.messages, edge.id),
+          countTransfersForEdge(graph.pendingTransfers, edge.id),
+        );
       if (count === 0 || count >= budget) continue;
       const latestMessage =
         this.edgeLastTransfers.get(edge.id) ??
@@ -546,6 +794,15 @@ export class WorkflowOrchestrator {
         }
         continue;
       }
+      const transferRecords = graph.pendingTransfers.filter(
+        (transfer) =>
+          transfer.edge_id === edge.id &&
+          transfer.source_node_id === inbound.sourceNodeId &&
+          transfer.target_node_id === node.id,
+      );
+      if (transferRecords.length > 0) {
+        continue;
+      }
       const sourceRunNode = runNodesByNodeId.get(inbound.sourceNodeId);
       if (sourceRunNode?.output_snapshot) {
         collected.push({
@@ -591,8 +848,18 @@ export class WorkflowOrchestrator {
       output: outputs,
       completed_at: nowIso(),
     });
+    try {
+      await ensureWorkflowArtifacts(this.runId);
+      this.eventBus.emit(this.runId, 'artifact_created', {
+        workflowId: this.workflowId,
+        runId: this.runId,
+      });
+    } catch (err) {
+      logger.warn({ err, runId: this.runId }, 'workflow artifact generation failed');
+    }
     this.runStatus = status;
     activeOrchestrators.delete(this.runId);
+    this.clearPendingTransferTimers();
     this.eventBus.removeAllForRun(this.runId);
   }
 
@@ -635,6 +902,7 @@ export class WorkflowOrchestrator {
       workflowId: this.workflowId,
     });
     activeOrchestrators.delete(this.runId);
+    this.clearPendingTransferTimers();
     this.eventBus.removeAllForRun(this.runId);
   }
 
@@ -737,16 +1005,11 @@ export class WorkflowOrchestrator {
           } => entry.transfer !== null,
         );
       for (const { edge, transfer } of outEdges) {
-        const emittedCount = this.recordEdgeMessage(edge.id);
-        this.recordEdgeTransfer(edge.id, transfer);
-        this.eventBus.emit(this.runId, 'message_sent', {
-          edgeId: edge.id,
-          sourceNodeId: transfer.sourceNodeId,
-          targetNodeId: transfer.targetNodeId,
-          direction: edge.direction,
-          messageType: 'manual_output_override',
-          discussionCount: emittedCount,
+        await this.queueTransfer({
+          edge,
+          transfer,
           content: nextOutput,
+          messageType: 'manual_output_override',
         });
       }
     }
@@ -765,6 +1028,100 @@ export class WorkflowOrchestrator {
       completed_at: '',
       pause_reason: '',
     });
+    this.enqueueSchedule();
+  }
+
+  async approveTransfer(transferId: string): Promise<void> {
+    if (!this.runId) throw new Error('No active run');
+    const transfer = await db.getWorkflowPendingTransfer(transferId);
+    if (!transfer || transfer.run_id !== this.runId) {
+      throw new Error('Transfer not found');
+    }
+    if (!isTransferUnresolved(transfer)) return;
+    await db.updateWorkflowPendingTransfer(transfer.id, {
+      status: 'approved',
+    });
+    this.schedulePendingTransferTimer({ ...transfer, status: 'approved' });
+    this.eventBus.emit(this.runId, 'intervention', {
+      transferId,
+      reason: 'transfer_approved',
+    });
+  }
+
+  async editTransfer(transferId: string, content: string): Promise<void> {
+    if (!this.runId) throw new Error('No active run');
+    const transfer = await db.getWorkflowPendingTransfer(transferId);
+    if (!transfer || transfer.run_id !== this.runId) {
+      throw new Error('Transfer not found');
+    }
+    if (!isTransferUnresolved(transfer)) {
+      throw new Error('Transfer is no longer editable');
+    }
+    const payload = (() => {
+      try {
+        return JSON.parse(transfer.payload_json || '{}') as Record<string, unknown>;
+      } catch {
+        return {};
+      }
+    })();
+    await db.updateWorkflowPendingTransfer(transfer.id, {
+      content_text: content,
+      payload_json: JSON.stringify({
+        ...payload,
+        content,
+        edited: true,
+      }),
+    });
+    this.schedulePendingTransferTimer({ ...transfer, content_text: content });
+    this.eventBus.emit(this.runId, 'intervention', {
+      transferId,
+      reason: 'transfer_edited',
+    });
+  }
+
+  async cancelTransfer(transferId: string): Promise<void> {
+    if (!this.runId) throw new Error('No active run');
+    const transfer = await db.getWorkflowPendingTransfer(transferId);
+    if (!transfer || transfer.run_id !== this.runId) {
+      throw new Error('Transfer not found');
+    }
+    if (!isTransferUnresolved(transfer)) return;
+    const timer = this.pendingTransferTimers.get(transfer.id);
+    if (timer) clearTimeout(timer);
+    this.pendingTransferTimers.delete(transfer.id);
+    await db.updateWorkflowPendingTransfer(transfer.id, {
+      status: 'cancelled',
+      cancelled_at: nowIso(),
+    });
+    this.eventBus.emit(this.runId, 'message_cancelled', {
+      transferId,
+      edgeId: transfer.edge_id,
+      sourceNodeId: transfer.source_node_id,
+      targetNodeId: transfer.target_node_id,
+    });
+    this.enqueueSchedule();
+  }
+
+  async releaseTransferNow(transferId: string): Promise<void> {
+    if (!this.runId) throw new Error('No active run');
+    const transfer = await db.getWorkflowPendingTransfer(transferId);
+    if (!transfer || transfer.run_id !== this.runId) {
+      throw new Error('Transfer not found');
+    }
+    if (!isTransferUnresolved(transfer)) return;
+    const releasedAt = nowIso();
+    await db.updateWorkflowPendingTransfer(transfer.id, {
+      status: 'approved',
+      due_at: releasedAt,
+      released_at: releasedAt,
+    });
+    const next = {
+      ...transfer,
+      status: 'approved' as const,
+      due_at: releasedAt,
+      released_at: releasedAt,
+    };
+    await this.sendPendingTransfer(next);
     this.enqueueSchedule();
   }
 

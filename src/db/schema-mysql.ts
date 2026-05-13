@@ -2603,6 +2603,51 @@ export async function runMySQLMigrations(engine: DbEngine): Promise<void> {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
 
+  await safeMigrate(`
+    CREATE TABLE IF NOT EXISTS workflow_pending_transfers (
+      id VARCHAR(64) PRIMARY KEY,
+      run_id VARCHAR(64) NOT NULL,
+      edge_id VARCHAR(64) NOT NULL,
+      source_node_id VARCHAR(64) NOT NULL DEFAULT '',
+      target_node_id VARCHAR(64) NOT NULL DEFAULT '',
+      direction VARCHAR(64) NOT NULL DEFAULT 'one_way',
+      message_type VARCHAR(64) NOT NULL DEFAULT 'node_output',
+      status VARCHAR(64) NOT NULL DEFAULT 'pending',
+      content_text MEDIUMTEXT NOT NULL,
+      payload_json MEDIUMTEXT NOT NULL,
+      delay_ms INT NOT NULL DEFAULT 0,
+      due_at VARCHAR(64) NOT NULL DEFAULT '',
+      created_by VARCHAR(64) NOT NULL DEFAULT '__system__',
+      created_at VARCHAR(64) NOT NULL,
+      updated_at VARCHAR(64) NOT NULL,
+      released_at VARCHAR(64) NOT NULL DEFAULT '',
+      sent_at VARCHAR(64) NOT NULL DEFAULT '',
+      cancelled_at VARCHAR(64) NOT NULL DEFAULT '',
+      KEY idx_workflow_pending_transfers_run (run_id, created_at),
+      KEY idx_workflow_pending_transfers_status_due (run_id, status, due_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+  await safeMigrate(
+    `CREATE INDEX idx_workflow_pending_transfers_status_due ON workflow_pending_transfers(run_id, status, due_at)`,
+  );
+
+  await safeMigrate(`
+    CREATE TABLE IF NOT EXISTS workflow_artifacts (
+      id VARCHAR(64) PRIMARY KEY,
+      run_id VARCHAR(64) NOT NULL,
+      artifact_type VARCHAR(64) NOT NULL,
+      name VARCHAR(128) NOT NULL,
+      summary TEXT NOT NULL,
+      content_text MEDIUMTEXT NOT NULL,
+      payload_json MEDIUMTEXT NOT NULL,
+      status VARCHAR(64) NOT NULL DEFAULT 'ready',
+      created_by VARCHAR(64) NOT NULL DEFAULT '__system__',
+      created_at VARCHAR(64) NOT NULL,
+      updated_at VARCHAR(64) NOT NULL,
+      KEY idx_workflow_artifacts_run (run_id, artifact_type, created_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+
   // ── ABAC: resource_access, user_permission_overrides, permission_groups ──
   await safeMigrate(`
     CREATE TABLE IF NOT EXISTS resource_access (

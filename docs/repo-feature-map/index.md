@@ -14,7 +14,7 @@
 
 - 数据源：`.env` 中的 PostgreSQL 连接，读取现有 `repo-nanoclaw` / `main` 代码索引。
 - Snapshot：`cis_repo-nanoclaw_main`。
-- 代码源：`remote_worktree`，`source_branch=main`，`source_head_sha=9e1fecbcd715e82116ab09cce604bf967c8bcb84`。
+- 代码源：`remote_worktree`，`source_branch=main`，`source_head_sha=0e32466c00f38407e135d4ba6d06a33e7c39ca7f`。
 - 明细索引：`code_index_files=845`、`code_index_chunks=20062`、`code_index_functions=15079`、`code_index_function_edges=14579`。
 - 语言分布：TypeScript 760 files / 264300 lines，Python 26 / 6397，JavaScript 25 / 4526，JSON 21 / 13531，YAML 10 / 483，Shell 3 / 317。
 - 注意：当前 `code_index_snapshots.stats_json` 显示 0，但明细表已填充；做统计时以明细表 `COUNT(*)` 为准，或重建/修复 snapshot meta。
@@ -40,7 +40,7 @@
 | Code Index 与 CodeMap | `src/routes/code-index-routes.ts`, `src/code-intelligence/code-index-builder.ts`, `src/db/code-index-db.ts`, `src/routes/code-map-routes.ts` | `src/code-intelligence/code-map-builder.ts`, `src/code-intelligence/code-map-render.ts`, `src/code-intelligence/code-map-persist.ts`, `src/code-intelligence/code-map-description.ts`, `src/db/code-map-analysis-db.ts` | `web/src/pages/CodeMapPage.tsx`, `web/src/components/code-map/*` | `src/code-intelligence/code-index-builder.test.ts`, `src/code-index-routes.test.ts`, `src/code-map-*.test.ts`, `docs/系统概览.md` |
 | 仓库注册与功能开关 | `src/routes/repository-routes.ts`, `src/routes/assistant-repo-routes.ts` | `src/db/repositories.ts`, `src/assistant/assistant-repo.ts`, `src/tenant/resource-binding-service.ts`, `src/db/resource-bindings.ts` | `web/src/pages/RepositoryPage.tsx`, `web/src/components/RepoReviewSettingsPanel.tsx` | `src/repository-routes.test.ts` |
 | 定时任务与 AI 任务草稿 | `src/routes/task-session-routes.ts`, `src/scheduler/task-scheduler.ts`, `src/scheduler/task-schedule.ts`, `src/scheduler/task-draft.ts` | `src/db/tasks.ts`, `src/runtime/runtime-state.ts`, `src/index.ts` | `web/src/pages/TasksPage.tsx`, `web/src/pages/TasksPageContainer.tsx`, `web/src/styles/tasks.css` | `docs/任务调度.md`, `src/scheduler/task-schedule.test.ts`, `src/scheduler/task-draft.test.ts` |
-| Workflow Workbench / 图形多智能体编排 | `src/routes/workflow-routes.ts`, `src/workflow/orchestrator.ts`, `src/workflow/event-bus.ts`, `src/workflow/agent-adapter.ts` | `src/workflow/types.ts`, `src/db/workflows.ts`, `src/db/schema-*.ts` | `web/src/pages/WorkteamPage.tsx` | `docs/workflow-workbench.md`, `docs/sdlc-runner-profiles.md` |
+| Workflow Workbench / 图形多智能体编排 | `src/routes/workflow-routes.ts`, `src/workflow/orchestrator.ts`, `src/workflow/event-bus.ts`, `src/workflow/agent-adapter.ts`, `src/workflow/artifacts.ts`, `src/workflow/config.ts` | `src/workflow/types.ts`, `src/db/workflows.ts`, `src/db/schema-*.ts` | `web/src/pages/WorkteamPage.tsx` | `docs/workflow-workbench.md`, `docs/sdlc-runner-profiles.md` |
 | 股票分析 | `src/routes/stock-analysis-routes.ts`, `src/stock-analysis/stock-analysis-service.ts`, `src/stock-analysis/stock-analysis-config.ts` | `src/stock-analysis/stock-analysis-types.ts`, `src/stock-analysis/stock-analysis-records.ts`, `src/stock-analysis/stock-analysis-market-data.ts`, `src/stock-analysis/stock-analysis-news-source.ts`, `src/stock-analysis/stock-analysis-backtest.ts`, `src/db/stock-analysis.ts` | `web/src/pages/StockAnalysisPage.tsx`, `web/src/pages/stock-analysis/*` | `docs/股票分析.md`, `src/stock-analysis-*.test.ts` |
 | 浏览器自动化与 Web 抓取 | `src/routes/browser-routes.ts`, `src/browser/service.ts`, `src/browser/cdp.ts`, `src/auth/local-capability-policy.ts` | `src/browser/chrome.ts`, `src/browser/cdp-client.ts`, `src/browser/cdp-actions.ts`, `src/browser/cdp-snapshot.ts`, `src/browser/config.ts`, `src/config/web-search-config.ts` | `web/src/components/BrowserControlPanel.tsx`, `web/src/pages/settings/SettingsBrowserTab.tsx`, `web/src/pages/settings/SettingsWebSearchTab.tsx` | `docs/浏览器自动化与Web能力.md`, `src/browser-*.test.ts`, `src/web-search-config.test.ts` |
 | Soul 与 Live2D | `src/routes/soul-routes.ts`, `src/routes/live2d-routes.ts`, `src/soul/soul-service.ts`, `src/extension/live2d-service.ts` | `src/soul/soul-consolidation.ts`, `src/soul/soul-presets.ts`, `src/db/soul.ts`, `src/db/live2d.ts` | `web/src/pages/SoulPage.tsx`, `web/src/components/live2d/*`, `web/src/pages/settings/SettingsLive2DTab.tsx` | `src/soul-*.test.ts`（如新增逻辑时补齐） |
@@ -66,7 +66,7 @@
 | `src/routes/code-index-routes.ts` | 分支级 code index 构建、搜索、函数图 | `src/code-intelligence/code-index-builder.ts`, `src/db/code-index-db.ts` |
 | `src/routes/code-map-routes.ts` | CodeMap 快照、文本渲染、AI 分析 | `src/code-map-*`, `src/db/code-map-analysis-db.ts` |
 | `src/routes/task-session-routes.ts` | 任务 CRUD、执行、暂停恢复 | `src/scheduler/task-scheduler.ts`, `src/db/tasks.ts` |
-| `src/routes/workflow-routes.ts` | Workflow Workbench、图节点、图边、run graph、运行态干预 | `src/workflow/*`, `src/db/workflows.ts` |
+| `src/routes/workflow-routes.ts` | Workflow Workbench、图节点、图边、run graph、延迟 transfer、产物交付、运行态干预 | `src/workflow/*`, `src/db/workflows.ts` |
 | `src/routes/workteam-routes.ts` | 旧 Workteam / SDLC / Runner Profile 能力 | `src/workteam/*`, `src/db/workteam.ts` |
 | `src/routes/stock-analysis-routes.ts` | 股票配置、任务、报告、数据源 | `src/stock-analysis-*`, `src/db/stock-analysis.ts` |
 | `src/routes/browser-routes.ts` | 浏览器连接、tab、CDP 操作 | `src/browser/*`, `src/config/web-search-config.ts` |
