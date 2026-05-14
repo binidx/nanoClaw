@@ -20,7 +20,7 @@ export default function RepositoryPage({
   return (
     <div className="page-view settings-view repository-review-page">
       <PageHeader
-        title={t('auto.c270fc6f')}
+        title="Repo"
         subtitle={t('auto.c83b1969')}
       />
       <div className="page-body repository-review-page-body">

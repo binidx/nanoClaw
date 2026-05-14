@@ -361,6 +361,19 @@
     0 10px 24px rgba(80, 101, 150, 0.05);
 }
 
+.tasks-card-button {
+  all: unset;
+  display: block;
+  width: 100%;
+  cursor: pointer;
+}
+
+.tasks-card-button:focus-visible {
+  border-radius: 16px;
+  outline: 2px solid rgba(var(--accent-rgb), 0.34);
+  outline-offset: 2px;
+}
+
 .tasks-card-details {
   padding: 0;
   overflow: hidden;
@@ -589,6 +602,10 @@
   border-top: 1px solid rgba(226, 232, 240, 0.82);
 }
 
+.tasks-card-actions-compact {
+  margin-top: 0;
+}
+
 .tasks-list-meta {
   display: inline-flex;
   align-items: center;
@@ -598,6 +615,60 @@
   background: var(--surface-subtle);
   font-size: 12px;
   color: var(--text-muted);
+}
+
+.tasks-drawer-title {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.tasks-drawer-title-main {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.tasks-drawer-title-main strong {
+  font-size: 18px;
+  line-height: 1.25;
+  color: var(--text-primary);
+}
+
+.tasks-drawer-shell {
+  display: grid;
+  gap: 18px;
+}
+
+.tasks-drawer-hero {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid rgba(226, 232, 240, 0.88);
+  border-radius: 22px;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.97) 0%,
+    rgba(247, 250, 255, 0.92) 100%
+  );
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.94),
+    0 12px 28px rgba(80, 101, 150, 0.06);
+}
+
+.tasks-drawer-hero .tasks-card-prompt {
+  margin-bottom: 0;
+}
+
+.tasks-drawer-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.tasks-meta-grid-drawer {
+  gap: 10px 12px;
 }
 
 .tasks-empty-state {
@@ -1226,7 +1297,8 @@
 [data-theme='dark'] .tasks-toolbar,
 [data-theme='dark'] .tasks-advanced-box,
 [data-theme='dark'] .tasks-title-editor input,
-[data-theme='dark'] .tasks-summary-item {
+[data-theme='dark'] .tasks-summary-item,
+[data-theme='dark'] .tasks-drawer-hero {
   background: linear-gradient(
     180deg,
     rgba(15, 23, 42, 0.94) 0%,
@@ -1331,6 +1403,10 @@
   color: #bbf7d0;
 }
 
+[data-theme='dark'] .tasks-card-button:focus-visible {
+  outline-color: rgba(139, 155, 255, 0.42);
+}
+
 [data-theme='dark'] .tasks-warning-badge {
   background: rgba(220, 38, 38, 0.2);
   color: #fca5a5;
@@ -1360,6 +1436,15 @@
   .tasks-header-conv-select {
     flex: 1;
     min-width: 0;
+  }
+
+  .tasks-drawer-title {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .tasks-drawer-summary-grid {
+    grid-template-columns: 1fr;
   }
 
   .page-header-actions {

@@ -2393,14 +2393,12 @@ export function AssistantsPage({
     <div className="page-view assistants-page">
       <PageHeader
         className="assistants-page-header"
-        title={t('AI 助手')}
-        subtitle={t(
-          'assistants.这里是助手市场本身。只管理已创建助手，资源、权限和接入关系都按助手独立维护。',
-        )}
+        title="Agent"
+        subtitle="Catalog, resources, and runtime wiring for every Agent."
         meta={
           <div className="nc-page-metrics">
             <div className="nc-page-metric">
-              <span className="nc-page-metric-label">{t('assistants.助手')}</span>
+              <span className="nc-page-metric-label">Agent</span>
               <strong className="nc-page-metric-value">{assistants.length}</strong>
             </div>
             <div className="nc-page-metric">
@@ -2408,7 +2406,7 @@ export function AssistantsPage({
               <strong className="nc-page-metric-value">{enabledAssistantCount}</strong>
             </div>
             <div className="nc-page-metric">
-              <span className="nc-page-metric-label">{t('assistants.当前筛选')}</span>
+              <span className="nc-page-metric-label">Filtered</span>
               <strong className="nc-page-metric-value">
                 {filteredAssistants.length}
               </strong>
@@ -2426,7 +2424,7 @@ export function AssistantsPage({
               {t('assistants.刷新')}
             </button>
             <label className="btn-outline nc-page-action-file">
-              {t('assistants.导入')}
+              Import
               <input
                 type="file"
                 accept=".json"
@@ -2520,7 +2518,7 @@ export function AssistantsPage({
               className="btn-primary"
               onClick={handleCreateOpen}
             >
-              {t('assistants.新建助手')}
+              New Agent
             </button>
           </div>
         }
@@ -2780,7 +2778,7 @@ export function AssistantsPage({
                   className="btn-outline btn-sm"
                   onClick={handleCreateFromCurrentAssistant}
                 >
-                  {t('assistants.复制')}
+                  Copy
                 </button>
                 <button
                   type="button"
@@ -2986,7 +2984,7 @@ export function AssistantsPage({
           >
             <div className="assistant-drawer-panel-header">
               <div>
-                <h3>{t('assistants.新建助手')}</h3>
+                <h3>New Agent</h3>
                 <p>{t('auto.35107623')}</p>
               </div>
               <button

@@ -289,6 +289,8 @@
   max-width: 1280px;
   margin: 0 auto;
   width: 100%;
+  display: grid;
+  gap: 14px;
 }
 
 .repository-review-page-body .repo-review-panel--embedded.settings-section {
@@ -297,6 +299,15 @@
   border: 0;
   background: transparent;
   box-shadow: none;
+}
+
+.repository-review-page .nc-page-header-surface {
+  padding-bottom: 18px;
+}
+
+.repository-review-page .repo-review-panel-toolbar--embedded {
+  align-items: center;
+  padding: 0 4px;
 }
 
 .repository-review-page .nc-page-subtitle,

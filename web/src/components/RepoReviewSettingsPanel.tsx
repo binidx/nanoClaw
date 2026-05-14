@@ -3376,10 +3376,10 @@ export function RepoReviewSettingsPanel({
   return (
     <div className={`settings-section repo-review-panel${embedded ? ' repo-review-panel--embedded' : ''}`}>
       {embedded ? (
-        <div className="repo-review-panel-toolbar">
+        <div className="repo-review-panel-toolbar repo-review-panel-toolbar--embedded">
           <div className="repo-review-panel-toolbar-copy">
             <span className="repo-review-panel-toolbar-kicker">
-              Repo Review
+              Workspace
             </span>
             <span className="repo-review-panel-toolbar-note">
               {`${t('repoReview.repo.total', {

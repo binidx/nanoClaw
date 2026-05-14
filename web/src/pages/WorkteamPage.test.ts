@@ -12,15 +12,14 @@ vi.mock('react-i18next', () => ({
       ({
         pageTitle: '工作流',
         'workteam.连接节点构建自动化流程': '连接节点，构建自动化流程',
-        'workteam.新建': '新建',
-        'workteam.返回工作流': '返回工作流',
+        'workteam.新建工作流': '新建工作流',
         'workteam.配置': '配置',
-        'workteam.删除': '删除',
+        'workteam.运行': '运行',
+        'workteam.发布': '发布',
         'workteam.无描述': '无描述',
         'workteam.节点': '节点',
         'workteam.连线': '连线',
         'workteam.未运行': '未运行',
-        'workteam.个工作流': '个工作流',
         'workteam.先选择或创建一个工作流': '先选择或创建一个工作流。',
       })[key] || key,
   }),
@@ -115,7 +114,7 @@ describe('WorkteamPage', () => {
     });
     expect(rendered.container.textContent).toContain('工作流');
     expect(rendered.container.textContent).toContain('连接节点，构建自动化流程');
-    expect(rendered.container.textContent).toContain('新建');
+    expect(rendered.container.textContent).toContain('新建工作流');
   });
 
   it('renders workflow detail actions when a workflow is selected', async () => {
@@ -124,8 +123,8 @@ describe('WorkteamPage', () => {
       await Promise.resolve();
       await Promise.resolve();
     });
-    expect(rendered.container.textContent).toContain('返回工作流');
+    expect(rendered.container.textContent).toContain('运行');
     expect(rendered.container.textContent).toContain('配置');
-    expect(rendered.container.textContent).toContain('删除');
+    expect(rendered.container.textContent).toContain('发布');
   });
 });

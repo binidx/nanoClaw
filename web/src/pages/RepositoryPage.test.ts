@@ -64,7 +64,7 @@ describe('RepositoryPage', () => {
 
   it('renders the shared repository settings workspace', () => {
     rendered = renderRepositoryPage();
-    expect(rendered.container.textContent).toContain('仓库');
+    expect(rendered.container.textContent).toContain('Repo');
     expect(rendered.container.textContent).toContain('repo-review-settings-panel');
   });
 });
