@@ -1387,7 +1387,38 @@ export function buildMySQLSchema(autoPk: string): string {
 }
 
 export async function runMySQLMigrations(engine: DbEngine): Promise<void> {
+  const parseAddColumnTarget = (sql: string) => {
+    const match = sql.match(
+      /^\s*ALTER\s+TABLE\s+(`?[\w]+`?)\s+ADD\s+COLUMN\s+(`?[\w]+`?)/i,
+    );
+    if (!match) return null;
+    return {
+      table: match[1].replaceAll('`', ''),
+      column: match[2].replaceAll('`', ''),
+    };
+  };
+
+  const shouldSkipExistingAddColumn = async (sql: string) => {
+    const target = parseAddColumnTarget(sql);
+    if (!target) return false;
+    try {
+      const existing = await engine.queryOne<{ present: number }>(
+        `SELECT 1 AS present
+           FROM information_schema.columns
+          WHERE table_schema = DATABASE()
+            AND table_name = ?
+            AND column_name = ?
+          LIMIT 1`,
+        [target.table, target.column],
+      );
+      return existing !== undefined;
+    } catch {
+      return false;
+    }
+  };
+
   const safeMigrate = async (sql: string) => {
+    if (await shouldSkipExistingAddColumn(sql)) return;
     try {
       await engine.exec(sql);
     } catch (err) {

@@ -590,11 +590,21 @@ describe('schema migrations', () => {
 
     await _runPostgresMigrationsForTest(fakePgEngine);
 
-    expect(executedSql).toContain(`ALTER TABLE chats ADD COLUMN custom_title TEXT`);
-    expect(executedSql).toContain(`ALTER TABLE chats ADD COLUMN is_pinned INT DEFAULT 0`);
-    expect(executedSql).toContain(`ALTER TABLE chats ADD COLUMN is_favorite INT DEFAULT 0`);
-    expect(executedSql).toContain(`ALTER TABLE chats ADD COLUMN channel TEXT`);
-    expect(executedSql).toContain(`ALTER TABLE chats ADD COLUMN is_group INT DEFAULT 0`);
+    expect(executedSql).toContain(
+      `ALTER TABLE chats ADD COLUMN IF NOT EXISTS custom_title TEXT`,
+    );
+    expect(executedSql).toContain(
+      `ALTER TABLE chats ADD COLUMN IF NOT EXISTS is_pinned INT DEFAULT 0`,
+    );
+    expect(executedSql).toContain(
+      `ALTER TABLE chats ADD COLUMN IF NOT EXISTS is_favorite INT DEFAULT 0`,
+    );
+    expect(executedSql).toContain(
+      `ALTER TABLE chats ADD COLUMN IF NOT EXISTS channel TEXT`,
+    );
+    expect(executedSql).toContain(
+      `ALTER TABLE chats ADD COLUMN IF NOT EXISTS is_group INT DEFAULT 0`,
+    );
   });
 
   it('repairs legacy live2d preference columns during postgres startup migrations', async () => {
@@ -621,8 +631,12 @@ describe('schema migrations', () => {
 
     await _runPostgresMigrationsForTest(fakePgEngine);
 
-    expect(executedSql).toContain(`ALTER TABLE live2d_user_preferences ADD COLUMN model_scale REAL DEFAULT 1.0`);
-    expect(executedSql).toContain(`ALTER TABLE live2d_user_preferences ADD COLUMN model_offset_y INT DEFAULT 0`);
+    expect(executedSql).toContain(
+      `ALTER TABLE live2d_user_preferences ADD COLUMN IF NOT EXISTS model_scale REAL DEFAULT 1.0`,
+    );
+    expect(executedSql).toContain(
+      `ALTER TABLE live2d_user_preferences ADD COLUMN IF NOT EXISTS model_offset_y INT DEFAULT 0`,
+    );
   });
 
   it('repairs legacy live2d preference columns during mysql startup migrations', async () => {
@@ -651,6 +665,47 @@ describe('schema migrations', () => {
 
     expect(executedSql).toContain(`ALTER TABLE live2d_user_preferences ADD COLUMN model_scale FLOAT DEFAULT 1.0`);
     expect(executedSql).toContain(`ALTER TABLE live2d_user_preferences ADD COLUMN model_offset_y INT DEFAULT 0`);
+  });
+
+  it('skips mysql add-column migrations when the target column already exists', async () => {
+    const executedSql: string[] = [];
+    const fakeMySqlEngine: DbEngine = {
+      dialect: 'mysql',
+      async queryAll<T = Record<string, unknown>>(): Promise<T[]> {
+        return [];
+      },
+      async queryOne<T = Record<string, unknown>>(
+        _sql: string,
+        params: unknown[] = [],
+      ): Promise<T | undefined> {
+        if (
+          params[0] === 'live2d_user_preferences' &&
+          params[1] === 'model_scale'
+        ) {
+          return { present: 1 } as T;
+        }
+        return undefined;
+      },
+      async run() {
+        return { changes: 0, lastInsertRowid: 0 };
+      },
+      async exec(sql: string): Promise<void> {
+        executedSql.push(sql.trim());
+      },
+      async transaction<T>(fn: (engine: DbEngine) => Promise<T>): Promise<T> {
+        return fn(fakeMySqlEngine);
+      },
+      async close(): Promise<void> {},
+    };
+
+    await _runMySQLMigrationsForTest(fakeMySqlEngine);
+
+    expect(executedSql).not.toContain(
+      `ALTER TABLE live2d_user_preferences ADD COLUMN model_scale FLOAT DEFAULT 1.0`,
+    );
+    expect(executedSql).toContain(
+      `ALTER TABLE live2d_user_preferences ADD COLUMN model_offset_y INT DEFAULT 0`,
+    );
   });
 
   it('repairs legacy registered_groups timestamp columns during mysql startup migrations', async () => {
@@ -778,7 +833,10 @@ describe('schema migrations', () => {
         const trimmed = sql.trim();
         executedSql.push(trimmed);
 
-        if (trimmed === `ALTER TABLE user_memories ADD COLUMN tier TEXT NOT NULL DEFAULT 'durable'`) {
+        if (
+          trimmed ===
+          `ALTER TABLE user_memories ADD COLUMN IF NOT EXISTS tier TEXT NOT NULL DEFAULT 'durable'`
+        ) {
           legacyUserMemoriesHasTier = true;
           return;
         }
@@ -804,7 +862,7 @@ describe('schema migrations', () => {
     ).resolves.toBeUndefined();
 
     const tierMigrationIndex = executedSql.indexOf(
-      `ALTER TABLE user_memories ADD COLUMN tier TEXT NOT NULL DEFAULT 'durable'`,
+      `ALTER TABLE user_memories ADD COLUMN IF NOT EXISTS tier TEXT NOT NULL DEFAULT 'durable'`,
     );
     const schemaBatchIndex = executedSql.findIndex((sql) =>
       sql.includes('CREATE INDEX IF NOT EXISTS idx_user_memories_tier'),

@@ -1520,12 +1520,14 @@ export async function runPostgresMigrations(engine: DbEngine): Promise<void> {
       /* column/index already exists */
     }
   };
+  const addColumnIfMissing = async (table: string, definition: string) =>
+    safeMigrate(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS ${definition}`);
 
   await safeMigrate(
     `INSERT INTO stock_analysis_config_state (scope, version, updated_at) VALUES ('global', 0, '0') ON CONFLICT DO NOTHING`,
   );
 
-  await safeMigrate(`ALTER TABLE user_souls ADD COLUMN user_nickname TEXT`);
+  await addColumnIfMissing('user_souls', 'user_nickname TEXT');
 
   await safeMigrate(
     `ALTER TABLE memory_document_sync_state ALTER COLUMN file_mtime_ms TYPE BIGINT USING file_mtime_ms::bigint`,
@@ -1543,7 +1545,7 @@ export async function runPostgresMigrations(engine: DbEngine): Promise<void> {
     'is_group INT DEFAULT 0',
     'mode TEXT DEFAULT NULL',
   ]) {
-    await safeMigrate(`ALTER TABLE chats ADD COLUMN ${col}`);
+    await addColumnIfMissing('chats', col);
   }
 
   // Synchronize SERIAL sequences to avoid duplicate key violations after
@@ -1577,9 +1579,7 @@ export async function runPostgresMigrations(engine: DbEngine): Promise<void> {
     'memory_documents',
   ];
   for (const table of tenantTables) {
-    await safeMigrate(
-      `ALTER TABLE ${table} ADD COLUMN user_id TEXT NOT NULL DEFAULT '__system__'`,
-    );
+    await addColumnIfMissing(table, `user_id TEXT NOT NULL DEFAULT '__system__'`);
   }
 
   await safeMigrate(
@@ -1623,8 +1623,9 @@ export async function runPostgresMigrations(engine: DbEngine): Promise<void> {
   await safeMigrate(
     `CREATE INDEX IF NOT EXISTS idx_channel_instances_user ON channel_instances(user_id, type)`,
   );
-  await safeMigrate(
-    `ALTER TABLE channel_instances ADD COLUMN visibility TEXT NOT NULL DEFAULT 'private'`,
+  await addColumnIfMissing(
+    'channel_instances',
+    `visibility TEXT NOT NULL DEFAULT 'private'`,
   );
 
   // Phase 2b: review / code search cache / stock analysis tables
@@ -1650,9 +1651,7 @@ export async function runPostgresMigrations(engine: DbEngine): Promise<void> {
     'stock_analysis_watchlist',
   ];
   for (const table of extTenantTables) {
-    await safeMigrate(
-      `ALTER TABLE ${table} ADD COLUMN user_id TEXT NOT NULL DEFAULT '__system__'`,
-    );
+    await addColumnIfMissing(table, `user_id TEXT NOT NULL DEFAULT '__system__'`);
   }
   await safeMigrate(
     `CREATE INDEX IF NOT EXISTS idx_review_repos_user ON review_repositories(user_id)`,
@@ -1672,10 +1671,11 @@ export async function runPostgresMigrations(engine: DbEngine): Promise<void> {
     'last_digest_weekly_at TEXT',
     'next_digest_weekly_at TEXT',
   ]) {
-    await safeMigrate(`ALTER TABLE review_repositories ADD COLUMN ${col}`);
+    await addColumnIfMissing('review_repositories', col);
   }
-  await safeMigrate(
-    `ALTER TABLE review_repositories ADD COLUMN allow_ai_fix INT NOT NULL DEFAULT 0`,
+  await addColumnIfMissing(
+    'review_repositories',
+    `allow_ai_fix INT NOT NULL DEFAULT 0`,
   );
   await safeMigrate(`
     CREATE TABLE IF NOT EXISTS review_digest_runs (
@@ -1773,42 +1773,39 @@ export async function runPostgresMigrations(engine: DbEngine): Promise<void> {
     `CREATE INDEX IF NOT EXISTS idx_user_memories_fts ON user_memories USING GIN (to_tsvector('simple', content))`,
   );
   // Memory confidence field for lifecycle management
-  await safeMigrate(
-    `ALTER TABLE user_memories ADD COLUMN confidence REAL NOT NULL DEFAULT 0.5`,
+  await addColumnIfMissing(
+    'user_memories',
+    `confidence REAL NOT NULL DEFAULT 0.5`,
   );
   // Live2D preference fields added after initial rollout
-  await safeMigrate(
-    `ALTER TABLE live2d_user_preferences ADD COLUMN model_scale REAL DEFAULT 1.0`,
+  await addColumnIfMissing(
+    'live2d_user_preferences',
+    `model_scale REAL DEFAULT 1.0`,
   );
-  await safeMigrate(
-    `ALTER TABLE live2d_user_preferences ADD COLUMN model_offset_y INT DEFAULT 0`,
+  await addColumnIfMissing(
+    'live2d_user_preferences',
+    `model_offset_y INT DEFAULT 0`,
   );
   // Soul module v2 fields
-  await safeMigrate(
-    `ALTER TABLE user_souls ADD COLUMN emoji_enabled INT NOT NULL DEFAULT 0`,
+  await addColumnIfMissing('user_souls', `emoji_enabled INT NOT NULL DEFAULT 0`);
+  await addColumnIfMissing('user_souls', `behavior_rules TEXT`);
+  await addColumnIfMissing(
+    'user_souls',
+    `auto_evolve INT NOT NULL DEFAULT 1`,
   );
-  await safeMigrate(`ALTER TABLE user_souls ADD COLUMN behavior_rules TEXT`);
-  await safeMigrate(
-    `ALTER TABLE user_souls ADD COLUMN auto_evolve INT NOT NULL DEFAULT 1`,
+  await addColumnIfMissing('user_souls', `consolidation_config TEXT`);
+  await addColumnIfMissing(
+    'user_memories',
+    `tier TEXT NOT NULL DEFAULT 'durable'`,
   );
-  await safeMigrate(
-    `ALTER TABLE user_souls ADD COLUMN consolidation_config TEXT`,
-  );
-  await safeMigrate(
-    `ALTER TABLE user_memories ADD COLUMN tier TEXT NOT NULL DEFAULT 'durable'`,
-  );
-  await safeMigrate(`ALTER TABLE user_memories ADD COLUMN promoted_from TEXT`);
-  await safeMigrate(
-    `ALTER TABLE user_memories ADD COLUMN last_verified_at TEXT`,
-  );
+  await addColumnIfMissing('user_memories', `promoted_from TEXT`);
+  await addColumnIfMissing('user_memories', `last_verified_at TEXT`);
   await safeMigrate(
     `CREATE INDEX IF NOT EXISTS idx_user_memories_tier ON user_memories(user_id, tier, importance DESC)`,
   );
-  await safeMigrate(
-    `ALTER TABLE user_memories ADD COLUMN source_event_id TEXT`,
-  );
-  await safeMigrate(`ALTER TABLE user_memories ADD COLUMN valid_from TEXT`);
-  await safeMigrate(`ALTER TABLE user_memories ADD COLUMN valid_to TEXT`);
+  await addColumnIfMissing('user_memories', `source_event_id TEXT`);
+  await addColumnIfMissing('user_memories', `valid_from TEXT`);
+  await addColumnIfMissing('user_memories', `valid_to TEXT`);
   await safeMigrate(
     `CREATE INDEX IF NOT EXISTS idx_memory_events_user_action_time ON memory_events(user_id, action_type, created_at DESC)`,
   );
@@ -1873,12 +1870,10 @@ export async function runPostgresMigrations(engine: DbEngine): Promise<void> {
     WHERE id IN (SELECT id FROM ranked WHERE rn > 1)
   `);
 
-  await safeMigrate(
-    `ALTER TABLE users ADD COLUMN auth_source TEXT NOT NULL DEFAULT 'local'`,
-  );
+  await addColumnIfMissing('users', `auth_source TEXT NOT NULL DEFAULT 'local'`);
 
   // chats.mode column was in CREATE TABLE but missed for existing databases
-  await safeMigrate(`ALTER TABLE chats ADD COLUMN mode TEXT DEFAULT NULL`);
+  await addColumnIfMissing('chats', `mode TEXT DEFAULT NULL`);
 
   // Migration: allow multiple repositories per chat_jid (drop UNIQUE, add plain INDEX)
   await safeMigrate(
@@ -1892,12 +1887,11 @@ export async function runPostgresMigrations(engine: DbEngine): Promise<void> {
   );
 
   // Migration: per-conversation provider/model override on registered_groups
-  await safeMigrate(
-    `ALTER TABLE registered_groups ADD COLUMN provider_id TEXT DEFAULT NULL`,
+  await addColumnIfMissing(
+    'registered_groups',
+    `provider_id TEXT DEFAULT NULL`,
   );
-  await safeMigrate(
-    `ALTER TABLE registered_groups ADD COLUMN model TEXT DEFAULT NULL`,
-  );
+  await addColumnIfMissing('registered_groups', `model TEXT DEFAULT NULL`);
 
   // ── IM Chat tables ────────────────────────────────────────────────
   await safeMigrate(`
@@ -2983,14 +2977,12 @@ export async function runPostgresMigrations(engine: DbEngine): Promise<void> {
     )
   `);
 
-  await safeMigrate(
-    `ALTER TABLE review_repositories ADD COLUMN ssh_key_id TEXT`,
-  );
-
-  await safeMigrate(`ALTER TABLE review_runs ADD COLUMN markdown_body TEXT`);
-  await safeMigrate(`ALTER TABLE review_runs ADD COLUMN raw_model_output TEXT`);
-  await safeMigrate(
-    `ALTER TABLE review_profiles ADD COLUMN review_output_mode TEXT NOT NULL DEFAULT 'message'`,
+  await addColumnIfMissing('review_repositories', `ssh_key_id TEXT`);
+  await addColumnIfMissing('review_runs', `markdown_body TEXT`);
+  await addColumnIfMissing('review_runs', `raw_model_output TEXT`);
+  await addColumnIfMissing(
+    'review_profiles',
+    `review_output_mode TEXT NOT NULL DEFAULT 'message'`,
   );
 
   // ── Multi-user isolation: assistants visibility ──
