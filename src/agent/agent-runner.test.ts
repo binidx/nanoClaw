@@ -776,6 +776,7 @@ describe('agent runtime timeout behavior', () => {
     expect(spawnOptions?.cwd).toBe(repoPath);
     const env = spawnOptions?.env as Record<string, string> | undefined;
     expect(env?.NANOCLAW_PROJECT_ROOT).toBe(realRepoPath);
+    expect(env?.NANOCLAW_ACCESS_MODE).toBe('allowlist');
     const allowedDirs = JSON.parse(
       env?.NANOCLAW_ALLOWED_DIRS || '[]',
     ) as string[];
@@ -793,6 +794,51 @@ describe('agent runtime timeout behavior', () => {
     const result = await resultPromise;
     expect(result.status).toBe('success');
     expect(result.newSessionId).toBe('session-extra-mount');
+    fs.rmSync(repoPath, { recursive: true, force: true });
+  });
+
+  it('preserves readonly access mode for repo-scoped directory overrides', async () => {
+    const spawnMock = vi.mocked(spawn);
+    const repoPath = path.resolve(
+      fs.mkdtempSync(path.join('/tmp', 'nanoclaw-readonly-mount-')),
+    );
+    const { resultPromise } = await startAgentRun(
+      testGroup,
+      {
+        ...testInput,
+        accessModeOverride: 'readonly',
+        extraMounts: [
+          {
+            hostPath: repoPath,
+            targetPath: '/workspace/extra',
+            readonly: true,
+          },
+        ],
+        allowedDirectoriesOverride: [repoPath],
+        workingDirectory: '/workspace/extra',
+      },
+      () => {},
+      async () => {},
+    );
+
+    const spawnOptions = spawnMock.mock.calls.at(-1)?.[2] as
+      | Record<string, unknown>
+      | undefined;
+    const env = spawnOptions?.env as Record<string, string> | undefined;
+    expect(env?.NANOCLAW_ACCESS_MODE).toBe('readonly');
+
+    emitOutputMarker(fakeProc, {
+      status: 'success',
+      result: 'Done',
+      newSessionId: 'session-readonly-mount',
+    });
+    await vi.advanceTimersByTimeAsync(10);
+    fakeProc.emit('close', 0);
+    await vi.advanceTimersByTimeAsync(10);
+
+    const result = await resultPromise;
+    expect(result.status).toBe('success');
+    expect(result.newSessionId).toBe('session-readonly-mount');
     fs.rmSync(repoPath, { recursive: true, force: true });
   });
 

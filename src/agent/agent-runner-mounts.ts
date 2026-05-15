@@ -180,12 +180,19 @@ export async function resolveRunAccessPolicy(
   const hasRepoScope =
     Array.isArray(input.allowedDirectoriesOverride) &&
     input.allowedDirectoriesOverride.length > 0;
+  const overrideMode = input.accessModeOverride;
+  const repoScopedMode =
+    hasRepoScope && overrideMode
+      ? overrideMode
+      : hasRepoScope
+        ? 'allowlist'
+        : undefined;
 
   return resolveRuntimeAccessPolicy({
-    defaultMode: hasRepoScope ? 'allowlist' : await getConfig('DEFAULT_ACCESS_MODE'),
+    defaultMode: repoScopedMode || await getConfig('DEFAULT_ACCESS_MODE'),
     defaultDirectories: hasRepoScope ? input.allowedDirectoriesOverride! : defaultDirectories,
     override: {
-      mode: hasRepoScope ? 'allowlist' : input.accessModeOverride,
+      mode: repoScopedMode,
       directories: input.allowedDirectoriesOverride,
     },
     configured: group.agentConfig,

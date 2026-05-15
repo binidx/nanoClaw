@@ -214,6 +214,64 @@ function unwrapTransparentReadOnlyShellWrapper(command: string): string {
   return normalized.trim();
 }
 
+function stripBenignReadOnlyRedirections(command: string): string {
+  return command.replace(
+    /(?:^|[\s;|&])(?:\d?>\s*(?:\/dev\/null|nul)\b)/gi,
+    ' ',
+  );
+}
+
+function isReadOnlyShellSegment(segment: string): boolean {
+  const normalized = segment.trim().replace(/\s+/g, ' ').toLowerCase();
+  if (!normalized) return true;
+
+  const readOnlyPatterns = [
+    /^ls\b/,
+    /^dir\b/,
+    /^pwd\b/,
+    /^cat\b/,
+    /^type\b/,
+    /^less\b/,
+    /^more\b/,
+    /^head\b/,
+    /^tail\b/,
+    /^sed\s+-n\b/,
+    /^wc\b/,
+    /^(which|where)\b/,
+    /^echo\b/,
+    /^printf\b/,
+    /^git\s+(?:(?:-c|--git-dir|--work-tree)\s+\S+\s+)*(?:--no-pager\s+)?(?:status|diff|log|show|branch|ls-tree|ls-files|grep|rev-parse|cat-file|blame)\b/,
+    /^(node|npm|pnpm|python|python3)\s+(-v|--version)\b/,
+    /^grep\b/,
+    /^(rg|ripgrep)\b/,
+    /^ag\b/,
+    /^find\b/,
+    /^fd\b/,
+    /^file\b/,
+    /^stat\b/,
+    /^tree\b/,
+    /^du\b/,
+    /^df\b/,
+    /^diff\b/,
+    /^sort\b/,
+    /^uniq\b/,
+    /^cut\b/,
+    /^tr\b/,
+    /^awk\b/,
+    /^(basename|dirname|realpath|readlink)\b/,
+    /^(env|printenv|uname|whoami|id|date|hostname)\b/,
+    /^(xxd|od|hexdump)\b/,
+    /^(sha256sum|sha1sum|md5sum|shasum|cksum)\b/,
+    /^(jq|yq)\b/,
+    /^strings\b/,
+    /^nl\b/,
+    /^tac\b/,
+    /^rev\b/,
+    /^column\b/,
+  ];
+  return readOnlyPatterns.some((pattern) => pattern.test(normalized));
+}
+
 export function extractBashPathCandidates(command: string): string[] {
   const candidates: string[] = [];
   const seen = new Set<string>();
@@ -251,7 +309,9 @@ export function precheckBashCommandPaths(
 }
 
 export function isReadOnlyShellCommand(command: string): boolean {
-  const normalized = unwrapTransparentReadOnlyShellWrapper(command)
+  const normalized = stripBenignReadOnlyRedirections(
+    unwrapTransparentReadOnlyShellWrapper(command),
+  )
     .replace(/\s+/g, ' ')
     .toLowerCase();
   if (!normalized) return true;
@@ -283,50 +343,14 @@ export function isReadOnlyShellCommand(command: string): boolean {
   if (dangerousTokens.some((pattern) => pattern.test(normalized))) {
     return false;
   }
+  if (/[`(){}]/.test(normalized) || /\$\(/.test(normalized)) {
+    return false;
+  }
 
-  const readOnlyPatterns = [
-    /^ls\b/,
-    /^dir\b/,
-    /^pwd\b/,
-    /^cat\b/,
-    /^type\b/,
-    /^less\b/,
-    /^more\b/,
-    /^head\b/,
-    /^tail\b/,
-    /^sed\s+-n\b/,
-    /^wc\b/,
-    /^(which|where)\b/,
-    /^echo\b/,
-    /^printf\b/,
-    /^git\s+(?:(?:-c|--git-dir|--work-tree)\s+\S+\s+)*(?:--no-pager\s+)?(?:status|diff|log|show|branch)\b/,
-    /^(node|npm|pnpm|python|python3)\s+(-v|--version)\b/,
-    /^grep\b/,
-    /^(rg|ripgrep)\b/,
-    /^ag\b/,
-    /^find\b/,
-    /^fd\b/,
-    /^file\b/,
-    /^stat\b/,
-    /^tree\b/,
-    /^du\b/,
-    /^df\b/,
-    /^diff\b/,
-    /^sort\b/,
-    /^uniq\b/,
-    /^cut\b/,
-    /^tr\b/,
-    /^awk\b/,
-    /^(basename|dirname|realpath|readlink)\b/,
-    /^(env|printenv|uname|whoami|id|date|hostname)\b/,
-    /^(xxd|od|hexdump)\b/,
-    /^(sha256sum|sha1sum|md5sum|shasum|cksum)\b/,
-    /^(jq|yq)\b/,
-    /^strings\b/,
-    /^nl\b/,
-    /^tac\b/,
-    /^rev\b/,
-    /^column\b/,
-  ];
-  return readOnlyPatterns.some((pattern) => pattern.test(normalized));
+  const segments = normalized
+    .split(/\s*(?:\|\||&&|\||;)\s*/)
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+  if (segments.length === 0) return true;
+  return segments.every((segment) => isReadOnlyShellSegment(segment));
 }

@@ -17,6 +17,24 @@ describe('workspace permission shell command classification', () => {
         "sh -c 'cd /workspace/extra && rg authenticate src'",
       ),
     ).toBe(true);
+    expect(
+      isReadOnlyShellCommand(
+        "git ls-tree -r HEAD --name-only | grep -i 'repo-review-agent-system-prompt'",
+      ),
+    ).toBe(true);
+    expect(
+      isReadOnlyShellCommand('git ls-tree HEAD -- src/repo-review/'),
+    ).toBe(true);
+    expect(
+      isReadOnlyShellCommand(
+        "find /workspace/extra -name '*repo-review-agent-system-prompt*' -o -name '*agent-system-prompt*' 2>/dev/null",
+      ),
+    ).toBe(true);
+    expect(
+      isReadOnlyShellCommand(
+        "git show HEAD:src/repo-review/repo-review-agent-system-prompt.ts 2>/dev/null || git show HEAD:src/repo-review/repo-review-agent-system-prompt.js 2>/dev/null || echo 'NOT FOUND'",
+      ),
+    ).toBe(true);
   });
 
   it('keeps mutating commands non-read-only after unwrapping shell wrappers', () => {
