@@ -3256,6 +3256,11 @@ describe('repo-review-service', () => {
     expect(mockRunAgentProcess).toHaveBeenCalledTimes(1);
     expect(mockRunAgentProcess.mock.calls[0]?.[1]).toMatchObject({
       disableDefaultWebSearch: true,
+      prompt: expect.objectContaining({
+        stableSystemPrompt: expect.stringContaining(
+          'final assistant message must be exactly one valid JSON object',
+        ),
+      }),
     });
   });
 

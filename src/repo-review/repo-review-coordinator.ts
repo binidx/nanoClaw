@@ -42,6 +42,7 @@ import {
   REPO_REVIEW_REDUCER_TEMPLATE,
   REPO_REVIEW_WORKER_TEMPLATE,
 } from './repo-review-prompt-templates.js';
+import { REPO_REVIEW_AGENT_SYSTEM_PROMPT } from './repo-review-agent-system-prompt.js';
 import type { RegisteredGroup } from '../types.js';
 import { logger } from '../logger.js';
 
@@ -336,7 +337,10 @@ function buildAgentRunInput(input: {
   const reviewChatJid =
     input.repository.reviewChatJid || `repo-review:${input.repository.id}`;
   const agentInput: AgentRunInput = {
-    prompt: { text: input.prompt },
+    prompt: {
+      text: input.prompt,
+      stableSystemPrompt: REPO_REVIEW_AGENT_SYSTEM_PROMPT,
+    },
     groupFolder: buildReviewGroup(input.repository).folder,
     chatJid: reviewChatJid,
     isMain: false,

@@ -545,9 +545,6 @@ function buildClaudeSystemPromptAppend(
   agentInput?: AgentRunInput,
   promptInput?: AgentPromptInput,
 ): string {
-  if (agentInput?.suppressDefaultSystemPrompt) {
-    return '';
-  }
   const normalizedPrompt = promptInput
     ? normalizePromptInput(promptInput)
     : null;
@@ -561,6 +558,9 @@ function buildClaudeSystemPromptAppend(
     ]
       .filter(Boolean)
       .join('\n\n');
+  }
+  if (agentInput?.suppressDefaultSystemPrompt) {
+    return '';
   }
   return buildClaudePromptAppend({
     globalClaudeMd,
@@ -3083,9 +3083,6 @@ function buildResponsesInstructions(
   agentInput?: AgentRunInput,
   promptInput?: AgentPromptInput,
 ): string {
-  if (agentInput?.suppressDefaultSystemPrompt) {
-    return '';
-  }
   const normalizedPrompt = promptInput
     ? normalizePromptInput(promptInput)
     : null;
@@ -3099,6 +3096,9 @@ function buildResponsesInstructions(
     ]
       .filter(Boolean)
       .join('\n\n');
+  }
+  if (agentInput?.suppressDefaultSystemPrompt) {
+    return '';
   }
   const subagentRuntime = getCodexSubagentRuntimeConfig();
   const memoryGuidance = buildMemoryPromptGuidance({ markdown: true });

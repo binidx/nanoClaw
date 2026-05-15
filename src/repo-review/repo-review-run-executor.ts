@@ -97,6 +97,7 @@ import {
   REPO_REVIEW_SUPPLEMENTAL_FILE_TEMPLATE,
   REPO_REVIEW_SUPPLEMENTAL_ORCHESTRATOR_TEMPLATE,
 } from './repo-review-prompt-templates.js';
+import { REPO_REVIEW_AGENT_SYSTEM_PROMPT } from './repo-review-agent-system-prompt.js';
 import {
   getAssistantName,
   getConfiguredChannelInstances,
@@ -11783,7 +11784,10 @@ async function runReviewAgent(input: {
     userId: input.userId,
   });
   const agentInput: AgentRunInput = {
-    prompt: { text: input.prompt },
+    prompt: {
+      text: input.prompt,
+      stableSystemPrompt: REPO_REVIEW_AGENT_SYSTEM_PROMPT,
+    },
     groupFolder: group.folder,
     chatJid: reviewChatJid,
     isMain: false,
