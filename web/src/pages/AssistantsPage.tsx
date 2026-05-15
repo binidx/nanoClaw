@@ -10,8 +10,7 @@ import {
 import { useTranslation } from 'react-i18next';
 
 import { AppSelect, type AppSelectOption } from '../components/AppSelect';
-import { NcCheckbox, PageHeader } from '../components/common';
-import { Pagination } from '../components/common/Pagination';
+import { NcCheckbox } from '../components/common';
 import type {
   AiProvider,
   Assistant,
@@ -26,8 +25,6 @@ import type {
 } from '../app-types';
 import { RepositoryBindingPicker } from '../components/repository/RepositoryBindingPicker';
 import '../styles/assistants.css';
-
-const ASSISTANT_CARD_PAGE_SIZE = 12;
 
 interface AssistantsPageProps {
   apiBase: string;
@@ -337,6 +334,37 @@ function formatAssistantCatalogStatusTone(
     default:
       return 'attention';
   }
+}
+
+function getAssistantInitials(name: string): string {
+  const parts = name
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (parts.length === 0) return 'AG';
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return `${parts[0][0] ?? ''}${parts[1][0] ?? ''}`.toUpperCase();
+}
+
+function getAssistantProviderLabel(
+  assistant: Assistant,
+  providers: AiProvider[],
+): string {
+  const provider = providers.find(
+    (entry) => entry.id === assistant.config.providerId,
+  );
+  return provider?.alias || 'Default provider';
+}
+
+function getAssistantModelLabel(
+  assistant: Assistant,
+  providers: AiProvider[],
+): string {
+  if (assistant.config.model?.trim()) return assistant.config.model.trim();
+  const provider = providers.find(
+    (entry) => entry.id === assistant.config.providerId,
+  );
+  return provider?.model || provider?.alias || 'Default model';
 }
 
 function normalizeAssistantResources(
@@ -925,7 +953,7 @@ export function AssistantsPage({
   );
   const [assistantWorkbenchOpen, setAssistantWorkbenchOpen] = useState(false);
   const [detailForm, setDetailForm] = useState(emptyFormState);
-  const [detailShowAdvanced, setDetailShowAdvanced] = useState(false);
+  const [, setDetailShowAdvanced] = useState(false);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [createForm, setCreateForm] = useState(emptyFormState);
   const [createShowAdvanced, setCreateShowAdvanced] = useState(false);
@@ -933,10 +961,9 @@ export function AssistantsPage({
   const [catalogSearch, setCatalogSearch] = useState('');
   const [catalogFilter, setCatalogFilter] =
     useState<AssistantCatalogFilter>('all');
-  const [assistantCardPage, setAssistantCardPage] = useState(1);
   const [drawerView, setDrawerView] = useState<AssistantDrawerView>(null);
   const [resourceDrawerSection, setResourceDrawerSection] =
-    useState<AssistantResourceDrawerSection>('overview');
+    useState<AssistantResourceDrawerSection>('bindings');
   const [assistantResourcesById, setAssistantResourcesById] = useState<
     Record<string, AssistantResources | undefined>
   >({});
@@ -1205,10 +1232,6 @@ export function AssistantsPage({
         .includes(keyword);
     });
   }, [assistantCatalogMetaById, assistants, catalogFilter, catalogSearch]);
-  const enabledAssistantCount = useMemo(
-    () => assistants.filter((assistant) => assistant.enabled).length,
-    [assistants],
-  );
   const configuredSecretCount = useMemo(
     () =>
       selectedResources?.mcpBindings.filter(
@@ -1345,7 +1368,7 @@ export function AssistantsPage({
     ) {
       return;
     }
-    setSelectedAssistantId(assistants[0]?.id || null);
+    setSelectedAssistantId(null);
   }, [assistants, loading, selectedAssistantId]);
 
   useEffect(() => {
@@ -1361,7 +1384,7 @@ export function AssistantsPage({
 
   useEffect(() => {
     setDrawerView(null);
-    setResourceDrawerSection('overview');
+    setResourceDrawerSection('bindings');
   }, [selectedAssistantId]);
 
   useEffect(() => {
@@ -1474,7 +1497,7 @@ export function AssistantsPage({
     setAssistantWorkbenchOpen(true);
     await loadAssistantResources(createdAssistant.id, true);
     if (createRepositoryIds.length > 0) {
-      setResourceDrawerSection('overview');
+      setResourceDrawerSection('bindings');
       setDrawerView('resources');
     }
     if (createRepositoryIds.length > 0) {
@@ -1716,7 +1739,7 @@ export function AssistantsPage({
 
   const closeDrawer = () => {
     setDrawerView(null);
-    setResourceDrawerSection('overview');
+    setResourceDrawerSection('bindings');
     setAssistantResourceError('');
     setSecretModalBindingId(null);
     setSecretEnvDraft('');
@@ -2341,178 +2364,382 @@ export function AssistantsPage({
     );
   };
 
-  const renderSettingsTab = () => {
+  const renderDetailWorkbench = () => {
     if (!selectedAssistant) return null;
+    const statusMeta = assistantCatalogMetaById[selectedAssistant.id];
+    const providerLabel = getAssistantProviderLabel(selectedAssistant, providers);
+    const modelLabel = getAssistantModelLabel(selectedAssistant, providers);
+
     return (
-      <div className="assistant-panel-grid">
-        <AssistantEditorPanel
-          title={selectedAssistant.name}
-          subtitle={t(
-            'assistants.这里维护当前助手的人设、Provider、规则等基础配置。',
-          )}
-          form={detailForm}
-          setForm={setDetailForm}
-          showAdvanced={detailShowAdvanced}
-          setShowAdvanced={setDetailShowAdvanced}
-          providerOptions={providerOptions}
-          enabledSkills={selectableSkills}
-          enabledMcpServers={selectableMcpServers}
-          availableKbs={availableKbs}
-          apiBase={apiBase}
-          assistantId={selectedAssistant.id}
-          submitLabel={t('assistants.保存修改')}
-          onSubmit={handleDetailSubmit}
-          headerActions={
-            <>
-              <button
-                type="button"
-                className="btn-outline btn-sm"
-                onClick={() => onStartChat(selectedAssistant.id)}
-                disabled={!selectedAssistant.enabled}
-              >
-                {t('assistants.开始对话')}
-              </button>
-              <button
-                type="button"
-                className="btn-outline btn-sm"
-                onClick={() => {
-                  setResourceDrawerSection('overview');
-                  setDrawerView('resources');
-                }}
-              >
-                {t('assistants.去资源页')}
-              </button>
-            </>
-          }
-        />
+      <div className="assistant-detail-workbench">
+        <aside className="assistant-detail-aside">
+          <div className="assistant-detail-profile">
+            <div className="assistant-detail-avatar">
+              {getAssistantInitials(selectedAssistant.name)}
+            </div>
+            <div className="assistant-detail-copy">
+              <h3>{selectedAssistant.name}</h3>
+              <p>{selectedAssistant.description || 'No description yet.'}</p>
+            </div>
+          </div>
+          <div className="assistant-detail-chip-row">
+            <span
+              className={`assistant-card-status is-${formatAssistantCatalogStatusTone(
+                statusMeta?.status || 'attention',
+              )}`}
+            >
+              {formatAssistantCatalogStatusLabel(
+                statusMeta?.status || 'attention',
+                t,
+              )}
+            </span>
+            <span className="assistant-card-visibility-tag">{providerLabel}</span>
+            <span className="assistant-card-role-tag">{modelLabel}</span>
+          </div>
+          <div className="assistant-detail-toggle-card">
+            <div>
+              <strong>Agent status</strong>
+              <p>Turn this off to pause new chats until you enable it again.</p>
+            </div>
+            <NcCheckbox
+              className="assistant-toggle assistant-detail-toggle"
+              checked={detailForm.enabled}
+              onChange={(event) =>
+                setDetailForm((prev) => ({
+                  ...prev,
+                  enabled: event.target.checked,
+                }))
+              }
+              label=""
+            />
+          </div>
+          <div className="assistant-detail-side-actions">
+            <button
+              type="button"
+              className="btn-primary btn-sm"
+              onClick={() => onStartChat(selectedAssistant.id)}
+              disabled={!selectedAssistant.enabled}
+            >
+              Start chat
+            </button>
+            <button
+              type="button"
+              className="btn-outline btn-sm"
+              onClick={handleCreateFromCurrentAssistant}
+            >
+              Duplicate
+            </button>
+            <button
+              type="button"
+              className="btn-outline btn-sm"
+              onClick={() => {
+                setResourceDrawerSection('bindings');
+                setDrawerView('resources');
+              }}
+            >
+              Tools & Bindings
+            </button>
+          </div>
+        </aside>
+        <section className="assistant-detail-main">
+          <div className="assistant-detail-card assistant-detail-card--wide">
+            <div className="assistant-section-heading">
+              <div>
+                <h4>Basic info</h4>
+                <p>Keep name, description, provider, and model in one compact area.</p>
+              </div>
+            </div>
+            <div className="assistant-form-grid">
+              <label>
+                Name
+                <input
+                  value={detailForm.name}
+                  onChange={(event) =>
+                    setDetailForm((prev) => ({
+                      ...prev,
+                      name: event.target.value,
+                    }))
+                  }
+                />
+              </label>
+              <label>
+                Description
+                <input
+                  value={detailForm.description}
+                  onChange={(event) =>
+                    setDetailForm((prev) => ({
+                      ...prev,
+                      description: event.target.value,
+                    }))
+                  }
+                />
+              </label>
+              <label>
+                Provider
+                <AppSelect
+                  value={detailForm.providerId}
+                  onChange={(nextValue) =>
+                    setDetailForm((prev) => ({
+                      ...prev,
+                      providerId: nextValue,
+                    }))
+                  }
+                  ariaLabel="Assistant provider"
+                  options={providerOptions}
+                />
+              </label>
+              <label>
+                Model
+                <input
+                  value={detailForm.model}
+                  onChange={(event) =>
+                    setDetailForm((prev) => ({
+                      ...prev,
+                      model: event.target.value,
+                    }))
+                  }
+                />
+              </label>
+              <NcCheckbox
+                className="assistant-toggle"
+                checked={detailForm.visibility === 'shared'}
+                onChange={(event) =>
+                  setDetailForm((prev) => ({
+                    ...prev,
+                    visibility: event.target.checked ? 'shared' : 'private',
+                  }))
+                }
+                label="Shared"
+              />
+            </div>
+          </div>
+
+          <div className="assistant-detail-card">
+            <div className="assistant-section-heading">
+              <div>
+                <h4>Rules</h4>
+                <p>Expose runtime behavior clearly without turning the modal into a drawer.</p>
+              </div>
+            </div>
+            <div className="assistant-form-grid assistant-form-grid--single">
+              <label>
+                Rule mode
+                <AppSelect
+                  value={detailForm.ruleMode}
+                  onChange={(nextValue) =>
+                    setDetailForm((prev) => ({
+                      ...prev,
+                      ruleMode: nextValue as AssistantFormState['ruleMode'],
+                    }))
+                  }
+                  ariaLabel="Rule mode"
+                  options={getRuleModeOptions(t)}
+                />
+              </label>
+            </div>
+          </div>
+
+          <div className="assistant-detail-card assistant-detail-card--wide">
+            <div className="assistant-section-heading">
+              <div>
+                <h4>System prompt</h4>
+                <p>Keep core instructions and extra notes in one focused editing block.</p>
+              </div>
+            </div>
+            <div className="assistant-form-grid">
+              <label className="full">
+                System Prompt
+                <textarea
+                  rows={5}
+                  value={detailForm.systemPrompt}
+                  onChange={(event) =>
+                    setDetailForm((prev) => ({
+                      ...prev,
+                      systemPrompt: event.target.value,
+                    }))
+                  }
+                />
+              </label>
+              <label className="full">
+                Extra Instructions
+                <textarea
+                  rows={4}
+                  value={detailForm.extraInstructions}
+                  onChange={(event) =>
+                    setDetailForm((prev) => ({
+                      ...prev,
+                      extraInstructions: event.target.value,
+                    }))
+                  }
+                />
+              </label>
+            </div>
+          </div>
+
+          <div className="assistant-detail-card assistant-detail-card--wide">
+            <div className="assistant-section-heading">
+              <div>
+                <h4>Persona</h4>
+                <p>Group role, style, guidelines, and constraints into a clean detail section.</p>
+              </div>
+            </div>
+            <div className="assistant-persona-grid">
+              <label className="assistant-field">
+                <span>Role</span>
+                <textarea
+                  rows={3}
+                  value={detailForm.personaRole}
+                  onChange={(event) =>
+                    setDetailForm((prev) => ({
+                      ...prev,
+                      personaRole: event.target.value,
+                    }))
+                  }
+                />
+              </label>
+              <label className="assistant-field">
+                <span>Style</span>
+                <textarea
+                  rows={3}
+                  value={detailForm.personaStyle}
+                  onChange={(event) =>
+                    setDetailForm((prev) => ({
+                      ...prev,
+                      personaStyle: event.target.value,
+                    }))
+                  }
+                />
+              </label>
+              <label className="assistant-field full">
+                <span>Guidelines</span>
+                <textarea
+                  rows={4}
+                  value={detailForm.personaGuidelines}
+                  onChange={(event) =>
+                    setDetailForm((prev) => ({
+                      ...prev,
+                      personaGuidelines: event.target.value,
+                    }))
+                  }
+                />
+              </label>
+              <label className="assistant-field full">
+                <span>Constraints</span>
+                <textarea
+                  rows={4}
+                  value={detailForm.personaConstraints}
+                  onChange={(event) =>
+                    setDetailForm((prev) => ({
+                      ...prev,
+                      personaConstraints: event.target.value,
+                    }))
+                  }
+                />
+              </label>
+            </div>
+          </div>
+
+          <div className="assistant-detail-footer">
+            <button
+              type="button"
+              className="btn-outline btn-sm"
+              onClick={() => {
+                window.open(
+                  `${apiBase}/api/assistants/${encodeURIComponent(selectedAssistant.id)}/export`,
+                  '_blank',
+                );
+              }}
+            >
+              Export
+            </button>
+            <button
+              type="button"
+              className="btn-danger btn-sm"
+              onClick={() => void handleDeleteAssistant(selectedAssistant)}
+              disabled={deletingAssistantId === selectedAssistant.id}
+            >
+              {deletingAssistantId === selectedAssistant.id
+                ? 'Deleting...'
+                : 'Delete'}
+            </button>
+            <button
+              type="button"
+              className="btn-primary btn-sm"
+              onClick={() => void handleDetailSubmit()}
+            >
+              Save changes
+            </button>
+          </div>
+        </section>
       </div>
     );
   };
 
+  const activeAssistantTab =
+    drawerView === 'secret'
+      ? 'auth'
+      : drawerView === 'resources'
+        ? resourceDrawerSection === 'skills'
+          ? 'skills'
+          : resourceDrawerSection === 'auth'
+            ? 'auth'
+            : 'bindings'
+        : 'details';
+
   return (
     <div className="page-view assistants-page">
-      <PageHeader
-        className="assistants-page-header"
-        title="Agent"
-        subtitle="Catalog, resources, and runtime wiring for every Agent."
-        meta={
-          <div className="nc-page-metrics">
-            <div className="nc-page-metric">
-              <span className="nc-page-metric-label">Agent</span>
-              <strong className="nc-page-metric-value">{assistants.length}</strong>
-            </div>
-            <div className="nc-page-metric">
-              <span className="nc-page-metric-label">{t('assistants.启用')}</span>
-              <strong className="nc-page-metric-value">{enabledAssistantCount}</strong>
-            </div>
-            <div className="nc-page-metric">
-              <span className="nc-page-metric-label">Filtered</span>
-              <strong className="nc-page-metric-value">
-                {filteredAssistants.length}
-              </strong>
-            </div>
+      <div className="assistants-toolbar-shell">
+        <div className="assistants-toolbar-title">
+          <h1>Agent Management</h1>
+        </div>
+        <div className="assistants-toolbar-main">
+          <div className="assistant-catalog-search-wrap assistants-toolbar-search">
+            <input
+              className="assistant-catalog-search-input"
+              value={catalogSearch}
+              onChange={(event) => {
+                setCatalogSearch(event.target.value);
+              }}
+              placeholder="搜索助手名称、描述或 ID"
+            />
+            {!catalogSearch && (
+              <span
+                className="assistant-catalog-search-icon"
+                aria-hidden="true"
+              >
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <circle cx="11" cy="11" r="8" />
+                  <path d="m21 21-4.3-4.3" />
+                </svg>
+              </span>
+            )}
           </div>
-        }
-        actions={
-          <div className="nc-page-actions-group assistants-hero-actions">
+          <div className="assistants-toolbar-actions">
+            <AppSelect
+              value={catalogFilter}
+              onChange={(nextValue) => {
+                setCatalogFilter(nextValue as AssistantCatalogFilter);
+              }}
+              ariaLabel="Filter assistant status"
+              options={assistantCatalogFilterOptions}
+            />
             <button
               type="button"
               className="btn-outline"
               onClick={onRefresh}
               disabled={loading}
             >
-              {t('assistants.刷新')}
+              Refresh
             </button>
-            <label className="btn-outline nc-page-action-file">
-              Import
-              <input
-                type="file"
-                accept=".json"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (!file) return;
-                  const reader = new FileReader();
-                  reader.onload = async () => {
-                    try {
-                      const data = JSON.parse(reader.result as string);
-                      if (!data.assistant?.name || !data.assistant?.config) {
-                        alert(t('assistants.无效的助手导入文件'));
-                        return;
-                      }
-                      const createRes = await fetch(`${apiBase}/api/assistants`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                          name: data.assistant.name,
-                          description: data.assistant.description ?? null,
-                          enabled: data.assistant.enabled ?? true,
-                          config: data.assistant.config,
-                          visibility: data.assistant.visibility ?? 'private',
-                        }),
-                      });
-                      if (!createRes.ok) {
-                        alert(t('assistants.创建助手失败'));
-                        return;
-                      }
-                      const { assistant: created } = await createRes.json();
-                      const aid = encodeURIComponent(created.id);
-                      const bindingTasks = [
-                        ...(data.mcpBindings ?? []).map(
-                          (b: Record<string, unknown>) =>
-                            fetch(
-                              `${apiBase}/api/assistants/${aid}/mcp-bindings`,
-                              {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({
-                                  templateServerId: b.template_server_id,
-                                  alias: b.alias,
-                                  enabled: b.enabled,
-                                }),
-                              },
-                            ),
-                        ),
-                        ...(data.repoBindings ?? []).map(
-                          (r: Record<string, unknown>) =>
-                            fetch(
-                              `${apiBase}/api/assistants/${aid}/repo-bindings`,
-                              {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({
-                                  repoUrl: r.repo_url,
-                                  name: r.name,
-                                  description: r.description,
-                                  defaultBranch: r.default_branch,
-                                  branchFilter: r.branch_filter,
-                                }),
-                              },
-                            ),
-                        ),
-                      ];
-                      const results = await Promise.allSettled(bindingTasks);
-                      const failCount = results.filter(
-                        (r) =>
-                          r.status === 'rejected' ||
-                          (r.status === 'fulfilled' && !r.value.ok),
-                      ).length;
-                      onRefresh();
-                      if (failCount > 0) {
-                        alert(
-                          t('assistants.助手已创建但绑定导入失败', {
-                            count: failCount,
-                          }),
-                        );
-                      }
-                    } catch {
-                      alert(t('assistants.解析导入文件失败'));
-                    }
-                  };
-                  reader.readAsText(file);
-                  e.target.value = '';
-                }}
-              />
-            </label>
             <button
               type="button"
               className="btn-primary"
@@ -2521,8 +2748,8 @@ export function AssistantsPage({
               New Agent
             </button>
           </div>
-        }
-      />
+        </div>
+      </div>
 
       {error ? (
         <div className="page-error">
@@ -2533,101 +2760,34 @@ export function AssistantsPage({
       <div className="assistants-catalog-section">
         {loading ? (
           <div className="assistant-empty-state assistant-compact-empty">
-            <p>{t('assistants.助手列表加载中...')}</p>
+            <p>Loading assistants...</p>
           </div>
         ) : assistants.length === 0 ? (
           <div className="assistant-empty-state">
-            <p>
-              {t(
-                'assistants.创建后这里会展示你的助手列表、资源状态和接入工作台。',
-              )}
-            </p>
+            <p>Your assistants will appear here as a responsive card wall.</p>
           </div>
         ) : (
           <>
-            <div className="assistant-catalog-toolbar">
-              <div className="assistant-catalog-toolbar-row">
-                <div className="assistant-catalog-search-wrap">
-                  <input
-                    className="assistant-catalog-search-input"
-                    value={catalogSearch}
-                    onChange={(event) => {
-                      setCatalogSearch(event.target.value);
-                      setAssistantCardPage(1);
-                    }}
-                    placeholder={t('assistants.搜索助手名称、描述或 ID')}
-                  />
-                  {!catalogSearch && (
-                    <span
-                      className="assistant-catalog-search-icon"
-                      aria-hidden="true"
-                    >
-                      <svg
-                        width="14"
-                        height="14"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      >
-                        <circle cx="11" cy="11" r="8" />
-                        <path d="m21 21-4.3-4.3" />
-                      </svg>
-                    </span>
-                  )}
-                </div>
-                <AppSelect
-                  value={catalogFilter}
-                  onChange={(nextValue) => {
-                    setCatalogFilter(nextValue as AssistantCatalogFilter);
-                    setAssistantCardPage(1);
-                  }}
-                  ariaLabel={t('assistants.筛选助手状态')}
-                  options={assistantCatalogFilterOptions}
-                />
-              </div>
-              <div className="assistant-catalog-meta-row">
-                <span className="assistant-catalog-stat-value">
-                  {t('assistants.助手计数', {
-                    filtered: filteredAssistants.length,
-                    total: assistants.length,
-                  })}
-                </span>
-                {filteredAssistants.length > ASSISTANT_CARD_PAGE_SIZE && (
-                  <Pagination
-                    page={assistantCardPage}
-                    pageSize={ASSISTANT_CARD_PAGE_SIZE}
-                    total={filteredAssistants.length}
-                    onPageChange={setAssistantCardPage}
-                  />
-                )}
-              </div>
-            </div>
-
             {filteredAssistants.length === 0 ? (
               <div className="assistant-empty-state assistant-compact-empty">
-                <h3>{t('assistants.没有匹配结果')}</h3>
-                <p>
-                  {t('assistants.试试更换状态筛选，或者输入更短的关键词。')}
-                </p>
+                <h3>No matching assistants</h3>
+                <p>Try a different filter or a shorter search term.</p>
               </div>
             ) : (
               <div className="assistant-cards-grid">
-                {filteredAssistants
-                  .slice(
-                    (assistantCardPage - 1) * ASSISTANT_CARD_PAGE_SIZE,
-                    assistantCardPage * ASSISTANT_CARD_PAGE_SIZE,
-                  )
-                  .map((assistant) => {
+                {filteredAssistants.map((assistant) => {
                     const meta = assistantCatalogMetaById[assistant.id];
                     return (
                       <div
                         key={assistant.id}
                         role="button"
                         tabIndex={0}
-                        className={`assistant-card-item ${selectedAssistantId === assistant.id ? 'active' : ''}`}
+                        className={`assistant-card-item ${
+                          assistantWorkbenchOpen &&
+                          selectedAssistantId === assistant.id
+                            ? 'active'
+                            : ''
+                        }`}
                         onClick={() => openAssistantWorkbench(assistant.id)}
                         onKeyDown={(e) => {
                           if (e.key === 'Enter' || e.key === ' ') {
@@ -2642,9 +2802,7 @@ export function AssistantsPage({
                             <span
                               className={`assistant-badge ${assistant.enabled ? 'enabled' : 'disabled'}`}
                             >
-                              {assistant.enabled
-                                ? t('assistants.启用')
-                                : t('assistants.停用')}
+                              {assistant.enabled ? 'Enabled' : 'Disabled'}
                             </span>
                             {meta ? (
                               <span
@@ -2659,17 +2817,16 @@ export function AssistantsPage({
                           </div>
                         </div>
                         <div className="assistant-card-item-desc">
-                          {assistant.description ||
-                            t('assistants.尚未填写描述')}
+                          {assistant.description || 'No description yet.'}
                         </div>
                         <div className="assistant-card-item-meta">
                           {assistant.visibility === 'shared' ? (
                             <span className="assistant-card-visibility-tag shared">
-                              {t('assistants.公开')}
+                              Public
                             </span>
                           ) : (
                             <span className="assistant-card-visibility-tag">
-                              {t('assistants.私有')}
+                              Private
                             </span>
                           )}
                           {assistant.config.persona?.role ? (
@@ -2712,7 +2869,7 @@ export function AssistantsPage({
                               openAssistantWorkbench(assistant.id);
                             }}
                           >
-                            {t('assistants.编辑')}
+                            View details
                           </button>
                           <button
                             type="button"
@@ -2736,7 +2893,7 @@ export function AssistantsPage({
                             }}
                             disabled={!assistant.enabled}
                           >
-                            {t('assistants.对话')}
+                            Chat
                           </button>
                         </div>
                       </div>
@@ -2761,7 +2918,7 @@ export function AssistantsPage({
               <div>
                 <h3>{selectedAssistant.name}</h3>
                 <p>
-                  {selectedAssistant.description || t('assistants.暂无描述')}
+                  {selectedAssistant.description || 'No description yet.'}
                 </p>
               </div>
               <div className="assistant-drawer-panel-header-actions">
@@ -2798,14 +2955,12 @@ export function AssistantsPage({
                   onClick={() => void handleDeleteAssistant(selectedAssistant)}
                   disabled={deletingAssistantId === selectedAssistant.id}
                 >
-                  {deletingAssistantId === selectedAssistant.id
-                    ? t('assistants.删除中...')
-                    : t('assistants.删除')}
+                  {deletingAssistantId === selectedAssistant.id ? 'Deleting...' : 'Delete'}
                 </button>
                 <button
                   type="button"
                   className="modal-close-btn"
-                  aria-label={t('assistants.关闭')}
+                  aria-label="Close"
                   onClick={closeAssistantWorkbench}
                 >
                   ×
@@ -2818,23 +2973,43 @@ export function AssistantsPage({
                   <div className="assistant-drawer-nav">
                     <button
                       type="button"
-                      className="assistant-drawer-nav-btn active"
+                      className={`assistant-drawer-nav-btn ${activeAssistantTab === 'details' ? 'active' : ''}`}
                       onClick={() => setDrawerView(null)}
                     >
-                      {t('auto.0aeca07a')}
+                      Details
                     </button>
                     <button
                       type="button"
-                      className="assistant-drawer-nav-btn"
+                      className={`assistant-drawer-nav-btn ${activeAssistantTab === 'bindings' ? 'active' : ''}`}
                       onClick={() => {
-                        setResourceDrawerSection('overview');
+                        setResourceDrawerSection('bindings');
                         setDrawerView('resources');
                       }}
                     >
-                      {t('auto.6478fcbd')}
+                      Bindings
+                    </button>
+                    <button
+                      type="button"
+                      className={`assistant-drawer-nav-btn ${activeAssistantTab === 'skills' ? 'active' : ''}`}
+                      onClick={() => {
+                        setResourceDrawerSection('skills');
+                        setDrawerView('resources');
+                      }}
+                    >
+                      Skills
+                    </button>
+                    <button
+                      type="button"
+                      className={`assistant-drawer-nav-btn ${activeAssistantTab === 'auth' ? 'active' : ''}`}
+                      onClick={() => {
+                        setResourceDrawerSection('auth');
+                        setDrawerView('resources');
+                      }}
+                    >
+                      Auth
                     </button>
                   </div>
-                  {renderSettingsTab()}
+                  {renderDetailWorkbench()}
                 </div>
               ) : drawerView === 'resources' ? (
                 <div className="assistant-edit-tabs">
@@ -2844,21 +3019,14 @@ export function AssistantsPage({
                       className="assistant-drawer-nav-btn"
                       onClick={() => setDrawerView(null)}
                     >
-                      {t('auto.0aeca07a')}
+                      Details
                     </button>
                     <button
                       type="button"
-                      className={`assistant-drawer-nav-btn ${resourceDrawerSection === 'overview' ? 'active' : ''}`}
-                      onClick={() => setResourceDrawerSection('overview')}
+                      className={`assistant-drawer-nav-btn ${resourceDrawerSection === 'bindings' ? 'active' : ''}`}
+                      onClick={() => setResourceDrawerSection('bindings')}
                     >
-                      {t('auto.86385379')}
-                    </button>
-                    <button
-                      type="button"
-                      className={`assistant-drawer-nav-btn ${resourceDrawerSection === 'auth' ? 'active' : ''}`}
-                      onClick={() => setResourceDrawerSection('auth')}
-                    >
-                      {t('auto.b7158a42')}
+                      Bindings
                     </button>
                     <button
                       type="button"
@@ -2869,17 +3037,10 @@ export function AssistantsPage({
                     </button>
                     <button
                       type="button"
-                      className={`assistant-drawer-nav-btn ${resourceDrawerSection === 'create' ? 'active' : ''}`}
-                      onClick={() => setResourceDrawerSection('create')}
+                      className={`assistant-drawer-nav-btn ${resourceDrawerSection === 'auth' ? 'active' : ''}`}
+                      onClick={() => setResourceDrawerSection('auth')}
                     >
-                      {t('auto.1df372b4')}
-                    </button>
-                    <button
-                      type="button"
-                      className={`assistant-drawer-nav-btn ${resourceDrawerSection === 'bindings' ? 'active' : ''}`}
-                      onClick={() => setResourceDrawerSection('bindings')}
-                    >
-                      {t('auto.aca24bd2')}
+                      Auth
                     </button>
                   </div>
                   {renderResourcesTab()}
@@ -2892,23 +3053,23 @@ export function AssistantsPage({
                       className="assistant-drawer-nav-btn"
                       onClick={() => setDrawerView(null)}
                     >
-                      {t('auto.0aeca07a')}
+                      Details
                     </button>
                     <button
                       type="button"
                       className="assistant-drawer-nav-btn"
                       onClick={() => {
-                        setResourceDrawerSection('overview');
+                        setResourceDrawerSection('bindings');
                         setDrawerView('resources');
                       }}
                     >
-                      {t('auto.6478fcbd')}
+                      Bindings
                     </button>
                     <button
                       type="button"
                       className="assistant-drawer-nav-btn active"
                     >
-                      {t('auto.40b17567')}
+                      Auth
                     </button>
                   </div>
                   {secretLoading ? (
