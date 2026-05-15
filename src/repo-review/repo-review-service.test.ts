@@ -3623,6 +3623,165 @@ describe('repo-review-service', () => {
     expect(result.runs[0]?.run.summary).toBe('close ordering ok');
   });
 
+  it('does not close early for a non-structured assistant progress message', async () => {
+    mockRunAgentProcess.mockImplementation(
+      async (_group, _input, onProcess, onOutput) => {
+        const stdinEnd = vi.fn();
+        onProcess?.({
+          stdin: {
+            destroyed: false,
+            writableEnded: false,
+            end: stdinEnd,
+          },
+        });
+        await onOutput?.({
+          turnEvent: {
+            type: 'item.completed',
+            turnId: 'turn-review-progress-message',
+            timestamp: '2026-05-15T02:25:04.644Z',
+            item: {
+              id: 'turn-review-progress-message:assistant:1',
+              type: 'assistant_message',
+              status: 'completed',
+              text: 'Now let me read the key files in detail to understand the changes:',
+              timestamp: '2026-05-15T02:25:04.644Z',
+            },
+          },
+        });
+        expect(mockRequestAgentClose).not.toHaveBeenCalled();
+        expect(stdinEnd).not.toHaveBeenCalled();
+        await onOutput?.({
+          status: 'success',
+          result: JSON.stringify({
+            overall: 'pass',
+            summary: 'final structured result',
+            findings: [],
+            suggestions: [],
+            recommended_block: false,
+          }),
+        });
+        await onOutput?.({
+          turnEvent: {
+            type: 'turn.completed',
+            turnId: 'turn-review-progress-message',
+            timestamp: '2026-05-15T02:25:05.662Z',
+          },
+        });
+        return {
+          status: 'success',
+          result: null,
+        };
+      },
+    );
+
+    const service = await import('./repo-review-service.js');
+    const repository = await service.upsertRepoReviewRepository({
+      id: 'repo-progress-message',
+      name: 'Repo Progress Message',
+      local_repo_path: tempRepo,
+      enabled: true,
+    });
+    await service.upsertRepoReviewProfile({
+      id: 'profile-progress-message',
+      repository_id: repository.id,
+      name: 'Commit Progress Message',
+      stage: 'commit',
+      source_mode: 'local',
+      blocking_mode: 'soft_fail',
+      review_scope: 'staged_diff',
+      write_to_chat: false,
+      write_to_platform: false,
+      enabled: true,
+    });
+
+    const result = await service.triggerLocalRepoReview({
+      repositoryId: repository.id,
+      stage: 'commit',
+    });
+
+    expect(result.blocked).toBe(false);
+    expect(result.runs).toHaveLength(1);
+    expect(result.runs[0]?.run.overall).toBe('pass');
+    expect(result.runs[0]?.run.summary).toBe('final structured result');
+    expect(mockRequestAgentClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('falls back after turn completion when only a non-structured assistant message exists', async () => {
+    mockRunAgentProcess.mockImplementation(
+      async (_group, _input, onProcess, onOutput) => {
+        const stdinEnd = vi.fn();
+        onProcess?.({
+          stdin: {
+            destroyed: false,
+            writableEnded: false,
+            end: stdinEnd,
+          },
+        });
+        await onOutput?.({
+          turnEvent: {
+            type: 'item.completed',
+            turnId: 'turn-review-progress-fallback',
+            timestamp: '2026-05-15T02:25:04.644Z',
+            item: {
+              id: 'turn-review-progress-fallback:assistant:1',
+              type: 'assistant_message',
+              status: 'completed',
+              text: 'Now let me read the key files in detail to understand the changes:',
+              timestamp: '2026-05-15T02:25:04.644Z',
+            },
+          },
+        });
+        expect(mockRequestAgentClose).not.toHaveBeenCalled();
+        expect(stdinEnd).not.toHaveBeenCalled();
+        await onOutput?.({
+          turnEvent: {
+            type: 'turn.completed',
+            turnId: 'turn-review-progress-fallback',
+            timestamp: '2026-05-15T02:25:05.662Z',
+          },
+        });
+        expect(mockRequestAgentClose).toHaveBeenCalledTimes(1);
+        expect(stdinEnd).toHaveBeenCalledTimes(1);
+        return {
+          status: 'success',
+          result: null,
+        };
+      },
+    );
+
+    const service = await import('./repo-review-service.js');
+    const repository = await service.upsertRepoReviewRepository({
+      id: 'repo-progress-fallback',
+      name: 'Repo Progress Fallback',
+      local_repo_path: tempRepo,
+      enabled: true,
+    });
+    await service.upsertRepoReviewProfile({
+      id: 'profile-progress-fallback',
+      repository_id: repository.id,
+      name: 'Commit Progress Fallback',
+      stage: 'commit',
+      source_mode: 'local',
+      blocking_mode: 'soft_fail',
+      review_scope: 'staged_diff',
+      write_to_chat: false,
+      write_to_platform: false,
+      enabled: true,
+    });
+
+    const result = await service.triggerLocalRepoReview({
+      repositoryId: repository.id,
+      stage: 'commit',
+    });
+
+    expect(result.blocked).toBe(false);
+    expect(result.runs).toHaveLength(1);
+    expect(result.runs[0]?.run.overall).toBe('warn');
+    expect(result.runs[0]?.run.summary).toBe(
+      '模型输出未完全结构化，已回退展示原始审查结果。',
+    );
+  });
+
   it('prefers the final structured repo review result over an earlier assistant turn fallback', async () => {
     mockRunAgentProcess.mockImplementation(
       async (_group, _input, onProcess, onOutput) => {

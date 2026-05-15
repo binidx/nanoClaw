@@ -2037,6 +2037,10 @@ function hasUsableRepoReviewFinalResult(text: string): boolean {
   }
 }
 
+function isUsableRepoReviewAssistantTerminalMessage(text: string): boolean {
+  return hasUsableRepoReviewFinalResult(text);
+}
+
 function normalizeRepoReviewMarkdownHeading(line: string): string {
   return line
     .trim()
@@ -11985,11 +11989,17 @@ async function runReviewAgent(input: {
             output.turnEvent.item.status === 'completed' &&
             output.turnEvent.item.text.trim()
           ) {
-            sawTerminalTurnEvent = true;
-            terminalOutputSeen = true;
-            streamedResult = output.turnEvent.item.text;
-            maybeCloseAgentInput();
-            resolveEarlyFinalIfReady(true);
+            if (
+              isUsableRepoReviewAssistantTerminalMessage(
+                output.turnEvent.item.text,
+              )
+            ) {
+              sawTerminalTurnEvent = true;
+              terminalOutputSeen = true;
+              streamedResult = output.turnEvent.item.text;
+              maybeCloseAgentInput();
+              resolveEarlyFinalIfReady(true);
+            }
           }
           const visibleTurnEvent = sanitizeReviewTurnEventForWeb(
             output.turnEvent,
