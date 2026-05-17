@@ -362,12 +362,85 @@
   font-size: 11px;
 }
 
-/* ── Drawer content ── */
+/* ── Workbench modal ── */
+
+.knowledge-workbench-overlay {
+  padding: 24px;
+  align-items: center;
+  justify-content: center;
+}
+
+.knowledge-workbench-modal {
+  width: min(92vw, 1480px);
+  height: min(90vh, 980px);
+  max-width: none;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+  border-radius: 28px;
+}
+
+.knowledge-workbench-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 22px 24px 18px;
+  border-bottom: 1px solid var(--border);
+}
+
+.knowledge-workbench-header-main {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.knowledge-workbench-subtitle {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.knowledge-workbench-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.knowledge-workbench-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 0;
+  flex: 1;
+  padding: 0 24px 24px;
+}
+
+.knowledge-workbench-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.knowledge-workbench-subnav {
+  display: flex;
+  justify-content: flex-start;
+}
+
+/* ── Drawer content / inner workbench ── */
 
 .knowledge-drawer-content {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
+  padding-right: 4px;
 }
 
 .knowledge-drawer-section {
@@ -826,6 +899,21 @@
   min-height: 0;
 }
 
+.knowledge-graph-workbench-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.knowledge-graph-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .knowledge-processing-panel {
   display: flex;
   flex-direction: column;
@@ -992,6 +1080,27 @@
   background: var(--surface-card);
   color: var(--text-primary);
   box-shadow: inset 0 0 0 1px var(--border);
+}
+
+.knowledge-graph-fullscreen-overlay {
+  padding: 18px;
+}
+
+.knowledge-graph-fullscreen-modal {
+  width: min(96vw, 1680px);
+  height: min(94vh, 1100px);
+  max-width: none;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.knowledge-graph-fullscreen-body {
+  flex: 1;
+  min-height: 0;
+  padding: 0 18px 18px;
+  display: flex;
+  flex-direction: column;
 }
 
 .knowledge-graph-filters {

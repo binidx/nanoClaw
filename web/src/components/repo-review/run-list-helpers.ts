@@ -5,6 +5,7 @@ import {
 import type {
   AssistantTurn,
   ConversationChatState,
+  RepoReviewProgressStep,
   RepoReviewRepository,
   RepoReviewRun,
 } from '../../app-types';
@@ -118,6 +119,14 @@ function pickRicherProgress(
 ): RepoReviewRun['reviewProgress'] {
   if (!preferred) return fallback;
   if (!fallback) return preferred;
+  if (preferred.runTerminal !== fallback.runTerminal) {
+    return preferred.runTerminal ? preferred : fallback;
+  }
+  const preferredVersion = preferred.snapshotVersion || 0;
+  const fallbackVersion = fallback.snapshotVersion || 0;
+  if (preferredVersion !== fallbackVersion) {
+    return preferredVersion > fallbackVersion ? preferred : fallback;
+  }
   const preferredStepCount = preferred.steps?.length || 0;
   const fallbackStepCount = fallback.steps?.length || 0;
   if (preferredStepCount !== fallbackStepCount) {
@@ -128,9 +137,61 @@ function pickRicherProgress(
       ? preferred
       : fallback;
   }
+  const preferredHeartbeat = parseRunTimestamp(preferred.heartbeatAt || '');
+  const fallbackHeartbeat = parseRunTimestamp(fallback.heartbeatAt || '');
+  if (!Number.isNaN(preferredHeartbeat) || !Number.isNaN(fallbackHeartbeat)) {
+    if (Number.isNaN(fallbackHeartbeat)) return preferred;
+    if (Number.isNaN(preferredHeartbeat)) return fallback;
+    if (preferredHeartbeat !== fallbackHeartbeat) {
+      return preferredHeartbeat > fallbackHeartbeat ? preferred : fallback;
+    }
+  }
   return preferred.latestAssistantText || preferred.latestErrorText
     ? preferred
     : fallback;
+}
+
+function getTerminalProgressStatus(
+  run: RepoReviewRun,
+): RepoReviewProgressStep['status'] | null {
+  if (run.status === 'completed') return 'completed';
+  if (run.status === 'skipped') return 'skipped';
+  if (run.status === 'error') return 'failed';
+  return null;
+}
+
+function repairTerminalRunProgress(run: RepoReviewRun): RepoReviewRun {
+  const terminalStatus = getTerminalProgressStatus(run);
+  const progress = run.reviewProgress;
+  if (!terminalStatus || !progress?.steps?.length) return run;
+  let changed = false;
+  const now = run.completedAt || run.updatedAt || new Date().toISOString();
+  const steps = progress.steps.map((step) => {
+    if (step.status !== 'running' && step.status !== 'queued') return step;
+    changed = true;
+    const activeStartedAt = step.activeStartedAt || step.startedAt || now;
+    const durationMs =
+      Date.parse(now) >= Date.parse(activeStartedAt)
+        ? Date.parse(now) - Date.parse(activeStartedAt)
+        : step.durationMs;
+    return {
+      ...step,
+      status: terminalStatus,
+      activeStartedAt,
+      completedAt: step.completedAt || now,
+      ...(durationMs !== undefined ? { durationMs } : {}),
+      ...(terminalStatus === 'failed' && run.error ? { error: step.error || run.error } : {}),
+    };
+  });
+  if (!changed) return run;
+  return {
+    ...run,
+    reviewProgress: {
+      ...progress,
+      runTerminal: true,
+      steps,
+    },
+  };
 }
 
 function createRepoReviewTurnState(run: RepoReviewRun): ConversationChatState {
@@ -208,8 +269,8 @@ export function mergeRepoReviewRunSnapshot(
   summaryRun: RepoReviewRun | null,
   detailRun: RepoReviewRun | null,
 ): RepoReviewRun | null {
-  if (!summaryRun) return detailRun;
-  if (!detailRun) return summaryRun;
+  if (!summaryRun) return detailRun ? repairTerminalRunProgress(detailRun) : null;
+  if (!detailRun) return repairTerminalRunProgress(summaryRun);
 
   const summaryIsFresher =
     getRepoReviewRunLatestActivityTime(summaryRun) >=
@@ -217,7 +278,7 @@ export function mergeRepoReviewRunSnapshot(
   const fresh = summaryIsFresher ? summaryRun : detailRun;
   const stale = summaryIsFresher ? detailRun : summaryRun;
 
-  return {
+  return repairTerminalRunProgress({
     ...stale,
     ...fresh,
     findings: pickRicherArray(fresh.findings, stale.findings),
@@ -231,15 +292,15 @@ export function mergeRepoReviewRunSnapshot(
     suggestions: pickRicherArray(fresh.suggestions, stale.suggestions),
     changedFiles: pickRicherArray(fresh.changedFiles, stale.changedFiles),
     effectiveRules: pickRicherObject(fresh.effectiveRules, stale.effectiveRules),
-  };
+  });
 }
 
 export function mergeFetchedRepoReviewRunSnapshot(
   fetchedRun: RepoReviewRun | null,
   localRun: RepoReviewRun | null,
 ): RepoReviewRun | null {
-  if (!fetchedRun) return localRun;
-  if (!localRun) return fetchedRun;
+  if (!fetchedRun) return localRun ? repairTerminalRunProgress(localRun) : null;
+  if (!localRun) return repairTerminalRunProgress(fetchedRun);
 
   const fetchedIsFresher =
     getRepoReviewRunLatestActivityTime(fetchedRun) >=
@@ -247,7 +308,7 @@ export function mergeFetchedRepoReviewRunSnapshot(
   const fresh = fetchedIsFresher ? fetchedRun : localRun;
   const stale = fetchedIsFresher ? localRun : fetchedRun;
 
-  return {
+  return repairTerminalRunProgress({
     ...stale,
     ...fresh,
     summary: fresh.summary || stale.summary,
@@ -298,7 +359,7 @@ export function mergeFetchedRepoReviewRunSnapshot(
       fresh.effectiveRules,
       stale.effectiveRules,
     ),
-  };
+  });
 }
 
 export function mergeRepoReviewRunListSnapshots(

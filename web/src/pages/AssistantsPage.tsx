@@ -25,6 +25,7 @@ import type {
 } from '../app-types';
 import { RepositoryBindingPicker } from '../components/repository/RepositoryBindingPicker';
 import '../styles/assistants.css';
+import './WorkteamPage.css';
 
 interface AssistantsPageProps {
   apiBase: string;
@@ -89,28 +90,10 @@ type AssistantCatalogFilter =
   | 'missing_secrets'
   | 'disabled';
 
-type AssistantDrawerView = 'resources' | 'secret' | null;
-type AssistantResourceDrawerSection =
-  | 'overview'
-  | 'auth'
-  | 'skills'
-  | 'create'
-  | 'bindings';
-
 const getRuleModeOptions = (t: (key: string) => string): AppSelectOption[] => [
   { value: 'append', label: t('assistants.允许补充规则') },
   { value: 'replace', label: t('assistants.以助手规则为主') },
   { value: 'locked', label: t('assistants.严格锁定行为') },
-];
-
-const getAssistantCatalogFilterOptions = (
-  t: (key: string) => string,
-): AppSelectOption[] => [
-  { value: 'all', label: t('assistants.全部助手') },
-  { value: 'healthy', label: t('assistants.状态正常') },
-  { value: 'attention', label: t('assistants.待补齐') },
-  { value: 'missing_secrets', label: t('assistants.缺认证') },
-  { value: 'disabled', label: t('assistants.已停用') },
 ];
 
 const emptyFormState: AssistantFormState = {
@@ -349,22 +332,42 @@ function getAssistantInitials(name: string): string {
 function getAssistantProviderLabel(
   assistant: Assistant,
   providers: AiProvider[],
+  t: (key: string, options?: Record<string, unknown>) => string,
 ): string {
   const provider = providers.find(
     (entry) => entry.id === assistant.config.providerId,
   );
-  return provider?.alias || 'Default provider';
+  return provider?.alias || t('默认 Provider');
 }
 
 function getAssistantModelLabel(
   assistant: Assistant,
   providers: AiProvider[],
+  t: (key: string, options?: Record<string, unknown>) => string,
 ): string {
   if (assistant.config.model?.trim()) return assistant.config.model.trim();
   const provider = providers.find(
     (entry) => entry.id === assistant.config.providerId,
   );
-  return provider?.model || provider?.alias || 'Default model';
+  return provider?.model || provider?.alias || t('默认模型');
+}
+
+function getAssistantRunState(
+  assistant: Assistant,
+  status: Exclude<AssistantCatalogFilter, 'all'> | 'attention',
+  conversationCount: number,
+  t: (key: string) => string,
+): { label: string; tone: 'running' | 'idle' | 'stopped' | 'attention' } {
+  if (!assistant.enabled) {
+    return { label: t('已停用'), tone: 'stopped' };
+  }
+  if (status === 'missing_secrets' || status === 'attention') {
+    return { label: t('待配置'), tone: 'attention' };
+  }
+  if (conversationCount > 0) {
+    return { label: t('运行中'), tone: 'running' };
+  }
+  return { label: t('空闲'), tone: 'idle' };
 }
 
 function normalizeAssistantResources(
@@ -604,7 +607,7 @@ function AssistantEditorPanel(props: AssistantEditorPanelProps) {
               />
             </label>
             <label>
-              Provider
+              {t('提供商')}
               <AppSelect
                 value={form.providerId}
                 onChange={(nextValue) =>
@@ -865,7 +868,7 @@ function AssistantEditorPanel(props: AssistantEditorPanelProps) {
               </div>
               <div className="assistant-form-grid">
                 <label className="full">
-                  System Prompt
+                  {t('系统提示词')}
                   <textarea
                     value={form.systemPrompt}
                     onChange={(event) =>
@@ -880,7 +883,7 @@ function AssistantEditorPanel(props: AssistantEditorPanelProps) {
                   />
                 </label>
                 <label className="full">
-                  Extra Instructions
+                  {t('补充说明')}
                   <textarea
                     value={form.extraInstructions}
                     onChange={(event) =>
@@ -937,16 +940,13 @@ export function AssistantsPage({
   managedMcpServers,
   managedSkills,
   conversations,
-  onRefresh,
+  onRefresh: _onRefresh,
   onStartChat,
   onSubmit,
   onDelete,
 }: AssistantsPageProps) {
   const { t } = useTranslation('assistants');
-  const assistantCatalogFilterOptions = useMemo(
-    () => getAssistantCatalogFilterOptions(t),
-    [t],
-  );
+  void _onRefresh;
   const assistantTemplates = useMemo(() => getAssistantTemplates(t), [t]);
   const [selectedAssistantId, setSelectedAssistantId] = useState<string | null>(
     null,
@@ -959,11 +959,6 @@ export function AssistantsPage({
   const [createShowAdvanced, setCreateShowAdvanced] = useState(false);
   const [createTemplateKey, setCreateTemplateKey] = useState('');
   const [catalogSearch, setCatalogSearch] = useState('');
-  const [catalogFilter, setCatalogFilter] =
-    useState<AssistantCatalogFilter>('all');
-  const [drawerView, setDrawerView] = useState<AssistantDrawerView>(null);
-  const [resourceDrawerSection, setResourceDrawerSection] =
-    useState<AssistantResourceDrawerSection>('bindings');
   const [assistantResourcesById, setAssistantResourcesById] = useState<
     Record<string, AssistantResources | undefined>
   >({});
@@ -1221,17 +1216,13 @@ export function AssistantsPage({
   const filteredAssistants = useMemo(() => {
     const keyword = catalogSearch.trim().toLowerCase();
     return assistants.filter((assistant) => {
-      const meta = assistantCatalogMetaById[assistant.id];
-      if (catalogFilter !== 'all' && meta?.status !== catalogFilter) {
-        return false;
-      }
       if (!keyword) return true;
       return [assistant.name, assistant.description || '', assistant.id]
         .join(' ')
         .toLowerCase()
         .includes(keyword);
     });
-  }, [assistantCatalogMetaById, assistants, catalogFilter, catalogSearch]);
+  }, [assistants, catalogSearch]);
   const configuredSecretCount = useMemo(
     () =>
       selectedResources?.mcpBindings.filter(
@@ -1356,7 +1347,6 @@ export function AssistantsPage({
     if (!assistant) return;
     setSelectedAssistantId(assistant.id);
     setAssistantWorkbenchOpen(true);
-    setDrawerView(null);
     onFocusHandled?.();
   }, [assistants, focusAssistantId, loading, onFocusHandled]);
 
@@ -1381,11 +1371,6 @@ export function AssistantsPage({
     setDetailForm(nextState);
     setDetailShowAdvanced(hasAdvancedContent(nextState));
   }, [selectedAssistant]);
-
-  useEffect(() => {
-    setDrawerView(null);
-    setResourceDrawerSection('bindings');
-  }, [selectedAssistantId]);
 
   useEffect(() => {
     if (!selectedAssistantId) return;
@@ -1456,7 +1441,6 @@ export function AssistantsPage({
         await onDelete(assistant.id);
         if (selectedAssistantId === assistant.id) {
           setAssistantWorkbenchOpen(false);
-          setDrawerView(null);
           setSecretModalBindingId(null);
         }
       } finally {
@@ -1496,10 +1480,6 @@ export function AssistantsPage({
     setSelectedAssistantId(createdAssistant.id);
     setAssistantWorkbenchOpen(true);
     await loadAssistantResources(createdAssistant.id, true);
-    if (createRepositoryIds.length > 0) {
-      setResourceDrawerSection('bindings');
-      setDrawerView('resources');
-    }
     if (createRepositoryIds.length > 0) {
       persistResourceMessage(t('assistants.助手和仓库绑定已创建。'));
     }
@@ -1664,7 +1644,6 @@ export function AssistantsPage({
   const handleOpenSecrets = async (bindingId: string) => {
     if (!selectedAssistant) return;
     setSecretModalBindingId(bindingId);
-    setDrawerView('secret');
     setSecretEnvDraft('');
     setSecretMessage('');
     await loadBindingSecrets(selectedAssistant.id, bindingId);
@@ -1737,9 +1716,7 @@ export function AssistantsPage({
     }
   };
 
-  const closeDrawer = () => {
-    setDrawerView(null);
-    setResourceDrawerSection('bindings');
+  const closeSecretModal = () => {
     setAssistantResourceError('');
     setSecretModalBindingId(null);
     setSecretEnvDraft('');
@@ -1750,18 +1727,19 @@ export function AssistantsPage({
 
   const closeAssistantWorkbench = () => {
     setAssistantWorkbenchOpen(false);
-    closeDrawer();
+    closeSecretModal();
   };
 
   const openAssistantWorkbench = (assistantId: string) => {
     setSelectedAssistantId(assistantId);
     setAssistantWorkbenchOpen(true);
+    closeSecretModal();
     if (!assistantResourcesById[assistantId]) {
       void loadAssistantResources(assistantId);
     }
   };
 
-  const renderResourcesTab = () => {
+  const renderAssistantResources = () => {
     if (!selectedAssistant) return null;
     const templates = selectedResources?.availableMcpTemplates || [];
     const availableSkills = selectedResources?.availableSkills || [];
@@ -1770,85 +1748,108 @@ export function AssistantsPage({
     );
     const bindings = selectedResources?.mcpBindings || [];
     const repoBindings = selectedResources?.repoBindings || [];
-    const migrationBindings = bindings.filter(
-      (binding) => binding.usesTemplateEnvFallback,
-    );
-    const missingSecretBindings = bindings.filter(
-      (binding) => !binding.secretStatus.configured,
-    );
     const pendingSecretBindings = bindings.filter(
       (binding) =>
         !binding.secretStatus.configured || binding.usesTemplateEnvFallback,
     );
-    const showOverview = resourceDrawerSection === 'overview';
-    const showAuth = resourceDrawerSection === 'auth';
-    const showSkills = resourceDrawerSection === 'skills';
-    const showCreate = resourceDrawerSection === 'create';
-    const showBindings = resourceDrawerSection === 'bindings';
 
     return (
-      <div className="assistant-panel-grid">
-        {showOverview ? (
-          <section className="assistant-form assistant-overview-card">
+      <div className="assistant-modal-sections">
+        {assistantResourceLoadingId === selectedAssistant.id ? (
+          <div className="assistant-inline-stack">
+            <strong>{t('资源加载中')}</strong>
+            <span>{t('正在同步当前助手的资源与绑定状态')}</span>
+          </div>
+        ) : null}
+        {assistantResourceError ? (
+          <div className="test-result error">{assistantResourceError}</div>
+        ) : null}
+        {assistantResourceMessage ? (
+          <div className="test-result success">{assistantResourceMessage}</div>
+        ) : null}
+
+        <section className="assistant-modal-panel assistant-modal-panel--summary">
+          <div className="assistant-section-heading">
+            <div>
+              <h4>{t('详情总览')}</h4>
+              <p>{t('查看并编辑当前助手的完整配置、资源和接入关系')}</p>
+            </div>
+          </div>
+          <div className="assistant-modal-summary-grid">
+            <div className="assistant-modal-summary-card">
+              <strong>{selectedSkillIds.size}</strong>
+              <span>{t('技能')}</span>
+            </div>
+            <div className="assistant-modal-summary-card">
+              <strong>{bindings.length}</strong>
+              <span>{t('assistants.绑定')}</span>
+            </div>
+            <div className="assistant-modal-summary-card">
+              <strong>{repoBindingCount}</strong>
+              <span>{t('assistants.仓库绑定')}</span>
+            </div>
+            <div className="assistant-modal-summary-card">
+              <strong>{configuredSecretCount}</strong>
+              <span>{t('assistants.认证已配置')}</span>
+            </div>
+            <div className="assistant-modal-summary-card">
+              <strong>{fallbackBindingCount}</strong>
+              <span>{t('assistants.使用模板回退')}</span>
+            </div>
+          </div>
+        </section>
+
+        <div className="assistant-modal-columns">
+          <section className="assistant-modal-panel">
             <div className="assistant-section-heading">
               <div>
-                <h4>{t('assistants.资源概览')}</h4>
+                <h4>{t('技能')}</h4>
                 <p>
                   {t(
-                    'assistants.助手独立持有自己的 Skills、MCP 绑定和认证状态，全局这里只作为模板库来源',
+                    'assistants.这里管理当前助手自己的技能包，不再依赖全局启停状态来决定是否可用',
                   )}
                 </p>
               </div>
-              <div className="assistant-form-header-actions">
-                <button
-                  type="button"
-                  className="btn-outline btn-sm"
-                  onClick={() =>
-                    void loadAssistantResources(selectedAssistant.id)
-                  }
-                  disabled={assistantResourceLoadingId === selectedAssistant.id}
-                >
-                  {assistantResourceLoadingId === selectedAssistant.id
-                    ? t('assistants.刷新中...')
-                    : t('assistants.刷新资源')}
-                </button>
-              </div>
             </div>
-            <div className="assistants-page-summary">
-              <div className="assistant-summary-card">
-                <strong>{selectedSkillIds.size}</strong>
-                <span>{t('assistants.启用')}</span>
+            {availableSkills.length > 0 ? (
+              <div className="assistant-settings-option-grid">
+                {availableSkills.map((skill) => {
+                  const checked = selectedSkillIds.has(skill.id);
+                  return (
+                    <label
+                      key={skill.id}
+                      className={`assistant-settings-option-card${checked ? ' selected' : ''}`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => void handleSkillToggle(skill.id)}
+                        disabled={resourceSavingKey === `skill:${skill.id}`}
+                      />
+                      <span>{skill.name}</span>
+                      <small>
+                        {skill.description || skill.id}
+                        {skill.enabled
+                          ? t('assistants. · 模板已启用')
+                          : t('assistants. · 模板当前关闭')}
+                      </small>
+                    </label>
+                  );
+                })}
               </div>
-              <div className="assistant-summary-card">
-                <strong>{bindings.length}</strong>
-                <span>{t('assistants.绑定')}</span>
+            ) : (
+              <div className="assistant-empty-state assistant-compact-empty">
+                <h3>{t('当前没有可用技能')}</h3>
+                <p>
+                  {t(
+                    'assistants.先去全局 Skills 管理安装或启用模板，再回来选择要分配给这个助手的技能',
+                  )}
+                </p>
               </div>
-              <div className="assistant-summary-card">
-                <strong>{repoBindingCount}</strong>
-                <span>{t('assistants.仓库绑定')}</span>
-              </div>
-              <div className="assistant-summary-card">
-                <strong>{configuredSecretCount}</strong>
-                <span>{t('assistants.认证已配置')}</span>
-              </div>
-              <div className="assistant-summary-card">
-                <strong>{fallbackBindingCount}</strong>
-                <span>{t('assistants.使用模板回退')}</span>
-              </div>
-            </div>
-            {assistantResourceError ? (
-              <div className="test-result error">{assistantResourceError}</div>
-            ) : null}
-            {assistantResourceMessage ? (
-              <div className="test-result success">
-                {assistantResourceMessage}
-              </div>
-            ) : null}
+            )}
           </section>
-        ) : null}
 
-        {showAuth ? (
-          <section className="assistant-form assistant-overview-card">
+          <section className="assistant-modal-panel">
             <div className="assistant-section-heading">
               <div>
                 <h4>{t('assistants.认证迁移队列')}</h4>
@@ -1857,20 +1858,6 @@ export function AssistantsPage({
                     'assistants.优先处理仍在使用模板回退或尚未写入助手私有认证的绑定',
                   )}
                 </p>
-              </div>
-            </div>
-            <div className="assistant-resource-summary">
-              <div className="assistant-resource-summary-item">
-                <strong>{migrationBindings.length}</strong>
-                <span>{t('assistants.待迁移')}</span>
-              </div>
-              <div className="assistant-resource-summary-item">
-                <strong>{missingSecretBindings.length}</strong>
-                <span>{t('assistants.缺认证')}</span>
-              </div>
-              <div className="assistant-resource-summary-item">
-                <strong>{pendingSecretBindings.length}</strong>
-                <span>{t('assistants.待处理总数')}</span>
               </div>
             </div>
             {pendingSecretBindings.length > 0 ? (
@@ -1928,438 +1915,367 @@ export function AssistantsPage({
               </div>
             )}
           </section>
-        ) : null}
+        </div>
 
-        {showSkills ? (
-          <section className="assistant-form assistant-overview-card">
-            <div className="assistant-section-heading">
-              <div>
-                <h4>Skills</h4>
-                <p>
-                  {t(
-                    'assistants.这里管理当前助手自己的技能包，不再依赖全局启停状态来决定是否可用',
-                  )}
-                </p>
-              </div>
+        <section className="assistant-modal-panel">
+          <div className="assistant-section-heading">
+            <div>
+              <h4>{t('assistants.新增 MCP 绑定')}</h4>
+              <p>
+                {t(
+                  'assistants.从全局模板库挑一个模板，为当前助手创建自己的独立绑定和认证状态',
+                )}
+              </p>
             </div>
-            {availableSkills.length > 0 ? (
-              <div className="assistant-settings-option-grid">
-                {availableSkills.map((skill) => {
-                  const checked = selectedSkillIds.has(skill.id);
-                  return (
-                    <label
-                      key={skill.id}
-                      className={`assistant-settings-option-card${checked ? ' selected' : ''}`}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={() => void handleSkillToggle(skill.id)}
-                        disabled={resourceSavingKey === `skill:${skill.id}`}
-                      />
-                      <span>{skill.name}</span>
-                      <small>
-                        {skill.description || skill.id}
-                        {skill.enabled
-                          ? t('assistants. · 模板已启用')
-                          : t('assistants. · 模板当前关闭')}
-                      </small>
-                    </label>
-                  );
-                })}
-              </div>
-            ) : (
-              <div className="assistant-empty-state">
-                <h3>{t('assistants.当前没有可用')} Skills</h3>
-                <p>
-                  {t(
-                    'assistants.先去全局 Skills 管理安装或启用模板，再回来选择要分配给这个助手的技能',
-                  )}
-                </p>
-              </div>
-            )}
-          </section>
-        ) : null}
-
-        {showCreate ? (
-          <section className="assistant-form assistant-overview-card">
-            <div className="assistant-section-heading">
-              <div>
-                <h4>{t('assistants.新增 MCP 绑定')}</h4>
-                <p>
-                  {t(
-                    'assistants.从全局模板库挑一个模板，为当前助手创建自己的独立绑定和认证状态',
-                  )}
-                </p>
-              </div>
-            </div>
-            <div className="assistant-form-grid">
-              <label>
-                {t('assistants.模板')}
-                <AppSelect
-                  value={newBindingTemplateId}
-                  onChange={setNewBindingTemplateId}
-                  ariaLabel={t('assistants.选择 MCP 模板')}
-                  options={templates.map((template) => ({
-                    value: template.id,
-                    label: `${template.name} · env ${template.envKeyCount}`,
-                    disabled: !template.enabled,
-                  }))}
-                />
-              </label>
-              <label>
-                {t('assistants.别名')}
-                <input
-                  value={newBindingAlias}
-                  onChange={(event) => setNewBindingAlias(event.target.value)}
-                  placeholder={t('assistants.留空则跟随模板名')}
-                />
-              </label>
-              <label className="full">
-                {t('assistants.参数覆盖')}
-                <input
-                  value={newBindingArgsText}
-                  onChange={(event) =>
-                    setNewBindingArgsText(event.target.value)
-                  }
-                  placeholder={t('assistants.空格分隔；留空则跟随模板参数')}
-                />
-              </label>
-            </div>
-            {templates.length > 0 ? (
-              <div className="assistant-inline-stack">
-                {templates.find(
-                  (template) => template.id === newBindingTemplateId,
-                )?.command || t('assistants.未选择模板')}
-              </div>
-            ) : null}
-            <div className="assistant-form-actions">
-              <button
-                type="button"
-                className="btn-primary"
-                onClick={() => void handleCreateBinding()}
-                disabled={
-                  !newBindingTemplateId.trim() ||
-                  resourceSavingKey === 'binding:create'
-                }
-              >
-                {resourceSavingKey === 'binding:create'
-                  ? t('assistants.新增中...')
-                  : t('assistants.新增')}
-              </button>
-            </div>
-          </section>
-        ) : null}
-
-        {showBindings ? (
-          <section className="assistant-form assistant-overview-card">
-            <div className="assistant-section-heading">
-              <div>
-                <h4>{t('assistants.当前绑定')}</h4>
-                <p>
-                  {t(
-                    'assistants.这里统一管理当前助手的 MCP 绑定和代码仓库绑定。',
-                  )}
-                </p>
-              </div>
-            </div>
+          </div>
+          <div className="assistant-form-grid">
+            <label>
+              {t('assistants.模板')}
+              <AppSelect
+                value={newBindingTemplateId}
+                onChange={setNewBindingTemplateId}
+                ariaLabel={t('assistants.选择 MCP 模板')}
+                options={templates.map((template) => ({
+                  value: template.id,
+                  label: `${template.name} · env ${template.envKeyCount}`,
+                  disabled: !template.enabled,
+                }))}
+              />
+            </label>
+            <label>
+              {t('assistants.别名')}
+              <input
+                value={newBindingAlias}
+                onChange={(event) => setNewBindingAlias(event.target.value)}
+                placeholder={t('assistants.留空则跟随模板名')}
+              />
+            </label>
+            <label className="full">
+              {t('assistants.参数覆盖')}
+              <input
+                value={newBindingArgsText}
+                onChange={(event) => setNewBindingArgsText(event.target.value)}
+                placeholder={t('assistants.空格分隔；留空则跟随模板参数')}
+              />
+            </label>
+          </div>
+          {templates.length > 0 ? (
             <div className="assistant-inline-stack">
-              <strong>{t('assistants.生效运行时')}</strong>
-              <span>
-                {repoBindings.length > 0
-                  ? `${t('assistants.主 project root 候选：')}${
-                      repoBindings[0]?.worktreePath ||
-                      repoBindings[0]?.localPath ||
-                      repoBindings[0]?.repositoryName
-                    }`
-                  : t(
-                      'assistants.当前没有仓库工作目录，助手运行时不会获得 repo project root override。',
-                    )}
-              </span>
+              {templates.find((template) => template.id === newBindingTemplateId)
+                ?.command || t('assistants.未选择模板')}
             </div>
-            {bindings.length > 0 ? (
-              <div className="assistant-binding-list">
-                {bindings.map((binding) => {
-                  const draft = bindingDraftsById[binding.id] || {
-                    alias: binding.alias || '',
-                    argsText: binding.args.join(' '),
-                    enabled: binding.enabled,
-                  };
-                  return (
-                    <div key={binding.id} className="assistant-binding-card">
-                      <div className="assistant-binding-summary">
-                        <div>
-                          <strong>
-                            {binding.alias || binding.templateName}
-                          </strong>
-                          <span>
-                            {binding.templateName} ·{' '}
-                            {formatBindingSourceLabel(binding.source, t)}
-                          </span>
-                        </div>
-                        <div className="assistant-chip-row">
-                          <span className="assistant-mini-chip">
-                            {binding.secretStatus.configured
-                              ? t('assistants.已配认证 {{count}}', {
-                                  count: binding.secretStatus.keyCount,
-                                })
-                              : t('assistants.未配认证')}
-                          </span>
-                          {binding.usesTemplateEnvFallback ? (
-                            <span className="assistant-mini-chip">
-                              {t('assistants.模板认证回退')}
-                            </span>
-                          ) : null}
-                        </div>
+          ) : null}
+          <div className="assistant-form-actions">
+            <button
+              type="button"
+              className="btn-primary"
+              onClick={() => void handleCreateBinding()}
+              disabled={
+                !newBindingTemplateId.trim() ||
+                resourceSavingKey === 'binding:create'
+              }
+            >
+              {resourceSavingKey === 'binding:create'
+                ? t('assistants.新增中...')
+                : t('assistants.新增')}
+            </button>
+          </div>
+        </section>
+
+        <section className="assistant-modal-panel">
+          <div className="assistant-section-heading">
+            <div>
+              <h4>{t('assistants.当前绑定')}</h4>
+              <p>
+                {t(
+                  'assistants.这里统一管理当前助手的 MCP 绑定和代码仓库绑定。',
+                )}
+              </p>
+            </div>
+          </div>
+          <div className="assistant-inline-stack">
+            <strong>{t('assistants.生效运行时')}</strong>
+            <span>
+              {repoBindings.length > 0
+                ? `${t('assistants.主 project root 候选：')}${
+                    repoBindings[0]?.worktreePath ||
+                    repoBindings[0]?.localPath ||
+                    repoBindings[0]?.repositoryName
+                  }`
+                : t(
+                    'assistants.当前没有仓库工作目录，助手运行时不会获得 repo project root override。',
+                  )}
+            </span>
+          </div>
+          {bindings.length > 0 ? (
+            <div className="assistant-binding-list">
+              {bindings.map((binding) => {
+                const draft = bindingDraftsById[binding.id] || {
+                  alias: binding.alias || '',
+                  argsText: binding.args.join(' '),
+                  enabled: binding.enabled,
+                };
+                return (
+                  <div key={binding.id} className="assistant-binding-card">
+                    <div className="assistant-binding-summary">
+                      <div>
+                        <strong>{binding.alias || binding.templateName}</strong>
+                        <span>
+                          {binding.templateName} ·{' '}
+                          {formatBindingSourceLabel(binding.source, t)}
+                        </span>
                       </div>
-                      <div className="assistant-binding-grid">
-                        <label>
-                          {t('assistants.别名')}
-                          <input
-                            value={draft.alias}
-                            onChange={(event) =>
-                              setBindingDraftsById((prev) => ({
-                                ...prev,
-                                [binding.id]: {
-                                  ...draft,
-                                  alias: event.target.value,
-                                },
-                              }))
-                            }
-                            placeholder={t('assistants.留空则显示模板名')}
-                          />
-                        </label>
-                        <label>
-                          {t('assistants.参数')}
-                          <input
-                            value={draft.argsText}
-                            onChange={(event) =>
-                              setBindingDraftsById((prev) => ({
-                                ...prev,
-                                [binding.id]: {
-                                  ...draft,
-                                  argsText: event.target.value,
-                                },
-                              }))
-                            }
-                            placeholder={t('assistants.空格分隔')}
-                          />
-                        </label>
-                        <NcCheckbox
-                          className="assistant-toggle"
-                          checked={draft.enabled}
+                      <div className="assistant-chip-row">
+                        <span className="assistant-mini-chip">
+                          {binding.secretStatus.configured
+                            ? t('assistants.已配认证 {{count}}', {
+                                count: binding.secretStatus.keyCount,
+                              })
+                            : t('assistants.未配认证')}
+                        </span>
+                        {binding.usesTemplateEnvFallback ? (
+                          <span className="assistant-mini-chip">
+                            {t('assistants.模板认证回退')}
+                          </span>
+                        ) : null}
+                      </div>
+                    </div>
+                    <div className="assistant-binding-grid">
+                      <label>
+                        {t('assistants.别名')}
+                        <input
+                          value={draft.alias}
                           onChange={(event) =>
                             setBindingDraftsById((prev) => ({
                               ...prev,
                               [binding.id]: {
                                 ...draft,
-                                enabled: event.target.checked,
+                                alias: event.target.value,
                               },
                             }))
                           }
-                          label={t('assistants.启用该绑定')}
+                          placeholder={t('assistants.留空则显示模板名')}
                         />
-                      </div>
-                      <div className="assistant-inline-stack">
-                        <span>
-                          {t('assistants.模板环境变量：')}
-                          {binding.templateEnvKeys.length > 0
-                            ? ` ${binding.templateEnvKeys.join(', ')}`
-                            : ` ${t('assistants.无')}`}
-                        </span>
-                        <span>
-                          {t('assistants.认证更新时间：')}
-                          {binding.secretStatus.updatedAt ||
-                            ` ${t('assistants.未配置')}`}
-                        </span>
-                      </div>
-                      {binding.usesTemplateEnvFallback ? (
-                        <div className="assistant-warning-note">
-                          {t(
-                            'assistants.该绑定当前仍在使用模板级 env 回退。为了满足助手隔离，建议尽快在管理认证里写入当前助手自己的密钥。',
-                          )}
-                        </div>
-                      ) : null}
-                      <div className="assistant-binding-actions">
-                        <button
-                          type="button"
-                          className="btn-primary btn-sm"
-                          onClick={() => void handleUpdateBinding(binding.id)}
-                          disabled={
-                            resourceSavingKey === `binding:${binding.id}`
+                      </label>
+                      <label>
+                        {t('assistants.参数')}
+                        <input
+                          value={draft.argsText}
+                          onChange={(event) =>
+                            setBindingDraftsById((prev) => ({
+                              ...prev,
+                              [binding.id]: {
+                                ...draft,
+                                argsText: event.target.value,
+                              },
+                            }))
                           }
-                        >
-                          {resourceSavingKey === `binding:${binding.id}`
-                            ? t('assistants.保存中...')
-                            : t('assistants.保存修改')}
-                        </button>
-                        <button
-                          type="button"
-                          className="btn-outline btn-sm"
-                          onClick={() => void handleOpenSecrets(binding.id)}
-                        >
-                          {t('assistants.管理认证')}
-                        </button>
-                        <button
-                          type="button"
-                          className="btn-danger btn-sm"
-                          onClick={() => void handleDeleteBinding(binding.id)}
-                          disabled={
-                            resourceSavingKey === `binding:delete:${binding.id}`
-                          }
-                        >
-                          {t('assistants.删除')}
-                        </button>
-                      </div>
+                          placeholder={t('assistants.空格分隔')}
+                        />
+                      </label>
+                      <NcCheckbox
+                        className="assistant-toggle"
+                        checked={draft.enabled}
+                        onChange={(event) =>
+                          setBindingDraftsById((prev) => ({
+                            ...prev,
+                            [binding.id]: {
+                              ...draft,
+                              enabled: event.target.checked,
+                            },
+                          }))
+                        }
+                        label={t('assistants.启用该绑定')}
+                      />
                     </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <div className="assistant-empty-state">
-                <h3>{t('assistants.还没有 MCP 绑定')}</h3>
-                <p>
-                  {t(
-                    'assistants.这正是当前页面要解决的问题。先从上面的模板库创建一个绑定，再给它配置当前助手自己的认证。',
-                  )}
-                </p>
-              </div>
-            )}
-            <div
-              className="assistant-section-heading"
-              style={{ marginTop: '20px' }}
-            >
-              <div>
-                <h4>{t('assistants.代码仓库绑定')}</h4>
-                <p>
-                  {t(
-                    'assistants.这些仓库会参与助手运行时的 repo roots 与 project root 计算。',
-                  )}
-                </p>
-              </div>
+                    <div className="assistant-inline-stack">
+                      <span>
+                        {t('assistants.模板环境变量：')}
+                        {binding.templateEnvKeys.length > 0
+                          ? ` ${binding.templateEnvKeys.join(', ')}`
+                          : ` ${t('assistants.无')}`}
+                      </span>
+                      <span>
+                        {t('assistants.认证更新时间：')}
+                        {binding.secretStatus.updatedAt ||
+                          ` ${t('assistants.未配置')}`}
+                      </span>
+                    </div>
+                    {binding.usesTemplateEnvFallback ? (
+                      <div className="assistant-warning-note">
+                        {t(
+                          'assistants.该绑定当前仍在使用模板级 env 回退。为了满足助手隔离，建议尽快在管理认证里写入当前助手自己的密钥。',
+                        )}
+                      </div>
+                    ) : null}
+                    <div className="assistant-binding-actions">
+                      <button
+                        type="button"
+                        className="btn-primary btn-sm"
+                        onClick={() => void handleUpdateBinding(binding.id)}
+                        disabled={resourceSavingKey === `binding:${binding.id}`}
+                      >
+                        {resourceSavingKey === `binding:${binding.id}`
+                          ? t('assistants.保存中...')
+                          : t('assistants.保存修改')}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-outline btn-sm"
+                        onClick={() => void handleOpenSecrets(binding.id)}
+                      >
+                        {t('assistants.管理认证')}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-danger btn-sm"
+                        onClick={() => void handleDeleteBinding(binding.id)}
+                        disabled={
+                          resourceSavingKey === `binding:delete:${binding.id}`
+                        }
+                      >
+                        {t('assistants.删除')}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
-            <RepositoryBindingPicker
-              ownerType="assistant"
-              ownerId={selectedAssistant.id}
-              onBindingChange={() =>
-                void loadAssistantResources(selectedAssistant.id, true)
-              }
-              renderActions={(binding) => {
-                const config = binding.config || {};
-                const hasWorktree = !!config.worktree_path;
-                return (
-                  <>
-                    <button
-                      type="button"
-                      className="btn-outline btn-xs"
-                      disabled={repoSaving}
-                      onClick={() => {
+          ) : (
+            <div className="assistant-empty-state assistant-compact-empty">
+              <h3>{t('assistants.还没有 MCP 绑定')}</h3>
+              <p>
+                {t(
+                  'assistants.这正是当前页面要解决的问题。先从上面的模板库创建一个绑定，再给它配置当前助手自己的认证。',
+                )}
+              </p>
+            </div>
+          )}
+        </section>
+
+        <section className="assistant-modal-panel">
+          <div className="assistant-section-heading">
+            <div>
+              <h4>{t('assistants.代码仓库绑定')}</h4>
+              <p>
+                {t(
+                  'assistants.这些仓库会参与助手运行时的 repo roots 与 project root 计算。',
+                )}
+              </p>
+            </div>
+          </div>
+          <RepositoryBindingPicker
+            ownerType="assistant"
+            ownerId={selectedAssistant.id}
+            onBindingChange={() =>
+              void loadAssistantResources(selectedAssistant.id, true)
+            }
+            renderActions={(binding) => {
+              const config = binding.config || {};
+              const hasWorktree = !!config.worktree_path;
+              return (
+                <>
+                  <button
+                    type="button"
+                    className="btn-outline btn-xs"
+                    disabled={repoSaving}
+                    onClick={() => {
+                      void (async () => {
+                        setRepoSaving(true);
+                        try {
+                          await repoBindingRequest(
+                            selectedAssistant.id,
+                            `/${encodeURIComponent(binding.id)}/provision`,
+                            { method: 'POST' },
+                          );
+                        } finally {
+                          setRepoSaving(false);
+                        }
+                      })();
+                    }}
+                  >
+                    {hasWorktree ? t('assistants.同步') : t('assistants.克隆')}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-outline btn-xs"
+                    disabled={repoSaving}
+                    onClick={() => {
+                      const branch = prompt(
+                        t('assistants.切换到分支:'),
+                        binding.branch || 'main',
+                      );
+                      if (branch != null && branch.trim()) {
                         void (async () => {
                           setRepoSaving(true);
                           try {
                             await repoBindingRequest(
                               selectedAssistant.id,
-                              `/${encodeURIComponent(binding.id)}/provision`,
-                              { method: 'POST' },
+                              `/${encodeURIComponent(binding.id)}/switch-branch`,
+                              {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ branch: branch.trim() }),
+                              },
                             );
                           } finally {
                             setRepoSaving(false);
                           }
                         })();
-                      }}
-                    >
-                      {hasWorktree
-                        ? t('assistants.同步')
-                        : t('assistants.克隆')}
-                    </button>
-                    <button
-                      type="button"
-                      className="btn-outline btn-xs"
-                      disabled={repoSaving}
-                      onClick={() => {
-                        const branch = prompt(
-                          t('assistants.切换到分支:'),
-                          binding.branch || 'main',
-                        );
-                        if (branch != null && branch.trim()) {
-                          void (async () => {
-                            setRepoSaving(true);
-                            try {
-                              await repoBindingRequest(
-                                selectedAssistant.id,
-                                `/${encodeURIComponent(binding.id)}/switch-branch`,
-                                {
-                                  method: 'POST',
-                                  headers: {
-                                    'Content-Type': 'application/json',
-                                  },
-                                  body: JSON.stringify({
-                                    branch: branch.trim(),
-                                  }),
-                                },
-                              );
-                            } finally {
-                              setRepoSaving(false);
-                            }
-                          })();
-                        }
-                      }}
-                    >
-                      {t('assistants.切换分支')}
-                    </button>
-                  </>
-                );
-              }}
-            />
-            {repoBindings.length > 0 ? (
-              <div
-                className="assistant-binding-list"
-                style={{ marginTop: '12px' }}
-              >
-                {repoBindings.map((binding) => (
-                  <div key={binding.id} className="assistant-binding-card">
-                    <div className="assistant-binding-summary">
-                      <div>
-                        <strong>{binding.repositoryName}</strong>
-                        <span>
-                          {binding.activeBranch || binding.defaultBranch} ·{' '}
-                          {binding.enabled
-                            ? t('assistants.已启用')
-                            : t('assistants.已停用')}
-                        </span>
-                      </div>
-                      <div className="assistant-chip-row">
-                        <span className="assistant-mini-chip">
-                          {binding.worktreePath
-                            ? t('assistants.已 provision')
-                            : t('assistants.未 provision')}
-                        </span>
-                      </div>
+                      }
+                    }}
+                  >
+                    {t('assistants.切换分支')}
+                  </button>
+                </>
+              );
+            }}
+          />
+          {repoBindings.length > 0 ? (
+            <div className="assistant-binding-list assistant-repo-binding-list">
+              {repoBindings.map((binding) => (
+                <div key={binding.id} className="assistant-binding-card">
+                  <div className="assistant-binding-summary">
+                    <div>
+                      <strong>{binding.repositoryName}</strong>
+                      <span>
+                        {binding.activeBranch || binding.defaultBranch} ·{' '}
+                        {binding.enabled
+                          ? t('assistants.已启用')
+                          : t('assistants.已停用')}
+                      </span>
                     </div>
-                    <div className="assistant-inline-stack">
-                      <span>
-                        {t('assistants.默认分支：')}
-                        {binding.defaultBranch}
-                      </span>
-                      <span>
-                        {t('assistants.分支白名单：')}
-                        {binding.branchFilter.length
-                          ? binding.branchFilter.join(', ')
-                          : t('assistants.未限制')}
-                      </span>
-                      <span>
-                        {t('assistants.工作目录：')}
-                        {binding.worktreePath ||
-                          binding.localPath ||
-                          t('assistants.未生成')}
+                    <div className="assistant-chip-row">
+                      <span className="assistant-mini-chip">
+                        {binding.worktreePath
+                          ? t('assistants.已 provision')
+                          : t('assistants.未 provision')}
                       </span>
                     </div>
                   </div>
-                ))}
-              </div>
-            ) : null}
-          </section>
-        ) : null}
+                  <div className="assistant-inline-stack">
+                    <span>
+                      {t('assistants.默认分支：')}
+                      {binding.defaultBranch}
+                    </span>
+                    <span>
+                      {t('assistants.分支白名单：')}
+                      {binding.branchFilter.length
+                        ? binding.branchFilter.join(', ')
+                        : t('assistants.未限制')}
+                    </span>
+                    <span>
+                      {t('assistants.工作目录：')}
+                      {binding.worktreePath ||
+                        binding.localPath ||
+                        t('assistants.未生成')}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </section>
       </div>
     );
   };
@@ -2367,91 +2283,125 @@ export function AssistantsPage({
   const renderDetailWorkbench = () => {
     if (!selectedAssistant) return null;
     const statusMeta = assistantCatalogMetaById[selectedAssistant.id];
-    const providerLabel = getAssistantProviderLabel(selectedAssistant, providers);
-    const modelLabel = getAssistantModelLabel(selectedAssistant, providers);
+    const providerLabel = getAssistantProviderLabel(
+      selectedAssistant,
+      providers,
+      t,
+    );
+    const modelLabel = getAssistantModelLabel(selectedAssistant, providers, t);
+    const conversationCount = conversationCountMap.get(selectedAssistant.id) ?? 0;
+    const runState = getAssistantRunState(
+      selectedAssistant,
+      statusMeta?.status || 'attention',
+      conversationCount,
+      t,
+    );
 
     return (
-      <div className="assistant-detail-workbench">
-        <aside className="assistant-detail-aside">
-          <div className="assistant-detail-profile">
-            <div className="assistant-detail-avatar">
+      <div className="assistant-modal-body">
+        <section className="assistant-modal-hero">
+          <div className="assistant-modal-hero-main">
+            <div className="assistant-modal-avatar">
               {getAssistantInitials(selectedAssistant.name)}
             </div>
-            <div className="assistant-detail-copy">
+            <div className="assistant-modal-copy">
               <h3>{selectedAssistant.name}</h3>
-              <p>{selectedAssistant.description || 'No description yet.'}</p>
+              <p>{selectedAssistant.description || t('暂无描述')}</p>
+              <div className="assistant-modal-chip-row">
+                <span
+                  className={`assistant-run-pill tone-${runState.tone}`}
+                >
+                  {runState.label}
+                </span>
+                <span className="assistant-card-visibility-tag">
+                  {providerLabel}
+                </span>
+                <span className="assistant-card-role-tag">{modelLabel}</span>
+                <span className="assistant-card-visibility-tag">
+                  {selectedAssistant.visibility === 'shared'
+                    ? t('公开')
+                    : t('私有')}
+                </span>
+              </div>
             </div>
           </div>
-          <div className="assistant-detail-chip-row">
-            <span
-              className={`assistant-card-status is-${formatAssistantCatalogStatusTone(
-                statusMeta?.status || 'attention',
-              )}`}
-            >
-              {formatAssistantCatalogStatusLabel(
-                statusMeta?.status || 'attention',
-                t,
-              )}
-            </span>
-            <span className="assistant-card-visibility-tag">{providerLabel}</span>
-            <span className="assistant-card-role-tag">{modelLabel}</span>
-          </div>
-          <div className="assistant-detail-toggle-card">
-            <div>
-              <strong>Agent status</strong>
-              <p>Turn this off to pause new chats until you enable it again.</p>
+          <div className="assistant-modal-hero-side">
+            <div className="assistant-detail-toggle-card">
+              <div>
+                <strong>{t('运行状态')}</strong>
+                <p>{t('关闭后将无法在对话或工作流中使用')}</p>
+              </div>
+              <NcCheckbox
+                className="assistant-toggle assistant-detail-toggle"
+                checked={detailForm.enabled}
+                onChange={(event) =>
+                  setDetailForm((prev) => ({
+                    ...prev,
+                    enabled: event.target.checked,
+                  }))
+                }
+                label=""
+              />
             </div>
-            <NcCheckbox
-              className="assistant-toggle assistant-detail-toggle"
-              checked={detailForm.enabled}
-              onChange={(event) =>
-                setDetailForm((prev) => ({
-                  ...prev,
-                  enabled: event.target.checked,
-                }))
-              }
-              label=""
-            />
+            <div className="assistant-modal-stat-row">
+              {(selectedAssistant.config.kbIds?.length ?? 0) > 0 ? (
+                <span>{t('知识库计数', { count: selectedAssistant.config.kbIds.length })}</span>
+              ) : null}
+              {(selectedAssistant.config.skillIds?.length ?? 0) > 0 ? (
+                <span>{t('技能计数', { count: selectedAssistant.config.skillIds.length })}</span>
+              ) : null}
+              {(selectedAssistant.config.mcpServerIds?.length ?? 0) > 0 ? (
+                <span>{t('MCP计数', { count: selectedAssistant.config.mcpServerIds.length })}</span>
+              ) : null}
+              {conversationCount > 0 ? (
+                <span>{t('会话计数', { count: conversationCount })}</span>
+              ) : null}
+            </div>
+            <div className="assistant-modal-action-row">
+              <button
+                type="button"
+                className="btn-primary btn-sm"
+                onClick={() => onStartChat(selectedAssistant.id)}
+                disabled={!selectedAssistant.enabled}
+              >
+                {t('开始对话')}
+              </button>
+              <button
+                type="button"
+                className="btn-outline btn-sm"
+                onClick={handleCreateFromCurrentAssistant}
+              >
+                {t('复制')}
+              </button>
+              <button
+                type="button"
+                className="btn-outline btn-sm"
+                onClick={() => {
+                  window.open(
+                    `${apiBase}/api/assistants/${encodeURIComponent(
+                      selectedAssistant.id,
+                    )}/export`,
+                    '_blank',
+                  );
+                }}
+              >
+                {t('导出')}
+              </button>
+            </div>
           </div>
-          <div className="assistant-detail-side-actions">
-            <button
-              type="button"
-              className="btn-primary btn-sm"
-              onClick={() => onStartChat(selectedAssistant.id)}
-              disabled={!selectedAssistant.enabled}
-            >
-              Start chat
-            </button>
-            <button
-              type="button"
-              className="btn-outline btn-sm"
-              onClick={handleCreateFromCurrentAssistant}
-            >
-              Duplicate
-            </button>
-            <button
-              type="button"
-              className="btn-outline btn-sm"
-              onClick={() => {
-                setResourceDrawerSection('bindings');
-                setDrawerView('resources');
-              }}
-            >
-              Tools & Bindings
-            </button>
-          </div>
-        </aside>
-        <section className="assistant-detail-main">
-          <div className="assistant-detail-card assistant-detail-card--wide">
+        </section>
+
+        <div className="assistant-modal-form-layout">
+          <section className="assistant-modal-panel assistant-modal-panel--wide">
             <div className="assistant-section-heading">
               <div>
-                <h4>Basic info</h4>
-                <p>Keep name, description, provider, and model in one compact area.</p>
+                <h4>{t('基础配置')}</h4>
+                <p>{t('基础信息')}</p>
               </div>
             </div>
             <div className="assistant-form-grid">
               <label>
-                Name
+                {t('名称')}
                 <input
                   value={detailForm.name}
                   onChange={(event) =>
@@ -2463,7 +2413,7 @@ export function AssistantsPage({
                 />
               </label>
               <label>
-                Description
+                {t('用途说明')}
                 <input
                   value={detailForm.description}
                   onChange={(event) =>
@@ -2475,7 +2425,7 @@ export function AssistantsPage({
                 />
               </label>
               <label>
-                Provider
+                {t('提供商')}
                 <AppSelect
                   value={detailForm.providerId}
                   onChange={(nextValue) =>
@@ -2484,12 +2434,12 @@ export function AssistantsPage({
                       providerId: nextValue,
                     }))
                   }
-                  ariaLabel="Assistant provider"
+                  ariaLabel={t('提供商')}
                   options={providerOptions}
                 />
               </label>
               <label>
-                Model
+                {t('模型')}
                 <input
                   value={detailForm.model}
                   onChange={(event) =>
@@ -2498,6 +2448,7 @@ export function AssistantsPage({
                       model: event.target.value,
                     }))
                   }
+                  placeholder={t('默认模型')}
                 />
               </label>
               <NcCheckbox
@@ -2509,21 +2460,21 @@ export function AssistantsPage({
                     visibility: event.target.checked ? 'shared' : 'private',
                   }))
                 }
-                label="Shared"
+                label={t('公开')}
               />
             </div>
-          </div>
+          </section>
 
-          <div className="assistant-detail-card">
+          <section className="assistant-modal-panel">
             <div className="assistant-section-heading">
               <div>
-                <h4>Rules</h4>
-                <p>Expose runtime behavior clearly without turning the modal into a drawer.</p>
+                <h4>{t('规则与提示词')}</h4>
+                <p>{t('assistants.规则约束、系统提示等进阶配置')}</p>
               </div>
             </div>
             <div className="assistant-form-grid assistant-form-grid--single">
               <label>
-                Rule mode
+                {t('assistants.规则模式')}
                 <AppSelect
                   value={detailForm.ruleMode}
                   onChange={(nextValue) =>
@@ -2532,23 +2483,12 @@ export function AssistantsPage({
                       ruleMode: nextValue as AssistantFormState['ruleMode'],
                     }))
                   }
-                  ariaLabel="Rule mode"
+                  ariaLabel={t('assistants.规则模式')}
                   options={getRuleModeOptions(t)}
                 />
               </label>
-            </div>
-          </div>
-
-          <div className="assistant-detail-card assistant-detail-card--wide">
-            <div className="assistant-section-heading">
-              <div>
-                <h4>System prompt</h4>
-                <p>Keep core instructions and extra notes in one focused editing block.</p>
-              </div>
-            </div>
-            <div className="assistant-form-grid">
               <label className="full">
-                System Prompt
+                {t('系统提示词')}
                 <textarea
                   rows={5}
                   value={detailForm.systemPrompt}
@@ -2561,7 +2501,7 @@ export function AssistantsPage({
                 />
               </label>
               <label className="full">
-                Extra Instructions
+                {t('补充说明')}
                 <textarea
                   rows={4}
                   value={detailForm.extraInstructions}
@@ -2574,18 +2514,18 @@ export function AssistantsPage({
                 />
               </label>
             </div>
-          </div>
+          </section>
 
-          <div className="assistant-detail-card assistant-detail-card--wide">
+          <section className="assistant-modal-panel assistant-modal-panel--wide">
             <div className="assistant-section-heading">
               <div>
-                <h4>Persona</h4>
-                <p>Group role, style, guidelines, and constraints into a clean detail section.</p>
+                <h4>{t('人设配置')}</h4>
+                <p>{t('assistants.定义助手的角色定位、回复风格、行为准则和约束限制')}</p>
               </div>
             </div>
             <div className="assistant-persona-grid">
               <label className="assistant-field">
-                <span>Role</span>
+                <span>{t('角色定位')}</span>
                 <textarea
                   rows={3}
                   value={detailForm.personaRole}
@@ -2598,7 +2538,7 @@ export function AssistantsPage({
                 />
               </label>
               <label className="assistant-field">
-                <span>Style</span>
+                <span>{t('回复风格')}</span>
                 <textarea
                   rows={3}
                   value={detailForm.personaStyle}
@@ -2611,7 +2551,7 @@ export function AssistantsPage({
                 />
               </label>
               <label className="assistant-field full">
-                <span>Guidelines</span>
+                <span>{t('行为准则')}</span>
                 <textarea
                   rows={4}
                   value={detailForm.personaGuidelines}
@@ -2624,7 +2564,7 @@ export function AssistantsPage({
                 />
               </label>
               <label className="assistant-field full">
-                <span>Constraints</span>
+                <span>{t('约束限制')}</span>
                 <textarea
                   rows={4}
                   value={detailForm.personaConstraints}
@@ -2637,117 +2577,84 @@ export function AssistantsPage({
                 />
               </label>
             </div>
-          </div>
+          </section>
+        </div>
 
-          <div className="assistant-detail-footer">
-            <button
-              type="button"
-              className="btn-outline btn-sm"
-              onClick={() => {
-                window.open(
-                  `${apiBase}/api/assistants/${encodeURIComponent(selectedAssistant.id)}/export`,
-                  '_blank',
-                );
-              }}
-            >
-              Export
-            </button>
-            <button
-              type="button"
-              className="btn-danger btn-sm"
-              onClick={() => void handleDeleteAssistant(selectedAssistant)}
-              disabled={deletingAssistantId === selectedAssistant.id}
-            >
-              {deletingAssistantId === selectedAssistant.id
-                ? 'Deleting...'
-                : 'Delete'}
-            </button>
-            <button
-              type="button"
-              className="btn-primary btn-sm"
-              onClick={() => void handleDetailSubmit()}
-            >
-              Save changes
-            </button>
+        <section className="assistant-modal-panel assistant-modal-panel--wide">
+          <div className="assistant-section-heading">
+            <div>
+              <h4>{t('资源与接入')}</h4>
+              <p>{t('assistants.助手独立持有自己的 Skills、MCP 绑定和认证状态，全局这里只作为模板库来源')}</p>
+            </div>
           </div>
+          {renderAssistantResources()}
         </section>
+
+        <div className="assistant-detail-footer">
+          <button
+            type="button"
+            className="btn-danger btn-sm"
+            onClick={() => void handleDeleteAssistant(selectedAssistant)}
+            disabled={deletingAssistantId === selectedAssistant.id}
+          >
+            {deletingAssistantId === selectedAssistant.id
+              ? t('删除中...')
+              : t('删除')}
+          </button>
+          <button
+            type="button"
+            className="btn-primary btn-sm"
+            onClick={() => void handleDetailSubmit()}
+          >
+            {t('保存更改')}
+          </button>
+        </div>
       </div>
     );
   };
 
-  const activeAssistantTab =
-    drawerView === 'secret'
-      ? 'auth'
-      : drawerView === 'resources'
-        ? resourceDrawerSection === 'skills'
-          ? 'skills'
-          : resourceDrawerSection === 'auth'
-            ? 'auth'
-            : 'bindings'
-        : 'details';
-
   return (
-    <div className="page-view assistants-page">
-      <div className="assistants-toolbar-shell">
-        <div className="assistants-toolbar-title">
-          <h1>Agent Management</h1>
+    <div className="page-view workflow-page is-library assistants-page">
+      <div className="workflow-topbar assistant-page-topbar">
+        <div className="workflow-topbar-title">
+          <div className="workflow-title-stack">
+            <h2>{t('Agent')}</h2>
+            <span>{t('管理自定义 Agent 与运行配置')}</span>
+          </div>
         </div>
-        <div className="assistants-toolbar-main">
-          <div className="assistant-catalog-search-wrap assistants-toolbar-search">
+        <div className="workflow-topbar-controls">
+          <label className="workflow-searchbar">
+            <span className="workflow-search-icon" aria-hidden="true">
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <circle cx="11" cy="11" r="8" />
+                <path d="m21 21-4.3-4.3" />
+              </svg>
+            </span>
             <input
-              className="assistant-catalog-search-input"
               value={catalogSearch}
               onChange={(event) => {
                 setCatalogSearch(event.target.value);
               }}
-              placeholder="搜索助手名称、描述或 ID"
+              placeholder={t('搜索助手名称、描述或标签...')}
+              aria-label={t('搜索助手名称、描述或标签...')}
             />
-            {!catalogSearch && (
-              <span
-                className="assistant-catalog-search-icon"
-                aria-hidden="true"
-              >
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <circle cx="11" cy="11" r="8" />
-                  <path d="m21 21-4.3-4.3" />
-                </svg>
-              </span>
-            )}
-          </div>
-          <div className="assistants-toolbar-actions">
-            <AppSelect
-              value={catalogFilter}
-              onChange={(nextValue) => {
-                setCatalogFilter(nextValue as AssistantCatalogFilter);
-              }}
-              ariaLabel="Filter assistant status"
-              options={assistantCatalogFilterOptions}
-            />
-            <button
-              type="button"
-              className="btn-outline"
-              onClick={onRefresh}
-              disabled={loading}
-            >
-              Refresh
-            </button>
-            <button
-              type="button"
-              className="btn-primary"
-              onClick={handleCreateOpen}
-            >
-              New Agent
-            </button>
-          </div>
+          </label>
+          <button
+            type="button"
+            className="btn-primary workflow-create-action"
+            onClick={handleCreateOpen}
+          >
+            {t('新建 Agent')}
+          </button>
         </div>
       </div>
 
@@ -2757,378 +2664,245 @@ export function AssistantsPage({
         </div>
       ) : null}
 
-      <div className="assistants-catalog-section">
+      <div className="workflow-body assistants-catalog-section">
         {loading ? (
           <div className="assistant-empty-state assistant-compact-empty">
-            <p>Loading assistants...</p>
+            <p>{t('助手列表加载中')}</p>
           </div>
         ) : assistants.length === 0 ? (
           <div className="assistant-empty-state">
-            <p>Your assistants will appear here as a responsive card wall.</p>
+            <h3>{t('当前没有创建任何助手')}</h3>
+            <p>{t('创建后这里会展示你的助手卡片和运行配置')}</p>
+          </div>
+        ) : filteredAssistants.length === 0 ? (
+          <div className="assistant-empty-state assistant-compact-empty">
+            <h3>{t('没有匹配的助手')}</h3>
+            <p>{t('试试更短的关键词或检查拼写')}</p>
           </div>
         ) : (
-          <>
-            {filteredAssistants.length === 0 ? (
-              <div className="assistant-empty-state assistant-compact-empty">
-                <h3>No matching assistants</h3>
-                <p>Try a different filter or a shorter search term.</p>
-              </div>
-            ) : (
-              <div className="assistant-cards-grid">
-                {filteredAssistants.map((assistant) => {
-                    const meta = assistantCatalogMetaById[assistant.id];
-                    return (
-                      <div
-                        key={assistant.id}
-                        role="button"
-                        tabIndex={0}
-                        className={`assistant-card-item ${
-                          assistantWorkbenchOpen &&
-                          selectedAssistantId === assistant.id
-                            ? 'active'
-                            : ''
-                        }`}
-                        onClick={() => openAssistantWorkbench(assistant.id)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' || e.key === ' ') {
-                            e.preventDefault();
-                            openAssistantWorkbench(assistant.id);
-                          }
-                        }}
-                      >
-                        <div className="assistant-card-item-header">
+          <section className="workflow-library">
+            <div className="workflow-card-grid assistant-cards-grid assistant-cards-grid--showcase">
+              {filteredAssistants.map((assistant) => {
+                const meta = assistantCatalogMetaById[assistant.id];
+                const conversationCount =
+                  conversationCountMap.get(assistant.id) ?? 0;
+                const runState = getAssistantRunState(
+                  assistant,
+                  meta?.status || 'attention',
+                  conversationCount,
+                  t,
+                );
+                const providerLabel = getAssistantProviderLabel(
+                  assistant,
+                  providers,
+                  t,
+                );
+                const modelLabel = getAssistantModelLabel(
+                  assistant,
+                  providers,
+                  t,
+                );
+
+                return (
+                  <div
+                    key={assistant.id}
+                    role="button"
+                    tabIndex={0}
+                    className={`workflow-library-card repo-review-repo-card assistant-card-item assistant-card-item--showcase ${
+                      assistantWorkbenchOpen &&
+                      selectedAssistantId === assistant.id
+                        ? 'active'
+                        : ''
+                    }`}
+                    onClick={() => openAssistantWorkbench(assistant.id)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        openAssistantWorkbench(assistant.id);
+                      }
+                    }}
+                  >
+                    <div className="assistant-showcase-card-top">
+                      <div className="assistant-showcase-identity">
+                        <div className="assistant-showcase-avatar">
+                          {getAssistantInitials(assistant.name)}
+                        </div>
+                        <div className="assistant-showcase-copy">
                           <strong>{assistant.name}</strong>
-                          <div className="assistant-card-item-badges">
-                            <span
-                              className={`assistant-badge ${assistant.enabled ? 'enabled' : 'disabled'}`}
-                            >
-                              {assistant.enabled ? 'Enabled' : 'Disabled'}
-                            </span>
-                            {meta ? (
-                              <span
-                                className={`assistant-card-status is-${formatAssistantCatalogStatusTone(meta.status)}`}
-                              >
-                                {formatAssistantCatalogStatusLabel(
-                                  meta.status,
-                                  t,
-                                )}
-                              </span>
-                            ) : null}
-                          </div>
-                        </div>
-                        <div className="assistant-card-item-desc">
-                          {assistant.description || 'No description yet.'}
-                        </div>
-                        <div className="assistant-card-item-meta">
-                          {assistant.visibility === 'shared' ? (
-                            <span className="assistant-card-visibility-tag shared">
-                              Public
-                            </span>
-                          ) : (
-                            <span className="assistant-card-visibility-tag">
-                              Private
-                            </span>
-                          )}
-                          {assistant.config.persona?.role ? (
-                            <span className="assistant-card-role-tag">
-                              {assistant.config.persona.role}
-                            </span>
-                          ) : null}
-                          {(assistant.config.kbIds?.length ?? 0) > 0 ? (
-                            <span>
-                              {t('assistants.知识库计数', {
-                                count: assistant.config.kbIds.length,
-                              })}
-                            </span>
-                          ) : null}
-                          {(assistant.config.skillIds?.length ?? 0) > 0 ? (
-                            <span>
-                              {assistant.config.skillIds.length} Skills
-                            </span>
-                          ) : null}
-                          {(assistant.config.mcpServerIds?.length ?? 0) > 0 ? (
-                            <span>
-                              {assistant.config.mcpServerIds.length} MCP
-                            </span>
-                          ) : null}
-                          {(conversationCountMap.get(assistant.id) ?? 0) > 0 ? (
-                            <span>
-                              {t('会话计数', {
-                                count:
-                                  conversationCountMap.get(assistant.id) ?? 0,
-                              })}
-                            </span>
-                          ) : null}
-                        </div>
-                        <div className="assistant-card-item-actions">
-                          <button
-                            type="button"
-                            className="btn-outline btn-xs"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              openAssistantWorkbench(assistant.id);
-                            }}
-                          >
-                            View details
-                          </button>
-                          <button
-                            type="button"
-                            className="btn-outline btn-xs"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              window.open(
-                                `${apiBase}/api/assistants/${encodeURIComponent(assistant.id)}/export`,
-                                '_blank',
-                              );
-                            }}
-                          >
-                            {t('assistants.导出')}
-                          </button>
-                          <button
-                            type="button"
-                            className="btn-primary btn-xs"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onStartChat(assistant.id);
-                            }}
-                            disabled={!assistant.enabled}
-                          >
-                            Chat
-                          </button>
+                          <p>{assistant.description || t('暂无描述')}</p>
                         </div>
                       </div>
-                    );
-                  })}
-              </div>
-            )}
-          </>
+                      <span className="assistant-showcase-menu" aria-hidden="true">
+                        {formatAssistantCatalogStatusLabel(
+                          meta?.status || 'attention',
+                          t,
+                        )}
+                      </span>
+                    </div>
+
+                    <div className="assistant-card-item-meta assistant-card-item-meta--showcase">
+                      <span className="assistant-card-visibility-tag">
+                        {providerLabel}
+                      </span>
+                      {assistant.config.persona?.role ? (
+                        <span className="assistant-card-role-tag">
+                          {assistant.config.persona.role}
+                        </span>
+                      ) : null}
+                      {(assistant.config.kbIds?.length ?? 0) > 0 ? (
+                        <span>
+                          {t('知识库计数', {
+                            count: assistant.config.kbIds.length,
+                          })}
+                        </span>
+                      ) : null}
+                      {(assistant.config.skillIds?.length ?? 0) > 0 ? (
+                        <span>
+                          {t('技能计数', {
+                            count: assistant.config.skillIds.length,
+                          })}
+                        </span>
+                      ) : null}
+                      {(assistant.config.mcpServerIds?.length ?? 0) > 0 ? (
+                        <span>
+                          {t('MCP计数', {
+                            count: assistant.config.mcpServerIds.length,
+                          })}
+                        </span>
+                      ) : null}
+                      {conversationCount > 0 ? (
+                        <span>{t('会话计数', { count: conversationCount })}</span>
+                      ) : null}
+                    </div>
+
+                    <div className="assistant-showcase-footer">
+                      <div className="assistant-showcase-tags">
+                        <span className={`assistant-run-pill tone-${runState.tone}`}>
+                          {runState.label}
+                        </span>
+                        <span className="assistant-showcase-model">
+                          {modelLabel}
+                        </span>
+                      </div>
+                      {meta ? (
+                        <span
+                          className={`assistant-card-status is-${formatAssistantCatalogStatusTone(meta.status)}`}
+                        >
+                          {formatAssistantCatalogStatusLabel(meta.status, t)}
+                        </span>
+                      ) : null}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
         )}
       </div>
 
       {assistantWorkbenchOpen && selectedAssistant ? (
         <div
-          className="assistant-drawer-overlay"
+          className="assistant-drawer-overlay assistant-modal-overlay"
           onClick={closeAssistantWorkbench}
         >
           <div
-            className="assistant-drawer-panel"
+            className="assistant-drawer-panel assistant-modal-panel-shell"
             onClick={(event) => event.stopPropagation()}
           >
-            <div className="assistant-drawer-panel-header">
+            <div className="assistant-drawer-panel-header assistant-modal-header">
               <div>
-                <h3>{selectedAssistant.name}</h3>
-                <p>
-                  {selectedAssistant.description || 'No description yet.'}
-                </p>
+                <h3>{t('Agent 详情')}</h3>
+                <p>{t('查看并编辑当前助手的完整配置、资源和接入关系')}</p>
               </div>
-              <div className="assistant-drawer-panel-header-actions">
-                <button
-                  type="button"
-                  className="btn-primary btn-sm"
-                  onClick={() => onStartChat(selectedAssistant.id)}
-                  disabled={!selectedAssistant.enabled}
-                >
-                  {t('assistants.开始对话')}
-                </button>
-                <button
-                  type="button"
-                  className="btn-outline btn-sm"
-                  onClick={handleCreateFromCurrentAssistant}
-                >
-                  Copy
-                </button>
-                <button
-                  type="button"
-                  className="btn-outline btn-sm"
-                  onClick={() => {
-                    window.open(
-                      `${apiBase}/api/assistants/${encodeURIComponent(selectedAssistant.id)}/export`,
-                      '_blank',
-                    );
-                  }}
-                >
-                  {t('assistants.导出')}
-                </button>
-                <button
-                  type="button"
-                  className="btn-danger btn-sm"
-                  onClick={() => void handleDeleteAssistant(selectedAssistant)}
-                  disabled={deletingAssistantId === selectedAssistant.id}
-                >
-                  {deletingAssistantId === selectedAssistant.id ? 'Deleting...' : 'Delete'}
-                </button>
-                <button
-                  type="button"
-                  className="modal-close-btn"
-                  aria-label="Close"
-                  onClick={closeAssistantWorkbench}
-                >
-                  ×
-                </button>
-              </div>
+              <button
+                type="button"
+                className="modal-close-btn"
+                aria-label={t('关闭')}
+                onClick={closeAssistantWorkbench}
+              >
+                ×
+              </button>
             </div>
-            <div className="assistant-drawer-panel-body">
-              {!drawerView ? (
-                <div className="assistant-edit-tabs">
-                  <div className="assistant-drawer-nav">
-                    <button
-                      type="button"
-                      className={`assistant-drawer-nav-btn ${activeAssistantTab === 'details' ? 'active' : ''}`}
-                      onClick={() => setDrawerView(null)}
-                    >
-                      Details
-                    </button>
-                    <button
-                      type="button"
-                      className={`assistant-drawer-nav-btn ${activeAssistantTab === 'bindings' ? 'active' : ''}`}
-                      onClick={() => {
-                        setResourceDrawerSection('bindings');
-                        setDrawerView('resources');
-                      }}
-                    >
-                      Bindings
-                    </button>
-                    <button
-                      type="button"
-                      className={`assistant-drawer-nav-btn ${activeAssistantTab === 'skills' ? 'active' : ''}`}
-                      onClick={() => {
-                        setResourceDrawerSection('skills');
-                        setDrawerView('resources');
-                      }}
-                    >
-                      Skills
-                    </button>
-                    <button
-                      type="button"
-                      className={`assistant-drawer-nav-btn ${activeAssistantTab === 'auth' ? 'active' : ''}`}
-                      onClick={() => {
-                        setResourceDrawerSection('auth');
-                        setDrawerView('resources');
-                      }}
-                    >
-                      Auth
-                    </button>
-                  </div>
-                  {renderDetailWorkbench()}
-                </div>
-              ) : drawerView === 'resources' ? (
-                <div className="assistant-edit-tabs">
-                  <div className="assistant-drawer-nav">
-                    <button
-                      type="button"
-                      className="assistant-drawer-nav-btn"
-                      onClick={() => setDrawerView(null)}
-                    >
-                      Details
-                    </button>
-                    <button
-                      type="button"
-                      className={`assistant-drawer-nav-btn ${resourceDrawerSection === 'bindings' ? 'active' : ''}`}
-                      onClick={() => setResourceDrawerSection('bindings')}
-                    >
-                      Bindings
-                    </button>
-                    <button
-                      type="button"
-                      className={`assistant-drawer-nav-btn ${resourceDrawerSection === 'skills' ? 'active' : ''}`}
-                      onClick={() => setResourceDrawerSection('skills')}
-                    >
-                      Skills
-                    </button>
-                    <button
-                      type="button"
-                      className={`assistant-drawer-nav-btn ${resourceDrawerSection === 'auth' ? 'active' : ''}`}
-                      onClick={() => setResourceDrawerSection('auth')}
-                    >
-                      Auth
-                    </button>
-                  </div>
-                  {renderResourcesTab()}
-                </div>
-              ) : drawerView === 'secret' && secretModalBindingId ? (
-                <div className="assistant-edit-tabs">
-                  <div className="assistant-drawer-nav">
-                    <button
-                      type="button"
-                      className="assistant-drawer-nav-btn"
-                      onClick={() => setDrawerView(null)}
-                    >
-                      Details
-                    </button>
-                    <button
-                      type="button"
-                      className="assistant-drawer-nav-btn"
-                      onClick={() => {
-                        setResourceDrawerSection('bindings');
-                        setDrawerView('resources');
-                      }}
-                    >
-                      Bindings
-                    </button>
-                    <button
-                      type="button"
-                      className="assistant-drawer-nav-btn active"
-                    >
-                      Auth
-                    </button>
-                  </div>
-                  {secretLoading ? (
-                    <div className="settings-hint">{t('auto.a78de363')}</div>
-                  ) : null}
-                  {bindingSecretsById[secretModalBindingId] ? (
-                    <div className="assistant-inline-stack">
-                      <strong>
-                        {bindingSecretsById[secretModalBindingId]?.secretStatus
-                          .configured
-                          ? t('auto.7ea1dabf', {
-                              count:
-                                bindingSecretsById[secretModalBindingId]
-                                  ?.secretStatus.keyCount,
-                            })
-                          : t('auto.7df6c9b5')}
-                      </strong>
-                    </div>
-                  ) : null}
-                  <label className="full">
-                    {`${t('auto.b7158a42')} env (KEY=VALUE, ${t('auto.16775261')})`}
-                    <textarea
-                      rows={6}
-                      value={secretEnvDraft}
-                      onChange={(event) =>
-                        setSecretEnvDraft(event.target.value)
-                      }
-                      placeholder="API_KEY=...\nBASE_URL=..."
-                    />
-                  </label>
-                  {secretMessage ? (
-                    <div
-                      className={`test-result ${/(fail|error|invalid|失败|错误|无效)/i.test(secretMessage) ? 'error' : 'success'}`}
-                    >
-                      {secretMessage}
-                    </div>
-                  ) : null}
-                  <div className="assistant-button-row">
-                    <button
-                      type="button"
-                      className="btn-danger btn-sm"
-                      onClick={() => void handleDeleteSecrets()}
-                      disabled={secretSaving}
-                    >
-                      {t('auto.6878b8a1')}
-                    </button>
-                    <button
-                      type="button"
-                      className="btn-primary btn-sm"
-                      onClick={() => void handleSaveSecrets()}
-                      disabled={secretSaving}
-                    >
-                      {secretSaving
-                        ? t('assistants.保存中...')
-                        : t('auto.be5fbbe3')}
-                    </button>
-                  </div>
-                </div>
-              ) : null}
+            <div className="assistant-drawer-panel-body assistant-modal-content">
+              {renderDetailWorkbench()}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {assistantWorkbenchOpen && selectedAssistant && secretModalBindingId ? (
+        <div
+          className="assistant-drawer-overlay assistant-secret-modal-overlay"
+          onClick={closeSecretModal}
+        >
+          <div
+            className="assistant-secret-editor assistant-secret-modal"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="assistant-section-heading">
+              <div>
+                <h4>{t('当前绑定认证')}</h4>
+                <p>{t('认证管理')}</p>
+              </div>
+              <button
+                type="button"
+                className="modal-close-btn"
+                aria-label={t('关闭')}
+                onClick={closeSecretModal}
+              >
+                ×
+              </button>
+            </div>
+            {secretLoading ? (
+              <div className="settings-hint">{t('auto.a78de363')}</div>
+            ) : null}
+            {bindingSecretsById[secretModalBindingId] ? (
+              <div className="assistant-inline-stack">
+                <strong>
+                  {bindingSecretsById[secretModalBindingId]?.secretStatus
+                    .configured
+                    ? t('auto.7ea1dabf', {
+                        count:
+                          bindingSecretsById[secretModalBindingId]
+                            ?.secretStatus.keyCount,
+                      })
+                    : t('auto.7df6c9b5')}
+                </strong>
+              </div>
+            ) : null}
+            <label className="full">
+              {`${t('auto.b7158a42')} env (KEY=VALUE, ${t('auto.16775261')})`}
+              <textarea
+                rows={7}
+                value={secretEnvDraft}
+                onChange={(event) => setSecretEnvDraft(event.target.value)}
+                placeholder="API_KEY=...\nBASE_URL=..."
+              />
+            </label>
+            {secretMessage ? (
+              <div
+                className={`test-result ${/(fail|error|invalid|失败|错误|无效)/i.test(secretMessage) ? 'error' : 'success'}`}
+              >
+                {secretMessage}
+              </div>
+            ) : null}
+            <div className="assistant-button-row">
+              <button
+                type="button"
+                className="btn-danger btn-sm"
+                onClick={() => void handleDeleteSecrets()}
+                disabled={secretSaving}
+              >
+                {t('auto.6878b8a1')}
+              </button>
+              <button
+                type="button"
+                className="btn-primary btn-sm"
+                onClick={() => void handleSaveSecrets()}
+                disabled={secretSaving}
+              >
+                {secretSaving ? t('assistants.保存中...') : t('auto.be5fbbe3')}
+              </button>
             </div>
           </div>
         </div>
@@ -3145,7 +2919,7 @@ export function AssistantsPage({
           >
             <div className="assistant-drawer-panel-header">
               <div>
-                <h3>New Agent</h3>
+                <h3>{t('新建助手')}</h3>
                 <p>{t('auto.35107623')}</p>
               </div>
               <button
@@ -3179,8 +2953,8 @@ export function AssistantsPage({
                 ))}
               </div>
               <AssistantEditorPanel
-                title=""
-                subtitle=""
+                title={t('新建 Agent')}
+                subtitle={t('auto.35107623')}
                 form={createForm}
                 setForm={setCreateForm}
                 showAdvanced={createShowAdvanced}

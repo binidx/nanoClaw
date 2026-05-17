@@ -2477,7 +2477,7 @@ export function WorkteamPage({
                   <button
                     key={workflow.id}
                     type="button"
-                    className="workflow-library-card"
+                    className="workflow-library-card repo-review-repo-card"
                     onClick={() => setActiveWorkflowId(workflow.id)}
                   >
                     <div className="workflow-library-card-head">

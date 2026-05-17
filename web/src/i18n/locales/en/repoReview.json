@@ -774,6 +774,7 @@
   "success.webhookCopied": "Webhook URL copied.",
   "auto.c270fc6f": "Repository",
   "auto.c83b1969": "The repository page reuses the mature code review workbench to avoid maintaining a forked repository-specific interface",
+  "仓库页用于管理仓库工作区与代码审查配置。": "Manage repository workspaces and code review configuration.",
   "workspace.repositoryWorkspace": "Repository Workspace",
   "editor.repositoryEditor": "Repository Editor",
   "editor.profileEditor": "Profile Editor",

@@ -978,6 +978,9 @@ export interface RepoReviewRun {
   findings: RepoReviewFinding[];
   reviewTurns: AssistantTurn[];
   reviewProgress?: {
+    snapshotVersion?: number;
+    heartbeatAt?: string;
+    runTerminal?: boolean;
     turnCount: number;
     latestAssistantText: string;
     latestErrorText: string | null;

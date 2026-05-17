@@ -286,11 +286,27 @@
 
 .repository-review-page-body {
   padding-top: 0;
-  max-width: 1280px;
+  max-width: 1360px;
   margin: 0 auto;
   width: 100%;
   display: grid;
   gap: 14px;
+}
+
+.repo-review-panel--embedded.workflow-page.is-library {
+  gap: 0;
+}
+
+.repo-review-panel--embedded .repo-review-workspace-list {
+  position: static;
+  max-height: none;
+  overflow: visible;
+}
+
+.repo-review-panel--embedded .repo-review-library-pagination {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 12px;
 }
 
 .repository-review-page-body .repo-review-panel--embedded.settings-section {
@@ -301,18 +317,9 @@
   box-shadow: none;
 }
 
-.repository-review-page .nc-page-header-surface {
-  padding-bottom: 18px;
-}
-
 .repository-review-page .repo-review-panel-toolbar--embedded {
   align-items: center;
   padding: 0 4px;
-}
-
-.repository-review-page .nc-page-subtitle,
-.repository-page .page-header-copy p {
-  max-width: 60ch;
 }
 
 .repo-review-workspace-layout--focused {
@@ -342,6 +349,9 @@
 .repo-review-workspace-layout--focused .repo-review-overview-copy h3 {
   font-size: 20px;
   line-height: 1.2;
+}
+
+@media (max-width: 900px) {
 }
 
 .repo-review-workspace-layout--focused .repo-review-workspace-grid {

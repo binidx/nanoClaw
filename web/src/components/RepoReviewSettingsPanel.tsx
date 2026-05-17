@@ -70,6 +70,7 @@ import type { CodeMapStats } from './code-map/code-map-api';
 import { fetchCodeMapStats, rebuildCodeMap } from './code-map/code-map-api';
 import { RepositoryRelationshipsPanel } from './repository/RepositoryRelationshipsPanel';
 import { CodeMapPage } from '../pages/CodeMapPage';
+import '../pages/WorkteamPage.css';
 
 function CodeMapDrawerEntry({ apiBase, repositoryId, defaultBranch, onOpen }: {
   apiBase: string;
@@ -1147,20 +1148,6 @@ export function RepoReviewSettingsPanel({
       reviewChatMembers,
     ],
   );
-
-  const repositoryStats = useMemo(() => {
-    const enabled = overview.repositories.filter(
-      (entry) => entry.enabled,
-    ).length;
-    const autoSyncEnabled = overview.repositories.filter(
-      (entry) => entry.autoSyncEnabled,
-    ).length;
-    return {
-      total: overview.repositories.length,
-      enabled,
-      autoSyncEnabled,
-    };
-  }, [overview.repositories]);
 
   const filteredRepositories = useMemo(() => {
     const keyword = repositoryFilter.trim().toLowerCase();
@@ -3374,30 +3361,43 @@ export function RepoReviewSettingsPanel({
   }, [overview.profiles]);
 
   return (
-    <div className={`settings-section repo-review-panel${embedded ? ' repo-review-panel--embedded' : ''}`}>
+    <div className={`settings-section repo-review-panel${embedded ? ' repo-review-panel--embedded workflow-page is-library' : ''}`}>
       {embedded ? (
-        <div className="repo-review-panel-toolbar repo-review-panel-toolbar--embedded">
-          <div className="repo-review-panel-toolbar-copy">
-            <span className="repo-review-panel-toolbar-kicker">
-              Workspace
-            </span>
-            <span className="repo-review-panel-toolbar-note">
-              {`${t('repoReview.repo.total', {
-                count: repositoryStats.total,
-              })} · ${t('repoReview.repo.enabled', {
-                count: repositoryStats.enabled,
-              })}`}
-            </span>
+        <div className="workflow-topbar repo-review-topbar">
+          <div className="workflow-topbar-title repo-review-topbar-title">
+            <div className="workflow-title-stack repo-review-title-stack">
+              <h2>{t('auto.c270fc6f')}</h2>
+            </div>
           </div>
-          <button
-            className="btn-outline btn-sm"
-            onClick={() => void refreshOverview()}
-            disabled={loading && isInitialLoadRef.current}
-          >
-            {loading && isInitialLoadRef.current
-              ? t('repoReview.common.loading')
-              : t('repoReview.button.refresh')}
-          </button>
+          <div className="workflow-topbar-controls repo-review-topbar-controls">
+            {!hideRepositoryList ? (
+              <label className="workflow-searchbar repo-review-searchbar">
+                <span className="workflow-search-icon repo-review-search-icon" aria-hidden="true">
+                  <IconSearch />
+                </span>
+                <input
+                  value={repositoryFilter}
+                  onChange={(event) => {
+                    setRepositoryFilter(event.target.value);
+                    setRepoCardPage(1);
+                  }}
+                  placeholder={t('repoReview.repo.filterPlaceholder')}
+                  aria-label={t('repoReview.repo.filterPlaceholder')}
+                />
+              </label>
+            ) : null}
+            {!hideRepositoryList ? (
+              <button
+                className="btn-primary workflow-create-action"
+                onClick={() => {
+                  openRepositoryEditor(true);
+                  setRepoDetailTab('config');
+                }}
+              >
+                {t('repoReview.button.newRepo')}
+              </button>
+            ) : null}
+          </div>
         </div>
       ) : (
         <div className="section-header">
@@ -3419,62 +3419,19 @@ export function RepoReviewSettingsPanel({
         </div>
       )}
 
-      <div className={`repo-review-workspace-layout${hideRepositoryList ? ' repo-review-workspace-layout--focused' : ''}${showWorkspaceDetail ? '' : ' repo-review-workspace-layout--list-only'}`}>
+      <div className={`workflow-body repo-review-workspace-layout${hideRepositoryList ? ' repo-review-workspace-layout--focused' : ''}${showWorkspaceDetail ? '' : ' repo-review-workspace-layout--list-only'}`}>
       {!hideRepositoryList ? (
       <div className="repo-review-card-list repo-review-workspace-list">
-        <div className="repo-review-card-list-toolbar">
-          <div className="repo-review-search-shell repo-review-search-shell--wide">
-            <input
-              className="repo-review-search-input"
-              value={repositoryFilter}
-              onChange={(event) => { setRepositoryFilter(event.target.value); setRepoCardPage(1); }}
-              placeholder={t('repoReview.repo.filterPlaceholder')}
-            />
-            {!repositoryFilter && (
-              <span className="repo-review-search-icon" aria-hidden="true">
-                <IconSearch />
-              </span>
-            )}
-            {repositoryFilter ? (
-              <button
-                type="button"
-                className="repo-review-search-clear"
-                onClick={() => { setRepositoryFilter(''); setRepoCardPage(1); }}
-                aria-label={t('repoReview.repo.clearSearch')}
-              >
-                <IconX />
-              </button>
-            ) : null}
-          </div>
-          <div className="repo-review-card-list-meta-row">
-            <div className="repo-review-sidebar-stats">
-              <span>{t('repoReview.repo.total', { count: repositoryStats.total })}</span>
-              <span>{t('repoReview.repo.enabled', { count: repositoryStats.enabled })}</span>
-              <span>{t('repoReview.repo.autoSync', { count: repositoryStats.autoSyncEnabled })}</span>
-              <span>{t('repoReview.repo.filtered', { count: filteredRepositories.length })}</span>
-            </div>
-            <div className="repo-review-card-list-actions">
-              {filteredRepositories.length > REPO_CARD_PAGE_SIZE && (
-                <Pagination page={repoCardPage} pageSize={REPO_CARD_PAGE_SIZE} total={filteredRepositories.length} onPageChange={setRepoCardPage} />
-              )}
-              <button
-                className="btn-primary btn-sm"
-                onClick={() => { openRepositoryEditor(true); setRepoDetailTab('config'); }}
-              >
-                {t('repoReview.button.newRepo')}
-              </button>
-            </div>
-          </div>
-        </div>
         {filteredRepositories.length === 0 ? (
           <div className="repo-review-empty-card-hint">{t('repoReview.repo.noMatch')}</div>
         ) : (
-          <div className="repo-review-cards-grid">
+          <section className="workflow-library">
+          <div className="workflow-card-grid repo-review-cards-grid repo-review-cards-grid--library">
             {filteredRepositories.slice((repoCardPage - 1) * REPO_CARD_PAGE_SIZE, repoCardPage * REPO_CARD_PAGE_SIZE).map((repository) => (
               <button
                 key={repository.id}
                 type="button"
-                className={`repo-review-repo-card ${
+                className={`workflow-library-card repo-review-repo-card ${
                   !creatingRepository && selectedRepositoryId === repository.id
                     ? 'active'
                     : ''
@@ -3535,6 +3492,12 @@ export function RepoReviewSettingsPanel({
               </button>
             ))}
           </div>
+          {filteredRepositories.length > REPO_CARD_PAGE_SIZE ? (
+            <div className="repo-review-library-pagination">
+              <Pagination page={repoCardPage} pageSize={REPO_CARD_PAGE_SIZE} total={filteredRepositories.length} onPageChange={setRepoCardPage} />
+            </div>
+          ) : null}
+          </section>
         )}
       </div>
       ) : null}

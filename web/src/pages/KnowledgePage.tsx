@@ -19,7 +19,6 @@ import { Pagination } from '../components/common/Pagination';
 import { NcSelect } from '../components/common/NcSelect';
 import { NcCheckbox } from '../components/common/NcCheckbox';
 import { NcToggle } from '../components/common/NcToggle';
-import { Drawer } from '../components/common/Drawer';
 import { TabBar } from '../components/common/TabBar';
 import { IconSearch, IconX } from '../components/AppIcons';
 import { AppSelect, type AppSelectOption } from '../components/AppSelect';
@@ -300,14 +299,14 @@ interface KnowledgeGraphResponse {
 
 type KnowledgeGraphViewMode = 'overview' | 'focus' | 'full';
 
-type DrawerTab =
+type KnowledgeWorkbenchTab =
   | 'overview'
-  | 'docs'
-  | 'search'
-  | 'config'
-  | 'tree'
-  | 'relations'
-  | 'wiki';
+  | 'content'
+  | 'graph'
+  | 'settings'
+  | 'search';
+
+type KnowledgeContentView = 'docs' | 'tree' | 'wiki';
 
 function getStatusLabels(t: (key: string) => string): Record<string, string> {
   return {
@@ -565,6 +564,20 @@ const VALID_DRAWER_TABS: ReadonlySet<string> = new Set([
   'wiki',
 ]);
 
+const VALID_WORKBENCH_TABS: ReadonlySet<string> = new Set([
+  'overview',
+  'content',
+  'graph',
+  'settings',
+  'search',
+]);
+
+const VALID_CONTENT_VIEWS: ReadonlySet<string> = new Set([
+  'docs',
+  'tree',
+  'wiki',
+]);
+
 export function KnowledgePage({ apiBase }: KnowledgePageProps) {
   const { t } = useTranslation('knowledge');
   const CATEGORY_LABELS = useMemo(() => getCategoryLabels(t), [t]);
@@ -603,6 +616,7 @@ export function KnowledgePage({ apiBase }: KnowledgePageProps) {
   );
   const urlKb = urlParams.get('kb');
   const urlTab = urlParams.get('tab');
+  const urlContent = urlParams.get('content');
   const urlView = urlParams.get('view');
 
   const setUrlState = useCallback(
@@ -753,6 +767,7 @@ export function KnowledgePage({ apiBase }: KnowledgePageProps) {
     useState<KnowledgeProcessingStatus | null>(null);
   const [globalLlmConcurrency, setGlobalLlmConcurrency] = useState('4');
   const [savingLlmConcurrency, setSavingLlmConcurrency] = useState(false);
+  const [graphFullscreen, setGraphFullscreen] = useState(false);
 
   const selectedKb = useMemo(
     () =>
@@ -761,9 +776,55 @@ export function KnowledgePage({ apiBase }: KnowledgePageProps) {
         : null,
     [bases, selectedKbId],
   );
+
+  useEffect(() => {
+    if (creatingKb || !selectedKb) return;
+    setEditingKb((prev) =>
+      prev && prev.id === selectedKb.id ? prev : { ...selectedKb },
+    );
+  }, [creatingKb, selectedKb]);
+
   const graphRecommendedSettings = useMemo(
     () => getRecommendedGraphSettings(graphViewMode),
     [graphViewMode],
+  );
+  const selectedKbLevel = kbEnhancementLevel(selectedKb);
+  const contentViewOptions = useMemo(
+    () => [
+      { key: 'docs' as const, label: t('文档') },
+      ...(selectedKbLevel !== 'metadata' || docs.some((doc) => doc.doc_path)
+        ? [{ key: 'tree' as const, label: t('文档树') }]
+        : []),
+      ...(selectedKbLevel === 'wiki_full'
+        ? [{ key: 'wiki' as const, label: t('Wiki 页面') }]
+        : []),
+    ],
+    [docs, selectedKbLevel, t],
+  );
+  const setDetailTab = useCallback(
+    (tab: KnowledgeWorkbenchTab) => {
+      if (tab === 'search') {
+        setUrlState({ kb: null, tab: 'search', content: null, view: 'search' });
+        return;
+      }
+      setUrlState({
+        tab,
+        content:
+          tab === 'content'
+            ? (urlContent && VALID_CONTENT_VIEWS.has(urlContent)
+              ? (urlContent as KnowledgeContentView)
+              : 'docs')
+            : null,
+        view: null,
+      });
+    },
+    [setUrlState, urlContent],
+  );
+  const setContentTab = useCallback(
+    (next: KnowledgeContentView) => {
+      setUrlState({ tab: 'content', content: next, view: null });
+    },
+    [setUrlState],
   );
   const embeddingProviderLabelById = useMemo(
     () =>
@@ -818,27 +879,38 @@ export function KnowledgePage({ apiBase }: KnowledgePageProps) {
     [],
   );
 
-  const allowedDrawerTabs = useMemo(() => {
-    if (creatingKb) return new Set<DrawerTab>(['config']);
-    if (!selectedKb) return new Set<DrawerTab>(['search']);
-    const tabs = new Set<DrawerTab>(['overview', 'docs', 'search', 'config']);
-    const level = kbEnhancementLevel(selectedKb);
-    if (level !== 'metadata' || docs.some((d) => d.doc_path)) tabs.add('tree');
-    if (level === 'wiki_lite' || level === 'wiki_full') tabs.add('relations');
-    if (level === 'wiki_full') tabs.add('wiki');
-    return tabs;
-  }, [creatingKb, selectedKb, docs]);
-
-  const drawerTab: DrawerTab = useMemo(() => {
-    if (creatingKb) return 'config';
+  const detailTab: KnowledgeWorkbenchTab = useMemo(() => {
+    if (creatingKb) return 'settings';
     if (!selectedKb && urlView === 'search') return 'search';
     if (!selectedKb) return 'overview';
-    const fromUrl =
-      urlTab && VALID_DRAWER_TABS.has(urlTab)
-        ? (urlTab as DrawerTab)
-        : 'overview';
-    return allowedDrawerTabs.has(fromUrl) ? fromUrl : 'overview';
-  }, [creatingKb, selectedKb, urlView, urlTab, allowedDrawerTabs]);
+
+    const fromUrl = urlTab && VALID_DRAWER_TABS.has(urlTab) ? urlTab : 'overview';
+    if (fromUrl === 'docs' || fromUrl === 'tree' || fromUrl === 'wiki') return 'content';
+    if (fromUrl === 'relations') return 'graph';
+    if (fromUrl === 'config') return 'settings';
+    if (VALID_WORKBENCH_TABS.has(fromUrl)) return fromUrl as KnowledgeWorkbenchTab;
+    return 'overview';
+  }, [creatingKb, selectedKb, urlTab, urlView]);
+
+  const contentView: KnowledgeContentView = useMemo(() => {
+    const fromContent =
+      urlContent && VALID_CONTENT_VIEWS.has(urlContent)
+        ? (urlContent as KnowledgeContentView)
+        : null;
+    if (fromContent) return fromContent;
+    if (urlTab === 'tree') return 'tree';
+    if (urlTab === 'wiki') return 'wiki';
+    return 'docs';
+  }, [urlContent, urlTab]);
+
+  const drawerTab = useMemo(() => {
+    if (creatingKb) return 'config';
+    if (!selectedKb && urlView === 'search') return 'search';
+    if (detailTab === 'content') return contentView;
+    if (detailTab === 'graph') return 'relations';
+    if (detailTab === 'settings') return 'config';
+    return detailTab;
+  }, [contentView, creatingKb, detailTab, selectedKb, urlView]);
 
   const fetchBases = useCallback(async () => {
     try {
@@ -1088,7 +1160,12 @@ export function KnowledgePage({ apiBase }: KnowledgePageProps) {
   const openWikiSearchResult = useCallback(
     async (pageId: string) => {
       if (!selectedKbId) return;
-      setUrlState({ kb: selectedKbId, tab: 'wiki', view: null });
+      setUrlState({
+        kb: selectedKbId,
+        tab: 'content',
+        content: 'wiki',
+        view: null,
+      });
       await fetchWikiPagesData(selectedKbId);
       await openWikiPageDetail(pageId);
     },
@@ -1596,7 +1673,12 @@ export function KnowledgePage({ apiBase }: KnowledgePageProps) {
         await fetchBases();
         if (created?.id) {
           setSelectedKbId(created.id);
-          setUrlState({ kb: created.id, tab: 'docs', view: null });
+          setUrlState({
+            kb: created.id,
+            tab: 'overview',
+            content: null,
+            view: null,
+          });
         } else {
           setUrlState({ kb: null, tab: null, view: null });
         }
@@ -2193,7 +2275,7 @@ export function KnowledgePage({ apiBase }: KnowledgePageProps) {
       if (!target) return;
       const idx = docs.findIndex((doc) => doc.id === docId);
       if (idx >= 0) setDocsPage(Math.floor(idx / DOCS_PAGE_SIZE) + 1);
-      setUrlState({ tab: 'docs' });
+      setUrlState({ tab: 'content', content: 'docs', view: null });
       setFlashDocId(docId);
       if (
         options?.expand &&
@@ -2435,8 +2517,7 @@ export function KnowledgePage({ apiBase }: KnowledgePageProps) {
 
   const openKbDrawer = (kbId: string) => {
     setSelectedKbId(kbId);
-    setUrlState({ kb: kbId, tab: 'overview', view: null });
-    setEditingKb(null);
+    setUrlState({ kb: kbId, tab: 'overview', content: null, view: null });
     setDocsPage(1);
     setSearchResults([]);
     setWikiResults([]);
@@ -2444,21 +2525,22 @@ export function KnowledgePage({ apiBase }: KnowledgePageProps) {
 
   const openCreateDrawer = () => {
     setSelectedKbId(null);
-    setUrlState({ kb: null, tab: null, view: 'create' });
+    setUrlState({ kb: null, tab: null, content: null, view: 'create' });
     setEditingKb(null);
   };
 
   const openGlobalSearch = () => {
     setSelectedKbId(null);
-    setUrlState({ kb: null, tab: null, view: 'search' });
+    setUrlState({ kb: null, tab: 'search', content: null, view: 'search' });
     setEditingKb(null);
   };
 
   const closeDrawer = () => {
-    setUrlState({ kb: null, tab: null, view: null });
+    setUrlState({ kb: null, tab: null, content: null, view: null });
     setEditingKb(null);
     setSearchResults([]);
     setWikiResults([]);
+    setGraphFullscreen(false);
   };
 
   const enabledBaseCount = useMemo(
@@ -2511,28 +2593,17 @@ export function KnowledgePage({ apiBase }: KnowledgePageProps) {
             ? t('已完成')
             : t('空闲');
 
-  /* ── Drawer tab definitions ── */
+  /* ── Workbench tab definitions ── */
   const drawerTabs = useMemo(() => {
-    if (creatingKb) return [{ key: 'config' as const, label: t('新建配置') }];
-    const tabs: Array<{ key: DrawerTab; label: string }> = [
+    if (creatingKb) return [{ key: 'settings' as const, label: t('新建配置') }];
+    const tabs: Array<{ key: KnowledgeWorkbenchTab; label: string }> = [
       { key: 'overview', label: t('概览') },
-      {
-        key: 'docs',
-        label: `${t('文档')}${docs.length ? ` (${docs.length})` : ''}`,
-      },
+      { key: 'content', label: `${t('内容')}${docs.length ? ` (${docs.length})` : ''}` },
+      { key: 'graph', label: t('图谱') },
+      { key: 'settings', label: t('设置') },
     ];
-    if (allowedDrawerTabs.has('tree'))
-      tabs.push({ key: 'tree', label: t('文档树') });
-    if (allowedDrawerTabs.has('relations'))
-      tabs.push({ key: 'relations', label: t('关联图') });
-    if (allowedDrawerTabs.has('wiki'))
-      tabs.push({ key: 'wiki', label: t('Wiki 浏览') });
-    tabs.push(
-      { key: 'search', label: t('搜索') },
-      { key: 'config', label: t('配置') },
-    );
     return tabs;
-  }, [creatingKb, docs.length, allowedDrawerTabs]);
+  }, [creatingKb, docs.length, t]);
 
   const docTitleById = useMemo(() => {
     const m = new Map<string, string>();
@@ -2625,7 +2696,7 @@ export function KnowledgePage({ apiBase }: KnowledgePageProps) {
       setGraphFocusId(node.id);
       setGraphViewMode('focus');
       if (node.type === 'wiki') {
-        setUrlState({ tab: 'wiki' });
+        setUrlState({ tab: 'content', content: 'wiki', view: null });
         void openWikiPageDetail(node.id);
         return;
       }
@@ -2935,8 +3006,8 @@ export function KnowledgePage({ apiBase }: KnowledgePageProps) {
             onClick={() => {
               if (isCreate) closeDrawer();
               else {
-                setEditingKb(null);
-                setUrlState({ tab: 'overview' });
+                setEditingKb(selectedKb ? { ...selectedKb } : null);
+                setDetailTab('overview');
               }
             }}
           >
@@ -3179,29 +3250,90 @@ export function KnowledgePage({ apiBase }: KnowledgePageProps) {
         )}
       </div>
 
-      <Drawer
-        open={drawerOpen}
-        onClose={closeDrawer}
-        title={
-          creatingKb
-            ? t('新建知识库')
-            : selectedKb?.name ||
-              (drawerTab === 'search' ? t('全局搜索') : t('知识库详情'))
-        }
-        width="min(100vw, 850px)"
-      >
-        <div className="knowledge-drawer-content">
-          {!creatingKb && (selectedKb || drawerTab === 'search') && (
-            <TabBar
-              tabs={
-                selectedKb
-                  ? drawerTabs
-                  : [{ key: 'search' as const, label: t('全局搜索') }]
-              }
-              activeKey={drawerTab}
-              onChange={(key) => setUrlState({ tab: key })}
-            />
-          )}
+      {drawerOpen ? (
+        <div
+          className="modal-overlay knowledge-workbench-overlay"
+          onClick={closeDrawer}
+        >
+          <div
+            className={`modal knowledge-workbench-modal${graphFullscreen ? ' is-graph-fullscreen' : ''}`}
+            role="dialog"
+            aria-modal="true"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="modal-header knowledge-workbench-header">
+              <div className="knowledge-workbench-header-main">
+                <h3>
+                  {creatingKb
+                    ? t('新建知识库')
+                    : selectedKb?.name ||
+                      (drawerTab === 'search'
+                        ? t('全局搜索')
+                        : t('知识库详情'))}
+                </h3>
+                {!creatingKb && selectedKb ? (
+                  <p className="knowledge-workbench-subtitle">
+                    {selectedKb.description || t('统一查看文档、Wiki、图谱和设置')}
+                  </p>
+                ) : null}
+              </div>
+              <div className="knowledge-workbench-header-actions">
+                {!creatingKb && selectedKb ? (
+                  <>
+                    <span className="knowledge-status-chip">
+                      {ENHANCEMENT_LEVEL_LABELS[selectedKbLevel]}
+                    </span>
+                    <span
+                      className={`knowledge-status-chip ${selectedKb.enabled ? '' : 'is-muted'}`}
+                    >
+                      {selectedKb.enabled ? t('已启用') : t('已停用')}
+                    </span>
+                  </>
+                ) : null}
+                <button
+                  type="button"
+                  className="modal-close-btn"
+                  onClick={closeDrawer}
+                  aria-label={t('关闭')}
+                >
+                  ×
+                </button>
+              </div>
+            </div>
+            <div className="knowledge-workbench-body">
+              {!creatingKb && (selectedKb || drawerTab === 'search') && (
+                <div className="knowledge-workbench-nav">
+                  <TabBar
+                    tabs={
+                      selectedKb
+                        ? drawerTabs
+                        : [{ key: 'search' as const, label: t('全局搜索') }]
+                    }
+                    activeKey={selectedKb ? detailTab : 'search'}
+                    onChange={(key) =>
+                      selectedKb
+                        ? setDetailTab(key as KnowledgeWorkbenchTab)
+                        : openGlobalSearch()
+                    }
+                  />
+                  {!creatingKb && selectedKb && detailTab === 'content' ? (
+                    <div className="knowledge-workbench-subnav">
+                      <TabBar
+                        tabs={contentViewOptions.map((item) => ({
+                          key: item.key,
+                          label: item.label,
+                        }))}
+                        activeKey={contentView}
+                        onChange={(key) =>
+                          setContentTab(key as KnowledgeContentView)
+                        }
+                      />
+                    </div>
+                  ) : null}
+                </div>
+              )}
+
+              <div className="knowledge-drawer-content">
 
           {/* Tab: Overview */}
           {!creatingKb && selectedKb && drawerTab === 'overview' && (
@@ -3231,12 +3363,9 @@ export function KnowledgePage({ apiBase }: KnowledgePageProps) {
                   <button
                     type="button"
                     className="btn-outline btn-sm"
-                    onClick={() => {
-                      setEditingKb({ ...selectedKb });
-                      setUrlState({ tab: 'config' });
-                    }}
+                    onClick={() => setDetailTab('settings')}
                   >
-                    {t('编辑配置')}
+                    {t('设置')}
                   </button>
                   <button
                     type="button"
@@ -3967,29 +4096,42 @@ export function KnowledgePage({ apiBase }: KnowledgePageProps) {
 
           {!creatingKb && selectedKb && drawerTab === 'relations' && (
             <div className="knowledge-drawer-section knowledge-relations-panel">
-              <div
-                className="knowledge-graph-toggle"
-                role="group"
-                aria-label={t('关联展示方式')}
-              >
-                <button
-                  type="button"
-                  className={
-                    relationsPresentation === 'graph' ? 'is-active' : ''
-                  }
-                  onClick={() => setRelationsPresentation('graph')}
+              <div className="knowledge-graph-workbench-head">
+                <div
+                  className="knowledge-graph-toggle"
+                  role="group"
+                  aria-label={t('关联展示方式')}
                 >
-                  {t('力图')}
-                </button>
-                <button
-                  type="button"
-                  className={
-                    relationsPresentation === 'table' ? 'is-active' : ''
-                  }
-                  onClick={() => setRelationsPresentation('table')}
-                >
-                  {t('表格')}
-                </button>
+                  <button
+                    type="button"
+                    className={
+                      relationsPresentation === 'graph' ? 'is-active' : ''
+                    }
+                    onClick={() => setRelationsPresentation('graph')}
+                  >
+                    {t('力图')}
+                  </button>
+                  <button
+                    type="button"
+                    className={
+                      relationsPresentation === 'table' ? 'is-active' : ''
+                    }
+                    onClick={() => setRelationsPresentation('table')}
+                  >
+                    {t('表格')}
+                  </button>
+                </div>
+                {relationsPresentation === 'graph' ? (
+                  <div className="knowledge-graph-head-actions">
+                    <button
+                      type="button"
+                      className="btn-outline btn-sm"
+                      onClick={() => setGraphFullscreen(true)}
+                    >
+                      {t('全屏图谱')}
+                    </button>
+                  </div>
+                ) : null}
               </div>
               <div className="knowledge-graph-filters">
                 <div className="knowledge-graph-filter-row">
@@ -4172,7 +4314,7 @@ export function KnowledgePage({ apiBase }: KnowledgePageProps) {
                         graphData={filteredKbGraph}
                         stats={kbGraphRaw.stats ?? null}
                         hiddenCounts={kbGraphRaw.hidden_counts ?? null}
-                        height={520}
+                        height={680}
                         onNodeClick={focusGraphNode}
                         viewScope={`${selectedKbId ?? 'global'}:${graphViewMode}:${graphFocusId || 'none'}`}
                       />
@@ -4940,20 +5082,7 @@ export function KnowledgePage({ apiBase }: KnowledgePageProps) {
               {editingKb ? (
                 renderKbForm('edit')
               ) : (
-                <div className="knowledge-panel-stack">
-                  <p className="knowledge-note">
-                    {t('点击「编辑配置」进入编辑模式。')}
-                  </p>
-                  <button
-                    type="button"
-                    className="btn-outline btn-sm"
-                    onClick={() => {
-                      if (selectedKb) setEditingKb({ ...selectedKb });
-                    }}
-                  >
-                    {t('编辑配置')}
-                  </button>
-                </div>
+                <p className="knowledge-note">{t('正在准备配置表单...')}</p>
               )}
             </div>
           )}
@@ -4963,8 +5092,61 @@ export function KnowledgePage({ apiBase }: KnowledgePageProps) {
               {renderKbForm('create')}
             </div>
           )}
+              </div>
+            </div>
+          </div>
         </div>
-      </Drawer>
+      ) : null}
+
+      {graphFullscreen && filteredKbGraph ? (
+        <div
+          className="modal-overlay knowledge-graph-fullscreen-overlay"
+          onClick={() => setGraphFullscreen(false)}
+        >
+          <div
+            className="modal knowledge-graph-fullscreen-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label={t('全屏图谱')}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="modal-header">
+              <h3>{t('知识图谱')}</h3>
+              <div className="knowledge-graph-head-actions">
+                <button
+                  type="button"
+                  className="btn-outline btn-sm"
+                  onClick={() => setGraphViewMode('overview')}
+                >
+                  {t('重置为概览')}
+                </button>
+                <button
+                  type="button"
+                  className="modal-close-btn"
+                  onClick={() => setGraphFullscreen(false)}
+                  aria-label={t('关闭')}
+                >
+                  ×
+                </button>
+              </div>
+            </div>
+            <div className="knowledge-graph-fullscreen-body">
+              <Suspense
+                fallback={<p className="knowledge-note">{t('加载关联图组件…')}</p>}
+              >
+                <KnowledgeGraph
+                  graphData={filteredKbGraph}
+                  stats={kbGraphRaw?.stats ?? null}
+                  hiddenCounts={kbGraphRaw?.hidden_counts ?? null}
+                  height={Math.max(window.innerHeight - 180, 560)}
+                  onNodeClick={focusGraphNode}
+                  viewScope={`${selectedKbId ?? 'global'}:${graphViewMode}:${graphFocusId || 'none'}:fullscreen`}
+                />
+              </Suspense>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {/* Confirm modal */}
       {confirmState.open ? (
