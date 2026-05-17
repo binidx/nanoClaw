@@ -14,7 +14,6 @@ import type {
   KnowledgeGraphHiddenCounts,
   KnowledgeGraphStats,
 } from '../components/KnowledgeGraph';
-import { PageHeader } from '../components/common';
 import { Pagination } from '../components/common/Pagination';
 import { NcSelect } from '../components/common/NcSelect';
 import { NcCheckbox } from '../components/common/NcCheckbox';
@@ -2543,11 +2542,6 @@ export function KnowledgePage({ apiBase }: KnowledgePageProps) {
     setGraphFullscreen(false);
   };
 
-  const enabledBaseCount = useMemo(
-    () => bases.filter((base) => base.enabled).length,
-    [bases],
-  );
-
   const categories = useMemo(() => {
     const cats = new Set(bases.map((b) => b.category || 'general'));
     return ['all', ...Array.from(cats).sort()];
@@ -3019,75 +3013,58 @@ export function KnowledgePage({ apiBase }: KnowledgePageProps) {
   };
 
   return (
-    <div className="page-view knowledge-page">
-      <PageHeader
-        className="knowledge-page-header"
-        title={t('知识库')}
-        subtitle={t('管理知识库、文档索引和语义搜索。')}
-        meta={
-          <div className="nc-page-metrics">
-            <div className="nc-page-metric">
-              <span className="nc-page-metric-label">{t('知识库')}</span>
-              <strong className="nc-page-metric-value">{bases.length}</strong>
-            </div>
-            <div className="nc-page-metric">
-              <span className="nc-page-metric-label">{t('已启用')}</span>
-              <strong className="nc-page-metric-value">{enabledBaseCount}</strong>
-            </div>
-            <div className="nc-page-metric">
-              <span className="nc-page-metric-label">{t('检索能力')}</span>
-              <strong className="nc-page-metric-value">
-                {embeddingProviders.length > 0 ? t('混合检索') : t('FTS')}
-              </strong>
-              <span className="nc-page-metric-note">
-                {embeddingProviders.length > 0
-                  ? t('支持混合检索')
-                  : t('仅 FTS 检索')}
-              </span>
-            </div>
+    <div className="page-view knowledge-page knowledge-library-page">
+      <div className="knowledge-library-topbar">
+        <div className="knowledge-library-topbar-title">
+          <div className="knowledge-library-title-stack">
+            <h2>{t('知识库')}</h2>
+            <span>{t('管理知识库、文档索引和语义搜索。')}</span>
           </div>
-        }
-        actions={
-          <div className="nc-page-actions-group knowledge-page-actions">
+        </div>
+        <div className="knowledge-library-topbar-controls">
+          <label className="knowledge-library-searchbar">
+            <span className="knowledge-library-search-icon" aria-hidden="true">
+              <IconSearch />
+            </span>
+            <input
+              value={kbFilter}
+              onChange={(e) => setKbFilter(e.target.value)}
+              placeholder={t('按名称、描述筛选')}
+              aria-label={t('按名称、描述筛选')}
+            />
+            {kbFilter ? (
+              <button
+                type="button"
+                className="knowledge-library-search-clear"
+                onClick={() => setKbFilter('')}
+                aria-label={t('清空搜索')}
+              >
+                <IconX />
+              </button>
+            ) : (
+              <span className="knowledge-library-search-kbd">K</span>
+            )}
+          </label>
+          <div className="knowledge-page-actions">
             <button
               type="button"
-              className="btn-primary btn-sm"
-              onClick={openCreateDrawer}
-            >
-              {t('新建知识库')}
-            </button>
-            <button
-              type="button"
-              className="btn-outline btn-sm"
+              className="btn-outline"
               onClick={openGlobalSearch}
             >
               {t('全局搜索')}
             </button>
             <button
               type="button"
-              className="btn-outline btn-xs"
-              disabled={rebuildingFts}
-              onClick={() => void handleRebuildFts()}
-              title={t('重建全文检索索引')}
+              className="btn-primary"
+              onClick={openCreateDrawer}
             >
-              {rebuildingFts ? t('重建中...') : t('重建 FTS')}
+              {t('新建知识库')}
             </button>
-            {embeddingProviders.length > 0 ? (
-              <button
-                type="button"
-                className="btn-outline btn-xs"
-                disabled={backfilling}
-                onClick={() => void handleBackfillEmbeddings()}
-                title={t('为缺少向量的文档补录嵌入')}
-              >
-                {backfilling ? t('补录中...') : t('向量补录')}
-              </button>
-            ) : null}
           </div>
-        }
-      />
+        </div>
+      </div>
 
-      <div className="page-body knowledge-page-body">
+      <div className="page-body knowledge-page-body knowledge-library-body">
         {error ? (
           <div className="test-result error knowledge-inline-message">
             <span>{error}</span>
@@ -3120,72 +3097,64 @@ export function KnowledgePage({ apiBase }: KnowledgePageProps) {
         {initialLoading ? (
           <div className="provider-empty">{t('正在加载知识库...')}</div>
         ) : (
-          <section className="settings-section">
-            {/* ── Toolbar: search + category filter ── */}
+          <section className="knowledge-library-panel">
             <div className="knowledge-card-list-toolbar">
-              <div className="knowledge-search-shell">
-                <input
-                  className="knowledge-search-filter-input"
-                  value={kbFilter}
-                  onChange={(e) => setKbFilter(e.target.value)}
-                  placeholder={t('按名称、描述筛选')}
-                />
-                {!kbFilter && (
-                  <span className="knowledge-search-icon" aria-hidden="true">
-                    <IconSearch />
-                  </span>
-                )}
-                {kbFilter ? (
-                  <button
-                    type="button"
-                    className="knowledge-search-clear"
-                    onClick={() => setKbFilter('')}
-                    aria-label={t('清空搜索')}
-                  >
-                    <IconX />
-                  </button>
-                ) : null}
-              </div>
-              <div className="knowledge-card-list-meta">
-                <div className="knowledge-card-list-stats">
-                  <span>
-                    {t('共 {{count}} 个知识库', { count: bases.length })}
-                  </span>
-                  <span>
-                    {t('启用 {{count}} 个', { count: enabledBaseCount })}
-                  </span>
+              <div className="knowledge-card-list-toolbar-main">
+                <div className="knowledge-card-list-toolbar-copy">
+                  <strong>{t('知识库列表')}</strong>
                   <span>
                     {embeddingProviders.length > 0
                       ? t('支持混合检索')
                       : t('仅 FTS 检索')}
                   </span>
                 </div>
-                {categories.length > 1 && (
-                  <div
-                    className="knowledge-category-bar"
-                    role="tablist"
-                    aria-label={t('分类筛选')}
+                <div className="knowledge-card-list-toolbar-actions">
+                  <button
+                    type="button"
+                    className="btn-outline btn-xs"
+                    disabled={rebuildingFts}
+                    onClick={() => void handleRebuildFts()}
+                    title={t('重建全文检索索引')}
                   >
-                    {categories.map((cat) => (
-                      <button
-                        key={cat}
-                        type="button"
-                        role="tab"
-                        aria-selected={categoryFilter === cat}
-                        className={`knowledge-category-chip ${categoryFilter === cat ? 'active' : ''}`}
-                        onClick={() => setCategoryFilter(cat)}
-                      >
-                        {cat === 'all'
-                          ? t('全部')
-                          : CATEGORY_LABELS[cat] || cat}
-                      </button>
-                    ))}
-                  </div>
-                )}
+                    {rebuildingFts ? t('重建中...') : t('重建 FTS')}
+                  </button>
+                  {embeddingProviders.length > 0 ? (
+                    <button
+                      type="button"
+                      className="btn-outline btn-xs"
+                      disabled={backfilling}
+                      onClick={() => void handleBackfillEmbeddings()}
+                      title={t('为缺少向量的文档补录嵌入')}
+                    >
+                      {backfilling ? t('补录中...') : t('向量补录')}
+                    </button>
+                  ) : null}
+                </div>
               </div>
+              {categories.length > 1 && (
+                <div
+                  className="knowledge-category-bar"
+                  role="tablist"
+                  aria-label={t('分类筛选')}
+                >
+                  {categories.map((cat) => (
+                    <button
+                      key={cat}
+                      type="button"
+                      role="tab"
+                      aria-selected={categoryFilter === cat}
+                      className={`knowledge-category-chip ${categoryFilter === cat ? 'active' : ''}`}
+                      onClick={() => setCategoryFilter(cat)}
+                    >
+                      {cat === 'all'
+                        ? t('全部')
+                        : CATEGORY_LABELS[cat] || cat}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
-            {/* ── KB card grid ── */}
             {filteredBases.length === 0 ? (
               <div className="provider-empty knowledge-empty-inline">
                 {bases.length === 0
@@ -3198,49 +3167,55 @@ export function KnowledgePage({ apiBase }: KnowledgePageProps) {
                   <button
                     key={kb.id}
                     type="button"
-                    className={`knowledge-base-card ${drawerOpen && !creatingKb && selectedKbId === kb.id ? 'active' : ''} ${kb.enabled ? '' : 'is-disabled'}`}
+                    className={`knowledge-base-card repo-review-repo-card ${drawerOpen && !creatingKb && selectedKbId === kb.id ? 'active' : ''} ${kb.enabled ? '' : 'is-disabled'}`}
                     onClick={() => openKbDrawer(kb.id)}
                   >
-                    <div className="knowledge-base-card-header">
-                      <div>
-                        <strong>{kb.name}</strong>
-                        {kb.description ? <p>{kb.description}</p> : null}
-                      </div>
+                    <div className="repo-review-repo-card-header">
+                      <strong>{kb.name}</strong>
                       <span
-                        className={`knowledge-status-chip ${kb.enabled ? '' : 'is-muted'}`}
+                        className={`repo-review-badge ${kb.enabled ? 'enabled' : 'disabled'}`}
                       >
                         {kb.enabled ? t('已启用') : t('已停用')}
                       </span>
                     </div>
-                    <div className="knowledge-base-card-tags">
-                      <span className="knowledge-category-chip">
-                        {CATEGORY_LABELS[kb.category] ||
-                          kb.category ||
-                          t('通用')}
-                      </span>
-                      <span
-                        className={`knowledge-status-chip ${kb.visibility === 'shared' ? '' : 'is-muted'}`}
-                      >
-                        {kb.visibility === 'shared' ? t('共享') : t('私有')}
-                      </span>
-                      {kb.user_enabled ? (
-                        <span className="knowledge-status-chip">
-                          {t('已订阅')}
+                    <div className="repo-review-repo-card-body knowledge-base-card-body">
+                      <div className="repo-review-repo-card-row">
+                        <span className="repo-review-repo-card-label">{t('说明')}</span>
+                        <span className="repo-review-repo-card-ellipsis">
+                          {kb.description || t('暂无描述')}
                         </span>
-                      ) : null}
-                    </div>
-                    <div className="knowledge-base-card-footer">
-                      <span>
-                        {t('分块')} {kb.chunk_size}/{kb.chunk_overlap}
-                      </span>
-                      <span>
-                        {kb.embedding_provider_id
-                          ? embeddingProviderLabelById.get(
-                              kb.embedding_provider_id,
-                            ) || t('Embedding 配置')
-                          : t('仅 FTS')}
-                      </span>
-                      <span>{formatTimestamp(kb.updated_at)}</span>
+                      </div>
+                      <div className="repo-review-repo-card-row">
+                        <span className="repo-review-repo-card-label">{t('分类')}</span>
+                        <span className="repo-review-repo-card-ellipsis">
+                          {CATEGORY_LABELS[kb.category] || kb.category || t('通用')}
+                          {' · '}
+                          {kb.visibility === 'shared' ? t('共享') : t('私有')}
+                          {kb.user_enabled ? ` · ${t('已订阅')}` : ''}
+                        </span>
+                      </div>
+                      <div className="repo-review-repo-card-row">
+                        <span className="repo-review-repo-card-label">{t('检索')}</span>
+                        <span className="repo-review-repo-card-ellipsis">
+                          {kb.embedding_provider_id
+                            ? embeddingProviderLabelById.get(
+                                kb.embedding_provider_id,
+                              ) || t('Embedding 配置')
+                            : t('仅 FTS')}
+                        </span>
+                      </div>
+                      <div className="repo-review-repo-card-row">
+                        <span className="repo-review-repo-card-label">{t('分块')}</span>
+                        <span className="repo-review-repo-card-ellipsis">
+                          {kb.chunk_size}/{kb.chunk_overlap}
+                        </span>
+                      </div>
+                      <div className="repo-review-repo-card-row">
+                        <span className="repo-review-repo-card-label">{t('更新')}</span>
+                        <span className="repo-review-repo-card-ellipsis">
+                          {formatTimestamp(kb.updated_at)}
+                        </span>
+                      </div>
                     </div>
                   </button>
                 ))}
@@ -3346,78 +3321,82 @@ export function KnowledgePage({ apiBase }: KnowledgePageProps) {
                   ) : null}
                 </div>
                 <div className="knowledge-overview-actions">
-                  <button
-                    type="button"
-                    className={`btn-sm ${selectedKb.enabled ? 'btn-warning' : 'btn-success'}`}
-                    onClick={() => void handleToggleKb(selectedKb)}
-                  >
-                    {selectedKb.enabled ? t('停用') : t('启用')}
-                  </button>
-                  <button
-                    type="button"
-                    className={`btn-outline btn-sm ${selectedKb.user_enabled ? 'is-active' : ''}`}
-                    onClick={() => void handleToggleUserKb(selectedKb)}
-                  >
-                    {selectedKb.user_enabled ? t('取消订阅') : t('订阅')}
-                  </button>
-                  <button
-                    type="button"
-                    className="btn-outline btn-sm"
-                    onClick={() => setDetailTab('settings')}
-                  >
-                    {t('设置')}
-                  </button>
-                  <button
-                    type="button"
-                    className="btn-outline btn-xs"
-                    disabled={recleaning}
-                    onClick={() => void handleReclean()}
-                    title={t('重新清洗并重建索引')}
-                  >
-                    {recleaning ? t('清洗中...') : t('重新清洗')}
-                  </button>
-                  {kbEnhancementLevel(selectedKb) === 'wiki_lite' ||
-                  kbEnhancementLevel(selectedKb) === 'wiki_full' ? (
-                    <>
-                      <button
-                        type="button"
-                        className="btn-outline btn-xs"
-                        disabled={llmProcessing || isLlmRunActive}
-                        onClick={() => void handleLlmProcess()}
-                        title={t('处理待处理/失败文档')}
-                      >
-                        {llmProcessing ? t('处理中...') : t('处理待处理')}
-                      </button>
-                      <button
-                        type="button"
-                        className="btn-outline btn-xs"
-                        disabled={llmProcessing || isLlmRunActive}
-                        onClick={() => void handleRebuildAll()}
-                        title={t('重新生成整个知识库的摘要、关系和 Wiki')}
-                      >
-                        {llmProcessing ? t('处理中...') : t('全量重建')}
-                      </button>
-                    </>
-                  ) : null}
-                  {kbEnhancementLevel(selectedKb) === 'wiki_full' ? (
+                  <div className="knowledge-overview-action-group">
+                    <button
+                      type="button"
+                      className={`btn-sm ${selectedKb.enabled ? 'btn-warning' : 'btn-success'}`}
+                      onClick={() => void handleToggleKb(selectedKb)}
+                    >
+                      {selectedKb.enabled ? t('停用') : t('启用')}
+                    </button>
+                    <button
+                      type="button"
+                      className={`btn-outline btn-sm ${selectedKb.user_enabled ? 'is-active' : ''}`}
+                      onClick={() => void handleToggleUserKb(selectedKb)}
+                    >
+                      {selectedKb.user_enabled ? t('取消订阅') : t('订阅')}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-outline btn-sm"
+                      onClick={() => setDetailTab('settings')}
+                    >
+                      {t('设置')}
+                    </button>
+                  </div>
+                  <div className="knowledge-overview-action-group knowledge-overview-action-group--utility">
                     <button
                       type="button"
                       className="btn-outline btn-xs"
-                      disabled={wikiLinting}
-                      onClick={() => void handleWikiLint()}
-                      title={t('运行 Wiki 一致性检查')}
+                      disabled={recleaning}
+                      onClick={() => void handleReclean()}
+                      title={t('重新清洗并重建索引')}
                     >
-                      {wikiLinting ? t('检查中...') : t('Wiki 检查')}
+                      {recleaning ? t('清洗中...') : t('重新清洗')}
                     </button>
-                  ) : null}
-                  <a
-                    className="btn-outline btn-xs"
-                    href={`${apiBase}/api/knowledge/bases/${selectedKb.id}/events/export-md`}
-                    download
-                    title={t('导出 Karpathy log.md 格式事件日志')}
-                  >
-                    {t('导出日志')}
-                  </a>
+                    {kbEnhancementLevel(selectedKb) === 'wiki_lite' ||
+                    kbEnhancementLevel(selectedKb) === 'wiki_full' ? (
+                      <>
+                        <button
+                          type="button"
+                          className="btn-outline btn-xs"
+                          disabled={llmProcessing || isLlmRunActive}
+                          onClick={() => void handleLlmProcess()}
+                          title={t('处理待处理/失败文档')}
+                        >
+                          {llmProcessing ? t('处理中...') : t('处理待处理')}
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-outline btn-xs"
+                          disabled={llmProcessing || isLlmRunActive}
+                          onClick={() => void handleRebuildAll()}
+                          title={t('重新生成整个知识库的摘要、关系和 Wiki')}
+                        >
+                          {llmProcessing ? t('处理中...') : t('全量重建')}
+                        </button>
+                      </>
+                    ) : null}
+                    {kbEnhancementLevel(selectedKb) === 'wiki_full' ? (
+                      <button
+                        type="button"
+                        className="btn-outline btn-xs"
+                        disabled={wikiLinting}
+                        onClick={() => void handleWikiLint()}
+                        title={t('运行 Wiki 一致性检查')}
+                      >
+                        {wikiLinting ? t('检查中...') : t('Wiki 检查')}
+                      </button>
+                    ) : null}
+                    <a
+                      className="btn-outline btn-xs"
+                      href={`${apiBase}/api/knowledge/bases/${selectedKb.id}/events/export-md`}
+                      download
+                      title={t('导出 Karpathy log.md 格式事件日志')}
+                    >
+                      {t('导出日志')}
+                    </a>
+                  </div>
                 </div>
               </div>
               <div className="knowledge-overview-grid">

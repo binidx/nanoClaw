@@ -5038,6 +5038,26 @@
     0 12px 28px rgba(80, 101, 150, 0.06);
 }
 
+.assistant-card-body {
+  gap: 6px;
+}
+
+.assistant-card-badge.is-healthy {
+  background: rgba(40, 140, 85, 0.12);
+  color: rgb(30, 112, 68);
+}
+
+.assistant-card-badge.is-attention,
+.assistant-card-badge.is-missing-auth {
+  background: rgba(251, 191, 36, 0.16);
+  color: #b45309;
+}
+
+.assistant-card-badge.is-disabled {
+  background: rgba(210, 70, 55, 0.12);
+  color: rgb(169, 57, 45);
+}
+
 .assistant-showcase-card-top {
   display: flex;
   align-items: flex-start;
@@ -5128,6 +5148,7 @@
 }
 
 .assistant-card-item-meta.assistant-card-item-meta--showcase {
+  display: none;
   gap: 8px;
 }
 
@@ -5458,6 +5479,7 @@
 .page-view.assistants-page {
   display: block;
   gap: 0;
+  padding: 0;
 }
 
 .page-view.assistants-page.workflow-page.is-library {
@@ -5473,29 +5495,6 @@
   height: 56px;
   border-radius: 18px;
   font-size: 18px;
-}
-
-.page-view.assistants-page .workflow-library-card.repo-review-repo-card.assistant-card-item--showcase {
-  gap: 10px;
-  padding: 18px;
-  border-radius: 22px;
-  border: 1px solid rgba(226, 232, 240, 0.92);
-  background: linear-gradient(
-    180deg,
-    rgba(255, 255, 255, 0.96) 0%,
-    rgba(247, 250, 255, 0.92) 100%
-  );
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.92),
-    0 12px 28px rgba(80, 101, 150, 0.06);
-}
-
-.page-view.assistants-page .workflow-library-card.repo-review-repo-card.assistant-card-item--showcase:hover {
-  transform: translateY(-1px);
-  border-color: rgba(var(--accent-rgb), 0.28);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.94),
-    0 16px 32px rgba(80, 101, 150, 0.1);
 }
 
 .page-view.assistants-page .assistant-showcase-copy {

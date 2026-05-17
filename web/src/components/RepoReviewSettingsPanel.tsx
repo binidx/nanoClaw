@@ -3361,18 +3361,21 @@ export function RepoReviewSettingsPanel({
   }, [overview.profiles]);
 
   return (
-    <div className={`settings-section repo-review-panel${embedded ? ' repo-review-panel--embedded workflow-page is-library' : ''}`}>
+    <div
+      className={`${embedded ? 'page-view ' : ''}settings-section repo-review-panel${embedded ? ' repo-review-panel--embedded workflow-page is-library' : ''}`.trim()}
+    >
       {embedded ? (
         <div className="workflow-topbar repo-review-topbar">
           <div className="workflow-topbar-title repo-review-topbar-title">
             <div className="workflow-title-stack repo-review-title-stack">
               <h2>{t('auto.c270fc6f')}</h2>
+              <span>{t('panel.description')}</span>
             </div>
           </div>
           <div className="workflow-topbar-controls repo-review-topbar-controls">
             {!hideRepositoryList ? (
-              <label className="workflow-searchbar repo-review-searchbar">
-                <span className="workflow-search-icon repo-review-search-icon" aria-hidden="true">
+              <label className="workflow-searchbar">
+                <span className="workflow-search-icon" aria-hidden="true">
                   <IconSearch />
                 </span>
                 <input
@@ -3384,6 +3387,7 @@ export function RepoReviewSettingsPanel({
                   placeholder={t('repoReview.repo.filterPlaceholder')}
                   aria-label={t('repoReview.repo.filterPlaceholder')}
                 />
+                <span className="workflow-search-kbd">K</span>
               </label>
             ) : null}
             {!hideRepositoryList ? (

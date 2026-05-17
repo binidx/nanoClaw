@@ -297,6 +297,14 @@
   gap: 0;
 }
 
+.repo-review-panel--embedded.settings-section {
+  margin-bottom: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
 .repo-review-panel--embedded .repo-review-workspace-list {
   position: static;
   max-height: none;
@@ -307,14 +315,6 @@
   display: flex;
   justify-content: flex-end;
   margin-top: 12px;
-}
-
-.repository-review-page-body .repo-review-panel--embedded.settings-section {
-  margin-bottom: 0;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  box-shadow: none;
 }
 
 .repository-review-page .repo-review-panel-toolbar--embedded {

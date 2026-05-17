@@ -2480,37 +2480,36 @@ export function WorkteamPage({
                     className="workflow-library-card repo-review-repo-card"
                     onClick={() => setActiveWorkflowId(workflow.id)}
                   >
-                    <div className="workflow-library-card-head">
-                      <div className="workflow-library-card-copy">
-                        <strong>{workflow.name}</strong>
-                        <span>{workflow.description || t('workteam.无描述')}</span>
-                      </div>
-                      <span className="workflow-card-menu" aria-hidden="true">
-                        •••
-                      </span>
-                    </div>
-                    <div className="workflow-card-meta">
-                      <span className="workflow-card-meta-chip">
-                        {summary?.workerCount ?? 0} {t('workteam.节点')}
-                      </span>
-                      <span className="workflow-card-meta-chip">
-                        {summary?.edgeCount ?? 0} {t('workteam.连线')}
-                      </span>
-                      <span className={`workflow-card-status is-${workflow.status}`}>
+                    <div className="repo-review-repo-card-header">
+                      <strong>{workflow.name}</strong>
+                      <span className={`repo-review-badge workflow-card-badge is-${workflow.status}`}>
                         {workflow.status}
                       </span>
                     </div>
-                    <div className="workflow-card-runline">
-                      <span>{t('workteam.运行记录')}</span>
-                      <span className="workflow-card-run-pill">
-                        {summary?.latestRunStatus
-                          ? `${summary.latestRunStatus}${
-                              summary.latestRunAt
-                                ? ` · ${fmt(summary.latestRunAt)}`
-                              : ''
-                            }`
-                          : t('workteam.未运行')}
-                      </span>
+                    <div className="repo-review-repo-card-body workflow-card-body">
+                      <div className="repo-review-repo-card-row">
+                        <span className="repo-review-repo-card-label">{t('workteam.说明')}</span>
+                        <span className="repo-review-repo-card-ellipsis">
+                          {workflow.description || t('workteam.无描述')}
+                        </span>
+                      </div>
+                      <div className="repo-review-repo-card-row">
+                        <span className="repo-review-repo-card-label">{t('workteam.结构')}</span>
+                        <span className="repo-review-repo-card-ellipsis">
+                          {summary?.workerCount ?? 0} {t('workteam.节点')} ·{' '}
+                          {summary?.edgeCount ?? 0} {t('workteam.连线')}
+                        </span>
+                      </div>
+                      <div className="repo-review-repo-card-row">
+                        <span className="repo-review-repo-card-label">{t('workteam.运行')}</span>
+                        <span className="repo-review-repo-card-ellipsis">
+                          {summary?.latestRunStatus
+                            ? `${summary.latestRunStatus}${
+                                summary.latestRunAt ? ` · ${fmt(summary.latestRunAt)}` : ''
+                              }`
+                            : t('workteam.未运行')}
+                        </span>
+                      </div>
                     </div>
                   </button>
                 );

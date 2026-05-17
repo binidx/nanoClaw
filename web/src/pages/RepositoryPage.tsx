@@ -1,5 +1,3 @@
-import { useTranslation } from 'react-i18next';
-
 import type { Conversation } from '../app-types';
 import { RepoReviewSettingsPanel } from '../components/RepoReviewSettingsPanel';
 
@@ -14,18 +12,12 @@ export default function RepositoryPage({
   pickNativeDirectory,
   conversations,
 }: RepositoryPageProps) {
-  useTranslation('repoReview');
-
   return (
-    <div className="page-view settings-view repository-review-page">
-      <div className="page-body repository-review-page-body">
-        <RepoReviewSettingsPanel
-          apiBase={apiBase}
-          pickNativeDirectory={pickNativeDirectory}
-          conversations={conversations}
-          embedded
-        />
-      </div>
-    </div>
+    <RepoReviewSettingsPanel
+      apiBase={apiBase}
+      pickNativeDirectory={pickNativeDirectory}
+      conversations={conversations}
+      embedded
+    />
   );
 }

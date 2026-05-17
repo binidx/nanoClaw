@@ -2722,17 +2722,11 @@ export function AssistantsPage({
                       }
                     }}
                   >
-                    <div className="assistant-showcase-card-top">
-                      <div className="assistant-showcase-identity">
-                        <div className="assistant-showcase-avatar">
-                          {getAssistantInitials(assistant.name)}
-                        </div>
-                        <div className="assistant-showcase-copy">
-                          <strong>{assistant.name}</strong>
-                          <p>{assistant.description || t('暂无描述')}</p>
-                        </div>
-                      </div>
-                      <span className="assistant-showcase-menu" aria-hidden="true">
+                    <div className="repo-review-repo-card-header">
+                      <strong>{assistant.name}</strong>
+                      <span
+                        className={`repo-review-badge assistant-card-badge is-${formatAssistantCatalogStatusTone(meta?.status || 'attention')}`}
+                      >
                         {formatAssistantCatalogStatusLabel(
                           meta?.status || 'attention',
                           t,
@@ -2740,56 +2734,81 @@ export function AssistantsPage({
                       </span>
                     </div>
 
-                    <div className="assistant-card-item-meta assistant-card-item-meta--showcase">
-                      <span className="assistant-card-visibility-tag">
-                        {providerLabel}
-                      </span>
-                      {assistant.config.persona?.role ? (
-                        <span className="assistant-card-role-tag">
-                          {assistant.config.persona.role}
-                        </span>
-                      ) : null}
-                      {(assistant.config.kbIds?.length ?? 0) > 0 ? (
-                        <span>
-                          {t('知识库计数', {
-                            count: assistant.config.kbIds.length,
-                          })}
-                        </span>
-                      ) : null}
-                      {(assistant.config.skillIds?.length ?? 0) > 0 ? (
-                        <span>
-                          {t('技能计数', {
-                            count: assistant.config.skillIds.length,
-                          })}
-                        </span>
-                      ) : null}
-                      {(assistant.config.mcpServerIds?.length ?? 0) > 0 ? (
-                        <span>
-                          {t('MCP计数', {
-                            count: assistant.config.mcpServerIds.length,
-                          })}
-                        </span>
-                      ) : null}
-                      {conversationCount > 0 ? (
-                        <span>{t('会话计数', { count: conversationCount })}</span>
-                      ) : null}
-                    </div>
-
-                    <div className="assistant-showcase-footer">
-                      <div className="assistant-showcase-tags">
-                        <span className={`assistant-run-pill tone-${runState.tone}`}>
-                          {runState.label}
-                        </span>
-                        <span className="assistant-showcase-model">
-                          {modelLabel}
+                    <div className="repo-review-repo-card-body assistant-card-body">
+                      <div className="repo-review-repo-card-row">
+                        <span className="repo-review-repo-card-label">{t('说明')}</span>
+                        <span className="repo-review-repo-card-ellipsis">
+                          {assistant.description || t('暂无描述')}
                         </span>
                       </div>
-                      {meta ? (
-                        <span
-                          className={`assistant-card-status is-${formatAssistantCatalogStatusTone(meta.status)}`}
-                        >
-                          {formatAssistantCatalogStatusLabel(meta.status, t)}
+                      <div className="repo-review-repo-card-row">
+                        <span className="repo-review-repo-card-label">{t('Provider')}</span>
+                        <span className="repo-review-repo-card-ellipsis">
+                          {providerLabel}
                         </span>
+                      </div>
+                      <div className="repo-review-repo-card-row">
+                        <span className="repo-review-repo-card-label">{t('角色')}</span>
+                        <span className="repo-review-repo-card-ellipsis">
+                          {assistant.config.persona?.role || t('未设置')}
+                        </span>
+                      </div>
+                      <div className="repo-review-repo-card-row">
+                        <span className="repo-review-repo-card-label">{t('状态')}</span>
+                        <span className="repo-review-repo-card-ellipsis">
+                          {runState.label} · {modelLabel}
+                          {conversationCount > 0
+                            ? ` · ${t('会话计数', { count: conversationCount })}`
+                            : ''}
+                        </span>
+                      </div>
+                      {((assistant.config.kbIds?.length ?? 0) > 0 ||
+                        (assistant.config.skillIds?.length ?? 0) > 0 ||
+                        (assistant.config.mcpServerIds?.length ?? 0) > 0) ? (
+                        <div className="repo-review-repo-card-row">
+                          <span className="repo-review-repo-card-label">{t('资源')}</span>
+                          <span className="repo-review-repo-card-ellipsis">
+                            {(assistant.config.kbIds?.length ?? 0) > 0
+                              ? t('知识库计数', {
+                                  count: assistant.config.kbIds.length,
+                                })
+                              : null}
+                            {(assistant.config.kbIds?.length ?? 0) > 0 &&
+                            ((assistant.config.skillIds?.length ?? 0) > 0 ||
+                              (assistant.config.mcpServerIds?.length ?? 0) > 0)
+                              ? ' · '
+                              : ''}
+                            {(assistant.config.skillIds?.length ?? 0) > 0
+                              ? t('技能计数', {
+                                  count: assistant.config.skillIds.length,
+                                })
+                              : null}
+                            {(assistant.config.skillIds?.length ?? 0) > 0 &&
+                            (assistant.config.mcpServerIds?.length ?? 0) > 0
+                              ? ' · '
+                              : ''}
+                            {(assistant.config.mcpServerIds?.length ?? 0) > 0
+                              ? t('MCP计数', {
+                                  count: assistant.config.mcpServerIds.length,
+                                })
+                              : null}
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="repo-review-repo-card-row">
+                          <span className="repo-review-repo-card-label">{t('模型')}</span>
+                          <span className="repo-review-repo-card-ellipsis">
+                            {modelLabel}
+                          </span>
+                        </div>
+                      )}
+                      {!assistant.enabled ? (
+                        <div className="repo-review-repo-card-row">
+                          <span className="repo-review-repo-card-label">{t('可用性')}</span>
+                          <span className="repo-review-repo-card-ellipsis">
+                            {t('已停用')}
+                          </span>
+                        </div>
                       ) : null}
                     </div>
                   </div>

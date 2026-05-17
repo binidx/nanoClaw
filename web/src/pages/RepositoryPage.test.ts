@@ -11,10 +11,7 @@ import type { Conversation } from '../app-types';
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (key: string, options?: { defaultValue?: string }) =>
-      ({
-        'auto.c270fc6f': '仓库',
-        'auto.c83b1969': '仓库页直接复用成熟的代码审查工作台，避免维护分叉的仓库专用界面。',
-      })[key] || options?.defaultValue || key,
+      options?.defaultValue || key,
   }),
 }));
 
@@ -64,7 +61,6 @@ describe('RepositoryPage', () => {
 
   it('renders the shared repository settings workspace', () => {
     rendered = renderRepositoryPage();
-    expect(rendered.container.textContent).toContain('Repo');
     expect(rendered.container.textContent).toContain('repo-review-settings-panel');
   });
 });

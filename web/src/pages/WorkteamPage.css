@@ -2682,6 +2682,26 @@ button {
   gap: 10px;
 }
 
+.workflow-card-body {
+  margin-top: auto;
+  gap: 6px;
+}
+
+.workflow-card-badge.is-draft {
+  background: rgba(241, 245, 249, 0.92);
+  color: #64748b;
+}
+
+.workflow-card-badge.is-active {
+  background: rgba(231, 237, 255, 0.92);
+  color: #3d54d5;
+}
+
+.workflow-card-badge.is-archived {
+  background: rgba(248, 250, 252, 0.92);
+  color: #6b7280;
+}
+
 .workflow-card-meta-chip {
   padding: 7px 12px;
   border-radius: 999px;
