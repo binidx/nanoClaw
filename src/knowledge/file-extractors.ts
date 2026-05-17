@@ -4,7 +4,7 @@ import { t } from '../i18n/index.js';
 
 const logger = createModuleLogger('file-extractors');
 
-const BINARY_EXTENSIONS = new Set(['.pdf', '.docx', '.xlsx', '.xls']);
+const BINARY_EXTENSIONS = new Set(['.pdf', '.docx', '.xlsx']);
 
 const TEXT_EXTENSIONS = new Set([
   '.txt', '.md', '.markdown', '.csv', '.json', '.log',
@@ -52,7 +52,7 @@ export function detectFileType(filename: string): FileType {
   const ext = getExtension(filename);
   if (ext === '.pdf') return 'pdf';
   if (ext === '.docx') return 'docx';
-  if (ext === '.xlsx' || ext === '.xls') return 'xlsx';
+  if (ext === '.xlsx') return 'xlsx';
   if (IMAGE_EXTENSIONS.has(ext)) return 'image';
   if (TEXT_EXTENSIONS.has(ext)) return 'text';
   return 'unknown';
@@ -89,18 +89,68 @@ export async function extractFromDOCX(buffer: Buffer): Promise<string> {
 const MAX_XLSX_ROWS = 5000;
 const MAX_XLSX_SHEETS = 20;
 
+function stringifySpreadsheetCell(value: unknown): string {
+  if (value == null) return '';
+  if (value instanceof Date) return value.toISOString();
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+    return String(value);
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => stringifySpreadsheetCell(item)).join(', ');
+  }
+  if (typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    if (Array.isArray(record.richText)) {
+      return record.richText
+        .map((part) => {
+          if (!part || typeof part !== 'object') return '';
+          return typeof (part as { text?: unknown }).text === 'string'
+            ? ((part as { text: string }).text)
+            : '';
+        })
+        .join('');
+    }
+    if (typeof record.text === 'string') return record.text;
+    if ('result' in record) return stringifySpreadsheetCell(record.result);
+    if (typeof record.hyperlink === 'string') return record.hyperlink;
+    if (typeof record.formula === 'string') return record.formula;
+    if (typeof record.sharedFormula === 'string') return record.sharedFormula;
+    if (typeof record.error === 'string') return record.error;
+    try {
+      return JSON.stringify(record);
+    } catch {
+      return '';
+    }
+  }
+  return '';
+}
+
+function toCsvCell(value: string): string {
+  return /[",\n\r]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
+}
+
 export async function extractFromXLSX(buffer: Buffer): Promise<string> {
-  const XLSX = await import('xlsx');
-  const wb = XLSX.read(buffer, { type: 'buffer', sheetRows: MAX_XLSX_ROWS });
-  const sheetNames = wb.SheetNames.slice(0, MAX_XLSX_SHEETS);
-  const parts = sheetNames.map((name) => {
-    const sheet = wb.Sheets[name];
-    if (!sheet) return '';
-    const csv = XLSX.utils.sheet_to_csv(sheet);
-    return `## ${name}\n${csv}`;
+  const ExcelJS = await import('exceljs');
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(buffer as unknown as Parameters<typeof workbook.xlsx.load>[0]);
+  const sheets = workbook.worksheets.slice(0, MAX_XLSX_SHEETS);
+  const parts = sheets.map((sheet) => {
+    const rows: string[] = [];
+    let seenRows = 0;
+    sheet.eachRow({ includeEmpty: false }, (row) => {
+      if (seenRows >= MAX_XLSX_ROWS) return;
+      seenRows += 1;
+      const cells = Array.from({ length: row.cellCount }, (_, index) =>
+        toCsvCell(stringifySpreadsheetCell(row.getCell(index + 1).value)),
+      );
+      if (cells.every((cell) => cell.length === 0)) return;
+      rows.push(cells.join(','));
+    });
+    if (rows.length === 0) return '';
+    return `## ${sheet.name}\n${rows.join('\n')}`;
   }).filter(Boolean);
   const text = parts.join('\n\n');
-  logger.debug({ bytes: buffer.length, sheets: sheetNames.length, textLen: text.length }, 'XLSX text extracted');
+  logger.debug({ bytes: buffer.length, sheets: sheets.length, textLen: text.length }, 'XLSX text extracted');
   return text;
 }
 

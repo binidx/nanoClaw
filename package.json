@@ -44,6 +44,7 @@
     "better-sqlite3": "^12.6.2",
     "cheerio": "^1.2.0",
     "cron-parser": "^5.5.0",
+    "exceljs": "^4.4.0",
     "express": "^5.2.1",
     "i18next": "^26.0.8",
     "jsdom": "^29.0.2",
@@ -62,14 +63,22 @@
     "turndown": "^7.2.4",
     "unpdf": "^1.6.0",
     "ws": "^8.19.0",
-    "xlsx": "^0.18.5",
     "yaml": "^2.8.3",
     "zod": "^4.3.6"
   },
   "overrides": {
-    "picomatch": "^4.0.4",
+    "@protobufjs/utf8": "1.1.1",
+    "@xmldom/xmldom": "0.8.13",
+    "axios": "1.16.1",
+    "express-rate-limit": "8.5.2",
+    "fast-uri": "3.1.2",
+    "follow-redirects": "1.16.0",
+    "hono": "4.12.19",
+    "ip-address": "10.2.0",
     "path-to-regexp": "^8.4.2",
-    "axios": "^1.15.0"
+    "picomatch": "^4.0.4",
+    "postcss": "8.5.14",
+    "protobufjs": "7.5.8"
   },
   "devDependencies": {
     "@types/adm-zip": "^0.5.8",
