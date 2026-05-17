@@ -353,11 +353,11 @@ const REPO_REVIEW_SUBAGENT_RESULT_PROMPT_MAX_CHARS = Math.max(
   Number(process.env.NANOCLAW_REVIEW_SUBAGENT_RESULT_PROMPT_MAX_CHARS) || 4_000,
 );
 const REPO_REVIEW_SUBAGENT_TIMEOUT_MS = Math.max(
-  1_000,
+  50,
   Number(process.env.NANOCLAW_REVIEW_SUBAGENT_TIMEOUT_MS) || 300_000,
 );
 const REPO_REVIEW_SUBAGENT_TIMEOUT_GRACE_MS = Math.max(
-  250,
+  25,
   Number(process.env.NANOCLAW_REVIEW_SUBAGENT_TIMEOUT_GRACE_MS) || 20_000,
 );
 
@@ -390,7 +390,7 @@ async function resolveRepoReviewMaxSubagents(): Promise<number> {
   if (REPO_REVIEW_SUBAGENT_CEILING) {
     return Math.max(1, Math.min(base, REPO_REVIEW_SUBAGENT_CEILING));
   }
-  return Math.max(1, Math.min(base, REPO_REVIEW_AGENTIC_DEFAULT_MAX_SUBAGENTS));
+  return Math.max(1, base);
 }
 
 function groupFilesForReview(
@@ -751,7 +751,8 @@ function normalizeRepoReviewProgressSnapshot(
   const latestErrorText = stringValue(record.latestErrorText);
   const steps = normalizeRepoReviewProgressSteps(record.steps);
   return {
-    snapshotVersion: Math.max(0, Number(record.snapshotVersion) || 0) || undefined,
+    snapshotVersion:
+      Math.max(0, Number(record.snapshotVersion) || 0) || undefined,
     heartbeatAt: stringValue(record.heartbeatAt) || undefined,
     runTerminal: Boolean(record.runTerminal),
     turnCount: Math.max(0, Number(record.turnCount) || 0),
@@ -7157,11 +7158,8 @@ function buildRepoReviewAgenticBudget(input: {
   return {
     maxSubagents: Math.max(
       1,
-      Math.min(
-        REPO_REVIEW_AGENTIC_DEFAULT_MAX_SUBAGENTS,
-        Math.trunc(
-          input.maxSubagents || REPO_REVIEW_AGENTIC_DEFAULT_MAX_SUBAGENTS,
-        ),
+      Math.trunc(
+        input.maxSubagents || REPO_REVIEW_AGENTIC_DEFAULT_MAX_SUBAGENTS,
       ),
     ),
     delegationFileThreshold: Math.max(
@@ -13425,7 +13423,10 @@ async function executeRepoReviewEvent(
             ['changed_files', prepared.changedFiles.join(', ') || '-'],
             ['diff_bytes', Buffer.byteLength(prepared.diffText, 'utf8')],
             ['workspace_path', reviewWorkspacePath || '-'],
-            ['full_file_context_mode', profile.includeFullFileContext ? 'lazy' : 'disabled'],
+            [
+              'full_file_context_mode',
+              profile.includeFullFileContext ? 'lazy' : 'disabled',
+            ],
             [
               'codemap_status',
               activeExecutionStats.codeMapContextStatus || 'unknown',
@@ -13479,14 +13480,15 @@ async function executeRepoReviewEvent(
             reviewTurns.filter((turn) => turn.phase === 'worker'),
             'read_file',
           );
-          activeExecutionStats.mainReadonlyToolCallCount = countRepoReviewToolCalls(
-            reviewTurns.filter(
-              (turn) =>
-                turn.phase === 'main_agent_review' ||
-                turn.phase === 'main_agent_fallback_review',
-            ),
-            'read_file',
-          );
+          activeExecutionStats.mainReadonlyToolCallCount =
+            countRepoReviewToolCalls(
+              reviewTurns.filter(
+                (turn) =>
+                  turn.phase === 'main_agent_review' ||
+                  turn.phase === 'main_agent_fallback_review',
+              ),
+              'read_file',
+            );
           await persistReviewProgress();
         },
         onProgressStep: async (step) => {

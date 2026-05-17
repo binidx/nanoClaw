@@ -2,7 +2,12 @@ import path from 'path';
 
 import type { ReviewOverall } from '../db.js';
 import type { AiProvider } from '../db/assistants.js';
-import { getDefaultProvider, getDefaultProviderForUser, getProvider, isProviderVisibleToUser } from '../db/assistants.js';
+import {
+  getDefaultProvider,
+  getDefaultProviderForUser,
+  getProvider,
+  isProviderVisibleToUser,
+} from '../db/assistants.js';
 import {
   requestAgentClose,
   runAgentProcess,
@@ -15,8 +20,14 @@ import {
 } from '../agent/agent-runner.js';
 import { getProviderForModule } from '../tenant/tenant-db.js';
 import { getProviderAdapter } from '../provider/provider-adapters.js';
-import { recordPromptTrace, resolvePromptText } from '../prompt/prompt-service.js';
-import { buildRepoReviewDiffIndex, getRepoReviewDiffSlice } from './repo-review-diff-index.js';
+import {
+  recordPromptTrace,
+  resolvePromptText,
+} from '../prompt/prompt-service.js';
+import {
+  buildRepoReviewDiffIndex,
+  getRepoReviewDiffSlice,
+} from './repo-review-diff-index.js';
 import { buildRepoReviewFindingEvidenceKey } from './repo-review-doc-render.js';
 import { buildStructuredRepoReviewMarkdown } from './repo-review-messages.js';
 import { mapWithConcurrencyLimit } from './repo-review-sync-service.js';
@@ -52,10 +63,17 @@ const MAX_WORKER_CHUNK_BYTES = 60 * 1024;
 const MAX_WORKER_CHUNK_FILE_COUNT = 8;
 const MAX_WORKER_CHUNK_MERGE_PROMPT_BYTES = 96 * 1024;
 const MAX_WORKER_CHUNK_MERGE_FILE_COUNT = 12;
-const WORKER_TIMEOUT_MS = 300_000;
+const WORKER_TIMEOUT_MS = Math.max(
+  50,
+  Number(process.env.NANOCLAW_REVIEW_SUBAGENT_TIMEOUT_MS) ||
+    Number(process.env.NANOCLAW_REVIEW_WORKER_TIMEOUT_MS) ||
+    300_000,
+);
 const WORKER_TIMEOUT_GRACE_MS = Math.max(
-  250,
-  Number(process.env.NANOCLAW_REVIEW_WORKER_TIMEOUT_GRACE_MS) || 20_000,
+  25,
+  Number(process.env.NANOCLAW_REVIEW_SUBAGENT_TIMEOUT_GRACE_MS) ||
+    Number(process.env.NANOCLAW_REVIEW_WORKER_TIMEOUT_GRACE_MS) ||
+    20_000,
 );
 const REDUCER_TIMEOUT_MS = 120_000;
 
@@ -133,7 +151,12 @@ export interface RepoReviewWorkerResult {
   timedOut: boolean;
   followupRequested: boolean;
   followupSummaryReceived: boolean;
-  timeoutStatus?: 'timeout_followup_requested' | 'timeout_followup_completed' | 'timeout_followup_failed' | 'timeout_killed';
+  timeoutStatus?:
+    | 'timeout_followup_requested'
+    | 'timeout_followup_completed'
+    | 'timeout_partial_output_preserved'
+    | 'timeout_followup_failed'
+    | 'timeout_killed';
   failureReason?: string;
   timeoutFollowupSummary?: RepoReviewTimeoutFollowupSummary;
   rawOutput: string;
@@ -171,14 +194,18 @@ function normalizeLine(value: string): string {
 }
 
 function splitPathSegments(filePath: string): string[] {
-  return String(filePath || '').split('/').filter(Boolean);
+  return String(filePath || '')
+    .split('/')
+    .filter(Boolean);
 }
 
 function getGroupKey(filePath: string): string {
   const segments = splitPathSegments(filePath);
   const top = segments[0] || '(root)';
   const second = segments[1] || '';
-  const isTest = /(?:^|[./_-])(test|tests|spec|specs)(?:$|[./_-])/i.test(filePath);
+  const isTest = /(?:^|[./_-])(test|tests|spec|specs)(?:$|[./_-])/i.test(
+    filePath,
+  );
   if (isTest) return `${top}/tests`;
   if (second) return `${top}/${second}`;
   return top;
@@ -239,13 +266,17 @@ function buildRepoReviewDiffRange(input: {
 }
 
 function normalizeSeverity(value: unknown): 'high' | 'medium' | 'low' {
-  const text = String(value || '').trim().toLowerCase();
+  const text = String(value || '')
+    .trim()
+    .toLowerCase();
   if (text === 'high' || text === 'medium' || text === 'low') return text;
   return 'low';
 }
 
 function normalizeConfidence(value: unknown): 'high' | 'medium' | 'low' {
-  const text = String(value || '').trim().toLowerCase();
+  const text = String(value || '')
+    .trim()
+    .toLowerCase();
   if (text === 'high' || text === 'medium' || text === 'low') return text;
   return 'medium';
 }
@@ -281,7 +312,9 @@ function normalizeFindings(entries: unknown[]): RepoReviewRunFinding[] {
         finding.line = stringValue(record.line);
       }
       if (stringValue(record.codeSnippet || record.code_snippet)) {
-        finding.codeSnippet = stringValue(record.codeSnippet || record.code_snippet);
+        finding.codeSnippet = stringValue(
+          record.codeSnippet || record.code_snippet,
+        );
       }
       if (stringValue(record.fixCode || record.fix_code)) {
         finding.fixCode = stringValue(record.fixCode || record.fix_code);
@@ -297,7 +330,9 @@ function normalizeFindings(entries: unknown[]): RepoReviewRunFinding[] {
     .filter((entry): entry is RepoReviewRunFinding => Boolean(entry));
 }
 
-function dedupeFindings(findings: RepoReviewRunFinding[]): RepoReviewRunFinding[] {
+function dedupeFindings(
+  findings: RepoReviewRunFinding[],
+): RepoReviewRunFinding[] {
   const seen = new Set<string>();
   const deduped: RepoReviewRunFinding[] = [];
   for (const finding of findings) {
@@ -309,7 +344,9 @@ function dedupeFindings(findings: RepoReviewRunFinding[]): RepoReviewRunFinding[
   return deduped;
 }
 
-function buildStructuredMarkdownFallback(result: RepoReviewStructuredResult): string {
+function buildStructuredMarkdownFallback(
+  result: RepoReviewStructuredResult,
+): string {
   return buildStructuredRepoReviewMarkdown({
     summary: result.summary,
     findings: result.findings,
@@ -319,11 +356,13 @@ function buildStructuredMarkdownFallback(result: RepoReviewStructuredResult): st
 }
 
 function slugifyId(value: string): string {
-  return String(value || '')
-    .trim()
-    .replace(/[^a-zA-Z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 48) || 'repo-review';
+  return (
+    String(value || '')
+      .trim()
+      .replace(/[^a-zA-Z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 48) || 'repo-review'
+  );
 }
 
 function buildReviewGroup(repository: RepoReviewRepository): RegisteredGroup {
@@ -366,9 +405,12 @@ function buildAgentRunInput(input: {
     managedSkillIds: input.profile.skillIds,
     managedMcpServerIds: input.profile.mcpServerIds,
     ...(input.userId ? { userId: input.userId } : {}),
-    ...(input.providerOverrideId ? { providerOverrideId: input.providerOverrideId } : {}),
+    ...(input.providerOverrideId
+      ? { providerOverrideId: input.providerOverrideId }
+      : {}),
   };
-  const reviewWorkspacePath = input.workspacePath || input.repository.localRepoPath;
+  const reviewWorkspacePath =
+    input.workspacePath || input.repository.localRepoPath;
   if (reviewWorkspacePath) {
     const allowedDirectories = buildRepoReviewReadOnlyAllowedDirectories(
       reviewWorkspacePath,
@@ -388,7 +430,9 @@ function buildAgentRunInput(input: {
   return agentInput;
 }
 
-function buildWorkerToolInstructionBlock(includeFullFileContext: boolean): string {
+function buildWorkerToolInstructionBlock(
+  includeFullFileContext: boolean,
+): string {
   const lines = [
     '## 工具使用要求',
     '- 你必须至少执行一次只读工具调用来核对关键证据。',
@@ -492,7 +536,9 @@ function upsertRepoReviewTurnItem(
   const nextItem = {
     ...event.item,
     timestamp: event.timestamp,
-    ...(event.item.type === 'tool_call' ? { subagentInfo: event.item.subagentInfo } : {}),
+    ...(event.item.type === 'tool_call'
+      ? { subagentInfo: event.item.subagentInfo }
+      : {}),
   } as AgentTurnItemPayload;
   if (itemIndex < 0) {
     items.push(nextItem);
@@ -554,7 +600,13 @@ function applyAgentTurnEvent(
     return upsertRepoReviewTurnItem(turns, event, context);
   }
   if (event.type === 'turn.completed') {
-    return markRepoReviewTurnCompleted(turns, event.turnId, event.timestamp, undefined, context);
+    return markRepoReviewTurnCompleted(
+      turns,
+      event.turnId,
+      event.timestamp,
+      undefined,
+      context,
+    );
   }
   if (event.type === 'turn.failed') {
     return markRepoReviewTurnCompleted(
@@ -571,12 +623,71 @@ function applyAgentTurnEvent(
 function extractLatestCompletedAssistantMessageText(
   turns: RepoReviewAssistantTurn[],
 ): string {
+  return extractLatestRepoReviewAssistantMessageText(turns, {
+    allowInProgress: false,
+    requireUsableTerminalOutput: false,
+  });
+}
+
+function extractBalancedJson(source: string): string | null {
+  const start = source.indexOf('{');
+  if (start === -1) return null;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let i = start; i < source.length; i += 1) {
+    const ch = source[i]!;
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (ch === '\\' && inString) {
+      escaped = true;
+      continue;
+    }
+    if (ch === '"') {
+      inString = !inString;
+      continue;
+    }
+    if (inString) continue;
+    if (ch === '{') depth += 1;
+    if (ch === '}') {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, i + 1);
+    }
+  }
+  return null;
+}
+
+function extractLatestRepoReviewAssistantMessageText(
+  turns: RepoReviewAssistantTurn[],
+  input: {
+    allowInProgress: boolean;
+    requireUsableTerminalOutput: boolean;
+  },
+): string {
   for (let turnIndex = turns.length - 1; turnIndex >= 0; turnIndex -= 1) {
     const turn = turns[turnIndex]!;
-    for (let itemIndex = turn.items.length - 1; itemIndex >= 0; itemIndex -= 1) {
+    for (
+      let itemIndex = turn.items.length - 1;
+      itemIndex >= 0;
+      itemIndex -= 1
+    ) {
       const item = turn.items[itemIndex]!;
-      if (item.type !== 'assistant_message' || item.status !== 'completed') continue;
+      if (item.type !== 'assistant_message') continue;
+      if (
+        item.status !== 'completed' &&
+        !(input.allowInProgress && item.status === 'in_progress')
+      ) {
+        continue;
+      }
       const text = item.text.trim();
+      if (
+        input.requireUsableTerminalOutput &&
+        !looksLikeRepoReviewTerminalOutput(text)
+      ) {
+        continue;
+      }
       if (text) return text;
     }
   }
@@ -593,7 +704,9 @@ function formatProgressKeyValues(
   entries: Array<[string, string | number | boolean | null | undefined]>,
 ): string {
   return entries
-    .filter(([, value]) => value !== undefined && value !== null && `${value}`.trim())
+    .filter(
+      ([, value]) => value !== undefined && value !== null && `${value}`.trim(),
+    )
     .map(([key, value]) => `${key}: ${value}`)
     .join('\n');
 }
@@ -601,10 +714,8 @@ function formatProgressKeyValues(
 function extractJsonObject(text: string): string {
   const trimmed = String(text || '').trim();
   if (!trimmed) return '';
-  if (trimmed.startsWith('{') && trimmed.endsWith('}')) return trimmed;
-  const start = trimmed.indexOf('{');
-  const end = trimmed.lastIndexOf('}');
-  if (start >= 0 && end > start) return trimmed.slice(start, end + 1);
+  const balanced = extractBalancedJson(trimmed);
+  if (balanced) return balanced;
   return trimmed;
 }
 
@@ -615,11 +726,44 @@ function looksLikeRepoReviewTerminalOutput(text: string): boolean {
     return true;
   }
   try {
-    const parsed = JSON.parse(extractJsonObject(trimmed)) as Record<string, unknown>;
+    const parsed = JSON.parse(extractJsonObject(trimmed)) as Record<
+      string,
+      unknown
+    >;
     return Boolean(parsed.overall || parsed.summary || parsed.findings);
   } catch {
     return false;
   }
+}
+
+function hasBalancedRepoReviewTerminalOutput(text: string): boolean {
+  const trimmed = String(text || '').trim();
+  if (!trimmed) return false;
+  return (
+    Boolean(extractBalancedJson(trimmed)) &&
+    looksLikeRepoReviewTerminalOutput(trimmed)
+  );
+}
+
+function getRepoReviewTerminalOutputScore(text: string): number {
+  const trimmed = String(text || '').trim();
+  if (!trimmed) return 0;
+  if (hasBalancedRepoReviewTerminalOutput(trimmed)) return 3;
+  if (looksLikeRepoReviewTerminalOutput(trimmed)) return 2;
+  return 1;
+}
+
+function preferRepoReviewTerminalOutput(
+  current: string,
+  candidate: string,
+): string {
+  const currentScore = getRepoReviewTerminalOutputScore(current);
+  const candidateScore = getRepoReviewTerminalOutputScore(candidate);
+  if (candidateScore > currentScore) return candidate;
+  if (candidateScore === currentScore && String(candidate || '').trim()) {
+    return candidate;
+  }
+  return current;
 }
 
 async function resolveReviewProvider(input: {
@@ -631,7 +775,10 @@ async function resolveReviewProvider(input: {
   let profileProviderId = stringValue(input.profile.provider_id);
   if (profileProviderId) {
     if (input.userId) {
-      const visible = await isProviderVisibleToUser(profileProviderId, input.userId);
+      const visible = await isProviderVisibleToUser(
+        profileProviderId,
+        input.userId,
+      );
       if (!visible) {
         logger.warn(
           {
@@ -656,7 +803,10 @@ async function resolveReviewProvider(input: {
     const userDefault = await getDefaultProviderForUser(input.userId);
     if (userDefault) return userDefault;
   }
-  const moduleProvider = await getProviderForModule('code_review', input.userId);
+  const moduleProvider = await getProviderForModule(
+    'code_review',
+    input.userId,
+  );
   if (moduleProvider) {
     const provider = await getProvider(moduleProvider.id);
     if (provider) return provider;
@@ -684,7 +834,11 @@ async function runProviderTextCall(input: {
   const request = adapter.generateText(input.provider, input.prompt, {
     maxTokens: input.maxTokens,
   });
-  const timeout = new Promise<{ text: string; model?: string; timedOut: boolean }>((resolve) => {
+  const timeout = new Promise<{
+    text: string;
+    model?: string;
+    timedOut: boolean;
+  }>((resolve) => {
     const timer = setTimeout(() => {
       resolve({ text: '', timedOut: true });
     }, input.timeoutMs);
@@ -754,6 +908,7 @@ async function runBoundedReviewAgent(input: {
   let streamedResult = '';
   let latestResultText = '';
   let latestCompletedAssistantMessageText = '';
+  let latestUsableAssistantMessageText = '';
   let timeoutFollowupOutputText = '';
   let sawTurnEvent = false;
   let terminalOutputSeen = false;
@@ -765,14 +920,33 @@ async function runBoundedReviewAgent(input: {
   let timeoutFollowupCompleted = false;
   let timeoutFollowupTurnBoundary = -1;
   let currentPhase = input.turnContext?.phase || 'worker';
+  let earlyTerminalOutputResolved = false;
+  let resolveEarlyTerminalOutput: ((value: AgentRunOutput) => void) | null =
+    null;
+  const earlyTerminalOutputPromise = new Promise<AgentRunOutput>((resolve) => {
+    resolveEarlyTerminalOutput = resolve;
+  });
   const emitTurns = async () => {
     await input.onTurnProgress?.(reviewTurns);
+  };
+  const settleEarlyTerminalOutput = (text: string) => {
+    if (earlyTerminalOutputResolved) return;
+    if (!String(text || '').trim()) return;
+    earlyTerminalOutputResolved = true;
+    resolveEarlyTerminalOutput?.({
+      status: 'success',
+      result: text,
+    });
   };
   const closeAgentInput = () => {
     if (closeRequested) return;
     closeRequested = true;
     requestAgentClose(group.folder, input.runtimeNamespace || input.runId);
-    if (!agentProcess?.stdin || agentProcess.stdin.destroyed || agentProcess.stdin.writableEnded) {
+    if (
+      !agentProcess?.stdin ||
+      agentProcess.stdin.destroyed ||
+      agentProcess.stdin.writableEnded
+    ) {
       return;
     }
     try {
@@ -826,30 +1000,47 @@ async function runBoundedReviewAgent(input: {
           latestCompletedAssistantMessageText =
             extractLatestCompletedAssistantMessageText(reviewTurns) ||
             latestCompletedAssistantMessageText;
+          latestUsableAssistantMessageText =
+            extractLatestRepoReviewAssistantMessageText(reviewTurns, {
+              allowInProgress: true,
+              requireUsableTerminalOutput: true,
+            }) || latestUsableAssistantMessageText;
           await emitTurns();
           if (
             timeoutFollowupSent &&
             timeoutFollowupTurnBoundary >= 0 &&
             reviewTurns.length > timeoutFollowupTurnBoundary
           ) {
-            const followupTurns = reviewTurns.slice(timeoutFollowupTurnBoundary);
-            const followupText = extractLatestCompletedAssistantMessageText(followupTurns);
+            const followupTurns = reviewTurns.slice(
+              timeoutFollowupTurnBoundary,
+            );
+            const followupText = extractLatestRepoReviewAssistantMessageText(
+              followupTurns,
+              {
+                allowInProgress: true,
+                requireUsableTerminalOutput: true,
+              },
+            );
             if (followupText) {
               maybeRecordFollowupOutput(followupText);
             }
           }
           if (
-            output.turnEvent.type === 'item.completed' &&
+            (output.turnEvent.type === 'item.completed' ||
+              output.turnEvent.type === 'item.updated') &&
             output.turnEvent.item.type === 'assistant_message' &&
-            output.turnEvent.item.status === 'completed' &&
-            output.turnEvent.item.text.trim()
+            (output.turnEvent.item.status === 'completed' ||
+              output.turnEvent.item.status === 'in_progress') &&
+            hasBalancedRepoReviewTerminalOutput(output.turnEvent.item.text)
           ) {
-            streamedResult = output.turnEvent.item.text;
+            streamedResult = preferRepoReviewTerminalOutput(
+              streamedResult,
+              output.turnEvent.item.text,
+            );
             maybeRecordFollowupOutput(output.turnEvent.item.text);
-            if (looksLikeRepoReviewTerminalOutput(output.turnEvent.item.text)) {
-              terminalOutputSeen = true;
-              closeAgentInput();
-            }
+            terminalOutputSeen = true;
+            closeAgentInput();
+            settleEarlyTerminalOutput(streamedResult);
           }
           if (
             output.turnEvent.type === 'turn.completed' ||
@@ -861,10 +1052,17 @@ async function runBoundedReviewAgent(input: {
         if (output.result) {
           terminalOutputSeen = true;
           latestResultText = output.result;
-          streamedResult = output.result;
+          streamedResult = preferRepoReviewTerminalOutput(
+            streamedResult,
+            output.result,
+          );
           maybeRecordFollowupOutput(output.result);
-          if (!sawTurnEvent) {
+          if (
+            !sawTurnEvent ||
+            getRepoReviewTerminalOutputScore(output.result) >= 2
+          ) {
             closeAgentInput();
+            settleEarlyTerminalOutput(streamedResult);
           }
         } else if (output.status === 'error') {
           terminalOutputSeen = true;
@@ -878,7 +1076,8 @@ async function runBoundedReviewAgent(input: {
         ? Math.max(0, Math.trunc(input.timeoutMs))
         : WORKER_TIMEOUT_MS;
     const timeoutGraceMs =
-      typeof input.timeoutGraceMs === 'number' && Number.isFinite(input.timeoutGraceMs)
+      typeof input.timeoutGraceMs === 'number' &&
+      Number.isFinite(input.timeoutGraceMs)
         ? Math.max(0, Math.trunc(input.timeoutGraceMs))
         : WORKER_TIMEOUT_GRACE_MS;
     const resolveTimeout = () => {
@@ -930,19 +1129,27 @@ async function runBoundedReviewAgent(input: {
         : null;
 
     const result = timeoutPromise
-      ? await Promise.race([processPromise, timeoutPromise])
-      : await processPromise;
+      ? await Promise.race([
+          processPromise,
+          timeoutPromise,
+          earlyTerminalOutputPromise,
+        ])
+      : await Promise.race([processPromise, earlyTerminalOutputPromise]);
     if (result.status === 'success' && typeof result.result === 'string') {
       terminalOutputSeen = true;
       latestResultText = result.result;
-      streamedResult = streamedResult || result.result;
+      streamedResult = preferRepoReviewTerminalOutput(
+        streamedResult,
+        result.result,
+      );
     }
     if (
       result.status !== 'success' &&
       !timedOut &&
       !streamedResult &&
       !latestResultText &&
-      !latestCompletedAssistantMessageText
+      !latestCompletedAssistantMessageText &&
+      !latestUsableAssistantMessageText
     ) {
       throw new Error(result.error || 'Review agent did not return a result');
     }
@@ -964,7 +1171,10 @@ async function runBoundedReviewAgent(input: {
         : reviewTurns;
     if (!timeoutFollowupOutputText) {
       timeoutFollowupOutputText =
-        extractLatestCompletedAssistantMessageText(followupTurns) || '';
+        extractLatestRepoReviewAssistantMessageText(followupTurns, {
+          allowInProgress: true,
+          requireUsableTerminalOutput: true,
+        }) || '';
     }
     timeoutFollowupCompleted = Boolean(timeoutFollowupOutputText.trim());
   }
@@ -972,6 +1182,7 @@ async function runBoundedReviewAgent(input: {
     streamedResult ||
     latestResultText ||
     latestCompletedAssistantMessageText ||
+    latestUsableAssistantMessageText ||
     '';
   return {
     outputText,
@@ -1199,7 +1410,11 @@ function buildRepoReviewReducerPrompt(input: {
     buildWorkerResultsPrompt(input.workerResults),
   ];
   if (input.mainResult) {
-    sections.push('', '主代理补审结果：', trimBlock(JSON.stringify(input.mainResult, null, 2), 20 * 1024));
+    sections.push(
+      '',
+      '主代理补审结果：',
+      trimBlock(JSON.stringify(input.mainResult, null, 2), 20 * 1024),
+    );
   }
   sections.push(
     '',
@@ -1267,12 +1482,20 @@ function buildRepoReviewMainReviewPrompt(input: {
           buildRepoReviewTurnSummary(input.workerTurns),
         ].join('\n')
       : '',
-    !input.directReview && input.workerResults.some((result) => result.followupSummaryReceived && result.timeoutFollowupSummary)
+    !input.directReview &&
+    input.workerResults.some(
+      (result) =>
+        result.followupSummaryReceived && result.timeoutFollowupSummary,
+    )
       ? [
           '## 超时追问摘要',
           JSON.stringify(
             input.workerResults
-              .filter((result) => result.followupSummaryReceived && result.timeoutFollowupSummary)
+              .filter(
+                (result) =>
+                  result.followupSummaryReceived &&
+                  result.timeoutFollowupSummary,
+              )
               .map((result) => ({
                 worker_id: result.chunk.id,
                 summary: result.timeoutFollowupSummary,
@@ -1311,18 +1534,22 @@ function buildRepoReviewMainReviewPrompt(input: {
     '',
     '## 证据',
     input.bundle.files
-      .map((file) => [
-        `### ${file.filePath}`,
-        `- group: ${file.groupKey}`,
-        `- language: ${file.language}`,
-        `- test file: ${file.isTestFile ? 'yes' : 'no'}`,
-        file.diffText ? `#### diff\n${file.diffText}` : '',
-        file.fileContent
-          ? `#### full file\n${file.fileContent}`
-          : file.fileContentReason
-            ? `#### full file\n(omitted: ${file.fileContentReason})`
-            : '',
-      ].filter(Boolean).join('\n'))
+      .map((file) =>
+        [
+          `### ${file.filePath}`,
+          `- group: ${file.groupKey}`,
+          `- language: ${file.language}`,
+          `- test file: ${file.isTestFile ? 'yes' : 'no'}`,
+          file.diffText ? `#### diff\n${file.diffText}` : '',
+          file.fileContent
+            ? `#### full file\n${file.fileContent}`
+            : file.fileContentReason
+              ? `#### full file\n(omitted: ${file.fileContentReason})`
+              : '',
+        ]
+          .filter(Boolean)
+          .join('\n'),
+      )
       .join('\n\n'),
     '',
     ...customSections,
@@ -1369,7 +1596,10 @@ function parseWorkerResult(
   turns: RepoReviewAssistantTurn[],
 ): RepoReviewWorkerResult {
   try {
-    const parsed = JSON.parse(extractJsonObject(output)) as Record<string, unknown>;
+    const parsed = JSON.parse(extractJsonObject(output)) as Record<
+      string,
+      unknown
+    >;
     const checkedFiles = uniqueStrings(
       Array.isArray(parsed.checked_files)
         ? parsed.checked_files.map((item) => String(item || ''))
@@ -1381,7 +1611,11 @@ function parseWorkerResult(
       chunk,
       checkedFiles,
       reviewedFiles: checkedFiles,
-      findings: dedupeFindings(normalizeFindings(Array.isArray(parsed.findings) ? parsed.findings : [])),
+      findings: dedupeFindings(
+        normalizeFindings(
+          Array.isArray(parsed.findings) ? parsed.findings : [],
+        ),
+      ),
       evidenceRequests: uniqueStrings(
         Array.isArray(parsed.evidence_requests)
           ? parsed.evidence_requests.map((item) => String(item || ''))
@@ -1397,7 +1631,9 @@ function parseWorkerResult(
             : [],
       ),
       confidence: normalizeConfidence(parsed.confidence),
-      needsCrossFileReduction: Boolean(parsed.needs_cross_file_reduction ?? parsed.needsCrossFileReduction),
+      needsCrossFileReduction: Boolean(
+        parsed.needs_cross_file_reduction ?? parsed.needsCrossFileReduction,
+      ),
       failed: false,
       timedOut: Boolean(parsed.timed_out ?? parsed.timedOut),
       followupRequested: false,
@@ -1430,7 +1666,10 @@ function parseRepoReviewTimeoutFollowupSummary(
   output: string,
 ): RepoReviewTimeoutFollowupSummary | null {
   try {
-    const parsed = JSON.parse(extractJsonObject(output)) as Record<string, unknown>;
+    const parsed = JSON.parse(extractJsonObject(output)) as Record<
+      string,
+      unknown
+    >;
     const confidence = normalizeConfidence(parsed.confidence);
     return {
       summary: String(parsed.summary || '').trim(),
@@ -1470,7 +1709,10 @@ function parseRepoReviewTimeoutFollowupSummary(
 }
 
 function parseReducerResult(output: string): RepoReviewStructuredResult {
-  const parsed = JSON.parse(extractJsonObject(output)) as Record<string, unknown>;
+  const parsed = JSON.parse(extractJsonObject(output)) as Record<
+    string,
+    unknown
+  >;
   const markdownBody = String(
     parsed.markdown_body ||
       parsed.markdownBody ||
@@ -1478,7 +1720,9 @@ function parseReducerResult(output: string): RepoReviewStructuredResult {
       parsed.rawReportMarkdown ||
       '',
   ).trim();
-  const findings = dedupeFindings(normalizeFindings(Array.isArray(parsed.findings) ? parsed.findings : []));
+  const findings = dedupeFindings(
+    normalizeFindings(Array.isArray(parsed.findings) ? parsed.findings : []),
+  );
   const scopeLimitations = uniqueStrings(
     Array.isArray(parsed.scope_limitations)
       ? parsed.scope_limitations.map((entry) => String(entry || ''))
@@ -1491,19 +1735,24 @@ function parseReducerResult(output: string): RepoReviewStructuredResult {
       ? parsed.suggestions.map((entry) => String(entry || ''))
       : [],
   );
-  const commitReviews = Array.isArray(parsed.commit_reviews || parsed.commitReviews)
-    ? (parsed.commit_reviews || parsed.commitReviews) as RepoReviewCommitReview[]
+  const commitReviews = Array.isArray(
+    parsed.commit_reviews || parsed.commitReviews,
+  )
+    ? ((parsed.commit_reviews ||
+        parsed.commitReviews) as RepoReviewCommitReview[])
     : [];
   const fileReviews = Array.isArray(parsed.file_reviews || parsed.fileReviews)
-    ? (parsed.file_reviews || parsed.fileReviews) as RepoReviewFileReview[]
+    ? ((parsed.file_reviews || parsed.fileReviews) as RepoReviewFileReview[])
     : [];
   const result: RepoReviewStructuredResult = {
-    overall: ((String(parsed.overall || '').trim() || 'warn') as ReviewOverall),
+    overall: (String(parsed.overall || '').trim() || 'warn') as ReviewOverall,
     summary: String(parsed.summary || '').trim() || '审查完成。',
     findings,
     scopeLimitations,
     suggestions,
-    recommendedBlock: Boolean(parsed.recommended_block ?? parsed.recommendedBlock),
+    recommendedBlock: Boolean(
+      parsed.recommended_block ?? parsed.recommendedBlock,
+    ),
     markdownBody,
     rawModelOutput: output,
     commitReviews,
@@ -1518,16 +1767,21 @@ function buildLocalStructuredResultFallback(input: {
 }): RepoReviewStructuredResult {
   const markdownFindings: RepoReviewRunFinding[] = [];
   const markdown = input.outputText || '';
-  const summaryMatch = markdown.match(/###\s*一、审查总结\s*\n+([\s\S]*?)(?:\n###|\n##|$)/);
+  const summaryMatch = markdown.match(
+    /###\s*一、审查总结\s*\n+([\s\S]*?)(?:\n###|\n##|$)/,
+  );
   const markdownSummary = normalizeLine(summaryMatch?.[1] || '');
-  const issueMatch = markdown.match(/-\s*`([^`]+)`:\s*([^\n]+)[\s\S]*?证据[:：]([^\n]+)(?:[\s\S]*?影响[:：]([^\n]+))?[\s\S]*?修复建议[:：]([^\n]+)/);
+  const issueMatch = markdown.match(
+    /-\s*`([^`]+)`:\s*([^\n]+)[\s\S]*?证据[:：]([^\n]+)(?:[\s\S]*?影响[:：]([^\n]+))?[\s\S]*?修复建议[:：]([^\n]+)/,
+  );
   if (issueMatch) {
-    const severity: RepoReviewRunFinding['severity'] =
-      /高风险|high/i.test(markdown)
-        ? 'high'
-        : /低风险|low/i.test(markdown)
-          ? 'low'
-          : 'medium';
+    const severity: RepoReviewRunFinding['severity'] = /高风险|high/i.test(
+      markdown,
+    )
+      ? 'high'
+      : /低风险|low/i.test(markdown)
+        ? 'low'
+        : 'medium';
     const [file, line] = String(issueMatch[1] || '').split(':');
     const codeBlock = markdown.match(/```diff[\s\S]*?```/)?.[0] || '';
     markdownFindings.push({
@@ -1553,7 +1807,9 @@ function buildLocalStructuredResultFallback(input: {
     'main agent returned unstructured output; local structured fallback rendered the report',
     ...input.workerResults.flatMap((result) => result.scopeLimitations),
     ...input.workerResults.flatMap((result) =>
-      result.evidenceRequests.map((request) => `worker evidence request: ${request}`),
+      result.evidenceRequests.map(
+        (request) => `worker evidence request: ${request}`,
+      ),
     ),
   ]);
   const hasHigh = findings.some((finding) => finding.severity === 'high');
@@ -1619,17 +1875,24 @@ async function resolveWorkerPrompt(input: {
     targetUserId: input.targetUserId || undefined,
     variables: {
       repositoryName: input.repository.name,
-      primaryLanguageBlock: input.repository.language ? `主要语言：${input.repository.language}` : '',
+      primaryLanguageBlock: input.repository.language
+        ? `主要语言：${input.repository.language}`
+        : '',
       stage: input.event.stage,
       source: input.event.source,
       actor: input.prepared.actor || '(unknown)',
       branch: input.prepared.branch || '(unknown)',
       baseSha: formatRepoReviewPromptSha(input.prepared.baseSha),
       headSha: formatRepoReviewPromptSha(input.prepared.headSha),
-      diffRange: buildRepoReviewDiffRange({ baseSha: input.prepared.baseSha, headSha: input.prepared.headSha }),
+      diffRange: buildRepoReviewDiffRange({
+        baseSha: input.prepared.baseSha,
+        headSha: input.prepared.headSha,
+      }),
       workerId: input.chunk.id,
       workerTitle: input.chunk.title,
-      workerFiles: input.chunk.files.map((file) => `- ${file.filePath}`).join('\n'),
+      workerFiles: input.chunk.files
+        .map((file) => `- ${file.filePath}`)
+        .join('\n'),
       workerEvidence: buildWorkerEvidenceContext(input.chunk),
       customPromptBlock: [
         buildWorkerToolInstructionBlock(input.profile.includeFullFileContext),
@@ -1656,17 +1919,26 @@ async function resolveReducerPrompt(input: {
     targetUserId: input.targetUserId || undefined,
     variables: {
       repositoryName: input.repository.name,
-      primaryLanguageBlock: input.repository.language ? `主要语言：${input.repository.language}` : '',
+      primaryLanguageBlock: input.repository.language
+        ? `主要语言：${input.repository.language}`
+        : '',
       stage: input.event.stage,
       source: input.event.source,
       actor: input.prepared.actor || '(unknown)',
       branch: input.prepared.branch || '(unknown)',
       baseSha: formatRepoReviewPromptSha(input.prepared.baseSha),
       headSha: formatRepoReviewPromptSha(input.prepared.headSha),
-      diffRange: buildRepoReviewDiffRange({ baseSha: input.prepared.baseSha, headSha: input.prepared.headSha }),
-      changedFiles: input.bundle.changedFiles.map((file) => `- ${file}`).join('\n'),
+      diffRange: buildRepoReviewDiffRange({
+        baseSha: input.prepared.baseSha,
+        headSha: input.prepared.headSha,
+      }),
+      changedFiles: input.bundle.changedFiles
+        .map((file) => `- ${file}`)
+        .join('\n'),
       workerResults: buildWorkerResultsPrompt(input.workerResults),
-      customPromptBlock: formatRepoReviewCustomPromptBlock(input.profile.promptTemplate.trim()),
+      customPromptBlock: formatRepoReviewCustomPromptBlock(
+        input.profile.promptTemplate.trim(),
+      ),
     },
     fallbackText: REPO_REVIEW_REDUCER_TEMPLATE,
   });
@@ -1693,7 +1965,12 @@ function buildGraphAwareGroupKeys(input: {
     if (!adjacency.has(filePath)) adjacency.set(filePath, new Set());
   };
   const connect = (left: string, right: string) => {
-    if (!changedFileSet.has(left) || !changedFileSet.has(right) || left === right) return;
+    if (
+      !changedFileSet.has(left) ||
+      !changedFileSet.has(right) ||
+      left === right
+    )
+      return;
     addFile(left);
     addFile(right);
     adjacency.get(left)!.add(right);
@@ -1707,15 +1984,23 @@ function buildGraphAwareGroupKeys(input: {
       graph.impactGraph.functions.map((fn) => [fn.id, fn.filePath] as const),
     );
     for (const edge of graph.impactGraph.edges) {
-      const fromFile = functionFileById.get(edge.fromFunctionId) || edge.fromFunction?.filePath || '';
-      const toFile = functionFileById.get(edge.toFunctionId) || edge.toFunction?.filePath || '';
+      const fromFile =
+        functionFileById.get(edge.fromFunctionId) ||
+        edge.fromFunction?.filePath ||
+        '';
+      const toFile =
+        functionFileById.get(edge.toFunctionId) ||
+        edge.toFunction?.filePath ||
+        '';
       connect(fromFile, toFile);
     }
   }
 
   const byStem = new Map<string, string[]>();
   for (const filePath of input.changedFiles) {
-    const baseName = path.basename(filePath).replace(/\.(test|spec)(?=\.)/i, '');
+    const baseName = path
+      .basename(filePath)
+      .replace(/\.(test|spec)(?=\.)/i, '');
     const stem = baseName.replace(/\.[^.]+$/, '').toLowerCase();
     if (!stem) continue;
     const files = byStem.get(stem) || [];
@@ -1757,10 +2042,10 @@ function buildGraphAwareGroupKeys(input: {
   return result;
 }
 
-function resolveRepoReviewCoordinatorWorkerLimit(maxSubagents?: number): number {
-  const configured = Math.max(1, Math.trunc(Number(maxSubagents) || 1));
-  if (configured <= 1) return 1;
-  return Math.max(1, Math.min(configured - 1, 3));
+function resolveRepoReviewCoordinatorWorkerLimit(
+  maxSubagents?: number,
+): number {
+  return Math.max(1, Math.trunc(Number(maxSubagents) || 1));
 }
 
 async function createEvidenceBundle(input: {
@@ -1771,20 +2056,21 @@ async function createEvidenceBundle(input: {
   workspacePath?: string | null;
 }): Promise<RepoReviewEvidenceBundle> {
   const workspacePath = input.workspacePath || input.repository.localRepoPath;
-  const diffIndex = input.prepared.diffIndex || buildRepoReviewDiffIndex(input.prepared.diffText);
+  const diffIndex =
+    input.prepared.diffIndex ||
+    buildRepoReviewDiffIndex(input.prepared.diffText);
   const graphGroupKeys = buildGraphAwareGroupKeys({
     changedFiles: input.prepared.changedFiles,
     graphEvidenceBundle: input.prepared.evidenceBundle,
   });
   const files: RepoReviewEvidenceFile[] = [];
   for (const filePath of input.prepared.changedFiles) {
-    const diffText =
-      getRepoReviewDiffSlice(diffIndex, [filePath]) ||
-      '';
+    const diffText = getRepoReviewDiffSlice(diffIndex, [filePath]) || '';
     const diffBytes = byteLength(diffText);
     let fileContent = '';
     let fileContentBytes = 0;
-    let fileContentSource: RepoReviewEvidenceFile['fileContentSource'] = 'omitted';
+    let fileContentSource: RepoReviewEvidenceFile['fileContentSource'] =
+      'omitted';
     let fileContentReason: string | undefined;
     if (input.profile.includeFullFileContext) {
       fileContentReason =
@@ -1806,12 +2092,16 @@ async function createEvidenceBundle(input: {
     });
   }
   const diffBytes = byteLength(input.prepared.diffText || '');
-  const fileContentBytes = files.reduce((total, file) => total + file.fileContentBytes, 0);
+  const fileContentBytes = files.reduce(
+    (total, file) => total + file.fileContentBytes,
+    0,
+  );
   const projectContextBlock =
     input.prepared.projectContextBlocks.length > 0
       ? `项目上下文：\n${input.prepared.projectContextBlocks.join('\n\n')}`
       : '项目上下文：暂无补充上下文。';
-  const totalPromptBytes = diffBytes + fileContentBytes + byteLength(projectContextBlock);
+  const totalPromptBytes =
+    diffBytes + fileContentBytes + byteLength(projectContextBlock);
   const directMainAgentReview = shouldDirectMainAgentReview({
     changedFileCount: input.prepared.changedFiles.length,
     totalPromptBytes,
@@ -1839,7 +2129,9 @@ async function createEvidenceBundle(input: {
   };
 }
 
-function partitionEvidenceChunks(bundle: RepoReviewEvidenceBundle): RepoReviewEvidenceChunk[] {
+function partitionEvidenceChunks(
+  bundle: RepoReviewEvidenceBundle,
+): RepoReviewEvidenceChunk[] {
   if (bundle.directMainAgentReview) {
     return [];
   }
@@ -1860,7 +2152,13 @@ function partitionEvidenceChunks(bundle: RepoReviewEvidenceBundle): RepoReviewEv
   for (const file of sorted) {
     const nextFiles = current ? [...current.files, file] : [file];
     const nextChunk: RepoReviewEvidenceChunk = current
-      ? { ...current, files: nextFiles, diffBytes: current.diffBytes + file.diffBytes, fileContentBytes: current.fileContentBytes + file.fileContentBytes, promptBytes: 0 }
+      ? {
+          ...current,
+          files: nextFiles,
+          diffBytes: current.diffBytes + file.diffBytes,
+          fileContentBytes: current.fileContentBytes + file.fileContentBytes,
+          promptBytes: 0,
+        }
       : {
           id: `worker_chunk_${chunks.length + 1}`,
           title: `${chunks.length + 1}`,
@@ -2009,7 +2307,8 @@ async function runWorker(input: {
     userId: input.userId,
   }).catch(() => null);
   if (input.executionStats) {
-    input.executionStats.modelCallCount = (input.executionStats.modelCallCount || 0) + 1;
+    input.executionStats.modelCallCount =
+      (input.executionStats.modelCallCount || 0) + 1;
     input.executionStats.promptBytesBuilt =
       (input.executionStats.promptBytesBuilt || 0) + byteLength(workerPrompt);
   }
@@ -2039,7 +2338,9 @@ async function runWorker(input: {
       fileCount: input.chunk.files.length,
       promptBytes: byteLength(workerPrompt),
     },
-  }).catch((err) => logger.warn({ err }, 'Failed to persist repo review prompt trace'));
+  }).catch((err) =>
+    logger.warn({ err }, 'Failed to persist repo review prompt trace'),
+  );
   await input.onProgressStep?.({
     id: stepId,
     label: stepLabel,
@@ -2207,13 +2508,20 @@ async function runWorker(input: {
     const followupParsed = followupPayload
       ? (() => {
           try {
-            return parseWorkerResult(followupPayload, input.chunk, response.turns);
+            return parseWorkerResult(
+              followupPayload,
+              input.chunk,
+              response.turns,
+            );
           } catch {
             return null;
           }
         })()
       : null;
-    if (followupParsed && response.timeoutFollowupSent) {
+    if (followupParsed) {
+      const timeoutStatus = response.timeoutFollowupSent
+        ? 'timeout_followup_completed'
+        : 'timeout_partial_output_preserved';
       if (input.executionStats) {
         input.executionStats.partialWorkerResultCount =
           (input.executionStats.partialWorkerResultCount || 0) + 1;
@@ -2222,11 +2530,13 @@ async function runWorker(input: {
         id: 'worker_timeout_followup',
         label: 'Worker 超时追问',
         status: 'completed',
-        detail: `Worker ${input.chunk.title} 已返回可解析的部分结果`,
+        detail: response.timeoutFollowupSent
+          ? `Worker ${input.chunk.title} 已返回可解析的部分结果`
+          : `Worker ${input.chunk.title} 超时前已输出可解析结果`,
         kind: 'worker',
         outputText: formatProgressKeyValues([
           ['worker', stepLabel],
-          ['timeout_status', 'timeout_followup_completed'],
+          ['timeout_status', timeoutStatus],
           ['confidence', followupParsed.confidence],
         ]),
       });
@@ -2257,7 +2567,7 @@ async function runWorker(input: {
           {
             reviewed_files: followupParsed.reviewedFiles,
             timed_out: true,
-            followup_summary_received: true,
+            followup_summary_received: response.timeoutFollowupSent,
             confidence: followupParsed.confidence,
           },
           null,
@@ -2268,11 +2578,15 @@ async function runWorker(input: {
         ...followupParsed,
         checkedFiles: followupParsed.reviewedFiles,
         reviewedFiles: followupParsed.reviewedFiles,
+        scopeLimitations: uniqueStrings([
+          'worker exceeded primary timeout; parsed terminal draft preserved',
+          ...followupParsed.scopeLimitations,
+        ]),
         failed: false,
         timedOut: true,
-        followupRequested: true,
-        followupSummaryReceived: true,
-        timeoutStatus: 'timeout_followup_completed',
+        followupRequested: response.timeoutFollowupSent,
+        followupSummaryReceived: response.timeoutFollowupSent,
+        timeoutStatus,
         failureReason: undefined,
         rawOutput: followupPayload,
         turns: response.turns,
@@ -2287,7 +2601,10 @@ async function runWorker(input: {
       error: 'timeout_followup_failed',
       outputText: formatProgressKeyValues([
         ['worker', stepLabel],
-        ['timeout_status', response.timeoutFollowupSent ? 'timeout_killed' : 'timeout_killed'],
+        [
+          'timeout_status',
+          response.timeoutFollowupSent ? 'timeout_killed' : 'timeout_killed',
+        ],
       ]),
     });
     await input.onProgressStep?.({
@@ -2315,11 +2632,16 @@ async function runWorker(input: {
       failureReason: response.timeoutFollowupSent
         ? 'timeout_followup_failed'
         : 'timeout_killed',
-      rawOutput: response.timeoutFollowupOutputText || response.outputText || '',
+      rawOutput:
+        response.timeoutFollowupOutputText || response.outputText || '',
       turns: response.turns,
     };
   }
-  const parsed = parseWorkerResult(response.outputText, input.chunk, response.turns);
+  const parsed = parseWorkerResult(
+    response.outputText,
+    input.chunk,
+    response.turns,
+  );
   await input.onProgressStep?.({
     id: stepId,
     label: stepLabel,
@@ -2372,9 +2694,10 @@ async function runReducer(input: {
     id: 'reduce_results',
     label: 'Reducer 收敛审查结论',
     status: 'running',
-    detail: input.workerResults.length > 0
-      ? `合并 ${input.workerResults.length} 个 worker 结果`
-      : '直接审查证据 bundle',
+    detail:
+      input.workerResults.length > 0
+        ? `合并 ${input.workerResults.length} 个 worker 结果`
+        : '直接审查证据 bundle',
     kind: 'reducer',
     inputText: JSON.stringify(
       {
@@ -2401,7 +2724,8 @@ async function runReducer(input: {
     userId: input.userId,
   });
   if (input.executionStats) {
-    input.executionStats.modelCallCount = (input.executionStats.modelCallCount || 0) + 1;
+    input.executionStats.modelCallCount =
+      (input.executionStats.modelCallCount || 0) + 1;
     input.executionStats.promptBytesBuilt =
       (input.executionStats.promptBytesBuilt || 0) + byteLength(reducerPrompt);
     input.executionStats.reducerCallCount =
@@ -2432,7 +2756,9 @@ async function runReducer(input: {
       workerCount: input.workerResults.length,
       promptBytes: byteLength(reducerPrompt),
     },
-  }).catch((err) => logger.warn({ err }, 'Failed to persist repo review reducer prompt trace'));
+  }).catch((err) =>
+    logger.warn({ err }, 'Failed to persist repo review reducer prompt trace'),
+  );
   const response = await runProviderTextCall({
     provider,
     prompt: reducerPrompt,
@@ -2463,7 +2789,13 @@ async function runReducer(input: {
     ...parsed,
     findings: mergedFindings,
     scopeLimitations: mergedLimitations,
-    markdownBody: parsed.markdownBody || buildStructuredMarkdownFallback({ ...parsed, findings: mergedFindings, scopeLimitations: mergedLimitations }),
+    markdownBody:
+      parsed.markdownBody ||
+      buildStructuredMarkdownFallback({
+        ...parsed,
+        findings: mergedFindings,
+        scopeLimitations: mergedLimitations,
+      }),
   };
   await input.onProgressStep?.({
     id: 'reduce_results',
@@ -2494,9 +2826,12 @@ export async function runRepoReviewWorkers(input: {
   bundle: RepoReviewEvidenceBundle;
   chunks: RepoReviewEvidenceChunk[];
   runId: string;
+  maxConcurrency?: number;
   userId?: string;
   executionStats?: RepoReviewExecutionStats;
-  onTurnProgress?: (turnsByWorker: RepoReviewAssistantTurn[][]) => Promise<void>;
+  onTurnProgress?: (
+    turnsByWorker: RepoReviewAssistantTurn[][],
+  ) => Promise<void>;
   onProgressStep?: (step: {
     id: string;
     label: string;
@@ -2513,7 +2848,13 @@ export async function runRepoReviewWorkers(input: {
   const turnsByWorker: RepoReviewAssistantTurn[][] = input.chunks.map(() => []);
   const results = await mapWithConcurrencyLimit(
     input.chunks,
-    Math.max(1, Math.min(3, input.chunks.length)),
+    Math.max(
+      1,
+      Math.min(
+        input.chunks.length || 1,
+        Math.trunc(input.maxConcurrency || input.chunks.length || 1),
+      ),
+    ),
     async (chunk, index) => {
       try {
         const result = await runWorker({
@@ -2626,7 +2967,9 @@ export async function runRepoReviewGraphCoordinator(input: {
   maxWorkerCount?: number;
   userId?: string;
   executionStats?: RepoReviewExecutionStats;
-  onTurnProgress?: (turnsByWorker: RepoReviewAssistantTurn[][]) => Promise<void>;
+  onTurnProgress?: (
+    turnsByWorker: RepoReviewAssistantTurn[][],
+  ) => Promise<void>;
   onProgressStep?: (step: {
     id: string;
     label: string;
@@ -2669,8 +3012,10 @@ export async function runRepoReviewGraphCoordinator(input: {
         changed_files: bundle.changedFiles.length,
         diff_bytes: bundle.diffBytes,
         lazy_full_file_context: input.profile.includeFullFileContext,
-        code_map_status: bundle.graphEvidenceBundle?.codeMapStatus.status || 'missing',
-        code_index_status: bundle.graphEvidenceBundle?.codeIndexStatus.status || 'missing',
+        code_map_status:
+          bundle.graphEvidenceBundle?.codeMapStatus.status || 'missing',
+        code_index_status:
+          bundle.graphEvidenceBundle?.codeIndexStatus.status || 'missing',
       },
       null,
       2,
@@ -2688,24 +3033,32 @@ export async function runRepoReviewGraphCoordinator(input: {
         lazy_full_file_context: input.profile.includeFullFileContext,
         diff_bytes: bundle.diffBytes,
         changed_hunks: bundle.graphEvidenceBundle?.changedHunks.length || 0,
-        changed_functions: bundle.graphEvidenceBundle?.changedFunctions.length || 0,
+        changed_functions:
+          bundle.graphEvidenceBundle?.changedFunctions.length || 0,
       },
       null,
       2,
     ),
   });
   const moduleCount = new Set(bundle.files.map((file) => file.groupKey)).size;
-  const effectiveMaxWorkerCount = resolveRepoReviewCoordinatorWorkerLimit(
+  const requestedMaxWorkerCount = resolveRepoReviewCoordinatorWorkerLimit(
     input.maxWorkerCount,
   );
   const workerChunks = partitionRepoReviewEvidenceChunks(
     bundle,
-    effectiveMaxWorkerCount,
+    requestedMaxWorkerCount,
+  );
+  const effectiveMaxWorkerCount = Math.max(
+    1,
+    workerChunks.length || requestedMaxWorkerCount,
   );
   const plan: RepoReviewExecutionPlan = {
     strategy: bundle.directMainAgentReview ? 'main_only' : 'worker_then_main',
     changedFileCount: bundle.changedFiles.length,
-    diffSubagentThreshold: Math.max(0, Math.trunc(input.profile.diffSubagentThreshold)),
+    diffSubagentThreshold: Math.max(
+      0,
+      Math.trunc(input.profile.diffSubagentThreshold),
+    ),
     moduleCount,
     maxSubagents: Math.max(1, Math.trunc(Number(input.maxWorkerCount) || 1)),
     maxWorkerCount: effectiveMaxWorkerCount,
@@ -2782,7 +3135,10 @@ export async function runRepoReviewGraphCoordinator(input: {
         id: chunk.id,
         label: buildWorkerScheduleLabel(index, workerChunks.length),
         status: 'queued',
-        detail: `${chunk.files.length} 个文件：${chunk.files.map((file) => file.filePath).slice(0, 4).join('、')}`,
+        detail: `${chunk.files.length} 个文件：${chunk.files
+          .map((file) => file.filePath)
+          .slice(0, 4)
+          .join('、')}`,
         kind: 'worker',
         inputText: JSON.stringify(
           {
@@ -2817,15 +3173,22 @@ export async function runRepoReviewGraphCoordinator(input: {
       bundle,
       chunks: workerChunks,
       runId: input.runId,
+      maxConcurrency: effectiveMaxWorkerCount,
       userId: input.userId,
       executionStats: input.executionStats,
       onTurnProgress: input.onTurnProgress,
       onProgressStep: input.onProgressStep,
     });
     if (input.executionStats) {
-      input.executionStats.completedWorkerCount = workerResults.filter((result) => !result.failed).length;
-      input.executionStats.failedWorkerCount = workerResults.filter((result) => result.failed).length;
-      input.executionStats.timedOutWorkerCount = workerResults.filter((result) => result.timedOut).length;
+      input.executionStats.completedWorkerCount = workerResults.filter(
+        (result) => !result.failed,
+      ).length;
+      input.executionStats.failedWorkerCount = workerResults.filter(
+        (result) => result.failed,
+      ).length;
+      input.executionStats.timedOutWorkerCount = workerResults.filter(
+        (result) => result.timedOut,
+      ).length;
     }
   }
 
@@ -2882,7 +3245,8 @@ export async function runRepoReviewGraphCoordinator(input: {
     input.executionStats.modelCallCount =
       (input.executionStats.modelCallCount || 0) + 1;
     input.executionStats.promptBytesBuilt =
-      (input.executionStats.promptBytesBuilt || 0) + byteLength(mainReviewPrompt);
+      (input.executionStats.promptBytesBuilt || 0) +
+      byteLength(mainReviewPrompt);
   }
   const mainProvider = await resolveReviewProvider({
     repository: input.repository,
@@ -2896,7 +3260,10 @@ export async function runRepoReviewGraphCoordinator(input: {
     prompt: mainReviewPrompt,
     runId: input.runId,
     runtimeNamespace: `${input.runId}:${mainReviewStepId}`,
-    workspacePath: bundle.workspacePath || input.workspacePath || input.repository.localRepoPath,
+    workspacePath:
+      bundle.workspacePath ||
+      input.workspacePath ||
+      input.repository.localRepoPath,
     userId: input.userId,
     providerOverrideId: mainProvider?.id,
     timeoutMs: bundle.directMainAgentReview ? 0 : undefined,
@@ -2940,7 +3307,7 @@ export async function runRepoReviewGraphCoordinator(input: {
   } catch {
     parsed = null;
   }
-  if (!parsed || !String(parsed.markdownBody || '').trim()) {
+  if (!parsed) {
     if (workerResults.length > 0) {
       try {
         parsed = await reduceRepoReviewWorkerResults({
@@ -2980,7 +3347,9 @@ export async function runRepoReviewGraphCoordinator(input: {
       ...parsed.scopeLimitations,
       ...workerResults.flatMap((result) => result.scopeLimitations),
       ...workerResults.flatMap((result) =>
-        result.evidenceRequests.map((request) => `worker evidence request: ${request}`),
+        result.evidenceRequests.map(
+          (request) => `worker evidence request: ${request}`,
+        ),
       ),
     ]),
   };

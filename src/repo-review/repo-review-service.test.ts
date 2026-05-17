@@ -231,7 +231,9 @@ function buildAgenticExtractorMockResult(input: {
   };
 }
 
-function buildMockReviewProcessWithSubagentResult(result: Record<string, unknown>) {
+function buildMockReviewProcessWithSubagentResult(
+  result: Record<string, unknown>,
+) {
   return async (
     _group: unknown,
     _input: unknown,
@@ -481,9 +483,7 @@ describe('repo-review-service', () => {
     );
   });
 
-  it(
-    'returns all local remotes and supports selecting a specific remote',
-    async () => {
+  it('returns all local remotes and supports selecting a specific remote', async () => {
     runGit(tempRepo, [
       'remote',
       'add',
@@ -516,9 +516,7 @@ describe('repo-review-service', () => {
     expect(selected.detectedRemoteName).toBe('company');
     expect(selected.provider).toBe('gitlab');
     expect(selected.remoteRepoSlug).toBe('zhangsan/minirpc');
-    },
-    15000,
-  );
+  }, 15000);
 
   it('auto-creates default profiles when saving a repository without profiles', async () => {
     runGit(tempRepo, [
@@ -545,7 +543,9 @@ describe('repo-review-service', () => {
       'Push Remote Default',
     ]);
 
-    const profiles = await service.listRepoReviewProfiles('repo-default-profiles');
+    const profiles = await service.listRepoReviewProfiles(
+      'repo-default-profiles',
+    );
     expect(profiles).toHaveLength(1);
     expect(result.repository.remoteRepoSlug).toBe('zhangsan/minirpc');
     expect(result.repository.cloneUrl).toBe(
@@ -635,7 +635,9 @@ describe('repo-review-service', () => {
       });
 
       const updated = await getReviewRepositoryById('repo-digest-schedule');
-      expect(updated?.next_digest_daily_at).not.toBe(initial?.next_digest_daily_at);
+      expect(updated?.next_digest_daily_at).not.toBe(
+        initial?.next_digest_daily_at,
+      );
       expect(updated?.next_digest_weekly_at).toBeNull();
     } finally {
       vi.useRealTimers();
@@ -672,9 +674,7 @@ describe('repo-review-service', () => {
     ).rejects.toThrow('当前启用了多个飞书实例');
   });
 
-  it(
-    'supports preserving and clearing stored sensitive values explicitly',
-    async () => {
+  it('supports preserving and clearing stored sensitive values explicitly', async () => {
     const service = await import('./repo-review-service.js');
 
     const created = await service.saveRepoReviewRepositoryConfig({
@@ -710,9 +710,7 @@ describe('repo-review-service', () => {
     });
     expect(cleared.repository.hasPlatformToken).toBe(false);
     expect(cleared.repository.hasWebhookSecret).toBe(false);
-  },
-    15000,
-  );
+  }, 15000);
 
   it('requires github api token when remote auto sync is enabled', async () => {
     const service = await import('./repo-review-service.js');
@@ -888,7 +886,9 @@ describe('repo-review-service', () => {
     expect(started).toContain('当前动作: AI 正在分析这次改动');
     expect(started).toContain('提交摘要:');
     expect(started).not.toContain('通知对象:');
-    expect(started).not.toMatch(/\b(?:auto|pleaseReviewResults|targetLabel|stageSourceLabel|changedFilesHeader)_?/);
+    expect(started).not.toMatch(
+      /\b(?:auto|pleaseReviewResults|targetLabel|stageSourceLabel|changedFilesHeader)_?/,
+    );
 
     const completed = service.formatRepoReviewCompletedMessage(
       repository,
@@ -976,22 +976,40 @@ describe('repo-review-service', () => {
     expect(completed).toContain('主要问题:');
     expect(completed).toContain('提交点评:');
     expect(completed).toContain('下一步建议:');
-    expect(completed).not.toMatch(/\b(?:auto|pleaseReviewResults|aiReviewCompletedBold|conclusionRiskBold)_?/);
+    expect(completed).not.toMatch(
+      /\b(?:auto|pleaseReviewResults|aiReviewCompletedBold|conclusionRiskBold)_?/,
+    );
   });
 
   it('uses isolated runtime namespaces for executor-owned full-file subagents', async () => {
     mockRunAgentProcess
       .mockResolvedValueOnce(
         buildAgenticPlanMockResult([
-          { id: 'task-1', title: '审查 split-a', files: ['split-a.ts'], fullFileFiles: ['split-a.ts'] },
-          { id: 'task-2', title: '审查 split-b', files: ['split-b.ts'], fullFileFiles: ['split-b.ts'] },
+          {
+            id: 'task-1',
+            title: '审查 split-a',
+            files: ['split-a.ts'],
+            fullFileFiles: ['split-a.ts'],
+          },
+          {
+            id: 'task-2',
+            title: '审查 split-b',
+            files: ['split-b.ts'],
+            fullFileFiles: ['split-b.ts'],
+          },
         ]),
       )
       .mockResolvedValueOnce(
-        buildAgenticSubagentMockResult({ files: ['split-a.ts'], summary: 'split-a.ts 全文审查通过。' }),
+        buildAgenticSubagentMockResult({
+          files: ['split-a.ts'],
+          summary: 'split-a.ts 全文审查通过。',
+        }),
       )
       .mockResolvedValueOnce(
-        buildAgenticSubagentMockResult({ files: ['split-b.ts'], summary: 'split-b.ts 全文审查通过。' }),
+        buildAgenticSubagentMockResult({
+          files: ['split-b.ts'],
+          summary: 'split-b.ts 全文审查通过。',
+        }),
       )
       .mockResolvedValueOnce({
         status: 'success',
@@ -1005,8 +1023,14 @@ describe('repo-review-service', () => {
       );
 
     runGit(tempRepo, ['commit', '-m', 'base']);
-    fs.writeFileSync(path.join(tempRepo, 'split-a.ts'), 'export const a = 1;\n');
-    fs.writeFileSync(path.join(tempRepo, 'split-b.ts'), 'export const b = 1;\n');
+    fs.writeFileSync(
+      path.join(tempRepo, 'split-a.ts'),
+      'export const a = 1;\n',
+    );
+    fs.writeFileSync(
+      path.join(tempRepo, 'split-b.ts'),
+      'export const b = 1;\n',
+    );
     runGit(tempRepo, ['add', 'split-a.ts', 'split-b.ts']);
 
     const service = await import('./repo-review-service.js');
@@ -1038,8 +1062,8 @@ describe('repo-review-service', () => {
 
     expect(result.runs[0]?.run.status).toBe('completed');
     expect(mockRunAgentProcess).toHaveBeenCalledTimes(4);
-    const namespaces = mockRunAgentProcess.mock.calls.map(
-      (call) => String(call[1]?.runtimeNamespace || ''),
+    const namespaces = mockRunAgentProcess.mock.calls.map((call) =>
+      String(call[1]?.runtimeNamespace || ''),
     );
     expect(namespaces).toContain(`${result.runs[0]!.run.id}:main-plan:1`);
     expect(namespaces).toEqual(
@@ -1201,17 +1225,24 @@ describe('repo-review-service', () => {
       )
       .mockResolvedValueOnce({
         status: 'success',
-        result: buildAgenticReportMarkdown('主代理已汇总 Markdown 子代理结论。'),
+        result: buildAgenticReportMarkdown(
+          '主代理已汇总 Markdown 子代理结论。',
+        ),
       })
       .mockResolvedValueOnce(
         buildAgenticExtractorMockResult({
           summary: '主代理已汇总 Markdown 子代理结论。',
-          markdown: buildAgenticReportMarkdown('主代理已汇总 Markdown 子代理结论。'),
+          markdown: buildAgenticReportMarkdown(
+            '主代理已汇总 Markdown 子代理结论。',
+          ),
         }),
       );
 
     runGit(tempRepo, ['commit', '-m', 'base']);
-    fs.writeFileSync(path.join(tempRepo, 'split-a.ts'), 'export const a = 1;\n');
+    fs.writeFileSync(
+      path.join(tempRepo, 'split-a.ts'),
+      'export const a = 1;\n',
+    );
     runGit(tempRepo, ['add', 'split-a.ts']);
 
     const service = await import('./repo-review-service.js');
@@ -1361,7 +1392,10 @@ describe('repo-review-service', () => {
 
     runGit(tempRepo, ['commit', '-m', 'base']);
     fs.writeFileSync(path.join(tempRepo, 'a.ts'), 'export const a = 1;\n');
-    fs.writeFileSync(path.join(tempRepo, 'other.ts'), 'export const other = 1;\n');
+    fs.writeFileSync(
+      path.join(tempRepo, 'other.ts'),
+      'export const other = 1;\n',
+    );
     runGit(tempRepo, ['add', 'a.ts', 'other.ts']);
 
     const service = await import('./repo-review-service.js');
@@ -1418,28 +1452,26 @@ describe('repo-review-service', () => {
           },
         ]),
       )
-      .mockImplementationOnce(
-        async (_group, _input, onProcess) => {
-          onProcess(
-            {
-              stdin: {
-                destroyed: false,
-                writableEnded: false,
-                end() {
-                  this.writableEnded = true;
-                },
-              },
-              killed: false,
-              kill() {
-                this.killed = true;
-                return true;
+      .mockImplementationOnce(async (_group, _input, onProcess) => {
+        onProcess(
+          {
+            stdin: {
+              destroyed: false,
+              writableEnded: false,
+              end() {
+                this.writableEnded = true;
               },
             },
-            'review-agent',
-          );
-          return await new Promise(() => undefined);
-        },
-      )
+            killed: false,
+            kill() {
+              this.killed = true;
+              return true;
+            },
+          },
+          'review-agent',
+        );
+        return await new Promise(() => undefined);
+      })
       .mockResolvedValueOnce({
         status: 'success',
         result: buildAgenticReportMarkdown('主代理已接管超时子代理。'),
@@ -1452,7 +1484,10 @@ describe('repo-review-service', () => {
       );
 
     runGit(tempRepo, ['commit', '-m', 'base']);
-    fs.writeFileSync(path.join(tempRepo, 'timeout-a.ts'), 'export const a = 1;\n');
+    fs.writeFileSync(
+      path.join(tempRepo, 'timeout-a.ts'),
+      'export const a = 1;\n',
+    );
     runGit(tempRepo, ['add', 'timeout-a.ts']);
 
     const service = await import('./repo-review-service.js');
@@ -1484,9 +1519,9 @@ describe('repo-review-service', () => {
 
     expect(result.runs[0]?.run.status).toBe('completed');
     expect(mockSendAgentPrompt).toHaveBeenCalledTimes(1);
-    expect(String(mockSendAgentPrompt.mock.calls[0]?.[2]?.text || '')).toContain(
-      '当前进度总结',
-    );
+    expect(
+      String(mockSendAgentPrompt.mock.calls[0]?.[2]?.text || ''),
+    ).toContain('当前进度总结');
   });
 
   it('separates scope limitations from actionable review findings', async () => {
@@ -1516,7 +1551,8 @@ describe('repo-review-service', () => {
         commit_reviews: [
           {
             commit: 'b8b53484',
-            title: "Merge remote-tracking branch 'origin/order_rule' into order_rule",
+            title:
+              "Merge remote-tracking branch 'origin/order_rule' into order_rule",
             author: 'zhangsan',
             positives: ['最终结果未见明显冲突残留。'],
             issues: ['仅基于当前分支总 diff，无法确认冲突取舍。'],
@@ -1566,7 +1602,9 @@ describe('repo-review-service', () => {
       'ai',
     );
     expect(completed).toContain('审查边界:');
-    expect(completed).not.toContain('N/A: 合并提交缺少可核对的父提交差异上下文');
+    expect(completed).not.toContain(
+      'N/A: 合并提交缺少可核对的父提交差异上下文',
+    );
   });
 
   it('deduplicates actor mentions and target branches during normalization', async () => {
@@ -1673,7 +1711,8 @@ describe('repo-review-service', () => {
       .mockResolvedValueOnce(
         buildAgenticSubagentMockResult({
           files: ['demo.ts'],
-          summary: '该文件在本次改动中承担认证入口逻辑，缺少空 token 场景的回归断言。',
+          summary:
+            '该文件在本次改动中承担认证入口逻辑，缺少空 token 场景的回归断言。',
           findings: [
             {
               severity: 'medium',
@@ -1693,7 +1732,8 @@ describe('repo-review-service', () => {
       .mockResolvedValueOnce(
         buildAgenticExtractorMockResult({
           overall: 'warn',
-          summary: '认证入口 diff 主线无阻断问题，全文补充阶段继续确认测试覆盖。',
+          summary:
+            '认证入口 diff 主线无阻断问题，全文补充阶段继续确认测试覆盖。',
           findings: [
             {
               severity: 'medium',
@@ -1707,7 +1747,8 @@ describe('repo-review-service', () => {
           fileReviews: [
             {
               file: 'demo.ts',
-              summary: '认证入口逻辑存在回归风险，建议补单测锁定空 token 分支。',
+              summary:
+                '认证入口逻辑存在回归风险，建议补单测锁定空 token 分支。',
               risks: ['空 token 分支缺少回归覆盖。'],
               suggestions: ['补一条空 token 输入的单测。'],
             },
@@ -1905,7 +1946,9 @@ describe('repo-review-service', () => {
       setTimeoutSpy.mock.calls.some((call) => Number(call[1]) === 300_000),
     ).toBe(false);
     setTimeoutSpy.mockRestore();
-    const prompt = String(mockRunAgentProcess.mock.calls[0]?.[1]?.prompt?.text || '');
+    const prompt = String(
+      mockRunAgentProcess.mock.calls[0]?.[1]?.prompt?.text || '',
+    );
     expect(prompt).toContain('必须至少执行一次工具取证');
     expect(prompt).toContain('不要把这些只读命令包进 `bash -lc`');
     expect(prompt).not.toContain('review_plan');
@@ -2103,16 +2146,14 @@ describe('repo-review-service', () => {
         ]),
       )
       .mockImplementationOnce(
-        buildMockReviewProcessWithSubagentResult(
-          {
-            summary: 'demo.ts 全文补充审查通过。',
-            findings: [],
-            suggestions: [],
-            scope_limitations: [],
-            overall_impact: 'none',
-            recommended_block: false,
-          },
-        ),
+        buildMockReviewProcessWithSubagentResult({
+          summary: 'demo.ts 全文补充审查通过。',
+          findings: [],
+          suggestions: [],
+          scope_limitations: [],
+          overall_impact: 'none',
+          recommended_block: false,
+        }),
       )
       .mockResolvedValueOnce({
         status: 'success',
@@ -2210,13 +2251,14 @@ describe('repo-review-service', () => {
       stage: 'push',
     });
 
-    const prompt = String(mockRunAgentProcess.mock.calls[0]?.[1]?.prompt?.text || '');
+    const prompt = String(
+      mockRunAgentProcess.mock.calls[0]?.[1]?.prompt?.text || '',
+    );
     expect(prompt).toContain('本次由主代理直接审查');
     expect(prompt).toContain('必须至少执行一次工具取证');
     expect(prompt).not.toContain('review_plan');
     expect(prompt).toContain('只读工作区可用于核对直接相关代码和 git 信息');
   });
-
 
   it('runs executor-owned full-file tasks without a plan correction loop', async () => {
     runGit(tempRepo, ['commit', '-m', 'base']);
@@ -2495,9 +2537,7 @@ describe('repo-review-service', () => {
       ],
     });
     service.setRepoReviewMessageSender(null);
-  },
-    15000,
-  );
+  }, 15000);
 
   it('broadcasts locally persisted repo review chat messages over the web channel', async () => {
     mockRunAgentProcess.mockResolvedValue({
@@ -2668,9 +2708,7 @@ describe('repo-review-service', () => {
       service.setRepoReviewMessageSender(null);
       service.setRepoReviewCloudDocHandlersForTests(null);
     }
-  },
-    45000,
-  );
+  }, 45000);
 
   it('includes final-code evidence in repo-review cloud doc sections when provisioning from a completed run', async () => {
     runGit(tempRepo, ['commit', '-m', 'main base']);
@@ -2750,22 +2788,27 @@ describe('repo-review-service', () => {
         title: 'feature/login 2026-03-27 10:05',
         creationStatus: 'created',
       }),
-      continueFeishuCloudDocProvision: vi.fn().mockImplementation(async (input) => {
-        provisionedSections = input.sections as Array<{ kind: string; text: string }>;
-        return {
-          documentId: 'doccn-evidence',
-          url: 'https://tenant.feishu.cn/docx/doccn-evidence',
-          title: 'feature/login 2026-03-27 10:05',
-          conversationType: 'group',
-          creationStatus: 'created',
-          populationStatus: 'completed',
-          resultStatus: 'success',
-          authorizationStrategy: 'chat',
-          authorizationStatus: 'complete',
-          authorizationWarnings: [],
-          targetResults: [],
-        };
-      }),
+      continueFeishuCloudDocProvision: vi
+        .fn()
+        .mockImplementation(async (input) => {
+          provisionedSections = input.sections as Array<{
+            kind: string;
+            text: string;
+          }>;
+          return {
+            documentId: 'doccn-evidence',
+            url: 'https://tenant.feishu.cn/docx/doccn-evidence',
+            title: 'feature/login 2026-03-27 10:05',
+            conversationType: 'group',
+            creationStatus: 'created',
+            populationStatus: 'completed',
+            resultStatus: 'success',
+            authorizationStrategy: 'chat',
+            authorizationStatus: 'complete',
+            authorizationWarnings: [],
+            targetResults: [],
+          };
+        }),
     });
 
     try {
@@ -2795,9 +2838,7 @@ describe('repo-review-service', () => {
     } finally {
       service.setRepoReviewCloudDocHandlersForTests(null);
     }
-  },
-    20000,
-  );
+  }, 20000);
 
   it('anchors final-code evidence to the relevant changed code instead of top-of-file imports', async () => {
     runGit(tempRepo, ['commit', '-m', 'main base']);
@@ -2848,7 +2889,7 @@ describe('repo-review-service', () => {
         '',
       ].join('\n'),
       'utf8',
-      );
+    );
     runGit(tempRepo, ['add', 'OrderRuleTestController.java']);
     runGit(tempRepo, ['commit', '-m', 'feature timeout fix']);
     const headSha = runGit(tempRepo, ['rev-parse', 'HEAD']);
@@ -2894,7 +2935,8 @@ describe('repo-review-service', () => {
           severity: 'medium',
           file: 'OrderRuleTestController.java',
           title: 'runInVirtualThread 超时后需要取消 future',
-          detail: 'runInVirtualThread 当前只返回 timeout，应该显式 cancel future。',
+          detail:
+            'runInVirtualThread 当前只返回 timeout，应该显式 cancel future。',
           suggestion: '补充 future.cancel(true)。',
         },
       ],
@@ -2910,22 +2952,27 @@ describe('repo-review-service', () => {
         title: 'feature/timeout-fix 2026-03-27 10:05',
         creationStatus: 'created',
       }),
-      continueFeishuCloudDocProvision: vi.fn().mockImplementation(async (input) => {
-        provisionedSections = input.sections as Array<{ kind: string; text: string }>;
-        return {
-          documentId: 'doccn-anchor',
-          url: 'https://tenant.feishu.cn/docx/doccn-anchor',
-          title: 'feature/timeout-fix 2026-03-27 10:05',
-          conversationType: 'group',
-          creationStatus: 'created',
-          populationStatus: 'completed',
-          resultStatus: 'success',
-          authorizationStrategy: 'chat',
-          authorizationStatus: 'complete',
-          authorizationWarnings: [],
-          targetResults: [],
-        };
-      }),
+      continueFeishuCloudDocProvision: vi
+        .fn()
+        .mockImplementation(async (input) => {
+          provisionedSections = input.sections as Array<{
+            kind: string;
+            text: string;
+          }>;
+          return {
+            documentId: 'doccn-anchor',
+            url: 'https://tenant.feishu.cn/docx/doccn-anchor',
+            title: 'feature/timeout-fix 2026-03-27 10:05',
+            conversationType: 'group',
+            creationStatus: 'created',
+            populationStatus: 'completed',
+            resultStatus: 'success',
+            authorizationStrategy: 'chat',
+            authorizationStatus: 'complete',
+            authorizationWarnings: [],
+            targetResults: [],
+          };
+        }),
     });
 
     try {
@@ -2940,7 +2987,9 @@ describe('repo-review-service', () => {
           (section) =>
             section.kind === 'code' &&
             section.text.includes('future.cancel(true);') &&
-            section.text.includes('throw new IllegalStateException("timeout", timeoutException);') &&
+            section.text.includes(
+              'throw new IllegalStateException("timeout", timeoutException);',
+            ) &&
             !section.text.startsWith('package com.example;'),
         ),
       ).toBe(true);
@@ -2966,7 +3015,9 @@ describe('repo-review-service', () => {
       resultStatus: 'success_with_authorization_warnings',
       authorizationStrategy: 'users',
       authorizationStatus: 'partial',
-      authorizationWarnings: ['chat grant failed; user fallback partially failed'],
+      authorizationWarnings: [
+        'chat grant failed; user fallback partially failed',
+      ],
       targetResults: [
         {
           targetType: 'user',
@@ -3159,9 +3210,7 @@ describe('repo-review-service', () => {
       service.setRepoReviewMessageSender(null);
       service.setRepoReviewCloudDocHandlersForTests(null);
     }
-  },
-    45000,
-  );
+  }, 45000);
 
   it('installs and uninstalls managed review hooks', async () => {
     const service = await import('./repo-review-service.js');
@@ -3892,7 +3941,9 @@ describe('repo-review-service', () => {
     expect(result.runs[0]?.run.summary).toBe('final result summary');
     expect(result.runs[0]?.run.markdownBody).toContain('### 一、审查总结');
     expect(result.runs[0]?.run.markdownBody).toContain('最终结果问题');
-    expect(result.runs[0]?.run.markdownBody).not.toContain('过期的 JSON 内嵌报告');
+    expect(result.runs[0]?.run.markdownBody).not.toContain(
+      '过期的 JSON 内嵌报告',
+    );
   });
 
   it('accepts raw_report_markdown inside the final structured repo review result', async () => {
@@ -3948,8 +3999,12 @@ describe('repo-review-service', () => {
 
     expect(result.blocked).toBe(false);
     expect(result.runs[0]?.run.summary).toBe('final result summary');
-    expect(result.runs[0]?.run.markdownBody).toContain('报告正文已经放进 JSON 字段');
-    expect(result.runs[0]?.run.rawModelOutput).toContain('"raw_report_markdown"');
+    expect(result.runs[0]?.run.markdownBody).toContain(
+      '报告正文已经放进 JSON 字段',
+    );
+    expect(result.runs[0]?.run.rawModelOutput).toContain(
+      '"raw_report_markdown"',
+    );
   });
 
   it('accepts markdown_body inside the final structured repo review result', async () => {
@@ -4088,7 +4143,9 @@ describe('repo-review-service', () => {
     );
     expect(result.runs[0]?.run.findings).toHaveLength(1);
     expect(result.runs[0]?.run.findings[0]?.detail).toContain('```diff');
-    expect(result.runs[0]?.run.findings[0]?.detail).toContain('-  return await save();');
+    expect(result.runs[0]?.run.findings[0]?.detail).toContain(
+      '-  return await save();',
+    );
     expect(mockRunAgentProcess).toHaveBeenCalledTimes(2);
   });
 
@@ -4324,10 +4381,99 @@ describe('repo-review-service', () => {
     });
 
     expect(result.runs[0]?.run.status).toBe('completed');
-    expect(result.runs[0]?.run.summary).toBe('final result arrived before process exit');
+    expect(result.runs[0]?.run.summary).toBe(
+      'final result arrived before process exit',
+    );
     expect(mockRequestAgentClose).toHaveBeenCalledTimes(1);
     expect(stdinEnd).toHaveBeenCalledTimes(1);
     expect(kill).toHaveBeenCalledWith('SIGTERM');
+  });
+
+  it('closes repo review early when an in-progress assistant turn already contains a complete final JSON result', async () => {
+    const stdinEnd = vi.fn(function (this: { writableEnded: boolean }) {
+      this.writableEnded = true;
+      closeResolve?.();
+    });
+    const kill = vi.fn();
+    let closeResolve: (() => void) | null = null;
+    mockRunAgentProcess.mockImplementation(
+      async (_group, _input, onProcess, onOutput) => {
+        const closed = new Promise<void>((resolve) => {
+          closeResolve = resolve;
+        });
+        onProcess?.({
+          killed: false,
+          kill,
+          stdin: {
+            destroyed: false,
+            writableEnded: false,
+            end: stdinEnd,
+          },
+        });
+        await onOutput?.({
+          status: 'success',
+          result: null,
+          turnEvent: {
+            type: 'item.updated',
+            turnId: 'turn-review-early-in-progress-final',
+            timestamp: '2026-05-17T15:10:00.000Z',
+            item: {
+              id: 'turn-review-early-in-progress-final:assistant:1',
+              type: 'assistant_message',
+              status: 'in_progress',
+              text: JSON.stringify({
+                overall: 'warn',
+                summary: 'in-progress final JSON should close early',
+                findings: [],
+                suggestions: [],
+                recommended_block: false,
+              }),
+              timestamp: '2026-05-17T15:10:00.000Z',
+            },
+          },
+        });
+        await closed;
+        return {
+          status: 'error',
+          result: null,
+          error: 'Agent exited with code 137: terminated after close request',
+        };
+      },
+    );
+
+    const service = await import('./repo-review-service.js');
+    const repository = await service.upsertRepoReviewRepository({
+      id: 'repo-review-early-in-progress-final',
+      name: 'Repo Review Early In Progress Final',
+      local_repo_path: tempRepo,
+      enabled: true,
+    });
+    await service.upsertRepoReviewProfile({
+      id: 'profile-review-early-in-progress-final',
+      repository_id: repository.id,
+      name: 'Push Early In Progress Final',
+      stage: 'push',
+      source_mode: 'local',
+      blocking_mode: 'soft_fail',
+      review_scope: 'staged_diff',
+      write_to_chat: false,
+      write_to_platform: false,
+      enabled: true,
+    });
+
+    const result = await service.triggerLocalRepoReview({
+      repositoryId: repository.id,
+      stage: 'push',
+    });
+
+    expect(result.runs[0]?.run.status).toBe('completed');
+    expect(result.runs[0]?.run.summary).toBe(
+      'in-progress final JSON should close early',
+    );
+    expect(mockRequestAgentClose).toHaveBeenCalledTimes(1);
+    expect(stdinEnd).toHaveBeenCalledTimes(1);
+    expect(mockSendAgentPrompt).not.toHaveBeenCalled();
+    expect(kill).not.toHaveBeenCalled();
   });
 
   it('salvages repo review from final assistant turn text even if agent exits with error', async () => {
@@ -4556,6 +4702,251 @@ describe('repo-review-service', () => {
     expect(result.runs[0]?.run.overall).toBe('error');
     expect(result.runs[0]?.run.summary).toBe('Review execution failed.');
     expect(result.runs[0]?.run.error).toContain('terminated');
+  });
+
+  it('salvages a timed-out worker JSON draft and carries its finding into the final review', async () => {
+    process.env.NANOCLAW_REVIEW_SUBAGENT_TIMEOUT_MS = '50';
+    process.env.NANOCLAW_REVIEW_SUBAGENT_TIMEOUT_GRACE_MS = '20';
+    vi.resetModules();
+    {
+      const db = await import('../db.js');
+      db._initTestDatabase();
+    }
+
+    mockRunAgentProcess
+      .mockImplementationOnce(async (_group, _input, onProcess, onOutput) => {
+        onProcess?.({
+          stdin: {
+            destroyed: false,
+            writableEnded: false,
+            end() {
+              this.writableEnded = true;
+            },
+          },
+          killed: false,
+          kill() {
+            this.killed = true;
+            return true;
+          },
+        } as any);
+        await onOutput?.({
+          turnEvent: {
+            type: 'item.updated',
+            turnId: 'turn-worker-timeout-json',
+            timestamp: '2026-05-17T14:40:00.000Z',
+            item: {
+              id: 'turn-worker-timeout-json:assistant:1',
+              type: 'assistant_message',
+              status: 'in_progress',
+              text: JSON.stringify({
+                checked_files: ['worker-timeout.ts'],
+                findings: [
+                  {
+                    severity: 'medium',
+                    file: 'worker-timeout.ts',
+                    line: '1-1',
+                    title: 'timeout worker finding',
+                    detail: 'worker draft was already complete before timeout',
+                    suggestion:
+                      'keep the parsed worker result instead of dropping it',
+                  },
+                ],
+                evidence_requests: [],
+                scope_limitations: ['worker draft salvaged after timeout'],
+                confidence: 'medium',
+                needs_cross_file_reduction: false,
+              }),
+              timestamp: '2026-05-17T14:40:00.000Z',
+            },
+          },
+        });
+        return await new Promise(() => undefined);
+      })
+      .mockResolvedValueOnce({
+        status: 'success',
+        result: JSON.stringify({
+          overall: 'warn',
+          summary: 'main merged salvaged worker findings',
+          findings: [],
+          suggestions: [],
+          recommended_block: false,
+        }),
+      });
+
+    runGit(tempRepo, ['commit', '-m', 'base']);
+    fs.writeFileSync(
+      path.join(tempRepo, 'worker-timeout.ts'),
+      'export const workerTimeout = true;\n',
+      'utf8',
+    );
+    runGit(tempRepo, ['add', 'worker-timeout.ts']);
+
+    const service = await import('./repo-review-service.js');
+    const repository = await service.upsertRepoReviewRepository({
+      id: 'repo-worker-timeout-salvage',
+      name: 'Repo Worker Timeout Salvage',
+      local_repo_path: tempRepo,
+      enabled: true,
+    });
+    await service.upsertRepoReviewProfile({
+      id: 'profile-worker-timeout-salvage',
+      repository_id: repository.id,
+      name: 'Worker Timeout Salvage',
+      stage: 'push',
+      source_mode: 'local',
+      blocking_mode: 'soft_fail',
+      review_scope: 'staged_diff',
+      include_full_file_context: false,
+      diff_subagent_threshold: 0,
+      write_to_chat: false,
+      write_to_platform: false,
+      enabled: true,
+    });
+
+    const result = await service.triggerLocalRepoReview({
+      repositoryId: repository.id,
+      stage: 'push',
+    });
+
+    expect(result.blocked).toBe(false);
+    expect(result.runs).toHaveLength(1);
+    expect(result.runs[0]?.run.status).toBe('completed');
+    expect(result.runs[0]?.run.summary).toContain(
+      'main merged salvaged worker findings',
+    );
+    expect(result.runs[0]?.run.findings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          title: 'timeout worker finding',
+          file: 'worker-timeout.ts',
+        }),
+      ]),
+    );
+    expect(mockSendAgentPrompt).not.toHaveBeenCalled();
+    expect(mockRequestAgentClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('salvages a timed-out main-agent JSON draft instead of downgrading to an empty reducer result', async () => {
+    process.env.NANOCLAW_REVIEW_SUBAGENT_TIMEOUT_MS = '50';
+    process.env.NANOCLAW_REVIEW_SUBAGENT_TIMEOUT_GRACE_MS = '20';
+    vi.resetModules();
+    {
+      const db = await import('../db.js');
+      db._initTestDatabase();
+    }
+
+    mockRunAgentProcess
+      .mockResolvedValueOnce({
+        status: 'success',
+        result: JSON.stringify({
+          checked_files: ['main-timeout.ts'],
+          findings: [],
+          evidence_requests: [],
+          scope_limitations: [],
+          confidence: 'high',
+          needs_cross_file_reduction: false,
+        }),
+      })
+      .mockImplementationOnce(async (_group, _input, onProcess, onOutput) => {
+        onProcess?.({
+          stdin: {
+            destroyed: false,
+            writableEnded: false,
+            end() {
+              this.writableEnded = true;
+            },
+          },
+          killed: false,
+          kill() {
+            this.killed = true;
+            return true;
+          },
+        } as any);
+        await onOutput?.({
+          turnEvent: {
+            type: 'item.updated',
+            turnId: 'turn-main-timeout-json',
+            timestamp: '2026-05-17T14:41:00.000Z',
+            item: {
+              id: 'turn-main-timeout-json:assistant:1',
+              type: 'assistant_message',
+              status: 'in_progress',
+              text: JSON.stringify({
+                overall: 'fail',
+                summary: 'main timeout salvage preserved findings',
+                findings: [
+                  {
+                    severity: 'high',
+                    file: 'main-timeout.ts',
+                    line: '1-1',
+                    title: 'main timeout finding',
+                    detail: 'main-agent draft was parseable before timeout',
+                    suggestion: 'promote the draft instead of discarding it',
+                  },
+                ],
+                scope_limitations: [
+                  'main timed out after producing a usable draft',
+                ],
+                suggestions: ['keep the salvaged main-agent JSON'],
+                recommended_block: true,
+              }),
+              timestamp: '2026-05-17T14:41:00.000Z',
+            },
+          },
+        });
+        return await new Promise(() => undefined);
+      });
+
+    runGit(tempRepo, ['commit', '-m', 'base']);
+    fs.writeFileSync(
+      path.join(tempRepo, 'main-timeout.ts'),
+      'export const mainTimeout = true;\n',
+      'utf8',
+    );
+    runGit(tempRepo, ['add', 'main-timeout.ts']);
+
+    const service = await import('./repo-review-service.js');
+    const repository = await service.upsertRepoReviewRepository({
+      id: 'repo-main-timeout-salvage',
+      name: 'Repo Main Timeout Salvage',
+      local_repo_path: tempRepo,
+      enabled: true,
+    });
+    await service.upsertRepoReviewProfile({
+      id: 'profile-main-timeout-salvage',
+      repository_id: repository.id,
+      name: 'Main Timeout Salvage',
+      stage: 'push',
+      source_mode: 'local',
+      blocking_mode: 'soft_fail',
+      review_scope: 'staged_diff',
+      include_full_file_context: false,
+      diff_subagent_threshold: 0,
+      write_to_chat: false,
+      write_to_platform: false,
+      enabled: true,
+    });
+
+    const result = await service.triggerLocalRepoReview({
+      repositoryId: repository.id,
+      stage: 'push',
+    });
+
+    expect(result.blocked).toBe(false);
+    expect(result.runs).toHaveLength(1);
+    expect(result.runs[0]?.run.status).toBe('completed');
+    expect(result.runs[0]?.run.overall).toBe('fail');
+    expect(result.runs[0]?.run.summary).toContain(
+      'main timeout salvage preserved findings',
+    );
+    expect(result.runs[0]?.run.findings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          title: 'main timeout finding',
+          file: 'main-timeout.ts',
+        }),
+      ]),
+    );
   });
 
   it('persists compact repo review progress snapshots during execution and full turns on completion', async () => {
@@ -4965,7 +5356,8 @@ describe('repo-review-service', () => {
 
   it('allows binding the same review chat to multiple repositories', async () => {
     const service = await import('./repo-review-service.js');
-    const { listReviewConversationBindingsByChatJid } = await import('../db/review.js');
+    const { listReviewConversationBindingsByChatJid } =
+      await import('../db/review.js');
 
     await service.upsertRepoReviewRepository({
       id: 'repo-binding-a',
@@ -4983,7 +5375,9 @@ describe('repo-review-service', () => {
       enabled: true,
     });
 
-    const bindings = await listReviewConversationBindingsByChatJid('web:shared-review-chat');
+    const bindings = await listReviewConversationBindingsByChatJid(
+      'web:shared-review-chat',
+    );
     expect(bindings).toHaveLength(2);
     const ids = bindings.map((b) => b.repository_id).sort();
     expect(ids).toEqual(['repo-binding-a', 'repo-binding-b']);
@@ -5407,201 +5801,202 @@ describe('repo-review-service', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-04-24T12:00:00.000Z'));
     try {
-    mockRunAgentProcess.mockResolvedValue({
-      status: 'success',
-      result: JSON.stringify({
-        overall: 'pass',
-        summary: '通过',
-        findings: [],
-        suggestions: [],
-        recommended_block: false,
-      }),
-    });
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async (input: string | URL) => {
-        const url = String(input);
-        if (url === 'https://api.github.com/repos/team/repo') {
-          return new Response(JSON.stringify({ default_branch: 'main' }), {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          });
-        }
-        if (
-          url === 'https://api.github.com/repos/team/repo/branches?per_page=100'
-        ) {
-          return new Response(
-            JSON.stringify([
-              { name: 'main' },
-              { name: 'feature/login' },
-              { name: 'legacy/archive' },
-            ]),
-            {
+      mockRunAgentProcess.mockResolvedValue({
+        status: 'success',
+        result: JSON.stringify({
+          overall: 'pass',
+          summary: '通过',
+          findings: [],
+          suggestions: [],
+          recommended_block: false,
+        }),
+      });
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async (input: string | URL) => {
+          const url = String(input);
+          if (url === 'https://api.github.com/repos/team/repo') {
+            return new Response(JSON.stringify({ default_branch: 'main' }), {
               status: 200,
               headers: { 'Content-Type': 'application/json' },
-            },
-          );
-        }
-        if (
-          url ===
-            'https://api.github.com/repos/team/repo/commits?sha=main&per_page=1' ||
-          url ===
-            'https://api.github.com/repos/team/repo/commits?sha=feature%2Flogin&per_page=1' ||
-          url ===
-            'https://api.github.com/repos/team/repo/commits?sha=legacy%2Farchive&per_page=1' ||
-          url ===
-            'https://api.github.com/repos/team/repo/commits?sha=main&per_page=10' ||
-          url ===
-            'https://api.github.com/repos/team/repo/commits?sha=feature%2Flogin&per_page=10' ||
-          url ===
-            'https://api.github.com/repos/team/repo/commits?sha=legacy%2Farchive&per_page=10'
-        ) {
-          const branch = url.includes('feature%2Flogin')
-            ? 'feature/login'
-            : url.includes('legacy%2Farchive')
-              ? 'legacy/archive'
-              : 'main';
-          return new Response(
-            JSON.stringify([
+            });
+          }
+          if (
+            url ===
+            'https://api.github.com/repos/team/repo/branches?per_page=100'
+          ) {
+            return new Response(
+              JSON.stringify([
+                { name: 'main' },
+                { name: 'feature/login' },
+                { name: 'legacy/archive' },
+              ]),
               {
-                sha:
-                  branch === 'main'
-                    ? '1111111111111111111111111111111111111111'
-                    : branch === 'feature/login'
-                      ? '2222222222222222222222222222222222222222'
-                      : '3333333333333333333333333333333333333333',
-                parents: [
-                  {
-                    sha:
+                status: 200,
+                headers: { 'Content-Type': 'application/json' },
+              },
+            );
+          }
+          if (
+            url ===
+              'https://api.github.com/repos/team/repo/commits?sha=main&per_page=1' ||
+            url ===
+              'https://api.github.com/repos/team/repo/commits?sha=feature%2Flogin&per_page=1' ||
+            url ===
+              'https://api.github.com/repos/team/repo/commits?sha=legacy%2Farchive&per_page=1' ||
+            url ===
+              'https://api.github.com/repos/team/repo/commits?sha=main&per_page=10' ||
+            url ===
+              'https://api.github.com/repos/team/repo/commits?sha=feature%2Flogin&per_page=10' ||
+            url ===
+              'https://api.github.com/repos/team/repo/commits?sha=legacy%2Farchive&per_page=10'
+          ) {
+            const branch = url.includes('feature%2Flogin')
+              ? 'feature/login'
+              : url.includes('legacy%2Farchive')
+                ? 'legacy/archive'
+                : 'main';
+            return new Response(
+              JSON.stringify([
+                {
+                  sha:
+                    branch === 'main'
+                      ? '1111111111111111111111111111111111111111'
+                      : branch === 'feature/login'
+                        ? '2222222222222222222222222222222222222222'
+                        : '3333333333333333333333333333333333333333',
+                  parents: [
+                    {
+                      sha:
+                        branch === 'main'
+                          ? '0000000000000000000000000000000000000000'
+                          : branch === 'feature/login'
+                            ? '1111111111111111111111111111111111111111'
+                            : '2222222222222222222222222222222222222222',
+                    },
+                  ],
+                  author: { login: 'alice' },
+                  commit: {
+                    message:
                       branch === 'main'
-                        ? '0000000000000000000000000000000000000000'
+                        ? 'main commit'
                         : branch === 'feature/login'
-                          ? '1111111111111111111111111111111111111111'
-                          : '2222222222222222222222222222222222222222',
+                          ? 'feature login commit'
+                          : 'legacy archive commit',
+                    author: {
+                      name: 'alice',
+                      date:
+                        branch === 'legacy/archive'
+                          ? '2020-01-01T10:00:00Z'
+                          : '2026-04-22T10:00:00Z',
+                    },
+                  },
+                },
+              ]),
+              {
+                status: 200,
+                headers: { 'Content-Type': 'application/json' },
+              },
+            );
+          }
+          if (
+            url.includes(
+              '/compare/0000000000000000000000000000000000000000...1111111111111111111111111111111111111111',
+            ) ||
+            url.includes(
+              '/compare/1111111111111111111111111111111111111111...1111111111111111111111111111111111111111',
+            ) ||
+            url.includes(
+              '/compare/1111111111111111111111111111111111111111...2222222222222222222222222222222222222222',
+            )
+          ) {
+            return new Response(
+              JSON.stringify({
+                files: [
+                  {
+                    filename: 'demo.ts',
+                    patch: '@@ -1 +1 @@\n-const a = 1;\n+const a = 2;',
                   },
                 ],
-                author: { login: 'alice' },
-                commit: {
-                  message:
-                    branch === 'main'
-                      ? 'main commit'
-                      : branch === 'feature/login'
-                        ? 'feature login commit'
-                        : 'legacy archive commit',
-                  author: {
-                    name: 'alice',
-                    date:
-                      branch === 'legacy/archive'
-                        ? '2020-01-01T10:00:00Z'
-                        : '2026-04-22T10:00:00Z',
-                  },
-                },
+                commits: [],
+              }),
+              {
+                status: 200,
+                headers: { 'Content-Type': 'application/json' },
               },
-            ]),
-            {
-              status: 200,
-              headers: { 'Content-Type': 'application/json' },
-            },
-          );
-        }
-        if (
-          url.includes(
-            '/compare/0000000000000000000000000000000000000000...1111111111111111111111111111111111111111',
-          ) ||
-          url.includes(
-            '/compare/1111111111111111111111111111111111111111...1111111111111111111111111111111111111111',
-          ) ||
-          url.includes(
-            '/compare/1111111111111111111111111111111111111111...2222222222222222222222222222222222222222',
-          )
-        ) {
-          return new Response(
-            JSON.stringify({
-              files: [
-                {
-                  filename: 'demo.ts',
-                  patch: '@@ -1 +1 @@\n-const a = 1;\n+const a = 2;',
-                },
-              ],
-              commits: [],
-            }),
-            {
-              status: 200,
-              headers: { 'Content-Type': 'application/json' },
-            },
-          );
-        }
-        if (url.includes('/contents/')) {
-          return new Response('', { status: 404 });
-        }
-        throw new Error(`Unexpected fetch: ${url}`);
-      }),
-    );
+            );
+          }
+          if (url.includes('/contents/')) {
+            return new Response('', { status: 404 });
+          }
+          throw new Error(`Unexpected fetch: ${url}`);
+        }),
+      );
 
-    const service = await import('./repo-review-service.js');
-    const repository = await service.upsertRepoReviewRepository({
-      id: 'repo-remote-all-branches',
-      name: 'Repo Remote All Branches',
-      local_repo_path: tempRepo,
-      remote_provider: 'github',
-      remote_repo_slug: 'team/repo',
-      platform_token: 'token',
-      enabled: true,
-    });
-    await service.upsertRepoReviewProfile({
-      id: 'profile-remote-all',
-      repository_id: repository.id,
-      name: 'Remote All Branches',
-      stage: 'push',
-      source_mode: 'remote',
-      blocking_mode: 'soft_fail',
-      target_branches: [],
-      write_to_chat: false,
-      write_to_platform: false,
-      enabled: true,
-    });
-    await service.upsertRepoReviewProfile({
-      id: 'profile-remote-main',
-      repository_id: repository.id,
-      name: 'Remote Main Only',
-      stage: 'push',
-      source_mode: 'remote',
-      blocking_mode: 'soft_fail',
-      target_branches: ['main'],
-      write_to_chat: false,
-      write_to_platform: false,
-      enabled: true,
-    });
+      const service = await import('./repo-review-service.js');
+      const repository = await service.upsertRepoReviewRepository({
+        id: 'repo-remote-all-branches',
+        name: 'Repo Remote All Branches',
+        local_repo_path: tempRepo,
+        remote_provider: 'github',
+        remote_repo_slug: 'team/repo',
+        platform_token: 'token',
+        enabled: true,
+      });
+      await service.upsertRepoReviewProfile({
+        id: 'profile-remote-all',
+        repository_id: repository.id,
+        name: 'Remote All Branches',
+        stage: 'push',
+        source_mode: 'remote',
+        blocking_mode: 'soft_fail',
+        target_branches: [],
+        write_to_chat: false,
+        write_to_platform: false,
+        enabled: true,
+      });
+      await service.upsertRepoReviewProfile({
+        id: 'profile-remote-main',
+        repository_id: repository.id,
+        name: 'Remote Main Only',
+        stage: 'push',
+        source_mode: 'remote',
+        blocking_mode: 'soft_fail',
+        target_branches: ['main'],
+        write_to_chat: false,
+        write_to_platform: false,
+        enabled: true,
+      });
 
-    const result = await service.syncRemoteRepoReview({
-      repositoryId: repository.id,
-    });
+      const result = await service.syncRemoteRepoReview({
+        repositoryId: repository.id,
+      });
 
-    expect(result.branches).toHaveLength(3);
-    expect(result.branches.map((entry) => entry.branch).sort()).toEqual([
-      'feature/login',
-      'legacy/archive',
-      'main',
-    ]);
-    expect(
-      result.branches
-        .filter((entry) => entry.status === 'triggered')
-        .map((entry) => entry.branch),
-    ).toEqual(['main', 'feature/login']);
-    expect(
-      result.branches.find((entry) => entry.branch === 'legacy/archive'),
-    ).toMatchObject({
-      status: 'skipped',
-      reason: '该分支不在最近 14 天活跃窗口内',
-    });
-    expect(result.summary).toMatchObject({
-      triggered: 2,
-      skipped: 1,
-      failed: 0,
-      activeWindowDays: 14,
-    });
+      expect(result.branches).toHaveLength(3);
+      expect(result.branches.map((entry) => entry.branch).sort()).toEqual([
+        'feature/login',
+        'legacy/archive',
+        'main',
+      ]);
+      expect(
+        result.branches
+          .filter((entry) => entry.status === 'triggered')
+          .map((entry) => entry.branch),
+      ).toEqual(['main', 'feature/login']);
+      expect(
+        result.branches.find((entry) => entry.branch === 'legacy/archive'),
+      ).toMatchObject({
+        status: 'skipped',
+        reason: '该分支不在最近 14 天活跃窗口内',
+      });
+      expect(result.summary).toMatchObject({
+        triggered: 2,
+        skipped: 1,
+        failed: 0,
+        activeWindowDays: 14,
+      });
     } finally {
-    vi.useRealTimers();
+      vi.useRealTimers();
     }
   });
 
@@ -5818,9 +6213,9 @@ describe('repo-review-service', () => {
     ]);
     expect(persistedCache).toBeTruthy();
     expect(
-      (await db.parseReviewRemoteBranchCacheRecord(persistedCache!)).branches.map(
-        (entry) => (entry as { name?: string }).name,
-      ),
+      (
+        await db.parseReviewRemoteBranchCacheRecord(persistedCache!)
+      ).branches.map((entry) => (entry as { name?: string }).name),
     ).toEqual(['main', 'feature/login']);
     expect(fetchMock).toHaveBeenCalledTimes(4);
 
@@ -6037,111 +6432,110 @@ describe('repo-review-service', () => {
       }),
     });
 
-    const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
-      const url =
-        typeof input === 'string'
-          ? input
-          : input instanceof URL
-            ? input.toString()
-            : input.url;
-      const method = (init?.method || 'GET').toUpperCase();
-      if (
-        url ===
-        'https://gitlab.example.com/api/v4/projects/group%2Frepo/repository/branches?per_page=100'
-      ) {
-        return new Response(
-          JSON.stringify([
-            {
-              name: 'main',
-              default: true,
-              commit: {
-                id: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-                parent_ids: ['9999999999999999999999999999999999999999'],
-                author_name: 'Alice',
-                title: 'main baseline',
-                committed_date: '2026-03-24T09:00:00.000Z',
-              },
-            },
-            {
-              name: 'feature/review',
-              default: false,
-              commit: {
-                id: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
-                parent_ids: ['aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'],
-                author_name: 'Bob',
-                title: 'feature change',
-                committed_date: '2026-03-24T09:10:00.000Z',
-              },
-            },
-          ]),
-          {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          },
-        );
-      }
-      if (
-        url ===
-          'https://gitlab.example.com/api/v4/projects/group%2Frepo/repository/compare?from=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&to=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' &&
-        method === 'GET'
-      ) {
-        return new Response(
-          JSON.stringify({
-            diffs: [
+    const fetchMock = vi.fn(
+      async (input: string | URL | Request, init?: RequestInit) => {
+        const url =
+          typeof input === 'string'
+            ? input
+            : input instanceof URL
+              ? input.toString()
+              : input.url;
+        const method = (init?.method || 'GET').toUpperCase();
+        if (
+          url ===
+          'https://gitlab.example.com/api/v4/projects/group%2Frepo/repository/branches?per_page=100'
+        ) {
+          return new Response(
+            JSON.stringify([
               {
-                new_path: 'bootstrap.yml',
-                old_path: 'bootstrap.yml',
-                diff: '@@ -1 +1 @@\n-old\n+new',
+                name: 'main',
+                default: true,
+                commit: {
+                  id: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+                  parent_ids: ['9999999999999999999999999999999999999999'],
+                  author_name: 'Alice',
+                  title: 'main baseline',
+                  committed_date: '2026-03-24T09:00:00.000Z',
+                },
               },
-            ],
-            commits: [
               {
-                id: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
-                title: 'feature change',
-                message: 'feature change',
+                name: 'feature/review',
+                default: false,
+                commit: {
+                  id: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+                  parent_ids: ['aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'],
+                  author_name: 'Bob',
+                  title: 'feature change',
+                  committed_date: '2026-03-24T09:10:00.000Z',
+                },
               },
-            ],
-          }),
-          {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          },
-        );
-      }
-      if (
-        url.includes('/repository/files/') &&
-        method === 'GET'
-      ) {
-        return new Response('not found', { status: 404 });
-      }
-      if (
-        url ===
-          'https://gitlab.example.com/api/v4/projects/group%2Frepo/statuses/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' &&
-        method === 'POST'
-      ) {
-        return new Response('{}', {
-          status: 201,
-          headers: { 'Content-Type': 'application/json' },
-        });
-      }
-      if (
-        url ===
-          'https://gitlab.example.com/api/v4/projects/group%2Frepo/repository/commits/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/comments' &&
-        method === 'POST'
-      ) {
-        return new Response(
-          JSON.stringify({
-            id: 42,
-            url: 'https://gitlab.example.com/group/repo/-/commit/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb#note_42',
-          }),
-          {
+            ]),
+            {
+              status: 200,
+              headers: { 'Content-Type': 'application/json' },
+            },
+          );
+        }
+        if (
+          url ===
+            'https://gitlab.example.com/api/v4/projects/group%2Frepo/repository/compare?from=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&to=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' &&
+          method === 'GET'
+        ) {
+          return new Response(
+            JSON.stringify({
+              diffs: [
+                {
+                  new_path: 'bootstrap.yml',
+                  old_path: 'bootstrap.yml',
+                  diff: '@@ -1 +1 @@\n-old\n+new',
+                },
+              ],
+              commits: [
+                {
+                  id: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+                  title: 'feature change',
+                  message: 'feature change',
+                },
+              ],
+            }),
+            {
+              status: 200,
+              headers: { 'Content-Type': 'application/json' },
+            },
+          );
+        }
+        if (url.includes('/repository/files/') && method === 'GET') {
+          return new Response('not found', { status: 404 });
+        }
+        if (
+          url ===
+            'https://gitlab.example.com/api/v4/projects/group%2Frepo/statuses/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' &&
+          method === 'POST'
+        ) {
+          return new Response('{}', {
             status: 201,
             headers: { 'Content-Type': 'application/json' },
-          },
-        );
-      }
-      throw new Error(`Unexpected fetch ${method} ${url}`);
-    });
+          });
+        }
+        if (
+          url ===
+            'https://gitlab.example.com/api/v4/projects/group%2Frepo/repository/commits/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/comments' &&
+          method === 'POST'
+        ) {
+          return new Response(
+            JSON.stringify({
+              id: 42,
+              url: 'https://gitlab.example.com/group/repo/-/commit/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb#note_42',
+            }),
+            {
+              status: 201,
+              headers: { 'Content-Type': 'application/json' },
+            },
+          );
+        }
+        throw new Error(`Unexpected fetch ${method} ${url}`);
+      },
+    );
     vi.stubGlobal('fetch', fetchMock);
 
     const service = await import('./repo-review-service.js');
@@ -6202,7 +6596,8 @@ describe('repo-review-service', () => {
         });
       }
       if (
-        url === 'https://api.github.com/repos/owner/shared/branches?per_page=100'
+        url ===
+        'https://api.github.com/repos/owner/shared/branches?per_page=100'
       ) {
         return new Response(
           JSON.stringify([
@@ -6382,9 +6777,9 @@ describe('repo-review-service', () => {
       expect(
         gitCommands.filter((command) => command === 'remote -v'),
       ).toHaveLength(1);
-      expect(
-        gitCommands.some((command) => command.includes('log -1')),
-      ).toBe(false);
+      expect(gitCommands.some((command) => command.includes('log -1'))).toBe(
+        false,
+      );
     } finally {
       vi.doUnmock('child_process');
       vi.resetModules();
@@ -6399,9 +6794,10 @@ describe('repo-review-service', () => {
     mockRunAgentProcess.mockImplementation(
       () =>
         new Promise((resolve) => {
-          resolveAgentResult = resolve as (
-            value: { status: string; result: string },
-          ) => void;
+          resolveAgentResult = resolve as (value: {
+            status: string;
+            result: string;
+          }) => void;
         }),
     );
     vi.stubGlobal(
@@ -6861,9 +7257,9 @@ describe('repo-review-service', () => {
       expect(branchCommits[0]).toMatchObject({
         sha: secondFeatureHead,
       });
-      expect(branchCommits[0]?.commit.startsWith(secondFeatureHead.slice(0, 8))).toBe(
-        true,
-      );
+      expect(
+        branchCommits[0]?.commit.startsWith(secondFeatureHead.slice(0, 8)),
+      ).toBe(true);
       expect(
         branchCommits.some((commit) => commit.sha === firstFeatureHead),
       ).toBe(true);
@@ -7808,10 +8204,11 @@ describe('repo-review-service', () => {
       const recoveredRun = recoveredRuns.find(
         (entry) => entry.id === 'run-interrupted-startup',
       );
-      const branchStates = await service.listRepoReviewBranchStatesForRepository(
-        'repo-startup-recovery',
-        'push',
-      );
+      const branchStates =
+        await service.listRepoReviewBranchStatesForRepository(
+          'repo-startup-recovery',
+          'push',
+        );
       const branchState = branchStates.find((entry) => entry.branch === 'main');
 
       expect(recoveredRun).toMatchObject({
@@ -7974,10 +8371,11 @@ describe('repo-review-service', () => {
           });
         });
 
-        const branchStates = await service.listRepoReviewBranchStatesForRepository(
-          'repo-startup-queued',
-          'push',
-        );
+        const branchStates =
+          await service.listRepoReviewBranchStatesForRepository(
+            'repo-startup-queued',
+            'push',
+          );
         const branchState = branchStates.find(
           (entry) => entry.branch === 'feature/login',
         );
