@@ -132,6 +132,7 @@ import {
   buildRepoReviewSummaryMessage,
   type RepoReviewCloudDocSection,
 } from './repo-review-doc-render.js';
+import { runRepoReviewGraphCoordinator } from './repo-review-coordinator.js';
 import { computeNextDigestAt } from './repo-review-digest-service.js';
 import { getProviderForModule } from '../tenant/tenant-db.js';
 import { runWithTenant, SYSTEM_USER_ID } from '../tenant/tenant-context.js';
@@ -750,6 +751,9 @@ function normalizeRepoReviewProgressSnapshot(
   const latestErrorText = stringValue(record.latestErrorText);
   const steps = normalizeRepoReviewProgressSteps(record.steps);
   return {
+    snapshotVersion: Math.max(0, Number(record.snapshotVersion) || 0) || undefined,
+    heartbeatAt: stringValue(record.heartbeatAt) || undefined,
+    runTerminal: Boolean(record.runTerminal),
     turnCount: Math.max(0, Number(record.turnCount) || 0),
     latestAssistantText: stringValue(record.latestAssistantText),
     latestErrorText: latestErrorText || null,
@@ -1814,9 +1818,13 @@ function extractLatestRepoReviewTurnErrorText(
 function buildRepoReviewProgressSnapshot(
   turns: RepoReviewAssistantTurn[],
   steps: RepoReviewProgressStep[] = [],
+  options: { runTerminal?: boolean } = {},
 ): RepoReviewProgressSnapshot {
   const latestAssistantText = extractLatestCompletedAssistantMessageText(turns);
   return {
+    snapshotVersion: 1,
+    heartbeatAt: new Date().toISOString(),
+    runTerminal: Boolean(options.runTerminal),
     turnCount: turns.length,
     latestAssistantText: latestAssistantText
       ? formatVisibleRepoReviewAssistantMessage(latestAssistantText)
@@ -1890,6 +1898,29 @@ function upsertRepoReviewProgressStep(
   const copy = [...steps];
   copy[existingIndex] = next;
   return copy;
+}
+
+function repairTerminalRepoReviewProgressSteps(
+  steps: RepoReviewProgressStep[],
+  terminalStatus: 'completed' | 'failed' | 'skipped',
+  error?: string,
+): RepoReviewProgressStep[] {
+  let next = steps;
+  for (const step of steps) {
+    if (step.status !== 'running' && step.status !== 'queued') continue;
+    next = upsertRepoReviewProgressStep(next, {
+      id: step.id,
+      label: step.label,
+      kind: step.kind,
+      status: terminalStatus === 'completed' ? 'completed' : terminalStatus,
+      detail: step.detail,
+      inputText: step.inputText,
+      outputText: step.outputText,
+      metadataText: step.metadataText,
+      error: terminalStatus === 'failed' ? error || step.error : step.error,
+    });
+  }
+  return next;
 }
 
 function errorMessageForProgress(err: unknown): string {
@@ -12821,6 +12852,7 @@ async function executeRepoReviewEvent(
       normalizeRepoReviewProgressSnapshot(
         asRecord(runCallbackContext).reviewProgress,
       )?.steps || [];
+    let reviewRunTerminal = false;
     let persistReviewProgressQueue: Promise<void> = Promise.resolve();
     const persistReviewProgressNow = async (
       patch: Record<string, unknown> = {},
@@ -12828,6 +12860,7 @@ async function executeRepoReviewEvent(
       const reviewProgress = buildRepoReviewProgressSnapshot(
         reviewTurns,
         progressSteps,
+        { runTerminal: reviewRunTerminal },
       );
       runCallbackContext = mergeCallbackContext(runCallbackContext, {
         ...patch,
@@ -12942,6 +12975,19 @@ async function executeRepoReviewEvent(
         'skipped',
         '没有启用的审查 profile 匹配此事件',
       );
+      reviewRunTerminal = true;
+      progressSteps = repairTerminalRepoReviewProgressSteps(
+        progressSteps,
+        'skipped',
+      );
+      runCallbackContext = mergeCallbackContext(runCallbackContext, {
+        reviewTurns,
+        reviewProgress: buildRepoReviewProgressSnapshot(
+          reviewTurns,
+          progressSteps,
+          { runTerminal: true },
+        ),
+      });
       const updated = await updateReviewRun(runRecord.id, {
         status: 'skipped',
         result_state: 'skipped',
@@ -13244,6 +13290,19 @@ async function executeRepoReviewEvent(
           commitSummaryLines: prepared.commitSummaryLines,
           commitDetails: prepared.commitDetails,
         });
+        reviewRunTerminal = true;
+        progressSteps = repairTerminalRepoReviewProgressSteps(
+          progressSteps,
+          prepared.overall === 'skipped' ? 'skipped' : 'completed',
+        );
+        runCallbackContext = mergeCallbackContext(runCallbackContext, {
+          reviewTurns,
+          reviewProgress: buildRepoReviewProgressSnapshot(
+            reviewTurns,
+            progressSteps,
+            { runTerminal: true },
+          ),
+        });
         const updated = await updateReviewRun(runRecord.id, {
           status: prepared.overall === 'skipped' ? 'skipped' : 'completed',
           baseline_source: baselineSource || null,
@@ -13354,10 +13413,6 @@ async function executeRepoReviewEvent(
       const activeExecutionStats = executionStats;
       const maxWorkerCount = await resolveRepoReviewMaxSubagents();
       await persistReviewProgress();
-      activeExecutionStats.totalReadBudgetBytes =
-        REPO_REVIEW_AGENTIC_DEFAULT_MAX_TOTAL_READ_BYTES;
-      activeExecutionStats.maxFullFileBytesPerFile =
-        REPO_REVIEW_AGENTIC_DEFAULT_MAX_FULL_FILE_BYTES_PER_FILE;
       await setProgressStep(
         'prepare_review_evidence',
         '准备 Review Evidence',
@@ -13370,7 +13425,7 @@ async function executeRepoReviewEvent(
             ['changed_files', prepared.changedFiles.join(', ') || '-'],
             ['diff_bytes', Buffer.byteLength(prepared.diffText, 'utf8')],
             ['workspace_path', reviewWorkspacePath || '-'],
-            ['total_budget', REPO_REVIEW_AGENTIC_DEFAULT_MAX_TOTAL_READ_BYTES],
+            ['full_file_context_mode', profile.includeFullFileContext ? 'lazy' : 'disabled'],
             [
               'codemap_status',
               activeExecutionStats.codeMapContextStatus || 'unknown',
@@ -13404,11 +13459,7 @@ async function executeRepoReviewEvent(
         suggestions: string[];
         recommendedBlock: boolean;
       } | null = null;
-      const agenticBudget = buildRepoReviewAgenticBudget({
-        profile,
-        maxSubagents: maxWorkerCount,
-      });
-      const agenticReview = await runRepoReviewAgenticReview({
+      const coordinatedReview = await runRepoReviewGraphCoordinator({
         repository,
         profile,
         event,
@@ -13416,17 +13467,24 @@ async function executeRepoReviewEvent(
         runId: runRecord.id,
         workspacePath: reviewWorkspacePath,
         userId: reviewUserId,
-        budget: agenticBudget,
+        maxWorkerCount,
         executionStats: activeExecutionStats,
-        onPhaseProgress: async (turns) => {
-          reviewTurns = [
-            ...turns.planTurns,
-            ...turns.subagentTurns.flat(),
-            ...turns.finalTurns,
-            ...turns.extractorTurns,
-          ];
+        onTurnProgress: async (turnGroups) => {
+          reviewTurns = turnGroups.flat();
           activeExecutionStats.extraRepoReadCount = countRepoReviewToolCalls(
             reviewTurns,
+            'read_file',
+          );
+          activeExecutionStats.subagentToolCallCount = countRepoReviewToolCalls(
+            reviewTurns.filter((turn) => turn.phase === 'worker'),
+            'read_file',
+          );
+          activeExecutionStats.mainReadonlyToolCallCount = countRepoReviewToolCalls(
+            reviewTurns.filter(
+              (turn) =>
+                turn.phase === 'main_agent_review' ||
+                turn.phase === 'main_agent_fallback_review',
+            ),
             'read_file',
           );
           await persistReviewProgress();
@@ -13448,8 +13506,8 @@ async function executeRepoReviewEvent(
         },
       });
       throwIfRepoReviewRunCancelled(runRecord.id);
-      reviewTurns = agenticReview.reviewTurns;
-      parsed = agenticReview.parsed;
+      reviewTurns = coordinatedReview.reviewTurns;
+      parsed = coordinatedReview.parsed;
       const hydratedFindings = await hydrateRepoReviewFindingSnippets({
         findings: parsed.findings,
         prepared,
@@ -13464,28 +13522,30 @@ async function executeRepoReviewEvent(
         suggestions: parsed.suggestions,
         recommendedBlock: parsed.recommendedBlock,
       };
-      const finalMarkdownBody = buildStructuredRepoReviewMarkdown(
-        {
-          summary: finalReview.summary,
-          findings: finalReview.findings,
-          fileReviews: finalReview.fileReviews,
-          commitReviews: parsed.commitReviews,
-          suggestions: finalReview.suggestions,
-        } as unknown as Pick<
-          RepoReviewRun,
-          'summary' | 'findings' | 'commitReviews' | 'suggestions'
-        >,
-        {
-          repositoryName: repository.name,
-          branch: prepared.branch,
-          baseSha: prepared.baseSha,
-          headSha: prepared.headSha,
-          actor: prepared.actor,
-          stage: event.stage,
-          prMrNumber: event.prMrNumber,
-          scopeLimitations: finalReview.scopeLimitations,
-        },
-      );
+      const finalMarkdownBody =
+        stringValue(parsed.markdownBody) ||
+        buildStructuredRepoReviewMarkdown(
+          {
+            summary: finalReview.summary,
+            findings: finalReview.findings,
+            fileReviews: finalReview.fileReviews,
+            commitReviews: parsed.commitReviews,
+            suggestions: finalReview.suggestions,
+          } as unknown as Pick<
+            RepoReviewRun,
+            'summary' | 'findings' | 'commitReviews' | 'suggestions'
+          >,
+          {
+            repositoryName: repository.name,
+            branch: prepared.branch,
+            baseSha: prepared.baseSha,
+            headSha: prepared.headSha,
+            actor: prepared.actor,
+            stage: event.stage,
+            prMrNumber: event.prMrNumber,
+            scopeLimitations: finalReview.scopeLimitations,
+          },
+        );
       const blocking = computeBlocking(
         profile,
         finalReview.overall,
@@ -13503,6 +13563,10 @@ async function executeRepoReviewEvent(
         label: '保存审查结果',
         status: 'completed',
       });
+      progressSteps = repairTerminalRepoReviewProgressSteps(
+        progressSteps,
+        'completed',
+      );
       const updated = await updateReviewRun(runRecord.id, {
         status: 'completed',
         baseline_source: baselineSource || null,
@@ -13524,6 +13588,7 @@ async function executeRepoReviewEvent(
           const reviewProgress = buildRepoReviewProgressSnapshot(
             reviewTurns,
             progressSteps,
+            { runTerminal: reviewRunTerminal },
           );
           runCallbackContext = mergeCallbackContext(runCallbackContext, {
             commitSummaryLines: prepared.commitSummaryLines,
@@ -13722,6 +13787,12 @@ async function executeRepoReviewEvent(
           outputText: '分支状态已更新。',
         },
       );
+      reviewRunTerminal = true;
+      progressSteps = repairTerminalRepoReviewProgressSteps(
+        progressSteps,
+        'completed',
+      );
+      await persistReviewProgress();
       return {
         run: normalized,
         allowed: !blocking,
@@ -13760,11 +13831,18 @@ async function executeRepoReviewEvent(
             : null,
         ).reviewTurns,
       );
+      reviewRunTerminal = true;
+      progressSteps = repairTerminalRepoReviewProgressSteps(
+        progressSteps,
+        'failed',
+        errorMessageForProgress(err),
+      );
       runCallbackContext = mergeCallbackContext(runCallbackContext, {
         reviewTurns: persistedReviewTurns,
         reviewProgress: buildRepoReviewProgressSnapshot(
           persistedReviewTurns,
           progressSteps,
+          { runTerminal: true },
         ),
       });
       const updated = await updateReviewRun(runRecord.id, {

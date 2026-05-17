@@ -1,4 +1,3 @@
-import fs from 'fs/promises';
 import path from 'path';
 
 import type { ReviewOverall } from '../db.js';
@@ -35,6 +34,7 @@ import {
   type RepoReviewAssistantTurn,
   type RepoReviewRunFinding,
   type RepoReviewTurnPhase,
+  type ReviewEvidenceBundle as PreparedReviewEvidenceBundle,
   type ReviewPreparedContext,
   asRecord,
 } from './repo-review-model.js';
@@ -52,7 +52,6 @@ const MAX_WORKER_CHUNK_BYTES = 60 * 1024;
 const MAX_WORKER_CHUNK_FILE_COUNT = 8;
 const MAX_WORKER_CHUNK_MERGE_PROMPT_BYTES = 96 * 1024;
 const MAX_WORKER_CHUNK_MERGE_FILE_COUNT = 12;
-const DIRECT_MAIN_AGENT_MAX_TOTAL_PROMPT_BYTES = MAX_TOTAL_FULL_FILE_BYTES;
 const WORKER_TIMEOUT_MS = 300_000;
 const WORKER_TIMEOUT_GRACE_MS = Math.max(
   250,
@@ -96,7 +95,20 @@ export interface RepoReviewEvidenceBundle {
   totalPromptBytes: number;
   commitSummaryBlock: string;
   projectContextBlock: string;
+  graphEvidenceBundle?: PreparedReviewEvidenceBundle;
   directMainAgentReview: boolean;
+}
+
+export interface RepoReviewExecutionPlan {
+  strategy: 'main_only' | 'worker_then_main';
+  changedFileCount: number;
+  diffSubagentThreshold: number;
+  moduleCount: number;
+  maxSubagents: number;
+  maxWorkerCount: number;
+  workerCount: number;
+  includeFullFileContext: boolean;
+  lazyFullFileContext: boolean;
 }
 
 export interface RepoReviewTimeoutFollowupSummary {
@@ -113,6 +125,7 @@ export interface RepoReviewWorkerResult {
   checkedFiles: string[];
   reviewedFiles: string[];
   findings: RepoReviewRunFinding[];
+  evidenceRequests: string[];
   scopeLimitations: string[];
   confidence: 'high' | 'medium' | 'low';
   needsCrossFileReduction: boolean;
@@ -375,15 +388,19 @@ function buildAgentRunInput(input: {
   return agentInput;
 }
 
-function buildWorkerToolInstructionBlock(): string {
-  return [
+function buildWorkerToolInstructionBlock(includeFullFileContext: boolean): string {
+  const lines = [
     '## 工具使用要求',
     '- 你必须至少执行一次只读工具调用来核对关键证据。',
     '- 优先使用 `read_file` / `grep` / `glob` / `list_dir` / `bash` 的只读 git 命令。',
     '- 如果需要核对差异，优先用 `git diff` 或 `git show`。',
     '- 禁止写文件、禁止任何修改操作、禁止派生子代理。',
-    '- 你只能在本任务提供的文件范围和只读工作区内探索。',
-  ].join('\n');
+    includeFullFileContext
+      ? '- 允许按需读取本 worker 变更文件的全文；未变更文件只读取与 1-hop 关系直接相关的小片段。'
+      : '- 全文补证未开启；不要读取完整文件，只能用 diff 和必要的短片段核验证据。',
+    '- 你只能在本任务提供的文件范围、1-hop 相关片段和只读工作区内探索。',
+  ];
+  return lines.join('\n');
 }
 
 interface RepoReviewTurnContext {
@@ -591,36 +608,17 @@ function extractJsonObject(text: string): string {
   return trimmed;
 }
 
-async function readWorkspaceFile(filePath: string): Promise<{
-  content: string;
-  bytes: number;
-  source: 'workspace' | 'omitted' | 'unavailable';
-  reason?: string;
-}> {
+function looksLikeRepoReviewTerminalOutput(text: string): boolean {
+  const trimmed = String(text || '').trim();
+  if (!trimmed) return false;
+  if (/代码审查报告|markdown_body|raw_report_markdown/i.test(trimmed)) {
+    return true;
+  }
   try {
-    const stat = await fs.stat(filePath);
-    if (!stat.isFile()) {
-      return { content: '', bytes: 0, source: 'omitted', reason: 'not a file' };
-    }
-    if (stat.size > MAX_FULL_FILE_BYTES_PER_FILE) {
-      return {
-        content: '',
-        bytes: 0,
-        source: 'omitted',
-        reason: `file too large (${stat.size} bytes)`,
-      };
-    }
-    const buffer = await fs.readFile(filePath);
-    if (buffer.includes(0)) {
-      return { content: '', bytes: 0, source: 'omitted', reason: 'binary file' };
-    }
-    return {
-      content: buffer.toString('utf8'),
-      bytes: buffer.byteLength,
-      source: 'workspace',
-    };
+    const parsed = JSON.parse(extractJsonObject(trimmed)) as Record<string, unknown>;
+    return Boolean(parsed.overall || parsed.summary || parsed.findings);
   } catch {
-    return { content: '', bytes: 0, source: 'unavailable', reason: 'file unavailable' };
+    return false;
   }
 }
 
@@ -846,10 +844,12 @@ async function runBoundedReviewAgent(input: {
             output.turnEvent.item.status === 'completed' &&
             output.turnEvent.item.text.trim()
           ) {
-            terminalOutputSeen = true;
             streamedResult = output.turnEvent.item.text;
             maybeRecordFollowupOutput(output.turnEvent.item.text);
-            closeAgentInput();
+            if (looksLikeRepoReviewTerminalOutput(output.turnEvent.item.text)) {
+              terminalOutputSeen = true;
+              closeAgentInput();
+            }
           }
           if (
             output.turnEvent.type === 'turn.completed' ||
@@ -863,7 +863,9 @@ async function runBoundedReviewAgent(input: {
           latestResultText = output.result;
           streamedResult = output.result;
           maybeRecordFollowupOutput(output.result);
-          closeAgentInput();
+          if (!sawTurnEvent) {
+            closeAgentInput();
+          }
         } else if (output.status === 'error') {
           terminalOutputSeen = true;
           closeAgentInput();
@@ -930,7 +932,18 @@ async function runBoundedReviewAgent(input: {
     const result = timeoutPromise
       ? await Promise.race([processPromise, timeoutPromise])
       : await processPromise;
-    if (result.status !== 'success' && !timedOut) {
+    if (result.status === 'success' && typeof result.result === 'string') {
+      terminalOutputSeen = true;
+      latestResultText = result.result;
+      streamedResult = streamedResult || result.result;
+    }
+    if (
+      result.status !== 'success' &&
+      !timedOut &&
+      !streamedResult &&
+      !latestResultText &&
+      !latestCompletedAssistantMessageText
+    ) {
       throw new Error(result.error || 'Review agent did not return a result');
     }
   } finally {
@@ -1001,6 +1014,7 @@ function buildWorkerResultsPrompt(results: RepoReviewWorkerResult[]): string {
         title: result.chunk.title,
         checked_files: result.checkedFiles,
         findings: result.findings,
+        evidence_requests: result.evidenceRequests,
         scope_limitations: result.scopeLimitations,
         confidence: result.confidence,
         needs_cross_file_reduction: result.needsCrossFileReduction,
@@ -1110,16 +1124,21 @@ function buildRepoReviewWorkerPrompt(input: {
     `Worker 标题：${input.chunk.title}`,
     '文件列表：',
     input.chunk.files.map((file) => `- ${file.filePath}`).join('\n'),
+    '项目/图谱上下文：',
+    trimBlock(
+      input.prepared.projectContextBlocks.join('\n\n') || '暂无补充上下文。',
+      24 * 1024,
+    ),
     '证据块：',
     buildWorkerEvidenceContext(input.chunk),
     '',
-    buildWorkerToolInstructionBlock(),
+    buildWorkerToolInstructionBlock(input.profile.includeFullFileContext),
     '',
     formatRepoReviewCustomPromptBlock(input.profile.promptTemplate.trim()),
     '',
     '## 约束',
-    '- 你只能依据本提示中的证据做局部审查。',
-    '- 不要读取仓库、调用工具、派生子代理或扩展到未提供的文件。',
+    '- 你只能依据本提示中的证据、允许的只读工具核验和 1-hop 相关片段做局部审查。',
+    '- 不要写文件、派生子代理或扩展到不相关文件。',
     '- 如果证据不足，把限制写入 scope_limitations，不要猜测。',
     '',
     '## 输出协议',
@@ -1139,6 +1158,7 @@ function buildRepoReviewWorkerPrompt(input: {
     '      "suggestion": "修复建议，可为空"',
     '    }',
     '  ],',
+    '  "evidence_requests": ["需要主代理进一步补证的问题或文件，可为空"],',
     '  "scope_limitations": ["证据限制"],',
     '  "confidence": "high | medium | low",',
     '  "needs_cross_file_reduction": false',
@@ -1277,6 +1297,18 @@ function buildRepoReviewMainReviewPrompt(input: {
     '变更文件：',
     input.bundle.changedFiles.map((file) => `- ${file}`).join('\n'),
     '',
+    '## Evidence Bundle / 图谱上下文',
+    trimBlock(input.bundle.projectContextBlock, 36 * 1024),
+    '',
+    '## Lazy 补证权限',
+    input.event.source === 'local-hook'
+      ? '- 本地 hook 触发：只读工作区可用于核对直接相关代码和 git 信息。'
+      : '- 远端或同步触发：工作区可能是临时只读镜像，可核对直接相关文件和提交范围。',
+    input.profile.includeFullFileContext
+      ? '- includeFullFileContext 已开启：你可以用只读工具按需读取 diff 涉及文件全文；未变更文件只读取 1-hop 相关小片段。'
+      : '- includeFullFileContext 未开启：不要读取完整文件；仅用 diff、已给证据和必要短片段核验。',
+    '- CodeMap/CodeIndex 若为 stale/missing/error，只能作为导航线索，结论必须回到 diff/worktree 证据。',
+    '',
     '## 证据',
     input.bundle.files
       .map((file) => [
@@ -1297,8 +1329,9 @@ function buildRepoReviewMainReviewPrompt(input: {
     '',
     '## 约束',
     input.directReview
-      ? '- 这是主代理直接审查，不会再进入后续 worker 阶段。'
+      ? '- 本次由主代理直接审查，不会再进入后续 worker 阶段。'
       : '- 这是主代理补审，必须综合 worker 结构化结果和 worker turn 证据给出最终结论。',
+    '- 必须至少执行一次工具取证；优先直接调用只读工具，不要把这些只读命令包进 `bash -lc`。',
     '- 只依据本提示提供的证据下结论；证据不足时必须写入 scope_limitations。',
     '- 除了最终 JSON，不要输出其它格式。',
     '',
@@ -1349,6 +1382,13 @@ function parseWorkerResult(
       checkedFiles,
       reviewedFiles: checkedFiles,
       findings: dedupeFindings(normalizeFindings(Array.isArray(parsed.findings) ? parsed.findings : [])),
+      evidenceRequests: uniqueStrings(
+        Array.isArray(parsed.evidence_requests)
+          ? parsed.evidence_requests.map((item) => String(item || ''))
+          : Array.isArray(parsed.evidenceRequests)
+            ? parsed.evidenceRequests.map((item) => String(item || ''))
+            : [],
+      ),
       scopeLimitations: uniqueStrings(
         Array.isArray(parsed.scope_limitations)
           ? parsed.scope_limitations.map((item) => String(item || ''))
@@ -1371,6 +1411,7 @@ function parseWorkerResult(
       checkedFiles: chunk.files.map((file) => file.filePath),
       reviewedFiles: chunk.files.map((file) => file.filePath),
       findings: [],
+      evidenceRequests: [],
       scopeLimitations: ['worker returned unstructured output'],
       confidence: 'low',
       needsCrossFileReduction: false,
@@ -1430,7 +1471,13 @@ function parseRepoReviewTimeoutFollowupSummary(
 
 function parseReducerResult(output: string): RepoReviewStructuredResult {
   const parsed = JSON.parse(extractJsonObject(output)) as Record<string, unknown>;
-  const markdownBody = String(parsed.markdown_body || parsed.markdownBody || '').trim();
+  const markdownBody = String(
+    parsed.markdown_body ||
+      parsed.markdownBody ||
+      parsed.raw_report_markdown ||
+      parsed.rawReportMarkdown ||
+      '',
+  ).trim();
   const findings = dedupeFindings(normalizeFindings(Array.isArray(parsed.findings) ? parsed.findings : []));
   const scopeLimitations = uniqueStrings(
     Array.isArray(parsed.scope_limitations)
@@ -1461,6 +1508,71 @@ function parseReducerResult(output: string): RepoReviewStructuredResult {
     rawModelOutput: output,
     commitReviews,
     fileReviews,
+  };
+  return result;
+}
+
+function buildLocalStructuredResultFallback(input: {
+  outputText: string;
+  workerResults: RepoReviewWorkerResult[];
+}): RepoReviewStructuredResult {
+  const markdownFindings: RepoReviewRunFinding[] = [];
+  const markdown = input.outputText || '';
+  const summaryMatch = markdown.match(/###\s*一、审查总结\s*\n+([\s\S]*?)(?:\n###|\n##|$)/);
+  const markdownSummary = normalizeLine(summaryMatch?.[1] || '');
+  const issueMatch = markdown.match(/-\s*`([^`]+)`:\s*([^\n]+)[\s\S]*?证据[:：]([^\n]+)(?:[\s\S]*?影响[:：]([^\n]+))?[\s\S]*?修复建议[:：]([^\n]+)/);
+  if (issueMatch) {
+    const severity: RepoReviewRunFinding['severity'] =
+      /高风险|high/i.test(markdown)
+        ? 'high'
+        : /低风险|low/i.test(markdown)
+          ? 'low'
+          : 'medium';
+    const [file, line] = String(issueMatch[1] || '').split(':');
+    const codeBlock = markdown.match(/```diff[\s\S]*?```/)?.[0] || '';
+    markdownFindings.push({
+      severity,
+      file: stringValue(file) || undefined,
+      line: stringValue(line) || undefined,
+      title: normalizeLine(issueMatch[2] || '未命名问题'),
+      detail: [
+        `证据：${normalizeLine(issueMatch[3] || '')}`,
+        issueMatch[4] ? `影响：${normalizeLine(issueMatch[4] || '')}` : '',
+        codeBlock,
+      ]
+        .filter(Boolean)
+        .join('\n'),
+      suggestion: normalizeLine(issueMatch[5] || '') || undefined,
+    });
+  }
+  const findings = dedupeFindings([
+    ...input.workerResults.flatMap((result) => result.findings),
+    ...markdownFindings,
+  ]);
+  const scopeLimitations = uniqueStrings([
+    'main agent returned unstructured output; local structured fallback rendered the report',
+    ...input.workerResults.flatMap((result) => result.scopeLimitations),
+    ...input.workerResults.flatMap((result) =>
+      result.evidenceRequests.map((request) => `worker evidence request: ${request}`),
+    ),
+  ]);
+  const hasHigh = findings.some((finding) => finding.severity === 'high');
+  const hasFinding = findings.length > 0;
+  const summary =
+    markdownSummary ||
+    normalizeLine(input.outputText).slice(0, 240) ||
+    (hasFinding ? '审查完成，发现候选问题。' : '审查完成，未发现明确问题。');
+  const result: RepoReviewStructuredResult = {
+    overall: hasHigh ? 'fail' : hasFinding ? 'warn' : 'pass',
+    summary,
+    findings,
+    scopeLimitations,
+    suggestions: [],
+    recommendedBlock: hasHigh,
+    markdownBody: markdown.trim(),
+    rawModelOutput: input.outputText,
+    commitReviews: [],
+    fileReviews: [],
   };
   if (!result.markdownBody) {
     result.markdownBody = buildStructuredMarkdownFallback(result);
@@ -1520,7 +1632,7 @@ async function resolveWorkerPrompt(input: {
       workerFiles: input.chunk.files.map((file) => `- ${file.filePath}`).join('\n'),
       workerEvidence: buildWorkerEvidenceContext(input.chunk),
       customPromptBlock: [
-        buildWorkerToolInstructionBlock(),
+        buildWorkerToolInstructionBlock(input.profile.includeFullFileContext),
         formatRepoReviewCustomPromptBlock(input.profile.promptTemplate.trim()),
       ]
         .filter(Boolean)
@@ -1566,11 +1678,89 @@ export function shouldDirectMainAgentReview(input: {
   diffSubagentThreshold: number;
   maxMainAgentPromptBytes?: number;
 }): boolean {
-  return (
-    input.changedFileCount <= input.diffSubagentThreshold ||
-    input.totalPromptBytes <=
-      (input.maxMainAgentPromptBytes ?? DIRECT_MAIN_AGENT_MAX_TOTAL_PROMPT_BYTES)
-  );
+  const threshold = Math.max(0, Math.trunc(input.diffSubagentThreshold));
+  return input.changedFileCount < threshold;
+}
+
+function buildGraphAwareGroupKeys(input: {
+  changedFiles: string[];
+  graphEvidenceBundle?: PreparedReviewEvidenceBundle;
+}): Map<string, string> {
+  const changedFileSet = new Set(input.changedFiles);
+  const adjacency = new Map<string, Set<string>>();
+  const addFile = (filePath: string) => {
+    if (!changedFileSet.has(filePath)) return;
+    if (!adjacency.has(filePath)) adjacency.set(filePath, new Set());
+  };
+  const connect = (left: string, right: string) => {
+    if (!changedFileSet.has(left) || !changedFileSet.has(right) || left === right) return;
+    addFile(left);
+    addFile(right);
+    adjacency.get(left)!.add(right);
+    adjacency.get(right)!.add(left);
+  };
+  for (const filePath of input.changedFiles) addFile(filePath);
+
+  const graph = input.graphEvidenceBundle;
+  if (graph) {
+    const functionFileById = new Map(
+      graph.impactGraph.functions.map((fn) => [fn.id, fn.filePath] as const),
+    );
+    for (const edge of graph.impactGraph.edges) {
+      const fromFile = functionFileById.get(edge.fromFunctionId) || edge.fromFunction?.filePath || '';
+      const toFile = functionFileById.get(edge.toFunctionId) || edge.toFunction?.filePath || '';
+      connect(fromFile, toFile);
+    }
+  }
+
+  const byStem = new Map<string, string[]>();
+  for (const filePath of input.changedFiles) {
+    const baseName = path.basename(filePath).replace(/\.(test|spec)(?=\.)/i, '');
+    const stem = baseName.replace(/\.[^.]+$/, '').toLowerCase();
+    if (!stem) continue;
+    const files = byStem.get(stem) || [];
+    files.push(filePath);
+    byStem.set(stem, files);
+  }
+  for (const files of byStem.values()) {
+    if (files.length < 2) continue;
+    const [first, ...rest] = files;
+    for (const file of rest) connect(first!, file);
+  }
+
+  const result = new Map<string, string>();
+  const visited = new Set<string>();
+  const components: string[][] = [];
+  for (const filePath of input.changedFiles) {
+    if (visited.has(filePath)) continue;
+    const stack = [filePath];
+    const component: string[] = [];
+    visited.add(filePath);
+    while (stack.length > 0) {
+      const current = stack.pop()!;
+      component.push(current);
+      for (const next of adjacency.get(current) || []) {
+        if (visited.has(next)) continue;
+        visited.add(next);
+        stack.push(next);
+      }
+    }
+    component.sort((left, right) => left.localeCompare(right, 'en'));
+    components.push(component);
+  }
+  components.sort((left, right) => left[0]!.localeCompare(right[0]!, 'en'));
+  components.forEach((component, index) => {
+    const fallback = getGroupKey(component[0] || '');
+    const groupKey = component.length > 1 ? `graph/${index + 1}` : fallback;
+    for (const filePath of component) result.set(filePath, groupKey);
+  });
+  return result;
+}
+
+function resolveRepoReviewCoordinatorWorkerLimit(maxSubagents?: number): number {
+  const configured = Math.max(1, Math.trunc(Number(maxSubagents) || 1));
+  if (configured <= 1) return 1;
+  return Math.max(1, Math.min(configured - 1, 3));
 }
 
 async function createEvidenceBundle(input: {
@@ -1582,8 +1772,11 @@ async function createEvidenceBundle(input: {
 }): Promise<RepoReviewEvidenceBundle> {
   const workspacePath = input.workspacePath || input.repository.localRepoPath;
   const diffIndex = input.prepared.diffIndex || buildRepoReviewDiffIndex(input.prepared.diffText);
+  const graphGroupKeys = buildGraphAwareGroupKeys({
+    changedFiles: input.prepared.changedFiles,
+    graphEvidenceBundle: input.prepared.evidenceBundle,
+  });
   const files: RepoReviewEvidenceFile[] = [];
-  let totalFullFileBytes = 0;
   for (const filePath of input.prepared.changedFiles) {
     const diffText =
       getRepoReviewDiffSlice(diffIndex, [filePath]) ||
@@ -1593,22 +1786,11 @@ async function createEvidenceBundle(input: {
     let fileContentBytes = 0;
     let fileContentSource: RepoReviewEvidenceFile['fileContentSource'] = 'omitted';
     let fileContentReason: string | undefined;
-    if (input.profile.includeFullFileContext && totalFullFileBytes < MAX_TOTAL_FULL_FILE_BYTES) {
-      const absolutePath = path.isAbsolute(filePath)
-        ? filePath
-        : path.join(workspacePath, filePath);
-      const readResult = await readWorkspaceFile(absolutePath);
-      fileContent = readResult.content;
-      fileContentBytes = readResult.bytes;
-      fileContentSource = readResult.source;
-      fileContentReason = readResult.reason;
-      if (fileContentSource === 'workspace') {
-        totalFullFileBytes += fileContentBytes;
-      }
-    } else if (!input.profile.includeFullFileContext) {
-      fileContentReason = 'full file context disabled';
+    if (input.profile.includeFullFileContext) {
+      fileContentReason =
+        'lazy full file context enabled; reviewer may read changed files on demand';
     } else {
-      fileContentReason = 'full file budget exhausted';
+      fileContentReason = 'full file context disabled';
     }
     files.push({
       filePath,
@@ -1618,14 +1800,18 @@ async function createEvidenceBundle(input: {
       fileContentBytes,
       fileContentSource,
       fileContentReason,
-      groupKey: getGroupKey(filePath),
+      groupKey: graphGroupKeys.get(filePath) || getGroupKey(filePath),
       isTestFile: isTestFile(filePath),
       language: inferLanguage(filePath),
     });
   }
   const diffBytes = byteLength(input.prepared.diffText || '');
   const fileContentBytes = files.reduce((total, file) => total + file.fileContentBytes, 0);
-  const totalPromptBytes = diffBytes + fileContentBytes;
+  const projectContextBlock =
+    input.prepared.projectContextBlocks.length > 0
+      ? `项目上下文：\n${input.prepared.projectContextBlocks.join('\n\n')}`
+      : '项目上下文：暂无补充上下文。';
+  const totalPromptBytes = diffBytes + fileContentBytes + byteLength(projectContextBlock);
   const directMainAgentReview = shouldDirectMainAgentReview({
     changedFileCount: input.prepared.changedFiles.length,
     totalPromptBytes,
@@ -1647,10 +1833,8 @@ async function createEvidenceBundle(input: {
       input.prepared.commitSummaryLines.length > 0
         ? `Commits in this branch update:\n${input.prepared.commitSummaryLines.map((line) => `- ${line}`).join('\n')}`
         : '',
-    projectContextBlock:
-      input.prepared.projectContextBlocks.length > 0
-        ? `项目上下文：\n${input.prepared.projectContextBlocks.join('\n\n')}`
-        : '项目上下文：暂无补充上下文。',
+    projectContextBlock,
+    graphEvidenceBundle: input.prepared.evidenceBundle,
     directMainAgentReview,
   };
 }
@@ -1823,7 +2007,7 @@ async function runWorker(input: {
     profile: input.profile,
     runId: input.runId,
     userId: input.userId,
-  });
+  }).catch(() => null);
   if (input.executionStats) {
     input.executionStats.modelCallCount = (input.executionStats.modelCallCount || 0) + 1;
     input.executionStats.promptBytesBuilt =
@@ -1834,8 +2018,8 @@ async function runWorker(input: {
     promptKey: 'repo_review.worker',
     featureScope: 'repo_review',
     targetUserId: input.userId ?? '',
-    provider: provider.type,
-    model: provider.model || null,
+    provider: provider?.type || 'agent-runtime-default',
+    model: provider?.model || null,
     systemPromptText: null,
     userPromptText: workerPrompt,
     providerInputText: workerPrompt,
@@ -1877,7 +2061,7 @@ async function runWorker(input: {
     runtimeNamespace: `${input.runId}:worker:${input.chunk.id}`,
     workspacePath: input.bundle.workspacePath,
     userId: input.userId,
-    providerOverrideId: provider.id,
+    providerOverrideId: provider?.id,
     turnContext: buildRepoReviewTurnContext({
       groupKey: stepId,
       groupLabel: stepLabel,
@@ -2001,6 +2185,7 @@ async function runWorker(input: {
         checkedFiles: reviewedFiles,
         reviewedFiles,
         findings: [],
+        evidenceRequests: followupSummary.mainAgentQuestions,
         scopeLimitations: uniqueStrings([
           'worker exceeded primary timeout; partial follow-up summary preserved',
           followupSummary.summary || '',
@@ -2118,6 +2303,7 @@ async function runWorker(input: {
       checkedFiles: input.chunk.files.map((file) => file.filePath),
       reviewedFiles: input.chunk.files.map((file) => file.filePath),
       findings: [],
+      evidenceRequests: [],
       scopeLimitations: ['worker timed out'],
       confidence: 'low',
       needsCrossFileReduction: false,
@@ -2365,6 +2551,7 @@ export async function runRepoReviewWorkers(input: {
           checkedFiles: chunk.files.map((file) => file.filePath),
           reviewedFiles: chunk.files.map((file) => file.filePath),
           findings: [],
+          evidenceRequests: [],
           scopeLimitations: [err instanceof Error ? err.message : String(err)],
           confidence: 'low',
           needsCrossFileReduction: false,
@@ -2429,7 +2616,7 @@ function buildWorkerScheduleLabel(index: number, total: number): string {
   return `Worker ${index + 1}/${total}`;
 }
 
-export async function runRepoReviewCoordinatedReview(input: {
+export async function runRepoReviewGraphCoordinator(input: {
   repository: RepoReviewRepository;
   profile: RepoReviewProfile;
   event: RepoReviewEvent;
@@ -2455,6 +2642,8 @@ export async function runRepoReviewCoordinatedReview(input: {
   parsed: RepoReviewStructuredResult;
   workerResults: RepoReviewWorkerResult[];
   bundle: RepoReviewEvidenceBundle;
+  plan: RepoReviewExecutionPlan;
+  reviewTurns: RepoReviewAssistantTurn[];
 }> {
   if (input.executionStats) {
     input.executionStats.diffFiles = input.prepared.changedFiles.length;
@@ -2479,7 +2668,9 @@ export async function runRepoReviewCoordinatedReview(input: {
       {
         changed_files: bundle.changedFiles.length,
         diff_bytes: bundle.diffBytes,
-        file_content_bytes: bundle.fileContentBytes,
+        lazy_full_file_context: input.profile.includeFullFileContext,
+        code_map_status: bundle.graphEvidenceBundle?.codeMapStatus.status || 'missing',
+        code_index_status: bundle.graphEvidenceBundle?.codeIndexStatus.status || 'missing',
       },
       null,
       2,
@@ -2494,23 +2685,52 @@ export async function runRepoReviewCoordinatedReview(input: {
     outputText: JSON.stringify(
       {
         changed_files: bundle.changedFiles.length,
-        files_with_content: bundle.files.filter((file) => file.fileContentSource === 'workspace').length,
+        lazy_full_file_context: input.profile.includeFullFileContext,
         diff_bytes: bundle.diffBytes,
-        file_content_bytes: bundle.fileContentBytes,
+        changed_hunks: bundle.graphEvidenceBundle?.changedHunks.length || 0,
+        changed_functions: bundle.graphEvidenceBundle?.changedFunctions.length || 0,
       },
       null,
       2,
     ),
   });
-  const workerChunks = partitionRepoReviewEvidenceChunks(
-    bundle,
+  const moduleCount = new Set(bundle.files.map((file) => file.groupKey)).size;
+  const effectiveMaxWorkerCount = resolveRepoReviewCoordinatorWorkerLimit(
     input.maxWorkerCount,
   );
+  const workerChunks = partitionRepoReviewEvidenceChunks(
+    bundle,
+    effectiveMaxWorkerCount,
+  );
+  const plan: RepoReviewExecutionPlan = {
+    strategy: bundle.directMainAgentReview ? 'main_only' : 'worker_then_main',
+    changedFileCount: bundle.changedFiles.length,
+    diffSubagentThreshold: Math.max(0, Math.trunc(input.profile.diffSubagentThreshold)),
+    moduleCount,
+    maxSubagents: Math.max(1, Math.trunc(Number(input.maxWorkerCount) || 1)),
+    maxWorkerCount: effectiveMaxWorkerCount,
+    workerCount: workerChunks.length,
+    includeFullFileContext: input.profile.includeFullFileContext,
+    lazyFullFileContext: input.profile.includeFullFileContext,
+  };
+  await input.onProgressStep?.({
+    id: 'decide_execution_plan',
+    label: '决定执行计划',
+    status: 'completed',
+    detail:
+      plan.strategy === 'main_only'
+        ? '变更文件数低于 worker 阈值，主代理直接审查'
+        : `${plan.workerCount} 个 worker chunk，主代理统一汇总`,
+    kind: 'stage',
+    outputText: JSON.stringify(plan, null, 2),
+  });
   if (input.executionStats) {
     input.executionStats.splitGroups = workerChunks.length;
     input.executionStats.fullFileBytesLoaded = bundle.fileContentBytes;
     input.executionStats.evidenceBundleBytes = bundle.totalPromptBytes;
     input.executionStats.workerCount = workerChunks.length;
+    input.executionStats.plannedSubagentCount = workerChunks.length;
+    input.executionStats.delegatedSubagentCount = workerChunks.length;
     input.executionStats.peakReservedBytes = Math.max(
       input.executionStats.peakReservedBytes,
       bundle.totalPromptBytes,
@@ -2531,6 +2751,7 @@ export async function runRepoReviewCoordinatedReview(input: {
           changed_files: bundle.changedFiles.length,
           evidence_bytes: bundle.totalPromptBytes,
           diff_threshold: input.profile.diffSubagentThreshold,
+          execution_plan: plan,
         },
         null,
         2,
@@ -2546,6 +2767,7 @@ export async function runRepoReviewCoordinatedReview(input: {
       inputText: JSON.stringify(
         {
           worker_chunks: workerChunks.length,
+          execution_plan: plan,
           max_files_per_chunk: MAX_WORKER_CHUNK_FILE_COUNT,
           max_chunk_bytes: MAX_WORKER_CHUNK_BYTES,
           direct_main_agent_review: false,
@@ -2662,6 +2884,12 @@ export async function runRepoReviewCoordinatedReview(input: {
     input.executionStats.promptBytesBuilt =
       (input.executionStats.promptBytesBuilt || 0) + byteLength(mainReviewPrompt);
   }
+  const mainProvider = await resolveReviewProvider({
+    repository: input.repository,
+    profile: input.profile,
+    runId: input.runId,
+    userId: input.userId,
+  }).catch(() => null);
   const mainReviewResponse = await runBoundedReviewAgent({
     repository: input.repository,
     profile: input.profile,
@@ -2670,6 +2898,7 @@ export async function runRepoReviewCoordinatedReview(input: {
     runtimeNamespace: `${input.runId}:${mainReviewStepId}`,
     workspacePath: bundle.workspacePath || input.workspacePath || input.repository.localRepoPath,
     userId: input.userId,
+    providerOverrideId: mainProvider?.id,
     timeoutMs: bundle.directMainAgentReview ? 0 : undefined,
     turnContext: buildRepoReviewTurnContext({
       groupKey: mainReviewStepId,
@@ -2712,28 +2941,49 @@ export async function runRepoReviewCoordinatedReview(input: {
     parsed = null;
   }
   if (!parsed || !String(parsed.markdownBody || '').trim()) {
-    try {
-      parsed = await reduceRepoReviewWorkerResults({
-        repository: input.repository,
-        profile: input.profile,
-        event: input.event,
-        prepared: input.prepared,
-        bundle,
-        workerResults,
-        runId: input.runId,
-        userId: input.userId,
-        executionStats: input.executionStats,
-        onProgressStep: input.onProgressStep,
-      });
-    } catch (err) {
-      if (!parsed) {
-        throw err;
+    if (workerResults.length > 0) {
+      try {
+        parsed = await reduceRepoReviewWorkerResults({
+          repository: input.repository,
+          profile: input.profile,
+          event: input.event,
+          prepared: input.prepared,
+          bundle,
+          workerResults,
+          runId: input.runId,
+          userId: input.userId,
+          executionStats: input.executionStats,
+          onProgressStep: input.onProgressStep,
+        });
+      } catch {
+        parsed = parsed || null;
       }
     }
   }
   if (!parsed) {
-    throw new Error('Repo review main review did not return a structured result');
+    parsed = buildLocalStructuredResultFallback({
+      outputText: mainReviewResponse.outputText || '',
+      workerResults,
+    });
+    if (input.executionStats) {
+      input.executionStats.fallbackMainReviewCount =
+        (input.executionStats.fallbackMainReviewCount || 0) + 1;
+    }
   }
+  parsed = {
+    ...parsed,
+    findings: dedupeFindings([
+      ...workerResults.flatMap((result) => result.findings),
+      ...parsed.findings,
+    ]),
+    scopeLimitations: uniqueStrings([
+      ...parsed.scopeLimitations,
+      ...workerResults.flatMap((result) => result.scopeLimitations),
+      ...workerResults.flatMap((result) =>
+        result.evidenceRequests.map((request) => `worker evidence request: ${request}`),
+      ),
+    ]),
+  };
   if (!String(parsed.markdownBody || '').trim()) {
     parsed.markdownBody = buildStructuredRepoReviewMarkdown(
       {
@@ -2781,5 +3031,16 @@ export async function runRepoReviewCoordinatedReview(input: {
     parsed,
     workerResults,
     bundle,
+    plan,
+    reviewTurns: [
+      ...workerResults.flatMap((result) => result.turns || []),
+      ...mainReviewResponse.turns,
+    ],
   };
+}
+
+export async function runRepoReviewCoordinatedReview(
+  input: Parameters<typeof runRepoReviewGraphCoordinator>[0],
+): Promise<Awaited<ReturnType<typeof runRepoReviewGraphCoordinator>>> {
+  return runRepoReviewGraphCoordinator(input);
 }

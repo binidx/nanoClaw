@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  buildRepoReviewEvidenceBundle,
   partitionRepoReviewEvidenceChunks,
   renderRepoReviewMarkdownFromStructuredResult,
   shouldDirectMainAgentReview,
@@ -144,21 +145,21 @@ describe('repo-review coordinator', () => {
     expect(chunks.every((chunk) => chunk.files.length === 2)).toBe(true);
   });
 
-  it('keeps small diffs on the direct main-agent path even above the file threshold', () => {
+  it('uses the file-count threshold as the worker delegation gate', () => {
     expect(
       shouldDirectMainAgentReview({
-        changedFileCount: 8,
+        changedFileCount: 7,
         totalPromptBytes: 500000,
         diffSubagentThreshold: 8,
       }),
     ).toBe(true);
     expect(
       shouldDirectMainAgentReview({
-        changedFileCount: 9,
+        changedFileCount: 8,
         totalPromptBytes: 50000,
         diffSubagentThreshold: 8,
       }),
-    ).toBe(true);
+    ).toBe(false);
     expect(
       shouldDirectMainAgentReview({
         changedFileCount: 9,
@@ -166,6 +167,35 @@ describe('repo-review coordinator', () => {
         diffSubagentThreshold: 8,
       }),
     ).toBe(false);
+  });
+
+  it('treats includeFullFileContext as lazy evidence permission', async () => {
+    const bundle = await buildRepoReviewEvidenceBundle({
+      repository: makeBundle().repository,
+      profile: {
+        ...makeBundle().profile,
+        includeFullFileContext: true,
+        diffSubagentThreshold: 2,
+      },
+      event: makeBundle().event,
+      prepared: {
+        ...makeBundle().prepared,
+        diffText: [
+          'diff --git a/src/a.ts b/src/a.ts',
+          '--- a/src/a.ts',
+          '+++ b/src/a.ts',
+          '@@ -1 +1 @@',
+          '-old',
+          '+new',
+        ].join('\n'),
+        changedFiles: ['src/a.ts'],
+      },
+      workspacePath: '/tmp/repo-review-missing-workspace',
+    });
+
+    expect(bundle.files[0]?.fileContent).toBe('');
+    expect(bundle.files[0]?.fileContentReason).toContain('lazy full file context');
+    expect(bundle.directMainAgentReview).toBe(true);
   });
 
   it('renders markdown from structured results and falls back when needed', () => {

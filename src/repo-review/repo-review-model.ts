@@ -381,6 +381,9 @@ export interface RepoReviewExecutionStats {
 }
 
 export interface RepoReviewProgressSnapshot {
+  snapshotVersion?: number;
+  heartbeatAt?: string;
+  runTerminal?: boolean;
   turnCount: number;
   latestAssistantText: string;
   latestErrorText: string | null;

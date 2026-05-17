@@ -76,14 +76,15 @@ Repo Review 是面向 Git 仓库的审查流水线，不只是"把 diff 发给�
 ## 当前执行模型
 
 - 审查入口仍由 `repo-review-run-executor.ts` 编排，但当前主判断链已经不是“每次都先 worker 再 reducer”。
-- 小范围变更会走主代理直接审查：Coordinator 先构建 evidence bundle，再由主代理基于 diff、预加载全文和只读工具取证直接输出结论。
-- 大范围变更会走 worker 并行取证 + 主代理补审：Coordinator 按 evidence chunk 调度 worker，worker 只消费预构建证据块，主代理再综合 worker 结构化结果和 worker turn 证据给出最终结论。
+- 小范围变更会走主代理直接审查：Coordinator 先构建 evidence bundle，再由主代理基于 diff、图谱上下文和只读工具取证直接输出结论。
+- 大范围变更会走 worker 并行取证 + 主代理补审：Coordinator 根据执行计划按 CodeMap / Code Index 关系、目录模块和测试关联切分 evidence chunk，worker 只做模块级取证并输出结构化 JSON，主代理统一做严重性判断、去重和阻断建议。
+- `includeFullFileContext` 表示允许 lazy 全文补证，不再表示启动时预加载所有变更文件全文。开启后主代理/worker 可按需读取 diff 涉及文件全文；未变更文件只允许围绕 1-hop 关系读取小片段。
 - `reducer` 现在是结构化解析/兜底整理路径，不是每次 run 都会进入的必经主链路。只有主代理返回结果无法直接解析为结构化报告时，才会调用 reducer 或本地 renderer 补齐最终结果。
 - `diffSubagentThreshold` 仍参与是否走主代理直审或 worker 路径的调度判断，不再表示旧 agentic 时代的“自由子代理阈值”。
 - Repo Review 的默认 prompt 已以 `repo-review-coordinator.ts` 的主代理 / worker / reducer 三段式为准；旧 agentic step id 和 prompt 只保留历史 run 兼容。
 - worker 超时只影响对应 chunk。主代理补审仍会接管已有 worker 结果；只有主代理和 reducer 都无法产出可用结构化结果时，整次审查才会失败。
 - 最终 `markdown_body` 仍是唯一展示正文来源；若模型侧未返回可用正文，则由本地 renderer 回退生成固定模板。
-- coordinator 会记录 evidence bundle、worker 数量、fallback main review 和 reducer 调用等统计，便于后续验证与优化。
+- coordinator 会记录 execution plan、evidence bundle、worker 数量、fallback main review、reducer 调用、progress heartbeat 和终态修复等统计，便于后续验证与优化。
 
 ## 进度与可观测性
 

@@ -159,6 +159,9 @@ function normalizeSummaryReviewProgress(value: unknown) {
     return undefined;
   }
   return {
+    snapshotVersion: Math.max(0, Number(record.snapshotVersion) || 0) || undefined,
+    heartbeatAt: stringValue(record.heartbeatAt) || undefined,
+    runTerminal: Boolean(record.runTerminal),
     turnCount,
     latestAssistantText,
     latestErrorText: latestErrorText || null,
