@@ -185,6 +185,23 @@ async function loadWikiPages(kbId: string): Promise<KnowledgeWikiPageRecord[]> {
   return rows.map(rowToWikiPage);
 }
 
+async function deleteWikiPage(pageId: string): Promise<void> {
+  try {
+    const { getActiveEngine } = await import('../database/engine.js');
+    const engine = getActiveEngine();
+    if (engine.dialect === 'sqlite') {
+      const rowid = (await dba.prepare('SELECT rowid FROM knowledge_wiki_pages WHERE id = ?').get(pageId)) as { rowid: number } | undefined;
+      if (rowid) {
+        await dba.prepare('DELETE FROM knowledge_wiki_pages_fts WHERE rowid = ?').run(rowid.rowid);
+      }
+    }
+  } catch (err) {
+    logger.warn({ err, pageId }, 'Failed to cleanup wiki FTS row before delete (non-fatal)');
+  }
+  await dba.prepare('DELETE FROM knowledge_wiki_claims WHERE page_id = ?').run(pageId);
+  await dba.prepare('DELETE FROM knowledge_wiki_pages WHERE id = ?').run(pageId);
+}
+
 async function loadWikiSourceDocs(
   kbId: string,
   sourceDocIds: string[],
@@ -271,6 +288,66 @@ async function loadSummaryIndexRows(kbId: string): Promise<SummaryIndexRow[]> {
       ),
     )
     .all(kbId)) as SummaryIndexRow[];
+}
+
+function collectActiveEntityTitles(rows: SummaryIndexRow[]): Set<string> {
+  const titles = new Set<string>();
+  for (const row of rows) {
+    const entities = parseJsonArraySafe<Array<{ name?: string; salience?: number }>[number]>(row.entities, []);
+    for (const entity of entities) {
+      const label = typeof entity?.name === 'string' ? normalizeEntityLabel(entity.name) : null;
+      const salience = typeof entity?.salience === 'number' ? entity.salience : 0;
+      if (!label || salience < 0.6) continue;
+      titles.add(normTitle(label));
+    }
+  }
+  return titles;
+}
+
+function collectActiveTopicTitles(rows: SummaryIndexRow[]): Set<string> {
+  const titles = new Set<string>();
+  for (const row of rows) {
+    const topics = parseJsonArraySafe<string>(row.topics, []);
+    for (const topic of topics) {
+      const normalized = normalizeTopicLabel(topic);
+      if (!normalized) continue;
+      titles.add(normTitle(normalized));
+    }
+  }
+  return titles;
+}
+
+async function cleanupObsoleteWikiPages(
+  kbId: string,
+  doneCount: number,
+): Promise<string[]> {
+  const pages = await loadWikiPages(kbId);
+  if (pages.length === 0) return [];
+
+  const summaryRows = await loadSummaryIndexRows(kbId);
+  const activeEntities = collectActiveEntityTitles(summaryRows);
+  const activeTopics = collectActiveTopicTitles(summaryRows);
+  const deleted: string[] = [];
+
+  for (const page of pages) {
+    if (Number(page.edited_by_human ?? 0) === 1) continue;
+    if (page.page_type === 'entity' && !activeEntities.has(normTitle(page.title))) {
+      await deleteWikiPage(page.id);
+      deleted.push(page.id);
+      continue;
+    }
+    if (page.page_type === 'concept' && !activeTopics.has(normTitle(page.title))) {
+      await deleteWikiPage(page.id);
+      deleted.push(page.id);
+      continue;
+    }
+    if (page.page_type === 'synthesis' && doneCount < 3) {
+      await deleteWikiPage(page.id);
+      deleted.push(page.id);
+    }
+  }
+
+  return deleted;
 }
 
 async function loadEntitySourceDocIds(kbId: string, entityName: string, limit: number = 12): Promise<string[]> {
@@ -691,15 +768,22 @@ export async function updateOrCreateWikiPages(
     }
   }
 
-  await maintainCrossReferences(kbId, [...affected]);
+  const deletedPageIds = await cleanupObsoleteWikiPages(kbId, doneCount);
+  if (affected.size > 0 || deletedPageIds.length > 0) {
+    await maintainCrossReferences(kbId, [...affected, ...deletedPageIds]);
+  }
 
-  if (affected.size > 0) {
+  if (affected.size > 0 || deletedPageIds.length > 0) {
     safeAppendKbEvent({
       kbId,
       eventType: 'wiki_update',
       docId,
       title: t('knowledge.wikiUpdateTitle', { count: affected.size }, undefined),
-      payload: { mode: 'llm_rebuild', pageIds: [...affected] },
+      payload: {
+        mode: 'llm_rebuild',
+        pageIds: [...affected],
+        deletedPageIds,
+      },
     });
   }
 }

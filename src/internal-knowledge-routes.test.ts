@@ -196,4 +196,36 @@ describe('internal knowledge routes', () => {
       expect.objectContaining({ id: subscribedKbId, user_enabled: 1 }),
     ]);
   });
+
+  it('accepts internal knowledge search POST bodies and returns structured results', async () => {
+    const kbId = await createKb();
+
+    const app = express();
+    app.use(express.json());
+    registerInternalKnowledgeRoutes(app, {
+      requireInternalApi: (_req, _res, next) => next(),
+    });
+
+    const response = await inject(app, {
+      method: 'POST',
+      url: '/internal/knowledge/search',
+      headers: {
+        'content-type': 'application/json',
+      },
+      payload: JSON.stringify({
+        query: '订单规则',
+        user_id: '__system__',
+        kb_ids: [kbId],
+        top_k: 5,
+      }),
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual(
+      expect.objectContaining({
+        chunks: expect.any(Array),
+        wiki: expect.any(Array),
+      }),
+    );
+  });
 });

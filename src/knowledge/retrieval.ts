@@ -1,5 +1,6 @@
 import {
   dba,
+  getEmbeddingsByOwnerBatch,
   getKnowledgeChunksByIds,
   getChunkKbIdMap,
   getProvider,
@@ -9,7 +10,11 @@ import { getActiveEngine } from '../database/engine.js';
 import { getPgFtsConfig } from '../database/pg-fts-config.js';
 import { isMySqlFullTextUnsupportedError } from '../database/mysql-fulltext.js';
 import { buildEmbeddingProviderFromAiProvider } from '../embedding/resolve.js';
-import { cachedEmbedQuery, searchByVector } from '../embedding/vector-store.js';
+import {
+  cachedEmbedQuery,
+  cosineSimilarity,
+  deserializeEmbedding,
+} from '../embedding/vector-store.js';
 import {
   getKnowledgeSearchEngine,
   type KnowledgeFTSResult,
@@ -84,6 +89,12 @@ function buildWikiFts5Match(q: string): string {
 
 const STALE_WIKI_SCORE_FACTOR = 0.5;
 const WIKI_EVIDENCE_CHUNKS_PER_PAGE = 2;
+const MAX_WIKI_EVIDENCE_PAGES = 4;
+const MIN_FTS_CANDIDATES = 40;
+const MAX_FTS_CANDIDATES = 120;
+const FTS_CANDIDATE_MULTIPLIER = 12;
+const VECTOR_BLEND_ALPHA = 0.55;
+const SLOW_KNOWLEDGE_SEARCH_WARN_MS = 1500;
 
 export function computeWikiQualityMultiplier(
   pageType: string,
@@ -350,7 +361,10 @@ async function searchWikiPages(
     };
   }).sort((a, b) => b.score - a.score);
 
-  await attachWikiEvidenceChunks(query, results);
+  await attachWikiEvidenceChunks(
+    query,
+    results.slice(0, Math.min(results.length, MAX_WIKI_EVIDENCE_PAGES)),
+  );
   return results;
 }
 
@@ -463,6 +477,11 @@ function normalizeScores(scores: number[]): number[] {
   return scores.map((s) => (s - min) / range);
 }
 
+function buildKnowledgeFtsCandidateLimit(topK: number): number {
+  const requested = Math.max(topK * FTS_CANDIDATE_MULTIPLIER, MIN_FTS_CANDIDATES);
+  return Math.min(requested, MAX_FTS_CANDIDATES);
+}
+
 const DEFAULT_TEMPORAL_HALF_LIFE_DAYS = 365;
 
 function buildHalfLifeMap(kbIdList: string[], allKbs: KnowledgeBaseRecord[]): Map<string, number> {
@@ -565,23 +584,80 @@ async function applySiblingBoost(
   }
 }
 
-async function fillMissingDocumentIds(
-  merged: Map<string, { chunkId: string; documentId: string; ftsScore: number; vecScore: number }>,
-): Promise<void> {
-  const missing = [...merged.values()].filter((m) => !m.documentId).map((m) => m.chunkId);
-  if (missing.length === 0) return;
-  const batchSize = 200;
-  for (let i = 0; i < missing.length; i += batchSize) {
-    const batch = missing.slice(i, i + batchSize);
-    const ph = batch.map(() => '?').join(', ');
-    const rows = (await dba
-      .prepare(`SELECT id, document_id FROM knowledge_chunks WHERE id IN (${ph})`)
-      .all(...batch)) as Array<{ id: string; document_id: string }>;
-    for (const r of rows) {
-      const row = merged.get(r.id);
-      if (row) row.documentId = r.document_id;
+async function buildKnowledgeVectorScoreMap(
+  query: string,
+  candidateChunkIds: string[],
+  kbEmbeddingProviderMap: Map<string, string | null>,
+  minScore: number,
+): Promise<Map<string, number>> {
+  const uniqueChunkIds = [...new Set(candidateChunkIds)];
+  const out = new Map<string, number>();
+  if (uniqueChunkIds.length === 0) return out;
+
+  const chunkKbMap = await getChunkKbIdMap(uniqueChunkIds);
+  const chunksByProvider = new Map<string, string[]>();
+  for (const chunkId of uniqueChunkIds) {
+    const kbId = chunkKbMap.get(chunkId);
+    if (!kbId) continue;
+    const providerId = kbEmbeddingProviderMap.get(kbId);
+    if (!providerId) continue;
+    const list = chunksByProvider.get(providerId) ?? [];
+    list.push(chunkId);
+    chunksByProvider.set(providerId, list);
+  }
+
+  for (const [providerId, chunkIds] of chunksByProvider.entries()) {
+    try {
+      const providerRecord = await getProvider(providerId);
+      const embeddingProvider = providerRecord
+        ? buildEmbeddingProviderFromAiProvider(providerRecord)
+        : null;
+      if (!providerRecord || !embeddingProvider) {
+        logger.warn(
+          { providerId, candidateCount: chunkIds.length },
+          'Knowledge vector rerank skipped invalid embedding provider',
+        );
+        continue;
+      }
+
+      const queryVec = await cachedEmbedQuery(embeddingProvider, query);
+      const embeddingRows = await getEmbeddingsByOwnerBatch(
+        'knowledge',
+        chunkIds,
+        providerRecord.id,
+      );
+      let dimensionMismatchCount = 0;
+      for (const chunkId of chunkIds) {
+        const row = embeddingRows.get(chunkId);
+        if (!row) continue;
+        const vec = deserializeEmbedding(row.embedding);
+        if (vec.length !== queryVec.length) {
+          dimensionMismatchCount += 1;
+          continue;
+        }
+        const score = cosineSimilarity(queryVec, vec);
+        if (score >= minScore) out.set(chunkId, score);
+      }
+      if (dimensionMismatchCount > 0) {
+        logger.warn(
+          {
+            providerId,
+            expectedDimensions: queryVec.length,
+            skipped: dimensionMismatchCount,
+            candidateCount: chunkIds.length,
+          },
+          'Knowledge vector rerank skipped candidate embeddings with mismatched dimensions',
+        );
+      }
+    } catch (err) {
+      logger.warn(
+        { err, providerId, candidateCount: chunkIds.length },
+        'Knowledge vector rerank failed for embedding provider, using FTS-only candidates',
+      );
     }
   }
+
+  return out;
 }
 
 async function enrichSearchResults(
@@ -655,6 +731,7 @@ export async function searchKnowledge(
   query: string,
   opts?: { kbIds?: string[]; topK?: number; minScore?: number },
 ): Promise<{ chunks: KnowledgeSearchResult[]; wiki: WikiSearchResult[] }> {
+  const startedAt = Date.now();
   const topK = opts?.topK ?? 5;
   const minScore = opts?.minScore ?? 0.3;
 
@@ -676,6 +753,10 @@ export async function searchKnowledge(
     .filter((kb) => kbIdList.includes(kb.id) && kb.enhancement_level === 'wiki_full')
     .map((kb) => kb.id);
   const halfLifeMap = buildHalfLifeMap(kbIdList, allKbs);
+  const candidateLimit = buildKnowledgeFtsCandidateLimit(topK);
+  let ftsMs = 0;
+  let vectorMs = 0;
+  let wikiMs = 0;
 
   const kbEnhancementMap = new Map<string, string>();
   const kbEmbeddingProviderMap = new Map<string, string | null>();
@@ -686,72 +767,55 @@ export async function searchKnowledge(
     }
   }
 
+  const wikiPromise =
+    wikiFullKbIds.length > 0
+      ? (async () => {
+        const wikiStartedAt = Date.now();
+        try {
+          return await searchWikiPages(query, wikiFullKbIds, topK);
+        } catch (err) {
+          logger.warn({ err }, 'Wiki page search failed (non-fatal)');
+          return [] as WikiSearchResult[];
+        } finally {
+          wikiMs = Date.now() - wikiStartedAt;
+        }
+      })()
+      : Promise.resolve([] as WikiSearchResult[]);
+
   // --- FTS search (always runs, no external dependency) ---
   let ftsResults: KnowledgeFTSResult[] = [];
+  const ftsStartedAt = Date.now();
   try {
     const ftsEngine = getKnowledgeSearchEngine();
     ftsResults = await ftsEngine.search(getActiveEngine(), query, {
       kbIds: kbIdList,
-      limit: topK * 3,
+      limit: candidateLimit,
     });
   } catch (err) {
-    logger.warn({ err }, 'Knowledge FTS search failed, trying vector only');
+    logger.warn({ err }, 'Knowledge FTS search failed');
+  } finally {
+    ftsMs = Date.now() - ftsStartedAt;
   }
 
-  // --- Vector search (optional enhancement) ---
-  let vectorHits: Array<{ ownerId: string; score: number }> = [];
-  const kbIdsByEmbeddingProvider = new Map<string, string[]>();
-  for (const kbId of kbIdList) {
-    const providerId = kbEmbeddingProviderMap.get(kbId);
-    if (!providerId) continue;
-    const list = kbIdsByEmbeddingProvider.get(providerId) ?? [];
-    list.push(kbId);
-    kbIdsByEmbeddingProvider.set(providerId, list);
-  }
-  for (const [providerId, scopedKbIds] of kbIdsByEmbeddingProvider.entries()) {
-    try {
-      const providerRecord = await getProvider(providerId);
-      const embeddingProvider = providerRecord
-        ? buildEmbeddingProviderFromAiProvider(providerRecord)
-        : null;
-      if (!providerRecord || !embeddingProvider) {
-        logger.warn({ providerId, kbCount: scopedKbIds.length }, 'Knowledge vector search skipped invalid embedding provider');
-        continue;
-      }
-      const queryVec = await cachedEmbedQuery(embeddingProvider, query);
-      const raw = await searchByVector(
-        queryVec,
-        'knowledge',
-        topK * 5,
-        minScore,
-        providerRecord.id,
-      );
-      if (raw.length === 0) continue;
-      const chunkKbMap = await getChunkKbIdMap(raw.map((r) => r.ownerId));
-      const allowedKbIds = new Set(scopedKbIds);
-      for (const r of raw) {
-        const kbId = chunkKbMap.get(r.ownerId);
-        if (kbId && allowedKbIds.has(kbId) && enabledKbIds.has(kbId)) {
-          vectorHits.push({ ownerId: r.ownerId, score: r.score });
-        }
-      }
-    } catch (err) {
-      logger.warn({ err, providerId }, 'Knowledge vector search failed for embedding provider, using FTS only');
-    }
-  }
-
-  const supersededChunkIds = await filterSuperseded([
-    ...ftsResults.map((r) => r.chunkId),
-    ...vectorHits.map((r) => r.ownerId),
-  ]);
+  const supersededChunkIds = await filterSuperseded(ftsResults.map((r) => r.chunkId));
   if (supersededChunkIds.size > 0) {
     ftsResults = ftsResults.filter((r) => !supersededChunkIds.has(r.chunkId));
-    vectorHits = vectorHits.filter((r) => !supersededChunkIds.has(r.ownerId));
   }
 
-  // --- Merge & rank ---
-  const merged = new Map<string, { chunkId: string; documentId: string; ftsScore: number; vecScore: number }>();
+  // --- Vector rerank over lexical candidates only ---
+  let vectorScoreMap = new Map<string, number>();
+  const vectorStartedAt = Date.now();
+  if (ftsResults.length > 0) {
+    vectorScoreMap = await buildKnowledgeVectorScoreMap(
+      query,
+      ftsResults.map((result) => result.chunkId),
+      kbEmbeddingProviderMap,
+      minScore,
+    );
+  }
+  vectorMs = Date.now() - vectorStartedAt;
 
+  // --- Merge & rank ---
   // FTS results — SQLite BM25 returns negative scores (lower = better),
   // MySQL/PG return positive scores (higher = better). Negate SQLite scores
   // so normalization is always "higher = better".
@@ -760,42 +824,19 @@ export async function searchKnowledge(
     dialect === 'sqlite' ? -r.score : r.score,
   );
   const normFts = normalizeScores(rawFtsScores);
-  for (let i = 0; i < ftsResults.length; i++) {
-    const r = ftsResults[i];
-    merged.set(r.chunkId, {
-      chunkId: r.chunkId,
-      documentId: r.documentId,
-      ftsScore: normFts[i],
-      vecScore: 0,
-    });
-  }
-
-  // Vector results
-  for (const vh of vectorHits) {
-    const existing = merged.get(vh.ownerId);
-    if (existing) {
-      existing.vecScore = vh.score;
-    } else {
-      merged.set(vh.ownerId, {
-        chunkId: vh.ownerId,
-        documentId: '',
-        ftsScore: 0,
-        vecScore: vh.score,
-      });
-    }
-  }
-
-  await fillMissingDocumentIds(merged);
-
-  // Weighted combination: when both sources exist use 0.4 FTS + 0.6 vector;
-  // when only one source exists, use that source's score directly.
-  const hasVec = vectorHits.length > 0;
-  const alpha = hasVec ? 0.6 : 0;
-  const scored = [...merged.values()].map((m) => ({
-    chunkId: m.chunkId,
-    documentId: m.documentId,
-    combinedScore: alpha * m.vecScore + (1 - alpha) * m.ftsScore,
-  }));
+  const scored = ftsResults.map((result, index) => {
+    const ftsScore = normFts[index] ?? 0;
+    const vecScore = vectorScoreMap.get(result.chunkId) ?? 0;
+    const combinedScore =
+      vecScore > 0
+        ? VECTOR_BLEND_ALPHA * vecScore + (1 - VECTOR_BLEND_ALPHA) * ftsScore
+        : ftsScore;
+    return {
+      chunkId: result.chunkId,
+      documentId: result.documentId,
+      combinedScore,
+    };
+  });
 
   await applyTemporalBoost(scored, halfLifeMap);
   await applySiblingBoost(scored);
@@ -823,19 +864,24 @@ export async function searchKnowledge(
 
   output.sort((a, b) => b.score - a.score);
   await enrichSearchResults(output, kbEnhancementMap);
-
-  let wikiResults: WikiSearchResult[] = [];
-  if (wikiFullKbIds.length > 0) {
-    try {
-      wikiResults = await searchWikiPages(query, wikiFullKbIds, topK);
-    } catch (err) {
-      logger.warn({ err }, 'Wiki page search failed (non-fatal)');
-    }
+  const wikiResults = await wikiPromise;
+  const totalMs = Date.now() - startedAt;
+  const logPayload = {
+    query: query.slice(0, 50),
+    ftsCandidates: ftsResults.length,
+    vectorCandidates: vectorScoreMap.size,
+    results: output.length,
+    wiki: wikiResults.length,
+    ftsMs,
+    vectorMs,
+    wikiMs,
+    totalMs,
+    candidateStrategy: 'fts_candidates_then_vector_rerank',
+  };
+  if (totalMs >= SLOW_KNOWLEDGE_SEARCH_WARN_MS) {
+    logger.warn(logPayload, 'Knowledge search slow');
+  } else {
+    logger.debug(logPayload, 'Knowledge hybrid search');
   }
-
-  logger.debug(
-    { query: query.slice(0, 50), fts: ftsResults.length, vec: vectorHits.length, results: output.length, wiki: wikiResults.length },
-    'Knowledge hybrid search',
-  );
   return { chunks: output.slice(0, topK), wiki: wikiResults };
 }
