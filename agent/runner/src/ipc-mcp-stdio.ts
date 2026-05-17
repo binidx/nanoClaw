@@ -1542,6 +1542,7 @@ IMPORTANT query guidelines:
 - Remove filler words like "是什么", "怎么", "如何", "为什么" — they hurt recall.
 - If the user asks a broad question, break it into multiple focused searches rather than one long query.
 - Example: for "订单规则怎么运行，触发条件是什么", search twice: "订单规则 运行" and "订单规则 触发条件".
+- If results include a promising Wiki page with page_id, call knowledge_wiki_read on the best match before answering. Treat knowledge_search as entrypoint discovery, not the final read.
 
 Use knowledge_list first if you're unsure which knowledge base to search.${kbHint}`,
     {
@@ -1665,60 +1666,10 @@ Use knowledge_list first if you're unsure which knowledge base to search.${kbHin
   );
 
   server.tool(
-    'knowledge_wiki_list',
-    `List Wiki pages inside one knowledge base. Use after knowledge_list or knowledge_search when you want to browse the KB's compiled Wiki structure, inspect page titles, or find a page_id for knowledge_wiki_read.`,
-    {
-      kb_id: z.string().describe('Target knowledge base id. Obtain via knowledge_list.'),
-      page_type: z.string().optional().describe('Optional page type filter, e.g. overview, entity, concept, synthesis, comparison.'),
-      limit: z.number().int().min(1).max(200).optional().describe('Max pages to return (default 50).'),
-    },
-    async (args) => {
-      try {
-        const url = new URL(`${INTERNAL_API_BASE}/internal/knowledge/wiki-pages`);
-        url.searchParams.set('kb_id', args.kb_id);
-        url.searchParams.set('user_id', KB_USER_ID || '__system__');
-        url.searchParams.set('limit', String(args.limit ?? 50));
-        if (args.page_type) url.searchParams.set('page_type', args.page_type);
-        const response = await fetch(url.toString(), {
-          headers: { [INTERNAL_API_TOKEN_HEADER]: INTERNAL_API_TOKEN },
-        });
-        if (!response.ok) {
-          const errText = await response.text().catch(() => '');
-          return {
-            content: [{ type: 'text' as const, text: `Failed to list wiki pages (${response.status}): ${errText.slice(0, 200)}` }],
-            isError: true,
-          };
-        }
-        const rows = await response.json() as Array<{
-          id: string;
-          page_type: string;
-          title: string;
-          version: number;
-          updated_at: string;
-          source_doc_count?: number;
-          edited_by_human?: number;
-        }>;
-        if (!Array.isArray(rows) || rows.length === 0) {
-          return { content: [{ type: 'text' as const, text: 'No wiki pages found for this knowledge base.' }] };
-        }
-        const lines = rows.map((row, index) =>
-          `${index + 1}. [${row.page_type}] ${row.title} (page_id=${row.id}, v${row.version}, sources=${row.source_doc_count ?? 0}${row.edited_by_human ? ', human-edited' : ''})`,
-        );
-        return { content: [{ type: 'text' as const, text: `Wiki pages:\n\n${lines.join('\n')}` }] };
-      } catch (err) {
-        return {
-          content: [{ type: 'text' as const, text: `Failed to list wiki pages: ${err instanceof Error ? err.message : String(err)}` }],
-          isError: true,
-        };
-      }
-    },
-  );
-
-  server.tool(
     'knowledge_wiki_read',
-    `Read one full Wiki page from a knowledge base. Prefer using page_id from knowledge_search or knowledge_wiki_list. If page_id is unknown, you may provide kb_id + exact title instead.`,
+    `Read one full Wiki page from a knowledge base. Prefer using page_id returned by knowledge_search. If page_id is unknown, you may provide kb_id + exact title instead.`,
     {
-      page_id: z.string().optional().describe('Exact Wiki page id returned by knowledge_search or knowledge_wiki_list.'),
+      page_id: z.string().optional().describe('Exact Wiki page id returned by knowledge_search.'),
       kb_id: z.string().optional().describe('Knowledge base id, required only when reading by title instead of page_id.'),
       title: z.string().optional().describe('Exact Wiki page title, used together with kb_id when page_id is unknown.'),
     },

@@ -1124,7 +1124,8 @@ export function buildMySQLSchema(autoPk: string): string {
       model_name VARCHAR(128) NOT NULL,
       created_at VARCHAR(64) NOT NULL,
       KEY idx_embedding_vectors_owner (owner_type, owner_id),
-      KEY idx_embedding_vectors_owner_provider (owner_type, embedding_provider_id)
+      KEY idx_embedding_vectors_owner_provider (owner_type, embedding_provider_id),
+      KEY idx_embedding_vectors_owner_provider_owner (owner_type, embedding_provider_id, owner_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
     CREATE TABLE IF NOT EXISTS memory_skills (
@@ -2819,6 +2820,9 @@ export async function runMySQLMigrations(engine: DbEngine): Promise<void> {
   );
   await safeMigrate(
     `ALTER TABLE embedding_vectors ADD INDEX idx_embedding_vectors_owner_provider (owner_type, embedding_provider_id)`,
+  );
+  await safeMigrate(
+    `ALTER TABLE embedding_vectors ADD INDEX idx_embedding_vectors_owner_provider_owner (owner_type, embedding_provider_id, owner_id)`,
   );
   await safeMigrate(
     `ALTER TABLE knowledge_documents ADD COLUMN published_at VARCHAR(64) NULL`,

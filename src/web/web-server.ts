@@ -614,6 +614,14 @@ export function createWebServer(opts: WebServerOptions) {
     return await createFeishuCloudDoc(input);
   };
 
+  // Internal loopback APIs rely on JSON request bodies. Register the parser
+  // before mounting those routes so MCP/tool POST calls always see req.body.
+  app.use(
+    express.json({
+      limit: DEFAULT_JSON_BODY_LIMIT,
+    }),
+  );
+
   registerInternalMemoryRoutes(app, {
     requireInternalApi,
   });
@@ -644,12 +652,6 @@ export function createWebServer(opts: WebServerOptions) {
 
   registerWhatsAppWebhookRoutes(app);
   registerRepoReviewIngressRoutes(app);
-
-  app.use(
-    express.json({
-      limit: DEFAULT_JSON_BODY_LIMIT,
-    }),
-  );
 
   app.use('/api', requireTrustedOrigin);
   app.use(

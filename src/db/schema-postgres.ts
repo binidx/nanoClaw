@@ -1187,6 +1187,8 @@ export function buildPostgresSchema(autoPk: string): string {
       ON embedding_vectors(owner_type, owner_id);
     CREATE INDEX IF NOT EXISTS idx_embedding_vectors_owner_provider
       ON embedding_vectors(owner_type, embedding_provider_id);
+    CREATE INDEX IF NOT EXISTS idx_embedding_vectors_owner_provider_owner
+      ON embedding_vectors(owner_type, embedding_provider_id, owner_id);
 
     CREATE TABLE IF NOT EXISTS memory_skills (
       id TEXT PRIMARY KEY,
@@ -2821,6 +2823,9 @@ export async function runPostgresMigrations(engine: DbEngine): Promise<void> {
   );
   await safeMigrate(
     `CREATE INDEX IF NOT EXISTS idx_embedding_vectors_owner_provider ON embedding_vectors(owner_type, embedding_provider_id)`,
+  );
+  await safeMigrate(
+    `CREATE INDEX IF NOT EXISTS idx_embedding_vectors_owner_provider_owner ON embedding_vectors(owner_type, embedding_provider_id, owner_id)`,
   );
   await safeMigrate(
     `ALTER TABLE knowledge_documents ADD COLUMN IF NOT EXISTS published_at TEXT`,
