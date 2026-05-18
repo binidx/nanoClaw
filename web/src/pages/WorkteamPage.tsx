@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation } from 'react-router-dom';
+import { AppHeroHeader, LibraryCard, SearchPill } from '../components/common';
 import { getUrlSubPath } from '../router/paths';
 import { useWebSocket } from '../hooks/useWebSocket';
 import type { AiProvider } from '../app-types';
@@ -2370,84 +2371,78 @@ export function WorkteamPage({
         snapshot ? 'is-workspace' : 'is-library'
       }`}
     >
-      <div className="workflow-topbar">
-        <div className="workflow-topbar-title">
-          <div
-            className={`workflow-title-stack${snapshot ? ' is-clickable' : ''}`}
-            onClick={snapshot ? () => setActiveWorkflowId('') : undefined}
-            role={snapshot ? 'button' : undefined}
-            tabIndex={snapshot ? 0 : undefined}
-            onKeyDown={
-              snapshot
-                ? (event) => {
-                    if (event.key === 'Enter' || event.key === ' ') {
-                      event.preventDefault();
-                      setActiveWorkflowId('');
-                    }
-                  }
-                : undefined
-            }
-          >
-            <h2>{t('pageTitle')}</h2>
-            {!snapshot ? (
-              <span>{t('workteam.连接节点构建自动化流程')}</span>
-            ) : null}
+      {snapshot ? (
+        <div className="workflow-topbar">
+          <div className="workflow-topbar-title">
+            <div
+              className="workflow-title-stack is-clickable"
+              onClick={() => setActiveWorkflowId('')}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault();
+                  setActiveWorkflowId('');
+                }
+              }}
+            >
+              <h2>{t('pageTitle')}</h2>
+            </div>
+          </div>
+          <div className="workflow-topbar-controls">
+            <button
+              type="button"
+              className="btn-primary"
+              onClick={() => {
+                setRunPanelExpanded(true);
+                void startRun();
+              }}
+              disabled={!workflowId || busy}
+            >
+              <span className="workflow-topbar-btn-icon">
+                <PlayIcon />
+              </span>
+              {t('workteam.运行')}
+            </button>
+            <button
+              type="button"
+              className="btn-outline"
+              onClick={() => setActiveModal('settings')}
+              disabled={!workflowId || !snapshot}
+            >
+              <span className="workflow-topbar-btn-icon">
+                <SettingsIcon />
+              </span>
+              {t('workteam.配置')}
+            </button>
+            <button
+              type="button"
+              className="btn-outline"
+              onClick={() => void publishWorkflow()}
+              disabled={!workflowId || !snapshot || busy}
+            >
+              <span className="workflow-topbar-btn-icon">
+                <PublishIcon />
+              </span>
+              {t('workteam.发布')}
+            </button>
           </div>
         </div>
-        <div className="workflow-topbar-controls">
-          {snapshot ? (
+      ) : (
+        <AppHeroHeader
+          title={t('pageTitle')}
+          subtitle={t('workteam.连接节点构建自动化流程')}
+          controls={
             <>
-              <button
-                type="button"
-                className="btn-primary"
-                onClick={() => {
-                  setRunPanelExpanded(true);
-                  void startRun();
-                }}
-                disabled={!workflowId || busy}
-              >
-                <span className="workflow-topbar-btn-icon">
-                  <PlayIcon />
-                </span>
-                {t('workteam.运行')}
-              </button>
-              <button
-                type="button"
-                className="btn-outline"
-                onClick={() => setActiveModal('settings')}
-                disabled={!workflowId || !snapshot}
-              >
-                <span className="workflow-topbar-btn-icon">
-                  <SettingsIcon />
-                </span>
-                {t('workteam.配置')}
-              </button>
-              <button
-                type="button"
-                className="btn-outline"
-                onClick={() => void publishWorkflow()}
-                disabled={!workflowId || !snapshot || busy}
-              >
-                <span className="workflow-topbar-btn-icon">
-                  <PublishIcon />
-                </span>
-                {t('workteam.发布')}
-              </button>
-            </>
-          ) : (
-            <>
-              <label className="workflow-searchbar">
-                <span className="workflow-search-icon">
-                  <SearchIcon />
-                </span>
-                <input
-                  value={workflowQuery}
-                  onChange={(event) => setWorkflowQuery(event.target.value)}
-                  placeholder={t('workteam.搜索工作流')}
-                  aria-label={t('workteam.搜索工作流')}
-                />
-                <span className="workflow-search-kbd">K</span>
-              </label>
+              <SearchPill
+                value={workflowQuery}
+                onChange={setWorkflowQuery}
+                placeholder={t('workteam.搜索工作流')}
+                aria-label={t('workteam.搜索工作流')}
+                leadingIcon={<SearchIcon />}
+                kbdLabel="K"
+                clearLabel={t('清空搜索')}
+              />
               <button
                 type="button"
                 className="btn-primary workflow-create-action"
@@ -2460,9 +2455,9 @@ export function WorkteamPage({
                 {t('workteam.新建工作流')}
               </button>
             </>
-          )}
-        </div>
-      </div>
+          }
+        />
+      )}
 
       <div className="page-body workflow-body">
         {error ? <div className="workflow-banner error">{error}</div> : null}
@@ -2474,44 +2469,42 @@ export function WorkteamPage({
               {filteredWorkflows.map((workflow) => {
                 const summary = workflowSummaries[workflow.id];
                 return (
-                  <button
+                  <LibraryCard
                     key={workflow.id}
-                    type="button"
-                    className="workflow-library-card repo-review-repo-card"
+                    className="workflow-library-card"
                     onClick={() => setActiveWorkflowId(workflow.id)}
-                  >
-                    <div className="repo-review-repo-card-header">
-                      <strong>{workflow.name}</strong>
-                      <span className={`repo-review-badge workflow-card-badge is-${workflow.status}`}>
+                    heading={workflow.name}
+                    badge={
+                      <span
+                        className={`repo-review-badge workflow-card-badge is-${workflow.status}`}
+                      >
                         {workflow.status}
                       </span>
-                    </div>
-                    <div className="repo-review-repo-card-body workflow-card-body">
-                      <div className="repo-review-repo-card-row">
-                        <span className="repo-review-repo-card-label">{t('workteam.说明')}</span>
-                        <span className="repo-review-repo-card-ellipsis">
-                          {workflow.description || t('workteam.无描述')}
-                        </span>
-                      </div>
-                      <div className="repo-review-repo-card-row">
-                        <span className="repo-review-repo-card-label">{t('workteam.结构')}</span>
-                        <span className="repo-review-repo-card-ellipsis">
-                          {summary?.workerCount ?? 0} {t('workteam.节点')} ·{' '}
-                          {summary?.edgeCount ?? 0} {t('workteam.连线')}
-                        </span>
-                      </div>
-                      <div className="repo-review-repo-card-row">
-                        <span className="repo-review-repo-card-label">{t('workteam.运行')}</span>
-                        <span className="repo-review-repo-card-ellipsis">
-                          {summary?.latestRunStatus
-                            ? `${summary.latestRunStatus}${
-                                summary.latestRunAt ? ` · ${fmt(summary.latestRunAt)}` : ''
-                              }`
-                            : t('workteam.未运行')}
-                        </span>
-                      </div>
-                    </div>
-                  </button>
+                    }
+                    bodyClassName="workflow-card-body"
+                    rows={[
+                      {
+                        label: t('workteam.说明'),
+                        value: workflow.description || t('workteam.无描述'),
+                      },
+                      {
+                        label: t('workteam.结构'),
+                        value: `${summary?.workerCount ?? 0} ${t('workteam.节点')} · ${
+                          summary?.edgeCount ?? 0
+                        } ${t('workteam.连线')}`,
+                      },
+                      {
+                        label: t('workteam.运行'),
+                        value: summary?.latestRunStatus
+                          ? `${summary.latestRunStatus}${
+                              summary.latestRunAt
+                                ? ` · ${fmt(summary.latestRunAt)}`
+                                : ''
+                            }`
+                          : t('workteam.未运行'),
+                      },
+                    ]}
+                  />
                 );
               })}
               {filteredWorkflows.length === 0 ? (

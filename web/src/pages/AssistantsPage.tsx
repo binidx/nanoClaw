@@ -10,7 +10,12 @@ import {
 import { useTranslation } from 'react-i18next';
 
 import { AppSelect, type AppSelectOption } from '../components/AppSelect';
-import { NcCheckbox } from '../components/common';
+import {
+  AppHeroHeader,
+  LibraryCard,
+  NcCheckbox,
+  SearchPill,
+} from '../components/common';
 import type {
   AiProvider,
   Assistant,
@@ -2615,48 +2620,45 @@ export function AssistantsPage({
 
   return (
     <div className="page-view workflow-page is-library assistants-page">
-      <div className="workflow-topbar assistant-page-topbar">
-        <div className="workflow-topbar-title">
-          <div className="workflow-title-stack">
-            <h2>{t('Agent')}</h2>
-            <span>{t('管理自定义 Agent 与运行配置')}</span>
-          </div>
-        </div>
-        <div className="workflow-topbar-controls">
-          <label className="workflow-searchbar">
-            <span className="workflow-search-icon" aria-hidden="true">
-              <svg
-                width="18"
-                height="18"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <circle cx="11" cy="11" r="8" />
-                <path d="m21 21-4.3-4.3" />
-              </svg>
-            </span>
-            <input
+      <AppHeroHeader
+        title={t('Agent')}
+        subtitle={t('管理自定义 Agent 与运行配置')}
+        className="assistant-page-topbar"
+        controls={
+          <>
+            <SearchPill
               value={catalogSearch}
-              onChange={(event) => {
-                setCatalogSearch(event.target.value);
-              }}
+              onChange={setCatalogSearch}
               placeholder={t('搜索助手名称、描述或标签...')}
               aria-label={t('搜索助手名称、描述或标签...')}
+              clearLabel={t('清空搜索')}
+              kbdLabel="K"
+              leadingIcon={
+                <svg
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <circle cx="11" cy="11" r="8" />
+                  <path d="m21 21-4.3-4.3" />
+                </svg>
+              }
             />
-          </label>
-          <button
-            type="button"
-            className="btn-primary workflow-create-action"
-            onClick={handleCreateOpen}
-          >
-            {t('新建 Agent')}
-          </button>
-        </div>
-      </div>
+            <button
+              type="button"
+              className="btn-primary workflow-create-action"
+              onClick={handleCreateOpen}
+            >
+              {t('新建 Agent')}
+            </button>
+          </>
+        }
+      />
 
       {error ? (
         <div className="page-error">
@@ -2704,26 +2706,17 @@ export function AssistantsPage({
                 );
 
                 return (
-                  <div
+                  <LibraryCard
                     key={assistant.id}
-                    role="button"
-                    tabIndex={0}
-                    className={`workflow-library-card repo-review-repo-card assistant-card-item assistant-card-item--showcase ${
+                    className={`workflow-library-card assistant-card-item assistant-card-item--showcase ${
                       assistantWorkbenchOpen &&
                       selectedAssistantId === assistant.id
                         ? 'active'
                         : ''
                     }`}
                     onClick={() => openAssistantWorkbench(assistant.id)}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter' || event.key === ' ') {
-                        event.preventDefault();
-                        openAssistantWorkbench(assistant.id);
-                      }
-                    }}
-                  >
-                    <div className="repo-review-repo-card-header">
-                      <strong>{assistant.name}</strong>
+                    heading={assistant.name}
+                    badge={
                       <span
                         className={`repo-review-badge assistant-card-badge is-${formatAssistantCatalogStatusTone(meta?.status || 'attention')}`}
                       >
@@ -2732,86 +2725,68 @@ export function AssistantsPage({
                           t,
                         )}
                       </span>
-                    </div>
-
-                    <div className="repo-review-repo-card-body assistant-card-body">
-                      <div className="repo-review-repo-card-row">
-                        <span className="repo-review-repo-card-label">{t('说明')}</span>
-                        <span className="repo-review-repo-card-ellipsis">
-                          {assistant.description || t('暂无描述')}
-                        </span>
-                      </div>
-                      <div className="repo-review-repo-card-row">
-                        <span className="repo-review-repo-card-label">{t('Provider')}</span>
-                        <span className="repo-review-repo-card-ellipsis">
-                          {providerLabel}
-                        </span>
-                      </div>
-                      <div className="repo-review-repo-card-row">
-                        <span className="repo-review-repo-card-label">{t('角色')}</span>
-                        <span className="repo-review-repo-card-ellipsis">
-                          {assistant.config.persona?.role || t('未设置')}
-                        </span>
-                      </div>
-                      <div className="repo-review-repo-card-row">
-                        <span className="repo-review-repo-card-label">{t('状态')}</span>
-                        <span className="repo-review-repo-card-ellipsis">
-                          {runState.label} · {modelLabel}
-                          {conversationCount > 0
+                    }
+                    bodyClassName="assistant-card-body"
+                    rows={[
+                      {
+                        label: t('说明'),
+                        value: assistant.description || t('暂无描述'),
+                      },
+                      {
+                        label: t('Provider'),
+                        value: providerLabel,
+                      },
+                      {
+                        label: t('角色'),
+                        value: assistant.config.persona?.role || t('未设置'),
+                      },
+                      {
+                        label: t('状态'),
+                        value: `${runState.label} · ${modelLabel}${
+                          conversationCount > 0
                             ? ` · ${t('会话计数', { count: conversationCount })}`
-                            : ''}
-                        </span>
-                      </div>
-                      {((assistant.config.kbIds?.length ?? 0) > 0 ||
-                        (assistant.config.skillIds?.length ?? 0) > 0 ||
-                        (assistant.config.mcpServerIds?.length ?? 0) > 0) ? (
-                        <div className="repo-review-repo-card-row">
-                          <span className="repo-review-repo-card-label">{t('资源')}</span>
-                          <span className="repo-review-repo-card-ellipsis">
-                            {(assistant.config.kbIds?.length ?? 0) > 0
-                              ? t('知识库计数', {
-                                  count: assistant.config.kbIds.length,
-                                })
-                              : null}
-                            {(assistant.config.kbIds?.length ?? 0) > 0 &&
-                            ((assistant.config.skillIds?.length ?? 0) > 0 ||
-                              (assistant.config.mcpServerIds?.length ?? 0) > 0)
-                              ? ' · '
-                              : ''}
-                            {(assistant.config.skillIds?.length ?? 0) > 0
-                              ? t('技能计数', {
-                                  count: assistant.config.skillIds.length,
-                                })
-                              : null}
-                            {(assistant.config.skillIds?.length ?? 0) > 0 &&
-                            (assistant.config.mcpServerIds?.length ?? 0) > 0
-                              ? ' · '
-                              : ''}
-                            {(assistant.config.mcpServerIds?.length ?? 0) > 0
-                              ? t('MCP计数', {
-                                  count: assistant.config.mcpServerIds.length,
-                                })
-                              : null}
-                          </span>
-                        </div>
-                      ) : (
-                        <div className="repo-review-repo-card-row">
-                          <span className="repo-review-repo-card-label">{t('模型')}</span>
-                          <span className="repo-review-repo-card-ellipsis">
-                            {modelLabel}
-                          </span>
-                        </div>
-                      )}
-                      {!assistant.enabled ? (
-                        <div className="repo-review-repo-card-row">
-                          <span className="repo-review-repo-card-label">{t('可用性')}</span>
-                          <span className="repo-review-repo-card-ellipsis">
-                            {t('已停用')}
-                          </span>
-                        </div>
-                      ) : null}
-                    </div>
-                  </div>
+                            : ''
+                        }`,
+                      },
+                      {
+                        label:
+                          (assistant.config.kbIds?.length ?? 0) > 0 ||
+                          (assistant.config.skillIds?.length ?? 0) > 0 ||
+                          (assistant.config.mcpServerIds?.length ?? 0) > 0
+                            ? t('资源')
+                            : t('模型'),
+                        value:
+                          (assistant.config.kbIds?.length ?? 0) > 0 ||
+                          (assistant.config.skillIds?.length ?? 0) > 0 ||
+                          (assistant.config.mcpServerIds?.length ?? 0) > 0
+                            ? [
+                                (assistant.config.kbIds?.length ?? 0) > 0
+                                  ? t('知识库计数', {
+                                      count: assistant.config.kbIds.length,
+                                    })
+                                  : null,
+                                (assistant.config.skillIds?.length ?? 0) > 0
+                                  ? t('技能计数', {
+                                      count: assistant.config.skillIds.length,
+                                    })
+                                  : null,
+                                (assistant.config.mcpServerIds?.length ?? 0) > 0
+                                  ? t('MCP计数', {
+                                      count:
+                                        assistant.config.mcpServerIds.length,
+                                    })
+                                  : null,
+                              ]
+                                .filter(Boolean)
+                                .join(' · ')
+                            : modelLabel,
+                      },
+                      {
+                        label: t('可用性'),
+                        value: !assistant.enabled ? t('已停用') : null,
+                      },
+                    ]}
+                  />
                 );
               })}
             </div>

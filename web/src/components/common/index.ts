@@ -19,6 +19,9 @@ export type { EmptyStateProps } from './EmptyState';
 export { PageHeader } from './PageHeader';
 export type { PageHeaderProps } from './PageHeader';
 
+export { AppHeroHeader } from './AppHeroHeader';
+export type { AppHeroHeaderProps, AppHeroHeaderVariant } from './AppHeroHeader';
+
 export { NcSurface } from './NcSurface';
 export type { NcSurfaceProps, NcSurfaceVariant } from './NcSurface';
 
@@ -31,11 +34,17 @@ export type { NcIconButtonProps, NcIconButtonVariant, NcIconButtonSize } from '.
 export { NcToolbar } from './NcToolbar';
 export type { NcToolbarProps } from './NcToolbar';
 
+export { SearchPill } from './SearchPill';
+export type { SearchPillProps } from './SearchPill';
+
 export { TabBar } from './TabBar';
 export type { Tab, TabBarProps } from './TabBar';
 
 export { SectionNav } from './SectionNav';
 export type { SectionNavItem, SectionNavProps } from './SectionNav';
+
+export { LibraryCard } from './LibraryCard';
+export type { LibraryCardProps, LibraryCardRow } from './LibraryCard';
 
 export { EntityWorkspaceLayout } from './EntityWorkspaceLayout';
 export type { EntityWorkspaceLayoutProps } from './EntityWorkspaceLayout';

@@ -1,7 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { Drawer, NcSelect, NcToggle, TabBar } from './common';
+import {
+  AppHeroHeader,
+  Drawer,
+  LibraryCard,
+  NcSelect,
+  NcToggle,
+  SearchPill,
+  TabBar,
+} from './common';
 import { Pagination } from './common/Pagination';
 import { AppSelect, type AppSelectOption } from './AppSelect';
 import { IconChevronDown, IconSearch, IconX } from './AppIcons';
@@ -3365,44 +3373,38 @@ export function RepoReviewSettingsPanel({
       className={`${embedded ? 'page-view ' : ''}settings-section repo-review-panel${embedded ? ' repo-review-panel--embedded workflow-page is-library' : ''}`.trim()}
     >
       {embedded ? (
-        <div className="workflow-topbar repo-review-topbar">
-          <div className="workflow-topbar-title repo-review-topbar-title">
-            <div className="workflow-title-stack repo-review-title-stack">
-              <h2>{t('auto.c270fc6f')}</h2>
-              <span>{t('panel.description')}</span>
-            </div>
-          </div>
-          <div className="workflow-topbar-controls repo-review-topbar-controls">
-            {!hideRepositoryList ? (
-              <label className="workflow-searchbar">
-                <span className="workflow-search-icon" aria-hidden="true">
-                  <IconSearch />
-                </span>
-                <input
+        <AppHeroHeader
+          title={t('auto.c270fc6f')}
+          subtitle={t('panel.description')}
+          className="repo-review-topbar"
+          controls={
+            !hideRepositoryList ? (
+              <>
+                <SearchPill
                   value={repositoryFilter}
-                  onChange={(event) => {
-                    setRepositoryFilter(event.target.value);
+                  onChange={(value) => {
+                    setRepositoryFilter(value);
                     setRepoCardPage(1);
                   }}
                   placeholder={t('repoReview.repo.filterPlaceholder')}
                   aria-label={t('repoReview.repo.filterPlaceholder')}
+                  leadingIcon={<IconSearch />}
+                  kbdLabel="K"
+                  clearLabel={t('清空搜索')}
                 />
-                <span className="workflow-search-kbd">K</span>
-              </label>
-            ) : null}
-            {!hideRepositoryList ? (
-              <button
-                className="btn-primary workflow-create-action"
-                onClick={() => {
-                  openRepositoryEditor(true);
-                  setRepoDetailTab('config');
-                }}
-              >
-                {t('repoReview.button.newRepo')}
-              </button>
-            ) : null}
-          </div>
-        </div>
+                <button
+                  className="btn-primary workflow-create-action"
+                  onClick={() => {
+                    openRepositoryEditor(true);
+                    setRepoDetailTab('config');
+                  }}
+                >
+                  {t('repoReview.button.newRepo')}
+                </button>
+              </>
+            ) : null
+          }
+        />
       ) : (
         <div className="section-header">
           <div>
@@ -3432,10 +3434,9 @@ export function RepoReviewSettingsPanel({
           <section className="workflow-library">
           <div className="workflow-card-grid repo-review-cards-grid repo-review-cards-grid--library">
             {filteredRepositories.slice((repoCardPage - 1) * REPO_CARD_PAGE_SIZE, repoCardPage * REPO_CARD_PAGE_SIZE).map((repository) => (
-              <button
+              <LibraryCard
                 key={repository.id}
-                type="button"
-                className={`workflow-library-card repo-review-repo-card ${
+                className={`workflow-library-card ${
                   !creatingRepository && selectedRepositoryId === repository.id
                     ? 'active'
                     : ''
@@ -3447,53 +3448,62 @@ export function RepoReviewSettingsPanel({
                   setProfileEditorOpen(false);
                   setRepoDetailTab('overview');
                 }}
-              >
-                <div className="repo-review-repo-card-header">
-                  <strong>{repository.name}</strong>
+                heading={repository.name}
+                badge={
                   <span
                     className={`repo-review-badge ${repository.enabled ? 'enabled' : 'disabled'}`}
                   >
                     {repository.enabled ? t('repoReview.repo.enabledBadge') : t('repoReview.repo.disabledBadge')}
                   </span>
-                </div>
-                <div className="repo-review-repo-card-body">
-                  <div className="repo-review-repo-card-row">
-                    <span className="repo-review-repo-card-label">{t('repoReview.repo.language')}</span>
-                    <span>{repository.language || t('repoReview.repo.notSet')}</span>
-                  </div>
-                  <div className="repo-review-repo-card-row">
-                    <span className="repo-review-repo-card-label">{t('repoReview.repo.platform')}</span>
-                    <span>
-                      {formatRemoteProviderLabel(repository.remoteProvider)}
-                      {repository.remoteRepoSlug ? ` · ${repository.remoteRepoSlug}` : ''}
-                    </span>
-                  </div>
-                  <div className="repo-review-repo-card-row">
-                    <span className="repo-review-repo-card-label">{t('repoReview.repoCard.profile')}</span>
-                    <span>
-                      {t('repoReview.repoCard.profileCount', { count: profileCountByRepo.get(repository.id) || 0 })}
-                      {repository.defaultTargetBranch ? ` · ${t('repoReview.repoCard.baseline', { branch: repository.defaultTargetBranch })}` : ''}
-                    </span>
-                  </div>
-                  <div className="repo-review-repo-card-row">
-                    <span className="repo-review-repo-card-label">{t('repoReview.repoCard.session')}</span>
-                    <span className="repo-review-repo-card-ellipsis">
-                      {formatReviewChatTarget(repository.reviewChatJid, conversations)}
-                    </span>
-                  </div>
-                  {repository.autoSyncEnabled ? (
-                    <div className="repo-review-repo-card-row">
-                      <span className="repo-review-repo-card-label">{t('repoReview.repoCard.polling')}</span>
-                      <span>
-                        {t('repoReview.repoCard.pollInterval', { minutes: repository.autoSyncIntervalMinutes })}
-                        {repository.lastAutoSyncStatus
-                          ? ` · ${formatRepoAutoSyncStatus(repository.lastAutoSyncStatus)}`
-                          : ''}
-                      </span>
-                    </div>
-                  ) : null}
-                </div>
-              </button>
+                }
+                rows={[
+                  {
+                    label: t('repoReview.repo.language'),
+                    value: repository.language || t('repoReview.repo.notSet'),
+                  },
+                  {
+                    label: t('repoReview.repo.platform'),
+                    value: `${formatRemoteProviderLabel(repository.remoteProvider)}${
+                      repository.remoteRepoSlug
+                        ? ` · ${repository.remoteRepoSlug}`
+                        : ''
+                    }`,
+                  },
+                  {
+                    label: t('repoReview.repoCard.profile'),
+                    value: `${t('repoReview.repoCard.profileCount', {
+                      count: profileCountByRepo.get(repository.id) || 0,
+                    })}${
+                      repository.defaultTargetBranch
+                        ? ` · ${t('repoReview.repoCard.baseline', {
+                            branch: repository.defaultTargetBranch,
+                          })}`
+                        : ''
+                    }`,
+                  },
+                  {
+                    label: t('repoReview.repoCard.session'),
+                    value: formatReviewChatTarget(
+                      repository.reviewChatJid,
+                      conversations,
+                    ),
+                  },
+                  {
+                    label: t('repoReview.repoCard.polling'),
+                    value: repository.autoSyncEnabled
+                      ? `${t('repoReview.repoCard.pollInterval', {
+                          minutes: repository.autoSyncIntervalMinutes,
+                        })}${
+                          repository.lastAutoSyncStatus
+                            ? ` · ${formatRepoAutoSyncStatus(
+                                repository.lastAutoSyncStatus,
+                              )}`
+                            : ''
+                        }`
+                      : null,
+                  },
+                ]}
+              />
             ))}
           </div>
           {filteredRepositories.length > REPO_CARD_PAGE_SIZE ? (

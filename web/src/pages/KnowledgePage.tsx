@@ -14,6 +14,11 @@ import type {
   KnowledgeGraphHiddenCounts,
   KnowledgeGraphStats,
 } from '../components/KnowledgeGraph';
+import {
+  AppHeroHeader,
+  LibraryCard,
+  SearchPill,
+} from '../components/common';
 import { Pagination } from '../components/common/Pagination';
 import { NcSelect } from '../components/common/NcSelect';
 import { NcCheckbox } from '../components/common/NcCheckbox';
@@ -3014,55 +3019,39 @@ export function KnowledgePage({ apiBase }: KnowledgePageProps) {
 
   return (
     <div className="page-view knowledge-page knowledge-library-page">
-      <div className="knowledge-library-topbar">
-        <div className="knowledge-library-topbar-title">
-          <div className="knowledge-library-title-stack">
-            <h2>{t('知识库')}</h2>
-            <span>{t('管理知识库、文档索引和语义搜索。')}</span>
-          </div>
-        </div>
-        <div className="knowledge-library-topbar-controls">
-          <label className="knowledge-library-searchbar">
-            <span className="knowledge-library-search-icon" aria-hidden="true">
-              <IconSearch />
-            </span>
-            <input
+      <AppHeroHeader
+        title={t('知识库')}
+        subtitle={t('管理知识库、文档索引和语义搜索。')}
+        controls={
+          <>
+            <SearchPill
               value={kbFilter}
-              onChange={(e) => setKbFilter(e.target.value)}
+              onChange={setKbFilter}
               placeholder={t('按名称、描述筛选')}
               aria-label={t('按名称、描述筛选')}
+              clearLabel={t('清空搜索')}
+              kbdLabel="K"
+              leadingIcon={<IconSearch />}
             />
-            {kbFilter ? (
+            <div className="knowledge-page-actions">
               <button
                 type="button"
-                className="knowledge-library-search-clear"
-                onClick={() => setKbFilter('')}
-                aria-label={t('清空搜索')}
+                className="btn-outline"
+                onClick={openGlobalSearch}
               >
-                <IconX />
+                {t('全局搜索')}
               </button>
-            ) : (
-              <span className="knowledge-library-search-kbd">K</span>
-            )}
-          </label>
-          <div className="knowledge-page-actions">
-            <button
-              type="button"
-              className="btn-outline"
-              onClick={openGlobalSearch}
-            >
-              {t('全局搜索')}
-            </button>
-            <button
-              type="button"
-              className="btn-primary"
-              onClick={openCreateDrawer}
-            >
-              {t('新建知识库')}
-            </button>
-          </div>
-        </div>
-      </div>
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={openCreateDrawer}
+              >
+                {t('新建知识库')}
+              </button>
+            </div>
+          </>
+        }
+      />
 
       <div className="page-body knowledge-page-body knowledge-library-body">
         {error ? (
@@ -3164,60 +3153,52 @@ export function KnowledgePage({ apiBase }: KnowledgePageProps) {
             ) : (
               <div className="knowledge-base-grid">
                 {filteredBases.map((kb) => (
-                  <button
+                  <LibraryCard
                     key={kb.id}
-                    type="button"
-                    className={`knowledge-base-card repo-review-repo-card ${drawerOpen && !creatingKb && selectedKbId === kb.id ? 'active' : ''} ${kb.enabled ? '' : 'is-disabled'}`}
+                    className={`knowledge-base-card ${
+                      drawerOpen && !creatingKb && selectedKbId === kb.id
+                        ? 'active'
+                        : ''
+                    } ${kb.enabled ? '' : 'is-disabled'}`}
                     onClick={() => openKbDrawer(kb.id)}
-                  >
-                    <div className="repo-review-repo-card-header">
-                      <strong>{kb.name}</strong>
+                    heading={kb.name}
+                    badge={
                       <span
                         className={`repo-review-badge ${kb.enabled ? 'enabled' : 'disabled'}`}
                       >
                         {kb.enabled ? t('已启用') : t('已停用')}
                       </span>
-                    </div>
-                    <div className="repo-review-repo-card-body knowledge-base-card-body">
-                      <div className="repo-review-repo-card-row">
-                        <span className="repo-review-repo-card-label">{t('说明')}</span>
-                        <span className="repo-review-repo-card-ellipsis">
-                          {kb.description || t('暂无描述')}
-                        </span>
-                      </div>
-                      <div className="repo-review-repo-card-row">
-                        <span className="repo-review-repo-card-label">{t('分类')}</span>
-                        <span className="repo-review-repo-card-ellipsis">
-                          {CATEGORY_LABELS[kb.category] || kb.category || t('通用')}
-                          {' · '}
-                          {kb.visibility === 'shared' ? t('共享') : t('私有')}
-                          {kb.user_enabled ? ` · ${t('已订阅')}` : ''}
-                        </span>
-                      </div>
-                      <div className="repo-review-repo-card-row">
-                        <span className="repo-review-repo-card-label">{t('检索')}</span>
-                        <span className="repo-review-repo-card-ellipsis">
-                          {kb.embedding_provider_id
-                            ? embeddingProviderLabelById.get(
-                                kb.embedding_provider_id,
-                              ) || t('Embedding 配置')
-                            : t('仅 FTS')}
-                        </span>
-                      </div>
-                      <div className="repo-review-repo-card-row">
-                        <span className="repo-review-repo-card-label">{t('分块')}</span>
-                        <span className="repo-review-repo-card-ellipsis">
-                          {kb.chunk_size}/{kb.chunk_overlap}
-                        </span>
-                      </div>
-                      <div className="repo-review-repo-card-row">
-                        <span className="repo-review-repo-card-label">{t('更新')}</span>
-                        <span className="repo-review-repo-card-ellipsis">
-                          {formatTimestamp(kb.updated_at)}
-                        </span>
-                      </div>
-                    </div>
-                  </button>
+                    }
+                    bodyClassName="knowledge-base-card-body"
+                    rows={[
+                      {
+                        label: t('说明'),
+                        value: kb.description || t('暂无描述'),
+                      },
+                      {
+                        label: t('分类'),
+                        value: `${CATEGORY_LABELS[kb.category] || kb.category || t('通用')} · ${
+                          kb.visibility === 'shared' ? t('共享') : t('私有')
+                        }${kb.user_enabled ? ` · ${t('已订阅')}` : ''}`,
+                      },
+                      {
+                        label: t('检索'),
+                        value: kb.embedding_provider_id
+                          ? embeddingProviderLabelById.get(
+                              kb.embedding_provider_id,
+                            ) || t('Embedding 配置')
+                          : t('仅 FTS'),
+                      },
+                      {
+                        label: t('分块'),
+                        value: `${kb.chunk_size}/${kb.chunk_overlap}`,
+                      },
+                      {
+                        label: t('更新'),
+                        value: formatTimestamp(kb.updated_at),
+                      },
+                    ]}
+                  />
                 ))}
               </div>
             )}
