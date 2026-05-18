@@ -2181,6 +2181,7 @@ async function deleteConversationForeignKeyDependents(jid: string): Promise<void
   await dba.prepare('DELETE FROM conversation_identity_bindings WHERE chat_jid = ?').run(
     jid,
   );
+  await dba.prepare('DELETE FROM conversation_tavern_bindings WHERE chat_jid = ?').run(jid);
   await dba.prepare('DELETE FROM context_entries WHERE chat_jid = ?').run(jid);
   await dba.prepare('DELETE FROM conversation_participants WHERE chat_jid = ?').run(jid);
   await dba.prepare('DELETE FROM assistant_turns WHERE chat_jid = ?').run(jid);
@@ -2285,6 +2286,39 @@ export interface ConversationSummary {
   conversation_provider_id: string | null;
   conversation_provider_alias: string | null;
   conversation_model: string | null;
+  tavern_persona_id: string | null;
+  tavern_persona_name: string | null;
+  tavern_avatar_path: string | null;
+}
+
+interface ConversationSummaryRow extends Omit<
+  ConversationSummary,
+  'tavern_persona_name' | 'tavern_avatar_path'
+> {
+  tavern_snapshot_json: string | null;
+}
+
+function readTavernSnapshotField(
+  snapshotJson: string | null | undefined,
+  field: 'name' | 'avatarPath',
+): string | null {
+  if (!snapshotJson) return null;
+  try {
+    const parsed = JSON.parse(snapshotJson) as Record<string, unknown>;
+    const value = parsed[field];
+    return typeof value === 'string' && value.trim() ? value.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
+function mapConversationSummaryRow(row: ConversationSummaryRow): ConversationSummary {
+  const { tavern_snapshot_json: _snapshotJson, ...base } = row;
+  return {
+    ...base,
+    tavern_persona_name: readTavernSnapshotField(row.tavern_snapshot_json, 'name'),
+    tavern_avatar_path: readTavernSnapshotField(row.tavern_snapshot_json, 'avatarPath'),
+  };
 }
 
 function buildConversationSummarySql(whereClause: string, limitClause = ''): string {
@@ -2331,7 +2365,9 @@ function buildConversationSummarySql(whereClause: string, limitClause = ''): str
       ${modelExpr} as assistant_model,
       rg.provider_id as conversation_provider_id,
       cp.alias as conversation_provider_alias,
-      rg.model as conversation_model
+      rg.model as conversation_model,
+      tb.tavern_persona_id,
+      tb.snapshot_json as tavern_snapshot_json
     FROM chats c
     LEFT JOIN registered_groups rg ON rg.jid = c.jid AND rg.deleted_at IS NULL
     LEFT JOIN assistants a ON a.id = rg.assistant_id
@@ -2339,6 +2375,7 @@ function buildConversationSummarySql(whereClause: string, limitClause = ''): str
       ON p.id = ${providerIdExpr}
     LEFT JOIN ai_providers cp
       ON cp.id = rg.provider_id
+    LEFT JOIN conversation_tavern_bindings tb ON tb.chat_jid = c.jid
     ${whereClause}
     AND c.deleted_at IS NULL
     ORDER BY COALESCE(c.is_pinned, 0) DESC, c.last_message_time DESC
@@ -2383,20 +2420,22 @@ export async function getConversationList(userId?: string): Promise<Conversation
     const where = `WHERE c.jid != '__group_sync__' AND ${buildHiddenConversationChannelPredicate()} AND ${buildTenantVisibilityPredicate()}`;
     const rows = await dba
       .prepare(buildConversationSummarySql(where))
-      .all(...HIDDEN_CONVERSATION_CHANNELS, userId, SYSTEM_USER_ID, userId, userId, nowIso, userId, nowIso) as ConversationSummary[];
-    return rows;
+      .all(...HIDDEN_CONVERSATION_CHANNELS, userId, SYSTEM_USER_ID, userId, userId, nowIso, userId, nowIso) as ConversationSummaryRow[];
+    return rows.map(mapConversationSummaryRow);
   }
-  return await dba
+  const rows = await dba
     .prepare(buildConversationSummarySql(`WHERE c.jid != '__group_sync__' AND ${buildHiddenConversationChannelPredicate()}`))
-    .all(...HIDDEN_CONVERSATION_CHANNELS) as ConversationSummary[];
+    .all(...HIDDEN_CONVERSATION_CHANNELS) as ConversationSummaryRow[];
+  return rows.map(mapConversationSummaryRow);
 }
 
 export async function getConversationSummaryByJid(
   jid: string,
 ): Promise<ConversationSummary | undefined> {
-  return await dba
+  const row = await dba
     .prepare(buildConversationSummarySql('WHERE c.jid = ?', 'LIMIT 1'))
-    .get(jid) as ConversationSummary | undefined;
+    .get(jid) as ConversationSummaryRow | undefined;
+  return row ? mapConversationSummaryRow(row) : undefined;
 }
 
 export async function getConversationListByAssistantId(
@@ -2406,17 +2445,19 @@ export async function getConversationListByAssistantId(
   const assistantClause = `WHERE c.jid != '__group_sync__' AND rg.assistant_id = ?`;
   if (userId && userId !== SYSTEM_USER_ID) {
     const nowIso = new Date().toISOString();
-    return (await dba
+    const rows = await dba
       .prepare(
         buildConversationSummarySql(
           `${assistantClause} AND ${buildTenantVisibilityPredicate()}`,
         ),
       )
-      .all(assistantId, userId, SYSTEM_USER_ID, userId, userId, nowIso, userId, nowIso)) as ConversationSummary[];
+      .all(assistantId, userId, SYSTEM_USER_ID, userId, userId, nowIso, userId, nowIso) as ConversationSummaryRow[];
+    return rows.map(mapConversationSummaryRow);
   }
-  return (await dba
+  const rows = await dba
     .prepare(buildConversationSummarySql(assistantClause))
-    .all(assistantId)) as ConversationSummary[];
+    .all(assistantId) as ConversationSummaryRow[];
+  return rows.map(mapConversationSummaryRow);
 }
 
 export async function getConversationDisplayNames(

@@ -20,6 +20,7 @@ export * from './code-index-db.js';
 export * from './code-map-analysis-db.js';
 export * from './users.js';
 export * from './soul.js';
+export * from './tavern.js';
 export * from './files.js';
 export * from './live2d.js';
 export * from './marketplace.js';

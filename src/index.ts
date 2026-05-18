@@ -386,9 +386,11 @@ async function main(): Promise<void> {
     createWebConversation: (jid, name, options) =>
       createWebConversation(jid, name, {
         assistantId: options?.assistantId,
+        tavernPersonaId: options?.tavernPersonaId,
         accessPolicy: options?.accessPolicy,
         mode: options?.mode,
         channel: options?.channel,
+        ownerUserId: options?.ownerUserId,
       }),
     createChannelConversation,
     updateConversationAccessPolicy,

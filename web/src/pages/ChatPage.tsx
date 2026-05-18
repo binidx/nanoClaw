@@ -1839,6 +1839,11 @@ export function ChatPage({
                 {t('chat.assistantTag', { label: activeAssistantLabel })}
               </span>
             ) : null}
+            {activeConv?.tavernPersonaName ? (
+              <span className="channel-tag tavern-tag">
+                酒馆 · {activeConv.tavernPersonaName}
+              </span>
+            ) : null}
             {conversationChannelLabel ? (
               <span className="channel-tag">{conversationChannelLabel}</span>
             ) : null}

@@ -120,3 +120,9 @@
 - `src/workflow/orchestrator.ts` / `agent-adapter.ts` 将 assistant 缺失收敛为运行时错误“该节点缺少执行主体”，不再把 assistant 绑定作为建图阶段前提。
 - `web/src/pages/WorkteamPage.tsx` 列表页收敛为 workflow 卡片网格，详情页恢复新增节点、拖拽、连线、删边、删节点、返回工作流、删除 workflow、简化配置与只读运行查看。
 - 将 feature map 元数据同步到当前已提交代码 `source_head_sha=becad113d7dc577b4424663ddf46b6aa06340707`。
+
+## [2026-05-17] update | 酒馆人格与新会话绑定入口
+
+- 会话功能行补充 `src/db/tavern.ts`、`src/tavern/tavern-service.ts` 和 `src/runtime/runtime-dispatch-web-failure.test.ts`，标明 tavern persona 绑定、快照与 prompt 注入入口。
+- Soul 功能行补充 `src/routes/tavern-routes.ts`、`web/src/components/soul/TavernPersonasPanel.tsx`，明确 SoulPage 现在同时承载主灵魂与酒馆人格管理。
+- 后端路由速查新增 `src/routes/tavern-routes.ts`，会话管理路由补充“Web 新建酒馆会话绑定”语义，避免后续 agent 只查 `soul-routes` 而漏掉 tavern API。

@@ -237,11 +237,13 @@ export interface ConversationAdminRouteOptions {
     name: string,
     options?: {
       assistantId?: string;
+      tavernPersonaId?: string;
       accessPolicy?: {
         mode: 'allowall' | 'allowlist' | 'readonly';
         directories: string[];
       };
       mode?: string;
+      ownerUserId?: string;
     },
   ) =>
     | {
@@ -1111,6 +1113,10 @@ export function registerConversationAdminRoutes(
         typeof req.body.assistantId === 'string'
           ? req.body.assistantId.trim()
           : '';
+      const tavernPersonaId =
+        typeof req.body.tavernPersonaId === 'string'
+          ? req.body.tavernPersonaId.trim()
+          : '';
       const instanceId =
         typeof req.body.instanceId === 'string'
           ? req.body.instanceId.trim()
@@ -1126,7 +1132,27 @@ export function registerConversationAdminRoutes(
         typeof req.body.mode === 'string' ? req.body.mode.trim() || null : null;
       const mode = rawMode && VALID_MODES.has(rawMode) ? rawMode : null;
 
+      if (assistantId && tavernPersonaId) {
+        res.status(400).json({
+          error: 'assistantId and tavernPersonaId cannot be combined',
+        });
+        return;
+      }
+      if (tavernPersonaId && type !== 'web') {
+        res.status(400).json({
+          error: 'tavernPersonaId is supported only for web conversations',
+        });
+        return;
+      }
+      if (rawMode === 'tavern' && !tavernPersonaId) {
+        res.status(400).json({
+          error: 'tavern mode requires tavernPersonaId',
+        });
+        return;
+      }
+
       if (type === 'web') {
+        const tenantUserId = getTenantUserId(req);
         const tenantSuffix = getTenantUserId(req)
           .replace(/[^a-zA-Z0-9_-]+/g, '_')
           .slice(0, 32) || 'system';
@@ -1135,19 +1161,23 @@ export function registerConversationAdminRoutes(
         const created = await Promise.resolve(
           opts.createWebConversation?.(jid, name, {
             assistantId: assistantId || undefined,
+            tavernPersonaId: tavernPersonaId || undefined,
             mode: mode || undefined,
+            ownerUserId: tenantUserId,
           }) ?? null,
         );
+        const responseMode = tavernPersonaId ? 'tavern' : mode;
         const responsePolicy =
           created?.accessPolicy ||
           (await Promise.resolve(opts.getDefaultConversationAccessPolicy()));
         res.json({
           jid,
           name,
-          mode,
+          mode: responseMode,
           accessPolicy: responsePolicy,
           allowedDirectories: responsePolicy.directories,
           assistantId: assistantId || null,
+          tavernPersonaId: tavernPersonaId || null,
         });
         return;
       }

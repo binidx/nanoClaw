@@ -47,8 +47,11 @@ import {
   deleteAssistantTurnSnapshot,
   getConversationMessages,
   getConversationTurns,
+  getConversationTavernBinding,
+  getTavernPersonaById,
   sanitizeStaleTurnsForChat,
   sanitizeStaleTurns,
+  upsertConversationTavernBinding,
 } from '../db.js';
 import { resolveGroupFolderPath } from '../group-folder.js';
 import { findChannel, formatOutbound } from '../router.js';
@@ -109,6 +112,13 @@ import { getRepoReviewConversationBinding } from '../repo-review/repo-review-ser
 import { SYSTEM_USER_ID } from '../tenant/tenant-context.js';
 import { resolveAssistantRuntimeConfig } from '../assistant/assistant-runtime.js';
 import { buildSoulPrompt } from '../soul/soul-service.js';
+import {
+  buildTavernPersonaSnapshot,
+  buildTavernSnapshotFromBinding,
+  buildTavernSystemPrompt,
+  selectTavernOpeningMessage,
+  serializeTavernPersonaSnapshot,
+} from '../tavern/tavern-service.js';
 import { runMemoryExtraction } from '../memory/memory-extractor.js';
 import {
   buildCompiledPromptEnvelope,
@@ -805,6 +815,10 @@ async function resolveConversationPromptEnvelope(
   let lockedNoticeSegment: PromptSegment | null = null;
   let assistantInstructionSegment: PromptSegment | null = null;
   let soulSegment: PromptSegment | null = null;
+  let tavernSegment: PromptSegment | null = null;
+  const tavernSnapshot = buildTavernSnapshotFromBinding(
+    await getConversationTavernBinding(chatJid),
+  );
 
   const providerType =
     assistantRuntime.providerType ||
@@ -866,6 +880,18 @@ async function resolveConversationPromptEnvelope(
       content: assistantRuntime.soulSystemPrompt,
     };
   }
+  const tavernSystemPrompt = buildTavernSystemPrompt(tavernSnapshot);
+  if (tavernSystemPrompt) {
+    tavernSegment = {
+      id: 'tavern_system_prompt',
+      label: 'Tavern Persona Prompt',
+      layer: 'system_persona',
+      mutability: 'runtime_fixed',
+      cacheSection: 'stable',
+      source: 'custom',
+      content: tavernSystemPrompt,
+    };
+  }
 
   if (assistantRuntime.instructionsAppend) {
     assistantInstructionSegment = {
@@ -914,6 +940,9 @@ async function resolveConversationPromptEnvelope(
   }
   if (soulSegment) {
     stableSegments.push(soulSegment);
+  }
+  if (tavernSegment) {
+    stableSegments.push(tavernSegment);
   }
   stableSegments.push(...stableTailSegments);
   if (assistantInstructionSegment && assistantRuntime.instructionsMode === 'append') {
@@ -1282,9 +1311,11 @@ export async function createWebConversation(
   name: string,
   options: {
     assistantId?: string;
+    tavernPersonaId?: string;
     accessPolicy?: AccessPolicy;
     mode?: string;
     channel?: string;
+    ownerUserId?: string;
   } = {},
 ): Promise<{ folder: string; accessPolicy: AccessPolicy; }> {
   const existing = registeredGroups[jid];
@@ -1299,12 +1330,25 @@ export async function createWebConversation(
   const assistantName = await getAssistantName();
   const suffix = jid.replace(/^web:/, '').slice(0, 18);
   const assistantId = options.assistantId?.trim() || undefined;
+  const tavernPersonaId = options.tavernPersonaId?.trim() || undefined;
   const assistant = assistantId ? await getAssistant(assistantId) : undefined;
   if (assistantId && !assistant) {
     throw new Error(`Unknown assistant id: ${assistantId}`);
   }
   if (assistant && !assistant.enabled) {
     throw new Error(`Assistant "${assistant.name}" is disabled`);
+  }
+  if (assistantId && tavernPersonaId) {
+    throw new Error('Tavern personas cannot be combined with assistants');
+  }
+  const tavernPersona = tavernPersonaId
+    ? await getTavernPersonaById(tavernPersonaId)
+    : undefined;
+  if (tavernPersonaId && !tavernPersona) {
+    throw new Error(`Unknown tavern persona id: ${tavernPersonaId}`);
+  }
+  if (tavernPersona && !tavernPersona.enabled) {
+    throw new Error(`Tavern persona "${tavernPersona.name}" is disabled`);
   }
   const conversationAccessPolicy = options.accessPolicy
     ? serializeAccessPolicy(options.accessPolicy)
@@ -1331,12 +1375,27 @@ export async function createWebConversation(
     'Web User',
     options.channel?.trim() || 'web',
     false,
+    options.ownerUserId?.trim() || undefined,
   );
   const customTitle = name.trim();
-  if (customTitle || options.mode) {
+  const conversationMode = tavernPersona ? 'tavern' : options.mode;
+  if (customTitle || conversationMode) {
     await updateConversationMeta(jid, {
       ...(customTitle ? { customTitle } : {}),
-      ...(options.mode ? { mode: options.mode } : {}),
+      ...(conversationMode ? { mode: conversationMode } : {}),
+    });
+  }
+  if (tavernPersona) {
+    const snapshot = buildTavernPersonaSnapshot(tavernPersona);
+    const openerText = selectTavernOpeningMessage(snapshot);
+    const opener = openerText
+      ? await storeAndBroadcastBotReply(jid, openerText)
+      : null;
+    await upsertConversationTavernBinding({
+      chatJid: jid,
+      tavernPersonaId: tavernPersona.id,
+      snapshotJson: serializeTavernPersonaSnapshot(snapshot),
+      openerMessageId: opener?.messageId || null,
     });
   }
   return {

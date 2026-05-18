@@ -70,6 +70,8 @@ interface PreparedConversationItem {
   unreadCount: number;
   formattedTime: string | null;
   assistantName?: string | null;
+  tavernPersonaName?: string | null;
+  tavernAvatarPath?: string | null;
 }
 
 function getChannelBadge(channel: string): string {
@@ -229,6 +231,8 @@ export const ConversationSidebar = memo(function ConversationSidebar({
           ? formatTime(conversation.last_message_time)
           : null,
         assistantName: conversation.assistantName || null,
+        tavernPersonaName: conversation.tavernPersonaName || null,
+        tavernAvatarPath: conversation.tavernAvatarPath || null,
       };
     });
     if (!q) return list;
@@ -462,8 +466,13 @@ export const ConversationSidebar = memo(function ConversationSidebar({
                 title,
                 unreadCount,
                 assistantName,
+                tavernPersonaName,
+                tavernAvatarPath,
               } = item;
               const checked = selectedConversationJids.has(conversation.jid);
+              const tavernAvatarUrl = tavernAvatarPath
+                ? `/api/tavern/avatar-file?path=${encodeURIComponent(tavernAvatarPath)}`
+                : null;
               return (
             <div
               className={`conversation-item ${conversation.jid === activeJid ? 'active' : ''} ${batchDeleteEnabled && checked ? 'selected' : ''}`}
@@ -499,7 +508,15 @@ export const ConversationSidebar = memo(function ConversationSidebar({
                 </label>
               )}
               <div className="conv-icon">
-                {getChannelBadge(conversation.channel)}
+                {tavernAvatarUrl ? (
+                  <img
+                    className="conv-icon-image"
+                    src={tavernAvatarUrl}
+                    alt={tavernPersonaName || title}
+                  />
+                ) : (
+                  getChannelBadge(conversation.channel)
+                )}
               </div>
               <div className="conv-info">
                 <div className="conv-top-row">
@@ -567,6 +584,11 @@ export const ConversationSidebar = memo(function ConversationSidebar({
                   ) : null}
                   {assistantName ? (
                     <span className="conv-badge assistant">{assistantName}</span>
+                  ) : null}
+                  {tavernPersonaName ? (
+                    <span className="conv-badge tavern">
+                      酒馆 · {tavernPersonaName}
+                    </span>
                   ) : null}
                   {isBusy ? (
                     <span className="conv-badge busy">{t('status.processing')}</span>

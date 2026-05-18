@@ -111,6 +111,7 @@ import { LocalFileStorage } from '../im/im-file-storage.js';
 import { startImFileCleanup } from '../im/im-file-cleanup.js';
 import { registerUserRoutes } from '../routes/user-routes.js';
 import { registerSoulRoutes } from '../routes/soul-routes.js';
+import { registerTavernRoutes } from '../routes/tavern-routes.js';
 import { registerPromptRoutes } from '../routes/prompt-routes.js';
 import { registerKnowledgeRoutes } from '../routes/knowledge-routes.js';
 import { createPermissionMiddleware } from '../auth/auth-middleware.js';
@@ -250,9 +251,11 @@ export interface WebServerOptions {
     name: string,
     options?: {
       assistantId?: string;
+      tavernPersonaId?: string;
       accessPolicy?: AccessPolicy;
       mode?: string;
       channel?: string;
+      ownerUserId?: string;
     },
   ) =>
     | { folder: string; accessPolicy: AccessPolicy }
@@ -759,6 +762,7 @@ export function createWebServer(opts: WebServerOptions) {
   });
   startImFileCleanup(imStorage);
   registerSoulRoutes(app, { getAuthenticatedUsername, requirePermission });
+  registerTavernRoutes(app, { requirePermission });
   registerPromptRoutes(app, { requirePermission, auditMutation });
   registerKnowledgeRoutes(app, { requirePermission });
   registerUserProviderRoutes(app, { requirePermission });

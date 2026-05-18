@@ -344,6 +344,33 @@ export interface UserSoulRecord {
   updated_at: string;
 }
 
+export interface TavernPersonaRecord {
+  id: string;
+  user_id: string;
+  name: string;
+  avatar_path: string | null;
+  summary: string | null;
+  personality_prompt: string | null;
+  scenario: string | null;
+  first_message: string | null;
+  alternate_greetings_json: string | null;
+  example_dialogues: string | null;
+  system_prompt: string | null;
+  creator_notes: string | null;
+  tags_json: string | null;
+  enabled: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ConversationTavernBindingRecord {
+  chat_jid: string;
+  tavern_persona_id: string;
+  snapshot_json: string;
+  opener_message_id: string | null;
+  bound_at: string;
+}
+
 
 export interface UserMemoryRecord {
   id: string;

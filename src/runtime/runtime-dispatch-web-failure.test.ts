@@ -68,6 +68,9 @@ vi.mock('../memory/memory-extractor.js', () => ({
 import {
   _initTestDatabase,
   createAssistant,
+  createTavernPersona,
+  getConversationSummaryByJid,
+  getConversationTavernBinding,
   getConversationMessages,
   getConversationTurns,
   storeAssistantTurnSnapshot,
@@ -77,6 +80,7 @@ import {
 } from '../db.js';
 import {
   _getAgentCursorState,
+  createWebConversation,
   processGroupMessages,
   regenerateConversationReply,
 } from './runtime-dispatch.js';
@@ -290,6 +294,40 @@ describe('runtime dispatch web failure handling', () => {
     );
   });
 
+  it('creates tavern web conversations with snapshot binding and opener message', async () => {
+    const webChannel = createMockWebChannel();
+    mockGetWebChannel.mockReturnValue(webChannel);
+    channels.push(webChannel);
+
+    const persona = await createTavernPersona('owner-user-id', {
+      name: 'Moon Archivist',
+      summary: 'Quiet, exacting, and a little dramatic.',
+      personalityPrompt: 'Speaks in elegant, restrained prose.',
+      firstMessage: '夜色已经落下。你带着什么故事来找我？',
+      enabled: true,
+    });
+
+    const chatJid = 'web:tavern-1';
+    await createWebConversation(chatJid, 'Moon Session', {
+      tavernPersonaId: persona.id,
+      ownerUserId: 'owner-user-id',
+    });
+
+    const binding = await getConversationTavernBinding(chatJid);
+    expect(binding?.tavern_persona_id).toBe(persona.id);
+    expect(binding?.snapshot_json).toContain('Moon Archivist');
+
+    const summary = await getConversationSummaryByJid(chatJid);
+    expect(summary?.mode).toBe('tavern');
+    expect(summary?.tavern_persona_id).toBe(persona.id);
+    expect(summary?.tavern_persona_name).toBe('Moon Archivist');
+
+    const messages = await getConversationMessages(chatJid, 10, 0);
+    expect(messages.some((message) => message.is_bot_message)).toBe(true);
+    expect(messages.at(-1)?.content).toBe('夜色已经落下。你带着什么故事来找我？');
+    expect(webChannel.notifyMessage).toHaveBeenCalled();
+  });
+
   it('uses the lightweight conversation base for ordinary web chats', async () => {
     const webChannel = createMockWebChannel();
     mockGetWebChannel.mockReturnValue(webChannel);
@@ -343,6 +381,59 @@ describe('runtime dispatch web failure handling', () => {
     expect(input?.prompt?.stableSystemPrompt).not.toContain('You are a helpful coding assistant with access to tools.');
     expect(input?.prompt?.stableSystemPrompt).not.toContain('## Sub-Agent Policy');
     expect(input?.prompt?.volatileSystemPrompt || '').toContain('Untrusted conversation history');
+  });
+
+  it('injects tavern persona prompt after soul prompt for tavern conversations', async () => {
+    const webChannel = createMockWebChannel();
+    mockGetWebChannel.mockReturnValue(webChannel);
+    channels.push(webChannel);
+
+    const persona = await createTavernPersona('owner-user-id', {
+      name: 'Moon Archivist',
+      summary: 'Quiet, exacting, and a little dramatic.',
+      personalityPrompt: 'Speaks in elegant, restrained prose.',
+      scenario: 'A lamplit archive where each conversation feels confidential.',
+      enabled: true,
+    });
+
+    const chatJid = 'web:tavern-prompt';
+    await createWebConversation(chatJid, 'Moon Session', {
+      tavernPersonaId: persona.id,
+      ownerUserId: 'owner-user-id',
+    });
+    await storeMessage({
+      id: 'user-tavern-1',
+      chat_jid: chatJid,
+      sender: 'web_user',
+      sender_name: 'Owner User',
+      content: '@Andy tell me what you found',
+      timestamp: '2026-04-16T03:24:12.000Z',
+      is_from_me: false,
+      is_bot_message: false,
+    });
+
+    vi.mocked(buildSoulPrompt).mockResolvedValue('SOUL_PROMPT');
+    mockRunAgentProcess.mockResolvedValue({
+      status: 'success',
+      result: 'Done',
+      newSessionId: 'session-tavern-prompt',
+    });
+
+    expect(await processGroupMessages(chatJid)).toBe(true);
+
+    const input = mockRunAgentProcess.mock.calls[0]?.[1] as
+      | { prompt?: { stableSystemPrompt?: string } }
+      | undefined;
+    const stablePrompt = input?.prompt?.stableSystemPrompt || '';
+    expect(stablePrompt).toContain('SOUL_PROMPT');
+    expect(stablePrompt).toContain('You are roleplaying as "Moon Archivist".');
+    expect(stablePrompt).toContain('## Personality');
+    expect(stablePrompt.indexOf('SOUL_PROMPT')).toBeGreaterThanOrEqual(0);
+    expect(
+      stablePrompt.indexOf('SOUL_PROMPT'),
+    ).toBeLessThan(
+      stablePrompt.indexOf('You are roleplaying as "Moon Archivist".'),
+    );
   });
 
   it('falls back to sender identity for non-web channels instead of using the conversation owner', async () => {

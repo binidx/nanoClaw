@@ -1032,6 +1032,37 @@ export function createSchema(database: Database.Database): void {
       updated_at TEXT NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS tavern_personas (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      avatar_path TEXT,
+      summary TEXT,
+      personality_prompt TEXT,
+      scenario TEXT,
+      first_message TEXT,
+      alternate_greetings_json TEXT,
+      example_dialogues TEXT,
+      system_prompt TEXT,
+      creator_notes TEXT,
+      tags_json TEXT,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_tavern_personas_user
+      ON tavern_personas(user_id, updated_at DESC);
+
+    CREATE TABLE IF NOT EXISTS conversation_tavern_bindings (
+      chat_jid TEXT PRIMARY KEY,
+      tavern_persona_id TEXT NOT NULL,
+      snapshot_json TEXT NOT NULL,
+      opener_message_id TEXT,
+      bound_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_conversation_tavern_bindings_persona
+      ON conversation_tavern_bindings(tavern_persona_id, bound_at DESC);
+
     CREATE TABLE IF NOT EXISTS user_soul_memories (
       id TEXT PRIMARY KEY,
       user_id TEXT NOT NULL,
@@ -2329,6 +2360,50 @@ export function createSchema(database: Database.Database): void {
     database.exec(`ALTER TABLE registered_groups ADD COLUMN model TEXT`);
   } catch {
     /* column already exists */
+  }
+
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS tavern_personas (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      avatar_path TEXT,
+      summary TEXT,
+      personality_prompt TEXT,
+      scenario TEXT,
+      first_message TEXT,
+      alternate_greetings_json TEXT,
+      example_dialogues TEXT,
+      system_prompt TEXT,
+      creator_notes TEXT,
+      tags_json TEXT,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `);
+  try {
+    database.exec(
+      `CREATE INDEX IF NOT EXISTS idx_tavern_personas_user ON tavern_personas(user_id, updated_at DESC)`,
+    );
+  } catch {
+    /* index already exists */
+  }
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS conversation_tavern_bindings (
+      chat_jid TEXT PRIMARY KEY,
+      tavern_persona_id TEXT NOT NULL,
+      snapshot_json TEXT NOT NULL,
+      opener_message_id TEXT,
+      bound_at TEXT NOT NULL
+    )
+  `);
+  try {
+    database.exec(
+      `CREATE INDEX IF NOT EXISTS idx_conversation_tavern_bindings_persona ON conversation_tavern_bindings(tavern_persona_id, bound_at DESC)`,
+    );
+  } catch {
+    /* index already exists */
   }
 
   // ── IM Chat tables ────────────────────────────────────────────────

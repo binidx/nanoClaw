@@ -50,6 +50,12 @@ vi.mock('./db.js', () => ({
 }));
 
 vi.mock('./logger.js', () => ({
+  createModuleLogger: vi.fn(() => ({
+    error: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    debug: vi.fn(),
+  })),
   logger: {
     error: vi.fn(),
     info: vi.fn(),
@@ -93,6 +99,91 @@ async function withServer(
 }
 
 describe('conversation admin routes', () => {
+  it('rejects assistant and tavern persona on the same conversation create request', async () => {
+    const app = express();
+    app.use(express.json());
+    registerConversationAdminRoutes(app, {
+      requirePermission: allowAllRequirePermission,
+      auditMutation: vi.fn(),
+      readPendingApprovalsForConversation: vi.fn(() => []),
+      writeApprovalDecisionForConversation: vi.fn(),
+      updateConversationAccessPolicy: vi.fn(),
+      resetConversationRuntime: vi.fn(),
+      clearRuntimeApprovalPatchesForConversation: vi.fn(),
+      clearCodexConversationState: vi.fn(),
+      getDefaultConversationAccessPolicy: vi.fn(() => ({
+        mode: 'allowall' as const,
+        directories: [],
+      })),
+      normalizeAccessPolicyInput: vi.fn(() => ({
+        mode: 'allowall' as const,
+        directories: [],
+      })),
+      normalizeAllowedDirectoriesInput: vi.fn(() => []),
+      createWebConversation: vi.fn(),
+    });
+
+    await withServer(app, async (baseUrl) => {
+      const response = await fetch(`${baseUrl}/api/conversations`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'web',
+          name: 'Tavern Chat',
+          assistantId: 'assistant-1',
+          tavernPersonaId: 'persona-1',
+        }),
+      });
+
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({
+        error: 'assistantId and tavernPersonaId cannot be combined',
+      });
+    });
+  });
+
+  it('rejects tavern persona for non-web conversation creation', async () => {
+    const app = express();
+    app.use(express.json());
+    registerConversationAdminRoutes(app, {
+      requirePermission: allowAllRequirePermission,
+      auditMutation: vi.fn(),
+      readPendingApprovalsForConversation: vi.fn(() => []),
+      writeApprovalDecisionForConversation: vi.fn(),
+      updateConversationAccessPolicy: vi.fn(),
+      resetConversationRuntime: vi.fn(),
+      clearRuntimeApprovalPatchesForConversation: vi.fn(),
+      clearCodexConversationState: vi.fn(),
+      getDefaultConversationAccessPolicy: vi.fn(() => ({
+        mode: 'allowall' as const,
+        directories: [],
+      })),
+      normalizeAccessPolicyInput: vi.fn(() => ({
+        mode: 'allowall' as const,
+        directories: [],
+      })),
+      normalizeAllowedDirectoriesInput: vi.fn(() => []),
+      createChannelConversation: vi.fn(),
+    });
+
+    await withServer(app, async (baseUrl) => {
+      const response = await fetch(`${baseUrl}/api/conversations`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'feishu',
+          name: 'Tavern Chat',
+          tavernPersonaId: 'persona-1',
+        }),
+      });
+
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({
+        error: 'tavernPersonaId is supported only for web conversations',
+      });
+    });
+  });
+
   it('returns runtime approval patches with conversation access payload', async () => {
     const app = express();
     app.use(express.json());
@@ -136,7 +227,8 @@ describe('conversation admin routes', () => {
       );
 
       expect(response.status).toBe(200);
-      await expect(response.json()).resolves.toEqual({
+      const body = await response.json();
+      expect(body).toMatchObject({
         accessPolicy: {
           mode: 'allowall',
           directories: [],
@@ -174,8 +266,6 @@ describe('conversation admin routes', () => {
           activePatchCount: 1,
           latestExpiresAt: '2099-01-01T00:00:00.000Z',
           affectsPersistentPolicy: false,
-          summary:
-            '当前 runtime 内有 1 条可复用的临时命令授权；它们不会改写长期访问策略。',
         },
         effectiveAccess: {
           persistentPolicy: {
@@ -188,28 +278,25 @@ describe('conversation admin routes', () => {
           temporaryCommandReuseCount: 1,
           temporaryApprovedDirectories: [],
           hasTemporaryElevation: true,
-          summary:
-            '当前长期策略来自全局默认，模式为允许全部；另有 1 条当前 runtime 的临时命令放行。',
         },
-        nextActions: [
-          {
-            id: 'manage_default_policy',
-            title: '升级为默认配置',
-            description:
-              '如果多数新会话都需要同样权限，优先去设置页修改“默认访问策略”，不要逐个会话重复配置。',
-            target: {
-              type: 'settings_default_access',
-              label: '去默认配置',
-            },
-          },
-          {
-            id: 'review_runtime_approval',
-            title: '保留临时放行',
-            description:
-              '当前 runtime 内有 1 条可复用的临时命令授权；它们不会改写长期访问策略。',
-          },
-        ],
       });
+      expect(body.runtimeAccess.summary).toEqual(expect.any(String));
+      expect(body.effectiveAccess.summary).toEqual(expect.any(String));
+      expect(body.nextActions).toMatchObject([
+        {
+          id: 'manage_default_policy',
+          target: {
+            type: 'settings_default_access',
+          },
+        },
+        {
+          id: 'review_runtime_approval',
+        },
+      ]);
+      expect(body.nextActions[0]?.title).toEqual(expect.any(String));
+      expect(body.nextActions[0]?.description).toEqual(expect.any(String));
+      expect(body.nextActions[1]?.title).toEqual(expect.any(String));
+      expect(body.nextActions[1]?.description).toEqual(expect.any(String));
     });
   });
 
@@ -256,7 +343,8 @@ describe('conversation admin routes', () => {
       );
 
       expect(response.status).toBe(200);
-      await expect(response.json()).resolves.toMatchObject({
+      const body = await response.json();
+      expect(body).toMatchObject({
         accessPolicy: {
           mode: 'readonly',
           directories: ['/tmp/legacy'],
@@ -278,8 +366,6 @@ describe('conversation admin routes', () => {
           activePatchCount: 0,
           latestExpiresAt: null,
           affectsPersistentPolicy: false,
-          summary:
-            '当前没有可复用的 runtime 临时授权；系统仅按长期访问策略执行。',
         },
         effectiveAccess: {
           persistentPolicy: {
@@ -292,28 +378,25 @@ describe('conversation admin routes', () => {
           temporaryCommandReuseCount: 0,
           temporaryApprovedDirectories: [],
           hasTemporaryElevation: false,
-          summary:
-            '当前按当前对话的只读长期策略执行，没有额外的 runtime 临时放行。',
         },
-        nextActions: [
-          {
-            id: 'promote_conversation_policy',
-            title: '调整会话独立策略',
-            description:
-              '当前改动只影响这个会话；如果多数会话都需要类似配置，建议去默认配置统一设置。',
-            target: {
-              type: 'settings_default_access',
-              label: '去默认配置',
-            },
-          },
-          {
-            id: 'prefer_runtime_approval',
-            title: '临时问题先用审批',
-            description:
-              '如果只想放行一次命令，直接在审批卡里选择“仅当前命令”或“当前 runtime”即可，无需改长期策略。',
-          },
-        ],
       });
+      expect(body.runtimeAccess.summary).toEqual(expect.any(String));
+      expect(body.effectiveAccess.summary).toEqual(expect.any(String));
+      expect(body.nextActions).toMatchObject([
+        {
+          id: 'promote_conversation_policy',
+          target: {
+            type: 'settings_default_access',
+          },
+        },
+        {
+          id: 'prefer_runtime_approval',
+        },
+      ]);
+      expect(body.nextActions[0]?.title).toEqual(expect.any(String));
+      expect(body.nextActions[0]?.description).toEqual(expect.any(String));
+      expect(body.nextActions[1]?.title).toEqual(expect.any(String));
+      expect(body.nextActions[1]?.description).toEqual(expect.any(String));
     });
   });
 

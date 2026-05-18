@@ -254,6 +254,9 @@ export function useAppBootstrap({
             conversation_provider_id?: string | null;
             conversation_provider_alias?: string | null;
             conversation_model?: string | null;
+            tavern_persona_id?: string | null;
+            tavern_persona_name?: string | null;
+            tavern_avatar_path?: string | null;
           }
         >;
         setConversations(
@@ -265,6 +268,9 @@ export function useAppBootstrap({
               conversation_provider_id?: string | null;
               conversation_provider_alias?: string | null;
               conversation_model?: string | null;
+              tavern_persona_id?: string | null;
+              tavern_persona_name?: string | null;
+              tavern_avatar_path?: string | null;
             }
           >(data).map((conversation) => ({
             ...conversation,
@@ -284,9 +290,21 @@ export function useAppBootstrap({
               conversation.conversationProviderAlias ??
               conversation.conversation_provider_alias ??
               null,
-            conversationModel:
+              conversationModel:
               conversation.conversationModel ??
               conversation.conversation_model ??
+              null,
+            tavernPersonaId:
+              conversation.tavernPersonaId ??
+              conversation.tavern_persona_id ??
+              null,
+            tavernPersonaName:
+              conversation.tavernPersonaName ??
+              conversation.tavern_persona_name ??
+              null,
+            tavernAvatarPath:
+              conversation.tavernAvatarPath ??
+              conversation.tavern_avatar_path ??
               null,
           })),
         );

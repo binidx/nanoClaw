@@ -20,6 +20,30 @@ export interface Conversation {
   conversationProviderAlias?: string | null;
   conversationModel?: string | null;
   mode?: string | null;
+  tavernPersonaId?: string | null;
+  tavernPersonaName?: string | null;
+  tavernAvatarPath?: string | null;
+}
+
+export interface TavernPersona {
+  id: string;
+  user_id: string;
+  name: string;
+  avatar_path: string | null;
+  summary: string | null;
+  personality_prompt: string | null;
+  scenario: string | null;
+  first_message: string | null;
+  alternate_greetings: string[];
+  example_dialogues: string | null;
+  system_prompt: string | null;
+  creator_notes: string | null;
+  tags: string[];
+  enabled: number;
+  created_at: string;
+  updated_at: string;
+  prompt_preview: string;
+  opener_preview: string;
 }
 
 export interface Message {

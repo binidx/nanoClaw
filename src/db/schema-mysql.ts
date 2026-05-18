@@ -995,6 +995,35 @@ export function buildMySQLSchema(autoPk: string): string {
       UNIQUE KEY uk_user_souls_user_id (user_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+    CREATE TABLE IF NOT EXISTS tavern_personas (
+      id VARCHAR(64) PRIMARY KEY,
+      user_id VARCHAR(64) NOT NULL,
+      name VARCHAR(128) NOT NULL,
+      avatar_path VARCHAR(255),
+      summary TEXT,
+      personality_prompt TEXT,
+      scenario TEXT,
+      first_message TEXT,
+      alternate_greetings_json TEXT,
+      example_dialogues MEDIUMTEXT,
+      system_prompt TEXT,
+      creator_notes TEXT,
+      tags_json TEXT,
+      enabled INT NOT NULL DEFAULT 1,
+      created_at VARCHAR(64) NOT NULL,
+      updated_at VARCHAR(64) NOT NULL,
+      KEY idx_tavern_personas_user (user_id, updated_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+    CREATE TABLE IF NOT EXISTS conversation_tavern_bindings (
+      chat_jid VARCHAR(128) PRIMARY KEY,
+      tavern_persona_id VARCHAR(64) NOT NULL,
+      snapshot_json MEDIUMTEXT NOT NULL,
+      opener_message_id VARCHAR(64),
+      bound_at VARCHAR(64) NOT NULL,
+      KEY idx_conversation_tavern_bindings_persona (tavern_persona_id, bound_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
     CREATE TABLE IF NOT EXISTS user_soul_memories (
       id VARCHAR(64) PRIMARY KEY,
       user_id VARCHAR(64) NOT NULL,
@@ -1963,6 +1992,38 @@ export async function runMySQLMigrations(engine: DbEngine): Promise<void> {
   await safeMigrate(
     `ALTER TABLE registered_groups ADD COLUMN model VARCHAR(128) DEFAULT NULL`,
   );
+
+  await safeMigrate(`
+    CREATE TABLE IF NOT EXISTS tavern_personas (
+      id VARCHAR(64) PRIMARY KEY,
+      user_id VARCHAR(64) NOT NULL,
+      name VARCHAR(128) NOT NULL,
+      avatar_path VARCHAR(255),
+      summary TEXT,
+      personality_prompt TEXT,
+      scenario TEXT,
+      first_message TEXT,
+      alternate_greetings_json TEXT,
+      example_dialogues MEDIUMTEXT,
+      system_prompt TEXT,
+      creator_notes TEXT,
+      tags_json TEXT,
+      enabled INT NOT NULL DEFAULT 1,
+      created_at VARCHAR(64) NOT NULL,
+      updated_at VARCHAR(64) NOT NULL,
+      KEY idx_tavern_personas_user (user_id, updated_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `);
+  await safeMigrate(`
+    CREATE TABLE IF NOT EXISTS conversation_tavern_bindings (
+      chat_jid VARCHAR(128) PRIMARY KEY,
+      tavern_persona_id VARCHAR(64) NOT NULL,
+      snapshot_json MEDIUMTEXT NOT NULL,
+      opener_message_id VARCHAR(64),
+      bound_at VARCHAR(64) NOT NULL,
+      KEY idx_conversation_tavern_bindings_persona (tavern_persona_id, bound_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `);
 
   // ── IM Chat tables ────────────────────────────────────────────────
   await safeMigrate(`
