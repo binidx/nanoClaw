@@ -362,6 +362,23 @@ export interface TaskNodeConfig {
   goal?: string;
   prompt?: string;
   expectedOutput?: string;
+  projectGraph?: {
+    enabled?: boolean;
+    profile?:
+      | 'default'
+      | 'implementation'
+      | 'impact'
+      | 'tests'
+      | 'config'
+      | 'workflow'
+      | 'minimal';
+    focusPaths?: string[];
+    relationFilter?: Array<'contains' | 'imports' | 'calls' | 'references'>;
+    depth?: number;
+    tokenBudget?: number;
+    maxNodes?: number;
+    maxSeeds?: number;
+  };
   timeoutMs?: number;
   approvalRequired?: boolean;
   providerOverrideId?: string;

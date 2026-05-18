@@ -241,6 +241,8 @@ describe('workflow agent adapter', () => {
         repositoryId: 'repo-1',
         branch: 'feature/refactor',
         intent: 'workflow',
+        profile: 'implementation',
+        focusPaths: [],
       }),
     );
     const [, input] = runAgentProcessMock.mock.calls[0] as [unknown, Record<string, unknown>];
@@ -249,6 +251,66 @@ describe('workflow agent adapter', () => {
     );
     expect(String((input.prompt as { text: string }).text)).toContain(
       'Project Graph Retrieval:',
+    );
+  });
+
+  it('passes node-level graph retrieval scope and overrides', async () => {
+    listOwnerBindingsMock.mockResolvedValue([
+      {
+        resourceType: 'repository',
+        resourceId: 'repo-1',
+        bindingKey: 'main',
+        branch: 'feature/refactor',
+      },
+    ]);
+    getRepositoryByIdMock.mockResolvedValue({
+      id: 'repo-1',
+      default_target_branch: 'main',
+    });
+
+    const scopedTaskNode = {
+      ...taskNode(),
+      config_json: JSON.stringify({
+        prompt: 'Verify auth tests and configs',
+        projectGraph: {
+          profile: 'tests',
+          focusPaths: ['src/features/auth/login.test.ts'],
+          relationFilter: ['references'],
+          depth: 1,
+          tokenBudget: 900,
+          maxNodes: 12,
+          maxSeeds: 3,
+        },
+      }),
+    };
+
+    const result = await executeWorkflowTask({
+      workflowId: 'wf-1',
+      workflowName: 'Repo Workflow',
+      runId: 'run-1',
+      roleNode: roleNode(),
+      taskNode: scopedTaskNode,
+      runInput: 'Check auth regression coverage',
+      upstreamMessages: [],
+      repositoryBindingKey: 'main',
+    });
+
+    expect(result.success).toBe(true);
+    expect(prepareProjectGraphContextMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        repositoryId: 'repo-1',
+        branch: 'feature/refactor',
+        intent: 'workflow',
+        profile: 'tests',
+        focusPaths: ['src/features/auth/login.test.ts'],
+        queryOptions: {
+          relationFilter: ['references'],
+          depth: 1,
+          tokenBudget: 900,
+          maxNodes: 12,
+          maxSeeds: 3,
+        },
+      }),
     );
   });
 

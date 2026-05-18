@@ -230,7 +230,7 @@ const REPO_REVIEW_AGENTIC_PLAN_BLOCK = [
   '- 子代理只用于扩大覆盖和并行取证；最终严重性、去重、跨文件影响和阻断建议由你负责。',
   '- 如果不委派，必须在 delegation_reason 中写明原因。',
   '- 只有变更文件数超过建议委派阈值，或确有跨模块高风险需要并行取证时才委派；低风险小改动由主代理自己审查。',
-  '- 如果超过建议委派阈值，优先考虑按文件组、模块、风险主题或测试覆盖分配少量任务。',
+  '- 如果超过建议委派阈值，优先考虑按图谱社区、模块、风险主题或测试覆盖分配少量任务。',
   '- 任务文件必须来自变更文件列表；需要相关未变更文件时，在 notes 说明原因，不要把它写进子代理 files。',
 ].join('\n');
 
@@ -268,6 +268,7 @@ const REPO_REVIEW_DASHBOARD_BLOCK = [
   '取证范围：{{diffRange}}',
   '{{commitSummaryBlock}}',
   '{{evidenceBundleBlock}}',
+  '{{graphPlanningBlock}}',
   '{{impactGraphBlock}}',
   '{{contextLimitationsBlock}}',
   '变更文件：',

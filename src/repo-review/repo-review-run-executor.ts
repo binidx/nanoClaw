@@ -7650,6 +7650,108 @@ interface RepoReviewAgenticSubagentResult {
   rawOutput: string;
 }
 
+function inferRepoReviewGraphRiskAreas(files: string[]): string[] {
+  const joined = files.join(' ').toLowerCase();
+  const areas: string[] = [];
+  if (/(^|\s|\/)(tests?|__tests__|spec)(\/|\.|\s|$)|\.(test|spec)\./.test(joined)) {
+    areas.push('确认变更行为是否已有测试覆盖，或是否需要同步补充回归测试。');
+  }
+  if (/(config|settings|env|feature-flag|flag)/.test(joined)) {
+    areas.push('确认配置、环境变量或特性开关是否与实现变更保持一致。');
+  }
+  if (/(schema|migration|sql|db|database|model)/.test(joined)) {
+    areas.push('确认数据结构、迁移脚本和持久化读写路径是否一致。');
+  }
+  if (/(route|router|controller|api|handler)/.test(joined)) {
+    areas.push('确认接口入口、参数校验和调用链下游是否完整覆盖。');
+  }
+  if (/(auth|login|session|permission|role|token)/.test(joined)) {
+    areas.push('确认鉴权、会话和权限边界没有被这次修改破坏。');
+  }
+  if (/(workflow|pipeline|orchestrator|agent)/.test(joined)) {
+    areas.push('确认工作流编排、节点输入输出或代理协作链路没有回归。');
+  }
+  return areas;
+}
+
+function buildRepoReviewGraphSuggestedGroups(input: {
+  prepared: ReviewPreparedContext;
+  maxSubagents: number;
+}): Array<{
+  communityLabel: string;
+  files: string[];
+  focus: string;
+}> {
+  const tasks = input.prepared.changedFiles.map((filePath) => ({
+    filePath,
+    fileDiff: '',
+    fileContent: '',
+    relatedFindings: [],
+    ...getRepoReviewProjectGraphFileCommunity({
+      prepared: input.prepared,
+      filePath,
+    }),
+  }));
+  const groups = groupFilesForReview(tasks, input.maxSubagents);
+  return groups.map((group) => {
+    const communityLabels = Array.from(
+      new Set(
+        group
+          .map((task) => task.communityLabel || task.communityId || 'ungrouped')
+          .filter(Boolean),
+      ),
+    );
+    const files = group.map((task) => task.filePath);
+    return {
+      communityLabel:
+        communityLabels.length === 1
+          ? communityLabels[0]!
+          : communityLabels.join(' + '),
+      files,
+      focus:
+        communityLabels.length === 1
+          ? `围绕实现社区 ${communityLabels[0]} 做完整审查，并核对跨文件调用链。`
+          : `这是一个跨社区组合任务，重点核对 ${communityLabels.join('、')} 之间的接口边界和依赖关系。`,
+    };
+  });
+}
+
+export function buildRepoReviewGraphPlanningBlock(input: {
+  prepared: ReviewPreparedContext;
+  maxSubagents: number;
+}): string {
+  const graphContext = input.prepared.evidenceBundle?.projectGraphContext;
+  if (!graphContext || graphContext.status !== 'ready') {
+    return '图谱规划提示：\n- Project Graph unavailable，按 diff 和现有 evidence 制定审查计划。';
+  }
+  const groups = buildRepoReviewGraphSuggestedGroups(input);
+  const topChangedFiles = graphContext.topFiles
+    .filter((node) => node.filePath && input.prepared.changedFiles.includes(node.filePath))
+    .slice(0, 6)
+    .map((node) => `${node.filePath} (${node.score.toFixed(1)})`);
+  const riskAreas = inferRepoReviewGraphRiskAreas(input.prepared.changedFiles);
+  const lines = [
+    '图谱规划提示：',
+    `- graph_confidence: ${graphContext.confidence.overall.toFixed(2)}`,
+    `- graph_communities: ${graphContext.communities.join(', ') || '(none)'}`,
+    `- suggested_parallel_groups: ${groups.length}`,
+  ];
+  if (topChangedFiles.length > 0) {
+    lines.push(`- top_changed_files: ${topChangedFiles.join(' ; ')}`);
+  }
+  if (riskAreas.length > 0) {
+    lines.push('- graph_risk_areas:');
+    for (const area of riskAreas) lines.push(`  - ${area}`);
+  }
+  lines.push('- suggested_review_slices:');
+  for (const [index, group] of groups.entries()) {
+    lines.push(
+      `  - slice_${index + 1}: community=${group.communityLabel} | files=${group.files.join(', ')} | focus=${group.focus}`,
+    );
+  }
+  return lines.join('\n');
+}
+
 function buildRepoReviewAgenticBudget(input: {
   profile: RepoReviewProfile;
   maxSubagents: number;
@@ -7700,6 +7802,10 @@ function buildRepoReviewAgenticPromptVariables(input: {
           '先用 git log、git diff 和目标分支确认当前提交范围。',
           '如果镜像缺少某些引用，请把限制写进 scope_limitations。',
         ].join('\n');
+  const graphPlanningBlock = buildRepoReviewGraphPlanningBlock({
+    prepared: input.prepared,
+    maxSubagents: input.budget.maxSubagents,
+  });
 
   return {
     workspaceInspectionInstructions,
@@ -7730,6 +7836,7 @@ function buildRepoReviewAgenticPromptVariables(input: {
           bundle: input.prepared.evidenceBundle,
         })
       : '',
+    graphPlanningBlock,
     impactGraphBlock: buildRepoReviewImpactGraphBlock(
       input.prepared.evidenceBundle,
     ),
@@ -7993,6 +8100,53 @@ function buildFallbackRepoReviewAgenticPlan(input: {
   };
 }
 
+function buildGraphFallbackRepoReviewAgenticPlan(input: {
+  prepared: ReviewPreparedContext;
+  budget: RepoReviewAgenticBudget;
+  reason: string;
+}): RepoReviewAgenticPlan | null {
+  if (input.prepared.changedFiles.length <= input.budget.delegationFileThreshold) {
+    return null;
+  }
+  const groups = buildRepoReviewGraphSuggestedGroups({
+    prepared: input.prepared,
+    maxSubagents: input.budget.maxSubagents,
+  }).filter((group) => group.files.length > 0);
+  if (groups.length <= 1) return null;
+  const riskAreas = inferRepoReviewGraphRiskAreas(input.prepared.changedFiles);
+  return {
+    shouldDelegate: true,
+    delegationReason:
+      '主代理计划未成功生成，系统按 Project Graph 社区聚类回退为并行局部审查计划。',
+    tasks: groups.map((group, index) => ({
+      id: `graph-fallback-${index + 1}`,
+      title: `图谱分组审查 ${index + 1}`,
+      objective: group.focus,
+      files: group.files,
+      focus: group.communityLabel,
+      fullFileFiles: [],
+    })),
+    fullFileReviewFiles: [],
+    riskAreas,
+    notes: [input.reason, 'graph-suggested-fallback-plan'],
+    rawPlan: {
+      should_delegate: true,
+      delegation_reason:
+        '主代理计划未成功生成，系统按 Project Graph 社区聚类回退为并行局部审查计划。',
+      tasks: groups.map((group, index) => ({
+        id: `graph-fallback-${index + 1}`,
+        title: `图谱分组审查 ${index + 1}`,
+        objective: group.focus,
+        files: group.files,
+        focus: group.communityLabel,
+        full_file_files: [],
+      })),
+      risk_areas: riskAreas,
+      notes: [input.reason, 'graph-suggested-fallback-plan'],
+    },
+  };
+}
+
 function compactJsonForPrompt(value: unknown, maxChars = 60_000): string {
   let text = '';
   try {
@@ -8170,6 +8324,26 @@ async function runRepoReviewMainPlan(input: {
     }
   }
   const reason = `主代理计划非法，已降级为主代理单独审查：${lastErrors.join('；')}`;
+  const graphFallbackPlan = buildGraphFallbackRepoReviewAgenticPlan({
+    prepared: input.prepared,
+    budget: input.budget,
+    reason,
+  });
+  if (graphFallbackPlan) {
+    await input.onProgressStep?.({
+      id: 'agentic_main_plan',
+      label: '主代理制定审查计划',
+      status: 'completed',
+      detail: `主代理计划失败，系统按图谱社区回退为 ${graphFallbackPlan.tasks.length} 个并行任务`,
+      kind: 'main',
+      outputText: formatProgressKeyValues([
+        ['should_delegate', graphFallbackPlan.shouldDelegate],
+        ['tasks', graphFallbackPlan.tasks.length],
+        ['fallback', 'project_graph_communities'],
+      ]),
+    });
+    return graphFallbackPlan;
+  }
   await input.onProgressStep?.({
     id: 'agentic_main_plan',
     label: '主代理制定审查计划',

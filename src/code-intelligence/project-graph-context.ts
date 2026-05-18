@@ -15,6 +15,16 @@ export type ProjectGraphContextIntent =
   | 'workflow'
   | 'question_answering';
 
+export type ProjectGraphRetrievalProfile =
+  | 'default'
+  | 'review_plan'
+  | 'implementation'
+  | 'impact'
+  | 'tests'
+  | 'config'
+  | 'workflow'
+  | 'minimal';
+
 export type ProjectGraphContextStatus = 'ready' | 'missing' | 'error';
 
 export interface PreparedProjectGraphContextNode {
@@ -88,6 +98,7 @@ export interface PrepareProjectGraphContextInput {
   intent: ProjectGraphContextIntent;
   question: string;
   focusPaths?: string[];
+  profile?: ProjectGraphRetrievalProfile;
   queryOptions?: ProjectGraphQueryOptions;
   persist?: {
     enabled?: boolean;
@@ -327,6 +338,101 @@ function defaultQueryOptions(
   };
 }
 
+export function buildProjectGraphQueryOptions(input: {
+  intent: ProjectGraphContextIntent;
+  profile?: ProjectGraphRetrievalProfile;
+  queryOptions?: ProjectGraphQueryOptions;
+}): ProjectGraphQueryOptions {
+  const base = defaultQueryOptions(input.intent);
+  let profiled: ProjectGraphQueryOptions = base;
+  switch (input.profile || 'default') {
+    case 'review_plan':
+      profiled = {
+        ...base,
+        mode: 'bfs',
+        depth: 2,
+        maxSeeds: 10,
+        maxNodes: 56,
+        tokenBudget: 2800,
+        relationFilter: ['calls', 'imports', 'references', 'contains'],
+      };
+      break;
+    case 'implementation':
+      profiled = {
+        ...base,
+        mode: 'bfs',
+        depth: 2,
+        maxSeeds: 6,
+        maxNodes: 28,
+        tokenBudget: 1500,
+        relationFilter: ['contains', 'imports', 'references', 'calls'],
+      };
+      break;
+    case 'impact':
+      profiled = {
+        ...base,
+        mode: 'bfs',
+        depth: 3,
+        maxSeeds: 8,
+        maxNodes: 40,
+        tokenBudget: 2200,
+        relationFilter: ['imports', 'references', 'calls'],
+      };
+      break;
+    case 'tests':
+      profiled = {
+        ...base,
+        mode: 'bfs',
+        depth: 2,
+        maxSeeds: 6,
+        maxNodes: 24,
+        tokenBudget: 1400,
+        relationFilter: ['contains', 'imports', 'references'],
+      };
+      break;
+    case 'config':
+      profiled = {
+        ...base,
+        mode: 'bfs',
+        depth: 2,
+        maxSeeds: 5,
+        maxNodes: 22,
+        tokenBudget: 1300,
+        relationFilter: ['contains', 'imports', 'references'],
+      };
+      break;
+    case 'workflow':
+      profiled = {
+        ...base,
+        mode: 'bfs',
+        depth: 2,
+        maxSeeds: 6,
+        maxNodes: 30,
+        tokenBudget: 1600,
+        relationFilter: ['calls', 'imports', 'references', 'contains'],
+      };
+      break;
+    case 'minimal':
+      profiled = {
+        ...base,
+        mode: 'bfs',
+        depth: 1,
+        maxSeeds: 4,
+        maxNodes: 16,
+        tokenBudget: 900,
+      };
+      break;
+    case 'default':
+    default:
+      profiled = base;
+      break;
+  }
+  return {
+    ...profiled,
+    ...(input.queryOptions || {}),
+  };
+}
+
 export function buildRepoReviewProjectGraphQuestion(input: {
   repositoryName?: string;
   branch: string;
@@ -360,6 +466,8 @@ export function buildWorkflowProjectGraphQuestion(input: {
   taskDescription?: string;
   taskPrompt?: string;
   runInput?: string;
+  retrievalProfile?: ProjectGraphRetrievalProfile;
+  focusPaths?: string[];
   upstreamMessages: Array<{
     from: string;
     to: string;
@@ -387,7 +495,13 @@ export function buildWorkflowProjectGraphQuestion(input: {
     input.runInput
       ? `Run input: ${String(input.runInput).replace(/\s+/g, ' ').slice(0, 260)}.`
       : '',
+    input.focusPaths && input.focusPaths.length > 0
+      ? `Focus paths: ${input.focusPaths.join(', ')}.`
+      : '',
     upstream ? `Recent upstream context: ${upstream}.` : '',
+    input.retrievalProfile
+      ? `Retrieval profile: ${input.retrievalProfile}.`
+      : '',
     'Find the most relevant implementation files, functions, supporting tests, configs, and surrounding call paths needed to execute this task with minimal repository exploration.',
   ]
     .filter(Boolean)
@@ -498,8 +612,11 @@ export async function prepareProjectGraphContext(
       )
       .map((node) => node.id);
     const options = {
-      ...defaultQueryOptions(input.intent),
-      ...(input.queryOptions || {}),
+      ...buildProjectGraphQueryOptions({
+        intent: input.intent,
+        profile: input.profile,
+        queryOptions: input.queryOptions,
+      }),
       seedNodeIds,
     } satisfies ProjectGraphQueryOptions;
     const result = queryProjectGraph(graph, question, options);

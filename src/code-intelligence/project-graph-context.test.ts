@@ -1,8 +1,25 @@
 import { describe, expect, it } from 'vitest';
 
-import { filterPreparedProjectGraphContextForFiles } from './project-graph-context.js';
+import {
+  buildProjectGraphQueryOptions,
+  filterPreparedProjectGraphContextForFiles,
+} from './project-graph-context.js';
 
 describe('project graph prepared context', () => {
+  it('builds scoped query options for retrieval profiles', () => {
+    expect(
+      buildProjectGraphQueryOptions({
+        intent: 'workflow',
+        profile: 'tests',
+      }),
+    ).toMatchObject({
+      depth: 2,
+      maxNodes: 24,
+      tokenBudget: 1400,
+      relationFilter: ['contains', 'imports', 'references'],
+    });
+  });
+
   it('preserves readable community labels after file filtering', () => {
     const context = {
       status: 'ready' as const,

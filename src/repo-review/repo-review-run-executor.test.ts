@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  buildRepoReviewGraphPlanningBlock,
   buildRepoReviewCodeIndexContextBlock,
   buildRepoReviewCodeMapContextBlock,
   buildRepoReviewDiffAwareEvidenceBundle,
@@ -723,5 +724,79 @@ describe('repo review project graph grouping', () => {
       communityId: 'community:001',
       communityLabel: 'src/features/auth',
     });
+  });
+
+  it('renders graph planning hints for main review planning', () => {
+    const block = buildRepoReviewGraphPlanningBlock({
+      prepared: {
+        changedFiles: [
+          'src/features/auth/login.ts',
+          'src/features/auth/login.test.ts',
+          'src/config/auth.ts',
+        ],
+        evidenceBundle: {
+          projectGraphContext: {
+            status: 'ready',
+            confidence: {
+              overall: 0.84,
+            },
+            communities: ['src/features/auth', 'src/config'],
+            topFiles: [
+              {
+                id: 'file:src/features/auth/login.ts',
+                type: 'file',
+                label: 'src/features/auth/login.ts',
+                filePath: 'src/features/auth/login.ts',
+                score: 18.2,
+                reasons: ['term:file:auth'],
+                community: 'community:001',
+                communityLabel: 'src/features/auth',
+              },
+            ],
+            startNodes: [
+              {
+                id: 'file:src/features/auth/login.ts',
+                type: 'file',
+                label: 'src/features/auth/login.ts',
+                filePath: 'src/features/auth/login.ts',
+                score: 18.2,
+                reasons: ['term:file:auth'],
+                community: 'community:001',
+                communityLabel: 'src/features/auth',
+              },
+              {
+                id: 'file:src/features/auth/login.test.ts',
+                type: 'file',
+                label: 'src/features/auth/login.test.ts',
+                filePath: 'src/features/auth/login.test.ts',
+                score: 9.4,
+                reasons: ['term:file:test'],
+                community: 'community:001',
+                communityLabel: 'src/features/auth',
+              },
+              {
+                id: 'file:src/config/auth.ts',
+                type: 'file',
+                label: 'src/config/auth.ts',
+                filePath: 'src/config/auth.ts',
+                score: 8.7,
+                reasons: ['term:file:config'],
+                community: 'community:002',
+                communityLabel: 'src/config',
+              },
+            ],
+            topFunctions: [],
+            topChunks: [],
+          },
+        },
+      } as any,
+      maxSubagents: 2,
+    });
+
+    expect(block).toContain('图谱规划提示');
+    expect(block).toContain('suggested_parallel_groups: 2');
+    expect(block).toContain('community=src/features/auth');
+    expect(block).toContain('community=src/config');
+    expect(block).toContain('graph_risk_areas');
   });
 });

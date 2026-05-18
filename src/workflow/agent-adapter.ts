@@ -8,6 +8,7 @@ import * as workflowDb from '../db/workflows.js';
 import {
   buildWorkflowProjectGraphQuestion,
   prepareProjectGraphContext,
+  type ProjectGraphRetrievalProfile,
 } from '../code-intelligence/project-graph-context.js';
 import { listOwnerBindings } from '../tenant/resource-binding-service.js';
 import { getCurrentUserId } from '../tenant/tenant-context.js';
@@ -109,6 +110,96 @@ function normalizeTaskAllowedDirectories(
   return normalized.length > 0 ? normalized : undefined;
 }
 
+function normalizeWorkflowProjectGraphFocusPaths(
+  value: TaskNodeConfig['projectGraph'],
+): string[] {
+  if (!value?.focusPaths || !Array.isArray(value.focusPaths)) return [];
+  return value.focusPaths
+    .map((entry) => String(entry || '').trim())
+    .filter((entry) => entry.length > 0);
+}
+
+function normalizeWorkflowProjectGraphQueryOptions(
+  value: TaskNodeConfig['projectGraph'],
+): {
+  relationFilter?: Array<'contains' | 'imports' | 'calls' | 'references'>;
+  depth?: number;
+  tokenBudget?: number;
+  maxNodes?: number;
+  maxSeeds?: number;
+} {
+  const normalized: {
+    relationFilter?: Array<'contains' | 'imports' | 'calls' | 'references'>;
+    depth?: number;
+    tokenBudget?: number;
+    maxNodes?: number;
+    maxSeeds?: number;
+  } = {};
+  if (Array.isArray(value?.relationFilter) && value.relationFilter.length > 0) {
+    normalized.relationFilter = value.relationFilter;
+  }
+  if (typeof value?.depth === 'number' && Number.isFinite(value.depth)) {
+    normalized.depth = value.depth;
+  }
+  if (
+    typeof value?.tokenBudget === 'number' &&
+    Number.isFinite(value.tokenBudget)
+  ) {
+    normalized.tokenBudget = value.tokenBudget;
+  }
+  if (typeof value?.maxNodes === 'number' && Number.isFinite(value.maxNodes)) {
+    normalized.maxNodes = value.maxNodes;
+  }
+  if (typeof value?.maxSeeds === 'number' && Number.isFinite(value.maxSeeds)) {
+    normalized.maxSeeds = value.maxSeeds;
+  }
+  return normalized;
+}
+
+function inferWorkflowProjectGraphProfile(input: {
+  taskNode: WorkflowNodeRecord;
+  roleNode?: WorkflowNodeRecord;
+  taskConfig: TaskNodeConfig;
+  runInput: string;
+  upstreamMessages: Array<{
+    from: string;
+    to: string;
+    direction: string;
+    content: string;
+  }>;
+}): ProjectGraphRetrievalProfile {
+  const configured = input.taskConfig.projectGraph?.profile;
+  if (configured) return configured;
+  const text = [
+    input.roleNode?.name || '',
+    input.taskNode.name,
+    input.taskNode.description,
+    input.taskConfig.goal || '',
+    input.taskConfig.prompt || '',
+    input.taskConfig.expectedOutput || '',
+    input.runInput,
+    ...input.upstreamMessages.slice(-3).map((message) => message.content),
+  ]
+    .join(' ')
+    .toLowerCase();
+  if (/(test|spec|regression|verify|qa|验证|测试)/.test(text)) {
+    return 'tests';
+  }
+  if (/(config|env|setting|flag|deploy|release|鉴权|权限|配置)/.test(text)) {
+    return 'config';
+  }
+  if (/(impact|dependency|blast radius|影响|依赖|回归范围)/.test(text)) {
+    return 'impact';
+  }
+  if (/(workflow|pipeline|orchestrator|agent|编排|工作流)/.test(text)) {
+    return 'workflow';
+  }
+  if (/(where|implement|location|入口|实现|在哪|功能)/.test(text)) {
+    return 'implementation';
+  }
+  return 'workflow';
+}
+
 function effectiveToolPolicy(
   workflowPolicy: WorkflowToolPolicy | undefined,
   taskPolicy: WorkflowToolPolicy | undefined,
@@ -145,6 +236,18 @@ async function buildWorkflowTaskProjectContext(input: {
   const repository = await getRepositoryById(binding.resourceId, getCurrentUserId());
   if (!repository) return '';
   const taskCfg = parseTaskConfig(input.taskNode);
+  if (taskCfg.projectGraph?.enabled === false) return '';
+  const focusPaths = normalizeWorkflowProjectGraphFocusPaths(taskCfg.projectGraph);
+  const graphQueryOptions = normalizeWorkflowProjectGraphQueryOptions(
+    taskCfg.projectGraph,
+  );
+  const retrievalProfile = inferWorkflowProjectGraphProfile({
+    taskNode: input.taskNode,
+    roleNode: input.roleNode,
+    taskConfig: taskCfg,
+    runInput: input.runInput,
+    upstreamMessages: input.upstreamMessages,
+  });
   const question = buildWorkflowProjectGraphQuestion({
     workflowName: input.workflowName,
     roleName: input.roleNode?.name,
@@ -152,6 +255,8 @@ async function buildWorkflowTaskProjectContext(input: {
     taskDescription: input.taskNode.description,
     taskPrompt: taskCfg.prompt,
     runInput: input.runInput,
+    retrievalProfile,
+    focusPaths,
     upstreamMessages: input.upstreamMessages,
   });
   const context = await prepareProjectGraphContext({
@@ -159,6 +264,9 @@ async function buildWorkflowTaskProjectContext(input: {
     branch: binding.branch || repository.default_target_branch || 'main',
     intent: 'workflow',
     question,
+    profile: retrievalProfile,
+    focusPaths,
+    queryOptions: graphQueryOptions,
     persist: {
       source: 'workflow',
       kind: 'prepared_context',
@@ -167,6 +275,8 @@ async function buildWorkflowTaskProjectContext(input: {
         workflowName: input.workflowName || '',
         taskNodeId: input.taskNode.id,
         taskNodeName: input.taskNode.name,
+        retrievalProfile,
+        focusPaths,
       },
     },
   });
