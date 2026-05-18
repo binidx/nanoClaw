@@ -393,12 +393,6 @@ export async function rebuildCodeMap(
   repositoryId: string,
   branch: string,
 ): Promise<void> {
-  const url = `${apiBase}/api/code-map/${encodeURIComponent(repositoryId)}/rebuild?branch=${encodeURIComponent(branch)}`;
-  const resp = await fetch(url, { method: 'POST' });
-  if (!resp.ok) {
-    const body = await resp.json().catch(() => ({}));
-    throw new Error((body as { error?: string }).error || `HTTP ${resp.status}`);
-  }
   await rebuildCodeIndex(apiBase, repositoryId, branch);
 }
 

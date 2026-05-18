@@ -14,6 +14,8 @@ const {
   listCodeIndexSnapshotMetasByStatusMock,
   saveCodeIndexSnapshotMock,
   saveCodeIndexSnapshotMetaMock,
+  loadCodeMapFromDbMock,
+  saveCodeMapToDbMock,
   getReviewRepositoryByIdMock,
   listWorktreesMock,
   acquireWorktreeMock,
@@ -29,6 +31,8 @@ const {
   listCodeIndexSnapshotMetasByStatusMock: vi.fn(async () => []),
   saveCodeIndexSnapshotMock: vi.fn(async () => undefined),
   saveCodeIndexSnapshotMetaMock: vi.fn(async () => undefined),
+  loadCodeMapFromDbMock: vi.fn(async () => null),
+  saveCodeMapToDbMock: vi.fn(async () => undefined),
   getReviewRepositoryByIdMock: vi.fn(),
   listWorktreesMock: vi.fn(async () => []),
   acquireWorktreeMock: vi.fn(async () => null),
@@ -49,6 +53,11 @@ vi.mock('./db/code-index-db.js', () => ({
   saveCodeIndexSnapshot: saveCodeIndexSnapshotMock,
   saveCodeIndexSnapshotMeta: saveCodeIndexSnapshotMetaMock,
   listCodeIndexSnapshotMetasByStatus: listCodeIndexSnapshotMetasByStatusMock,
+}));
+
+vi.mock('./code-intelligence/code-map-persist.js', () => ({
+  loadCodeMapFromDb: loadCodeMapFromDbMock,
+  saveCodeMapToDb: saveCodeMapToDbMock,
 }));
 
 vi.mock('./db/review.js', () => ({
@@ -90,6 +99,9 @@ describe('code-index routes', () => {
     loadCodeIndexFunctionGraphDataMock.mockResolvedValue(null);
     listCodeIndexSnapshotMetasByStatusMock.mockReset();
     listCodeIndexSnapshotMetasByStatusMock.mockResolvedValue([]);
+    loadCodeMapFromDbMock.mockReset();
+    loadCodeMapFromDbMock.mockResolvedValue(null);
+    saveCodeMapToDbMock.mockReset();
   });
 
   it('starts rebuild asynchronously and returns accepted immediately', async () => {
@@ -130,6 +142,9 @@ describe('code-index routes', () => {
     });
     expect(saveCodeIndexSnapshotMetaMock).toHaveBeenCalledTimes(1);
     expect(buildCodeIndexAsyncMock).toHaveBeenCalledTimes(1);
+    expect(buildCodeIndexAsyncMock.mock.calls[0]?.[3]).toMatchObject({
+      codeMapSnapshot: null,
+    });
     expect(saveCodeIndexSnapshotMock).not.toHaveBeenCalled();
 
     resolveBuild?.({
@@ -176,6 +191,90 @@ describe('code-index routes', () => {
 
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(saveCodeIndexSnapshotMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('passes an existing code map snapshot into the unified index build', async () => {
+    const existingCodeMapSnapshot = {
+      repositoryId: 'repo-with-map',
+      branch: 'main',
+      rootDirectory: process.cwd(),
+      generatedAt: '2026-04-23T00:00:00.000Z',
+      manifestHash: 'hash-map',
+      files: [],
+      edges: [],
+      stats: {
+        fileCount: 0,
+        symbolCount: 0,
+        edgeCount: 0,
+        totalLines: 0,
+      },
+    };
+    loadCodeMapFromDbMock.mockResolvedValue(existingCodeMapSnapshot);
+    buildCodeIndexAsyncMock.mockResolvedValue({
+      meta: {
+        repositoryId: 'repo-with-map',
+        branch: 'main',
+        rootDirectory: process.cwd(),
+        manifestHash: 'hash-map',
+        status: 'ready',
+        stage: 'complete',
+        generatedAt: '2026-04-23T00:00:00.000Z',
+        stats: {
+          fileCount: 0,
+          chunkCount: 0,
+          functionCount: 0,
+          functionEdgeCount: 0,
+          totalLines: 0,
+          embeddedChunkCount: 0,
+        },
+        capabilities: {
+          chunkSearch: false,
+          fileSummaries: false,
+          functionGraph: false,
+          embeddings: false,
+        },
+        progress: {
+          status: 'ready',
+          stage: 'complete',
+          processedFiles: 0,
+          totalFiles: 0,
+          message: 'done',
+          error: null,
+          startedAt: '2026-04-23T00:00:00.000Z',
+          updatedAt: '2026-04-23T00:00:00.000Z',
+        },
+      },
+      files: [],
+      chunks: [],
+      functions: [],
+      functionEdges: [],
+    });
+    getCodeIndexSnapshotMetaMock.mockResolvedValue(null);
+    getReviewRepositoryByIdMock.mockResolvedValue({
+      id: 'repo-with-map',
+      name: 'Repo With Map',
+      default_target_branch: 'main',
+      local_repo_path: process.cwd(),
+      clone_url: null,
+    });
+
+    const app = express();
+    app.use(express.json());
+    registerCodeIndexRoutes(app, {
+      requirePermission: allowAllRequirePermission,
+      auditMutation: vi.fn(),
+    });
+
+    const response = await inject(app, {
+      method: 'POST',
+      url: '/api/code-index/repo-with-map/rebuild?branch=main&force=1',
+      headers: { 'content-type': 'application/json' },
+    });
+
+    expect(response.statusCode).toBe(202);
+    expect(buildCodeIndexAsyncMock.mock.calls[0]?.[3]).toMatchObject({
+      codeMapSnapshot: existingCodeMapSnapshot,
+    });
   });
 
   it('prefers a branch worktree over repository local_repo_path for remote-backed repositories', async () => {

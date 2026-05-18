@@ -35,6 +35,11 @@ import {
   upsertCodeMapAiAnalysis,
   pruneCodeMapAiAnalyses,
 } from '../db/code-map-analysis-db.js';
+import {
+  loadCodeIndexFileData,
+  loadCodeIndexFunctionGraphData,
+  loadCodeIndexSearchData,
+} from '../db/code-index-db.js';
 import { acquireWorktree, listWorktrees } from '../agent/worktree-manager.js';
 import { getTenantUserId } from '../tenant/tenant-request.js';
 import { canAccessRepositoryResource } from '../auth/resource-access-policy.js';
@@ -74,6 +79,11 @@ interface AiAnalysis {
   title: string;
   summary: string;
   sections: AiSection[];
+}
+
+interface RepoDescriptionCodeIndexContext {
+  context: string;
+  fileHints: Array<{ filePath: string; summary: string }>;
 }
 
 function safeRelativePath(rootDir: string, filePath: string): string | null {
@@ -414,43 +424,27 @@ export function registerCodeMapRoutes(
       const cached = aiSummaryCache.get(cacheKey);
       if (cached) { res.json({ summary: cached, cached: true }); return; }
 
-      const MAX_SYMBOLS_IN_PROMPT = 40;
-      const MAX_DEPS_IN_PROMPT = 20;
-
-      let prompt: string;
-      if (filePath) {
-        const file = snapshot.files.find((f) => f.relativePath === filePath);
-        if (!file) { res.status(404).json({ error: t('errors.auto_b831d6', {}, req.locale) }); return; }
-        const deps = snapshot.edges.filter((e) => e.fromFile === filePath);
-        const refs = snapshot.edges.filter((e) => e.toFile === filePath);
-        const topSymbols = [...file.symbols].sort((a, b) => b.rank - a.rank).slice(0, MAX_SYMBOLS_IN_PROMPT);
-        const symbolStr = topSymbols.map((s) => `${s.kind} ${s.name}`).join(', ')
-          + (file.symbols.length > MAX_SYMBOLS_IN_PROMPT ? ` ${t('errors.codemap.moreCount', { count: file.symbols.length }, req.locale)}` : '');
-        const depStr = deps.slice(0, MAX_DEPS_IN_PROMPT).map((e) => e.toFile).join(', ')
-          + (deps.length > MAX_DEPS_IN_PROMPT ? ` ${t('errors.codemap.moreCount', { count: deps.length }, req.locale)}` : '');
-        const refStr = refs.slice(0, MAX_DEPS_IN_PROMPT).map((e) => e.fromFile).join(', ')
-          + (refs.length > MAX_DEPS_IN_PROMPT ? ` ${t('errors.codemap.moreCount', { count: refs.length }, req.locale)}` : '');
-        prompt = [
-          t('errors.codemap.promptFileAnalysis', {}, req.locale),
-          `\n${t('errors.codemap.labelFile', {}, req.locale)} ${file.relativePath}`,
-          `${t('errors.codemap.labelLanguage', {}, req.locale)} ${file.language}  ${t('errors.codemap.labelLines', {}, req.locale)} ${file.lineCount}`,
-          `${t('errors.codemap.labelSymbols', {}, req.locale)} ${symbolStr}`,
-          deps.length > 0 ? `${t('errors.codemap.labelDeps', {}, req.locale)} ${depStr}` : '',
-          refs.length > 0 ? `${t('errors.codemap.labelRefs', {}, req.locale)} ${refStr}` : '',
-          `\n${t('errors.codemap.promptOutputDirect', {}, req.locale)}`,
-        ].filter(Boolean).join('\n');
-      } else {
-        const dirFiles = snapshot.files.filter((f) => f.relativePath.startsWith(dirPath + '/'));
-        if (dirFiles.length === 0) { res.status(404).json({ error: t('errors.auto_910524', {}, req.locale) }); return; }
-        const topFiles = dirFiles.sort((a, b) => b.rank - a.rank).slice(0, 15);
-        prompt = [
-          t('errors.codemap.promptDirAnalysis', {}, req.locale),
-          `\n${t('errors.codemap.labelDir', { dirPath, count: dirFiles.length }, req.locale)}`,
-          t('errors.codemap.labelMainFiles', {}, req.locale),
-          ...topFiles.map((f) => `  - ${f.relativePath} (${f.language}, ${t('errors.codemap.symbolsCount', { count: f.symbols.length }, req.locale)})`),
-          `\n${t('errors.codemap.promptOutputResult', {}, req.locale)}`,
-        ].join('\n');
+      const summaryCtx = await buildAnalysisContext(
+        repositoryId,
+        branch,
+        snapshot,
+        filePath || null,
+        dirPath || null,
+        req.locale,
+      );
+      if (!summaryCtx) {
+        res.status(404).json({
+          error: filePath
+            ? t('errors.auto_b831d6', {}, req.locale)
+            : t('errors.auto_910524', {}, req.locale),
+        });
+        return;
       }
+
+      const prompt = buildSummaryPrompt({
+        contextBlock: summaryCtx.context,
+        targetType: filePath ? 'file' : 'dir',
+      });
 
       const summary = await generateTextWithDefaultProvider(prompt);
       aiSummaryCache.set(cacheKey, summary);
@@ -498,12 +492,111 @@ export function registerCodeMapRoutes(
     return sig.slice(0, max) + '...';
   }
 
-  function buildAnalysisContext(
+  function truncateAnalysisText(text: string, max = 260): string {
+    const trimmed = text.trim().replace(/\s+/g, ' ');
+    if (trimmed.length <= max) return trimmed;
+    return `${trimmed.slice(0, max)}...`;
+  }
+
+  async function buildRepoDescriptionCodeIndexContext(
+    repositoryId: string,
+    branch: string,
+  ): Promise<RepoDescriptionCodeIndexContext | null> {
+    const [codeIndexSearch, codeIndexGraph] = await Promise.all([
+      loadCodeIndexSearchData(repositoryId, branch),
+      loadCodeIndexFunctionGraphData(repositoryId, branch),
+    ]);
+    if (!codeIndexSearch && !codeIndexGraph) return null;
+
+    const lines: string[] = ['Code Index architecture hints:'];
+    const fileHints = (codeIndexSearch?.files || [])
+      .filter((file) => file.summary)
+      .slice(0, 14)
+      .map((file) => ({
+        filePath: file.relativePath,
+        summary: truncateAnalysisText(file.summary, 220),
+      }));
+    if (fileHints.length > 0) {
+      lines.push('Top file summaries:');
+      for (const file of fileHints) {
+        lines.push(`- ${file.filePath}: ${file.summary}`);
+      }
+    }
+
+    const chunkHints = (codeIndexSearch?.chunks || []).slice(0, 12);
+    if (chunkHints.length > 0) {
+      lines.push('', 'Representative code chunks:');
+      for (const chunk of chunkHints) {
+        lines.push(
+          `- ${chunk.filePath} L${chunk.startLine}-${chunk.endLine}: ${truncateAnalysisText(chunk.summary, 180)} | ${truncateAnalysisText(chunk.content, 180)}`,
+        );
+      }
+    }
+
+    if (codeIndexGraph) {
+      const functionById = new Map(
+        codeIndexGraph.functions.map((fn) => [fn.id, fn]),
+      );
+      const fileCallScores = new Map<
+        string,
+        { incoming: number; outgoing: number; symbols: Set<string> }
+      >();
+      for (const edge of codeIndexGraph.functionEdges) {
+        const from = functionById.get(edge.fromFunctionId);
+        const to = functionById.get(edge.toFunctionId);
+        if (!from?.filePath || !to?.filePath || from.filePath === to.filePath) {
+          continue;
+        }
+        const fromScore = fileCallScores.get(from.filePath) || {
+          incoming: 0,
+          outgoing: 0,
+          symbols: new Set<string>(),
+        };
+        fromScore.outgoing += 1;
+        if (edge.symbol) fromScore.symbols.add(edge.symbol);
+        fileCallScores.set(from.filePath, fromScore);
+
+        const toScore = fileCallScores.get(to.filePath) || {
+          incoming: 0,
+          outgoing: 0,
+          symbols: new Set<string>(),
+        };
+        toScore.incoming += 1;
+        if (edge.symbol) toScore.symbols.add(edge.symbol);
+        fileCallScores.set(to.filePath, toScore);
+      }
+      const hotspots = [...fileCallScores.entries()]
+        .sort((left, right) => {
+          const leftWeight = left[1].incoming + left[1].outgoing;
+          const rightWeight = right[1].incoming + right[1].outgoing;
+          if (rightWeight !== leftWeight) return rightWeight - leftWeight;
+          return left[0].localeCompare(right[0], 'en');
+        })
+        .slice(0, 10);
+      if (hotspots.length > 0) {
+        lines.push('', 'Cross-file call hotspots:');
+        for (const [filePath, score] of hotspots) {
+          lines.push(
+            `- ${filePath}: incoming=${score.incoming}, outgoing=${score.outgoing}, symbols=${Array.from(score.symbols.values()).slice(0, 5).join(', ') || '-'}`,
+          );
+        }
+      }
+    }
+
+    return {
+      context: lines.join('\n'),
+      fileHints,
+    };
+  }
+
+  async function buildAnalysisContext(
+    repositoryId: string,
+    branch: string,
     snapshot: CodeMapSnapshot,
     filePath: string | null,
     dirPath: string | null,
     locale?: string,
-  ): { context: string; profile: AnalysisProfile } | null {
+  ): Promise<{ context: string; profile: AnalysisProfile } | null> {
     if (filePath) {
       const file = snapshot.files.find((f) => f.relativePath === filePath);
       if (!file) return null;
@@ -511,6 +604,10 @@ export function registerCodeMapRoutes(
       const topSyms = [...file.symbols].sort((a, b) => b.rank - a.rank).slice(0, profile.maxSyms);
       const depEdges = snapshot.edges.filter((e) => e.fromFile === filePath).slice(0, profile.maxDeps);
       const refEdges = snapshot.edges.filter((e) => e.toFile === filePath).slice(0, profile.maxDeps);
+      const [codeIndexDetail, codeIndexGraph] = await Promise.all([
+        loadCodeIndexFileData(repositoryId, branch, filePath),
+        loadCodeIndexFunctionGraphData(repositoryId, branch),
+      ]);
 
       const lines: string[] = [
         t(
@@ -558,6 +655,49 @@ export function registerCodeMapRoutes(
         for (const e of refEdges) lines.push(`  ${e.fromFile} → ${filePath} (${e.symbols.join(', ') || t('errors.codemap.importedVia', {}, locale)})`);
       }
 
+      if (codeIndexDetail?.file?.summary) {
+        lines.push('', 'Code Index file summary:');
+        lines.push(`  ${truncateAnalysisText(codeIndexDetail.file.summary, 420)}`);
+      }
+
+      const topChunks = (codeIndexDetail?.chunks || []).slice(0, 4);
+      if (topChunks.length > 0) {
+        lines.push('', 'Code Index chunks:');
+        for (const chunk of topChunks) {
+          lines.push(
+            `  - L${chunk.startLine}-${chunk.endLine}: ${truncateAnalysisText(chunk.summary, 220)}`,
+          );
+          lines.push(`    snippet: ${truncateAnalysisText(chunk.content, 240)}`);
+        }
+      }
+
+      if (codeIndexGraph) {
+        const fileFunctions = codeIndexGraph.functions
+          .filter((fn) => fn.filePath === filePath)
+          .slice(0, 8);
+        if (fileFunctions.length > 0) {
+          const functionIds = new Set(fileFunctions.map((fn) => fn.id));
+          const functionById = new Map(
+            codeIndexGraph.functions.map((fn) => [fn.id, fn]),
+          );
+          const relatedEdges = codeIndexGraph.functionEdges
+            .filter(
+              (edge) =>
+                functionIds.has(edge.fromFunctionId) ||
+                functionIds.has(edge.toFunctionId),
+            )
+            .slice(0, 14);
+          lines.push('', 'Function call neighborhood:');
+          for (const edge of relatedEdges) {
+            const from = functionById.get(edge.fromFunctionId);
+            const to = functionById.get(edge.toFunctionId);
+            lines.push(
+              `  - ${from?.filePath || '?'}:${from?.startLine || '?'} ${from?.name || edge.fromFunctionId} -> ${to?.filePath || '?'}:${to?.startLine || '?'} ${to?.name || edge.toFunctionId} (${edge.symbol || 'call'})`,
+            );
+          }
+        }
+      }
+
       return { context: lines.filter(Boolean).join('\n'), profile };
     }
 
@@ -577,13 +717,40 @@ export function registerCodeMapRoutes(
       const externalRefs = snapshot.edges.filter(
         (e) => !e.fromFile.startsWith(dirPath + '/') && e.toFile.startsWith(dirPath + '/'),
       ).slice(0, 15);
+      const codeIndexSearch = await loadCodeIndexSearchData(
+        repositoryId,
+        branch,
+      );
+      const codeIndexFilesByPath = new Map(
+        (codeIndexSearch?.files || []).map((entry) => [entry.relativePath, entry]),
+      );
+      const codeIndexChunksByPath = new Map<string, string[]>();
+      for (const chunk of codeIndexSearch?.chunks || []) {
+        if (!chunk.filePath.startsWith(`${dirPath}/`)) continue;
+        const bucket = codeIndexChunksByPath.get(chunk.filePath) || [];
+        if (bucket.length < 2) {
+          bucket.push(
+            `L${chunk.startLine}-${chunk.endLine}: ${truncateAnalysisText(chunk.summary, 180)} | ${truncateAnalysisText(chunk.content, 180)}`,
+          );
+        }
+        codeIndexChunksByPath.set(chunk.filePath, bucket);
+      }
 
       const lines: string[] = [
         t('errors.codemap.targetDirectory', { dirPath, count: dirFiles.length }, locale),
         t('errors.auto_ef6a77', {}, locale),
         ...topFiles.map((f) => {
           const syms = [...f.symbols].sort((a, b) => b.rank - a.rank).slice(0, 5);
-          return `  - ${f.relativePath} (${f.language}, ${t('errors.codemap.lineCount', { count: f.lineCount }, locale)})\n    ${t('errors.codemap.labelSymbols', {}, locale)} ${syms.map((s) => `[${s.kind}] ${s.name} (${t('errors.codemap.line', { line: s.line }, locale)})`).join(', ')}`;
+          const summary = codeIndexFilesByPath.get(f.relativePath)?.summary;
+          const chunkHints = codeIndexChunksByPath.get(f.relativePath) || [];
+          return [
+            `  - ${f.relativePath} (${f.language}, ${t('errors.codemap.lineCount', { count: f.lineCount }, locale)})`,
+            `    ${t('errors.codemap.labelSymbols', {}, locale)} ${syms.map((s) => `[${s.kind}] ${s.name} (${t('errors.codemap.line', { line: s.line }, locale)})`).join(', ')}`,
+            summary ? `    summary: ${truncateAnalysisText(summary, 260)}` : '',
+            ...chunkHints.map((hint) => `    chunk: ${hint}`),
+          ]
+            .filter(Boolean)
+            .join('\n');
         }),
       ];
       if (internalEdges.length > 0) {
@@ -646,6 +813,23 @@ export function registerCodeMapRoutes(
     ].join('\n');
   }
 
+  function buildSummaryPrompt(input: {
+    contextBlock: string;
+    targetType: 'file' | 'dir';
+  }): string {
+    return [
+      input.targetType === 'file'
+        ? 'Summarize this file using the graph-grounded context below.'
+        : 'Summarize this directory using the graph-grounded context below.',
+      'Focus on concrete responsibilities, important dependencies, and likely hotspots.',
+      'Keep the answer concise and high-signal.',
+      '',
+      input.contextBlock,
+      '',
+      'Output only the summary text.',
+    ].join('\n');
+  }
+
   app.post('/api/code-map/:repositoryId/ai-analysis', guard, async (req, res) => {
     let repositoryId = '';
     let branch = '';
@@ -696,7 +880,9 @@ export function registerCodeMapRoutes(
         return;
       }
 
-      const analysisCtx = buildAnalysisContext(
+      const analysisCtx = await buildAnalysisContext(
+        repositoryId,
+        branch,
         snapshot,
         filePath || null,
         dirPath || null,
@@ -946,7 +1132,16 @@ export function registerCodeMapRoutes(
         return;
       }
 
-      const prompt = buildRepoDescriptionPrompt(snapshot, rootDir);
+      const codeIndexContext = await buildRepoDescriptionCodeIndexContext(
+        repositoryId,
+        branch,
+      );
+      const prompt = [
+        buildRepoDescriptionPrompt(snapshot, rootDir),
+        codeIndexContext?.context || '',
+      ]
+        .filter(Boolean)
+        .join('\n\n');
 
       let aiText: string;
       try {

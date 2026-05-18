@@ -21,6 +21,7 @@ vi.mock('../embedding/vector-store.js', () => ({
 }));
 
 import { buildCodeIndex, enrichCodeIndexSnapshotAsync } from './code-index-builder.js';
+import { buildCodeMap } from './code-map-builder.js';
 import { _initTestDatabase } from '../db.js';
 import { loadCodeIndexSnapshot, saveCodeIndexSnapshot } from '../db/code-index-db.js';
 
@@ -260,6 +261,56 @@ describe('buildCodeIndex', () => {
       stage: 'complete',
       summarySource: 'ai',
     });
+  });
+
+  it('reuses a provided code map snapshot when the manifest matches', async () => {
+    const root = createTempWorkspace();
+    writeFile(root, 'src/format.ts', [
+      'export function formatName(input: string) {',
+      '  return input.trim().toUpperCase();',
+      '}',
+    ].join('\n'));
+    writeFile(root, 'src/run.ts', [
+      "import { formatName } from './format';",
+      'export function runTask(name: string) {',
+      '  return formatName(name);',
+      '}',
+    ].join('\n'));
+
+    const providedCodeMapSnapshot = buildCodeMap(root, 'repo-reuse-map', 'main');
+    const targetFile = providedCodeMapSnapshot.files.find(
+      (file) => file.relativePath === 'src/format.ts',
+    );
+    expect(targetFile).toBeDefined();
+    targetFile!.rank = 42.4242;
+
+    const snapshot = await buildCodeIndex(root, 'repo-reuse-map', 'main', {
+      embedChunks: false,
+      codeMapSnapshot: providedCodeMapSnapshot,
+    });
+
+    expect(
+      snapshot.files.find((file) => file.relativePath === 'src/format.ts')?.rank,
+    ).toBe(42.4242);
+  });
+
+  it('emits the code map snapshot before index assembly continues', async () => {
+    const root = createTempWorkspace();
+    writeFile(root, 'src/index.ts', [
+      'export function main() {',
+      "  return 'ok';",
+      '}',
+    ].join('\n'));
+
+    const seenSnapshots: string[] = [];
+    const snapshot = await buildCodeIndex(root, 'repo-codemap-callback', 'main', {
+      embedChunks: false,
+      onCodeMapSnapshot: async (codeMapSnapshot) => {
+        seenSnapshots.push(codeMapSnapshot.manifestHash);
+      },
+    });
+
+    expect(seenSnapshots).toEqual([snapshot.meta.manifestHash]);
   });
 
   it('reuses cached summaries for unchanged files and only regenerates changed files', async () => {

@@ -1,15 +1,23 @@
 import crypto from 'node:crypto';
+import fs from 'node:fs';
 import path from 'node:path';
 
 import { resolveEmbeddingProvider } from '../embedding/resolve.js';
 import { batchEmbedAndStore } from '../embedding/vector-store.js';
 import { generateTextWithDefaultProvider } from '../provider/provider-api.js';
-import { buildCodeMap, buildCodeMapAsync } from './code-map-builder.js';
+import {
+  buildCodeMap,
+  buildCodeMapAsync,
+  computeCodeMapManifestHash,
+} from './code-map-builder.js';
 import type { CodeMapSnapshot } from './code-map-types.js';
 import { buildIndexedFile, getFileImports, readFileLines, resolveBuildOptions } from './code-search-index.js';
 import type { CodeSearchFile, CodeSearchSymbol } from './code-search-types.js';
 import { loadCodeIndexSnapshot } from '../db/code-index-db.js';
-import { listCandidateFiles } from './code-search-collect.js';
+import {
+  listCandidateFiles,
+  normalizeRelativePath,
+} from './code-search-collect.js';
 import { preloadTreeSitterGrammars, type TsJsFunctionGraph, type TsJsFunctionGraphNode } from './code-search-tree-sitter.js';
 import { estimateTokens } from '../knowledge/chunker.js';
 import type {
@@ -34,12 +42,16 @@ export interface CodeIndexBuildOptions {
   summarizeWithAi?: boolean;
   generateSummaryText?: (prompt: string) => Promise<string>;
   onSnapshot?: (snapshot: CodeIndexSnapshot) => void | Promise<void>;
+  onCodeMapSnapshot?: (
+    snapshot: CodeMapSnapshot,
+  ) => void | Promise<void>;
   onProgress?: (progress: Omit<CodeIndexProgress, 'repositoryId' | 'branch'>) => void | Promise<void>;
   sourceInfo?: {
     sourceKind?: CodeIndexSnapshotMeta['sourceKind'];
     sourceBranch?: string;
     sourceHeadSha?: string;
   };
+  codeMapSnapshot?: CodeMapSnapshot | null;
 }
 
 interface BuildContext {
@@ -956,15 +968,41 @@ async function collectBuildContext(
   const indexedFiles = candidatePaths
     .map((absolutePath) => buildIndexedFile(rootDirectory, absolutePath, searchOptions))
     .filter((file): file is CodeSearchFile => file !== null);
+  const manifestEntries = candidatePaths.map((absolutePath) => {
+    try {
+      const stat = fs.statSync(absolutePath);
+      return {
+        relativePath: normalizeRelativePath(rootDirectory, absolutePath),
+        byteSize: stat.size,
+        modifiedTimeMs: Math.trunc(stat.mtimeMs),
+      };
+    } catch {
+      return {
+        relativePath: normalizeRelativePath(rootDirectory, absolutePath),
+        byteSize: 0,
+        modifiedTimeMs: 0,
+      };
+    }
+  });
+  const manifestHash = computeCodeMapManifestHash(
+    path.resolve(rootDirectory),
+    manifestEntries,
+  );
   const mapOptions = {
     maxFiles: options?.maxFiles,
     maxFileBytes: options?.maxFileBytes,
     includeGlobs: options?.includeGlobs,
     excludeGlobs: options?.excludeGlobs,
   };
-  const mapSnapshot = useAsync
-    ? await buildCodeMapAsync(rootDirectory, repositoryId, branch, mapOptions)
-    : buildCodeMap(rootDirectory, repositoryId, branch, mapOptions);
+  const providedMapSnapshot = options?.codeMapSnapshot || null;
+  const canReuseProvidedMap =
+    providedMapSnapshot?.manifestHash === manifestHash &&
+    path.resolve(providedMapSnapshot.rootDirectory) === path.resolve(rootDirectory);
+  const mapSnapshot = canReuseProvidedMap
+    ? providedMapSnapshot
+    : useAsync
+      ? await buildCodeMapAsync(rootDirectory, repositoryId, branch, mapOptions)
+      : buildCodeMap(rootDirectory, repositoryId, branch, mapOptions);
   return { indexedFiles, mapSnapshot };
 }
 
@@ -983,6 +1021,9 @@ async function buildCodeIndexCore(
     options,
     useAsync,
   );
+  if (options?.onCodeMapSnapshot) {
+    await options.onCodeMapSnapshot(context.mapSnapshot);
+  }
   const totalFiles = context.indexedFiles.length;
   const previousSnapshot = await loadCodeIndexSnapshot(repositoryId, branch);
 

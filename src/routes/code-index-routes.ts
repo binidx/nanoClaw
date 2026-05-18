@@ -26,6 +26,10 @@ import {
   saveCodeIndexSnapshotMeta,
 } from '../db/code-index-db.js';
 import {
+  loadCodeMapFromDb,
+  saveCodeMapToDb,
+} from '../code-intelligence/code-map-persist.js';
+import {
   getReviewRepositoryById,
   type ReviewRepositoryRecord,
 } from '../db/review.js';
@@ -430,6 +434,7 @@ async function startCodeIndexRebuild(
   buildingSet.add(key);
   updateProgress(repositoryId, branch, initialProgress);
   const sourceInfo = buildCodeIndexSourceInfo(rootDirectory, branch);
+  const existingCodeMapSnapshot = await loadCodeMapFromDb(repositoryId, branch);
   await saveCodeIndexSnapshotMeta({
     repositoryId,
     branch,
@@ -446,7 +451,11 @@ async function startCodeIndexRebuild(
   void buildCodeIndexAsync(rootDirectory, repositoryId, branch, {
     summarizeWithAi: false,
     embedChunks: false,
+    codeMapSnapshot: existingCodeMapSnapshot,
     sourceInfo,
+    onCodeMapSnapshot: async (codeMapSnapshot) => {
+      await saveCodeMapToDb(codeMapSnapshot);
+    },
     onProgress: async (progress) => {
       const persisted: CodeIndexProgress = {
         repositoryId,
