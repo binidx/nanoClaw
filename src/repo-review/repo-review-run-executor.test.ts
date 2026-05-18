@@ -411,12 +411,14 @@ describe('repo review evidence bundle context', () => {
   it('combines diff, CodeMap, and Code Index into one evidence bundle', () => {
     const block = buildRepoReviewEvidenceBundleBlock({
       diffSummaryBlock: '- src/a.ts | +3 / -1 | hunks 1 | 120 bytes',
+      projectGraphContextBlock: 'Project Graph Retrieval:\nstatus: ready',
       codeMapContextBlock: 'CodeMap 影响图：\nstatus: ready',
       codeIndexContextBlock: 'Code Index 上下文：\nstatus: ready',
     });
 
     expect(block).toContain('Review Evidence Bundle');
     expect(block).toContain('Diff 文件摘要');
+    expect(block).toContain('Project Graph Retrieval');
     expect(block).toContain('CodeMap 影响图');
     expect(block).toContain('Code Index 上下文');
   });

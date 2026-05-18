@@ -4,10 +4,16 @@ const {
   runAgentProcessMock,
   resolveAssistantRuntimeConfigMock,
   getAssistantNameMock,
+  listOwnerBindingsMock,
+  getRepositoryByIdMock,
+  prepareProjectGraphContextMock,
 } = vi.hoisted(() => ({
   runAgentProcessMock: vi.fn(),
   resolveAssistantRuntimeConfigMock: vi.fn(),
   getAssistantNameMock: vi.fn(),
+  listOwnerBindingsMock: vi.fn(),
+  getRepositoryByIdMock: vi.fn(),
+  prepareProjectGraphContextMock: vi.fn(),
 }));
 
 vi.mock('./agent/agent-runner.js', () => ({
@@ -21,6 +27,19 @@ vi.mock('./assistant/assistant-runtime.js', () => ({
 
 vi.mock('./config-store.js', () => ({
   getAssistantName: getAssistantNameMock,
+}));
+
+vi.mock('./tenant/resource-binding-service.js', () => ({
+  listOwnerBindings: listOwnerBindingsMock,
+}));
+
+vi.mock('./db/repositories.js', () => ({
+  getRepositoryById: getRepositoryByIdMock,
+}));
+
+vi.mock('./code-intelligence/project-graph-context.js', () => ({
+  buildWorkflowProjectGraphQuestion: vi.fn(() => 'workflow graph question'),
+  prepareProjectGraphContext: prepareProjectGraphContextMock,
 }));
 
 vi.mock('./tenant/tenant-context.js', () => ({
@@ -108,6 +127,28 @@ describe('workflow agent adapter', () => {
       instructionsMode: 'append',
     });
     getAssistantNameMock.mockResolvedValue('NanoClaw');
+    listOwnerBindingsMock.mockResolvedValue([]);
+    getRepositoryByIdMock.mockResolvedValue(null);
+    prepareProjectGraphContextMock.mockResolvedValue({
+      status: 'missing',
+      repositoryId: '',
+      branch: '',
+      intent: 'workflow',
+      question: '',
+      focusPaths: [],
+      relationFilter: [],
+      communities: [],
+      nodeCount: 0,
+      edgeCount: 0,
+      tokenBudget: 0,
+      startNodes: [],
+      topFiles: [],
+      topFunctions: [],
+      topChunks: [],
+      edges: [],
+      contextText: '',
+      message: 'graph_unavailable',
+    });
     runAgentProcessMock.mockImplementation(async (_group, input) => ({
       status: 'success',
       result: JSON.stringify(input),
@@ -143,6 +184,72 @@ describe('workflow agent adapter', () => {
       node_id: 'task-1',
       session_id: 'session-node',
     });
+  });
+
+  it('injects project graph context when the workflow is bound to a repository', async () => {
+    listOwnerBindingsMock.mockResolvedValue([
+      {
+        resourceType: 'repository',
+        resourceId: 'repo-1',
+        bindingKey: 'main',
+        branch: 'feature/refactor',
+      },
+    ]);
+    getRepositoryByIdMock.mockResolvedValue({
+      id: 'repo-1',
+      default_target_branch: 'main',
+    });
+    prepareProjectGraphContextMock.mockResolvedValue({
+      status: 'ready',
+      repositoryId: 'repo-1',
+      branch: 'feature/refactor',
+      intent: 'workflow',
+      question: 'workflow graph question',
+      focusPaths: [],
+      relationFilter: ['calls'],
+      communities: ['src'],
+      nodeCount: 4,
+      edgeCount: 3,
+      tokenBudget: 1800,
+      startNodes: [],
+      topFiles: [],
+      topFunctions: [],
+      topChunks: [],
+      edges: [],
+      contextText: 'Project Graph Retrieval:\nstatus: ready\nquestion: workflow graph question',
+    });
+
+    const result = await executeWorkflowTask({
+      workflowId: 'wf-1',
+      workflowName: 'Repo Workflow',
+      runId: 'run-1',
+      roleNode: roleNode(),
+      taskNode: taskNode(),
+      runInput: 'Run input',
+      upstreamMessages: [],
+      repositoryBindingKey: 'main',
+    });
+
+    expect(result.success).toBe(true);
+    expect(listOwnerBindingsMock).toHaveBeenCalledWith(
+      'workflow',
+      'wf-1',
+      'test-user',
+    );
+    expect(prepareProjectGraphContextMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        repositoryId: 'repo-1',
+        branch: 'feature/refactor',
+        intent: 'workflow',
+      }),
+    );
+    const [, input] = runAgentProcessMock.mock.calls[0] as [unknown, Record<string, unknown>];
+    expect(String((input.prompt as { text: string }).text)).toContain(
+      '## Project Graph Context',
+    );
+    expect(String((input.prompt as { text: string }).text)).toContain(
+      'Project Graph Retrieval:',
+    );
   });
 
   it('uses a worker assistant binding ahead of the role assistant', async () => {

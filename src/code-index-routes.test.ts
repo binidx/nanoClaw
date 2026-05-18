@@ -1,6 +1,11 @@
+import fs from 'node:fs';
+import path from 'node:path';
+
 import express from 'express';
 import inject from 'light-my-request';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+
+import { DATA_DIR } from './config.js';
 
 const {
   buildCodeIndexAsyncMock,
@@ -19,6 +24,8 @@ const {
   getReviewRepositoryByIdMock,
   listWorktreesMock,
   acquireWorktreeMock,
+  generateTextWithDefaultProviderMock,
+  resolvePromptTextMock,
 } = vi.hoisted(() => ({
   buildCodeIndexAsyncMock: vi.fn(),
   enrichCodeIndexSnapshotAsyncMock: vi.fn(),
@@ -36,6 +43,8 @@ const {
   getReviewRepositoryByIdMock: vi.fn(),
   listWorktreesMock: vi.fn(async () => []),
   acquireWorktreeMock: vi.fn(async () => null),
+  generateTextWithDefaultProviderMock: vi.fn(async () => 'AI answer'),
+  resolvePromptTextMock: vi.fn(async () => ({ text: 'Use only provided context.' })),
 }));
 
 vi.mock('./code-index-builder.js', () => ({
@@ -58,6 +67,14 @@ vi.mock('./db/code-index-db.js', () => ({
 vi.mock('./code-intelligence/code-map-persist.js', () => ({
   loadCodeMapFromDb: loadCodeMapFromDbMock,
   saveCodeMapToDb: saveCodeMapToDbMock,
+}));
+
+vi.mock('./provider/provider-api.js', () => ({
+  generateTextWithDefaultProvider: generateTextWithDefaultProviderMock,
+}));
+
+vi.mock('./prompt/prompt-service.js', () => ({
+  resolvePromptText: resolvePromptTextMock,
 }));
 
 vi.mock('./db/review.js', () => ({
@@ -102,6 +119,12 @@ describe('code-index routes', () => {
     loadCodeMapFromDbMock.mockReset();
     loadCodeMapFromDbMock.mockResolvedValue(null);
     saveCodeMapToDbMock.mockReset();
+    generateTextWithDefaultProviderMock.mockReset();
+    generateTextWithDefaultProviderMock.mockResolvedValue('AI answer');
+    resolvePromptTextMock.mockReset();
+    resolvePromptTextMock.mockResolvedValue({
+      text: 'Use only provided context.',
+    });
   });
 
   it('starts rebuild asynchronously and returns accepted immediately', async () => {
@@ -667,6 +690,478 @@ describe('code-index routes', () => {
         status: 'error',
         stage: 'idle',
         message: '上一次代码索引构建已中断，请重新触发重建。',
+      },
+    });
+  });
+
+  it('queries the project graph for implementation-focused questions', async () => {
+    getReviewRepositoryByIdMock.mockResolvedValue({
+      id: 'repo-graph',
+      name: 'Repo Graph',
+      default_target_branch: 'main',
+      local_repo_path: process.cwd(),
+      clone_url: null,
+    });
+    loadCodeIndexSnapshotMock.mockResolvedValue({
+      meta: {
+        repositoryId: 'repo-graph',
+        branch: 'main',
+        rootDirectory: process.cwd(),
+        manifestHash: 'graph-hash',
+        status: 'ready',
+        stage: 'complete',
+        generatedAt: '2026-05-18T00:00:00.000Z',
+        stats: {
+          fileCount: 2,
+          chunkCount: 2,
+          functionCount: 2,
+          functionEdgeCount: 1,
+          totalLines: 100,
+          embeddedChunkCount: 0,
+        },
+        capabilities: {
+          chunkSearch: true,
+          fileSummaries: true,
+          functionGraph: true,
+          embeddings: false,
+        },
+        progress: {
+          status: 'ready',
+          stage: 'complete',
+          processedFiles: 2,
+          totalFiles: 2,
+          message: 'done',
+          error: null,
+          startedAt: '2026-05-18T00:00:00.000Z',
+          updatedAt: '2026-05-18T00:00:00.000Z',
+        },
+      },
+      files: [
+        {
+          relativePath: 'src/auth/login.ts',
+          language: 'ts',
+          byteSize: 600,
+          lineCount: 30,
+          fileHash: 'a',
+          rank: 9,
+          importCount: 1,
+          exportCount: 1,
+          summary: 'Login flow implementation.',
+          summarySource: 'fallback',
+        },
+        {
+          relativePath: 'src/auth/session.ts',
+          language: 'ts',
+          byteSize: 500,
+          lineCount: 20,
+          fileHash: 'b',
+          rank: 7,
+          importCount: 0,
+          exportCount: 1,
+          summary: 'Session creation helper.',
+          summarySource: 'fallback',
+        },
+      ],
+      chunks: [
+        {
+          id: 'chunk-login',
+          filePath: 'src/auth/login.ts',
+          chunkIndex: 0,
+          startLine: 1,
+          endLine: 12,
+          content: 'export async function loginUser(input) { return createSession(input); }',
+          tokenCount: 20,
+          summary: 'Login entrypoint.',
+          contentHash: 'c1',
+          summarySource: 'fallback',
+        },
+        {
+          id: 'chunk-session',
+          filePath: 'src/auth/session.ts',
+          chunkIndex: 0,
+          startLine: 1,
+          endLine: 8,
+          content: 'export function createSession(input) { return { token: input.userId }; }',
+          tokenCount: 18,
+          summary: 'Session creator.',
+          contentHash: 'c2',
+          summarySource: 'fallback',
+        },
+      ],
+      functions: [
+        {
+          id: 'fn-login',
+          filePath: 'src/auth/login.ts',
+          name: 'loginUser',
+          kind: 'function',
+          signature: 'export async function loginUser(input)',
+          startLine: 1,
+          endLine: 12,
+          line: 1,
+          column: 1,
+          parentFunctionId: null,
+        },
+        {
+          id: 'fn-session',
+          filePath: 'src/auth/session.ts',
+          name: 'createSession',
+          kind: 'function',
+          signature: 'export function createSession(input)',
+          startLine: 1,
+          endLine: 8,
+          line: 1,
+          column: 1,
+          parentFunctionId: null,
+        },
+      ],
+      functionEdges: [
+        {
+          id: 'edge-1',
+          fromFunctionId: 'fn-login',
+          toFunctionId: 'fn-session',
+          edgeType: 'call',
+          symbol: 'createSession',
+          line: 3,
+        },
+      ],
+    });
+    loadCodeMapFromDbMock.mockResolvedValue({
+      repositoryId: 'repo-graph',
+      branch: 'main',
+      rootDirectory: process.cwd(),
+      generatedAt: '2026-05-18T00:00:00.000Z',
+      manifestHash: 'graph-hash',
+      files: [],
+      edges: [
+        {
+          fromFile: 'src/auth/login.ts',
+          toFile: 'src/auth/session.ts',
+          symbols: ['createSession'],
+        },
+      ],
+      stats: {
+        fileCount: 2,
+        symbolCount: 0,
+        edgeCount: 1,
+        totalLines: 50,
+      },
+    });
+
+    const app = express();
+    app.use(express.json());
+    registerCodeIndexRoutes(app, {
+      requirePermission: allowAllRequirePermission,
+      auditMutation: vi.fn(),
+    });
+
+    const response = await inject(app, {
+      method: 'POST',
+      url: '/api/code-index/repo-graph/graph/query?branch=main',
+      headers: { 'content-type': 'application/json' },
+      payload: {
+        question: 'where is login implemented',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(JSON.parse(response.body)).toMatchObject({
+      result: {
+        matches: {
+          files: [
+            {
+              filePath: 'src/auth/login.ts',
+            },
+          ],
+          functions: [
+            {
+              label: 'loginUser',
+            },
+          ],
+        },
+      },
+    });
+  });
+
+  it('answers project questions with graph-grounded context', async () => {
+    getReviewRepositoryByIdMock.mockResolvedValue({
+      id: 'repo-ask',
+      name: 'Repo Ask',
+      default_target_branch: 'main',
+      local_repo_path: process.cwd(),
+      clone_url: null,
+    });
+    loadCodeIndexSnapshotMock.mockResolvedValue({
+      meta: {
+        repositoryId: 'repo-ask',
+        branch: 'main',
+        rootDirectory: process.cwd(),
+        manifestHash: 'ask-hash',
+        status: 'ready',
+        stage: 'complete',
+        generatedAt: '2026-05-18T00:00:00.000Z',
+        stats: {
+          fileCount: 1,
+          chunkCount: 1,
+          functionCount: 1,
+          functionEdgeCount: 0,
+          totalLines: 20,
+          embeddedChunkCount: 0,
+        },
+        capabilities: {
+          chunkSearch: true,
+          fileSummaries: true,
+          functionGraph: true,
+          embeddings: false,
+        },
+        progress: {
+          status: 'ready',
+          stage: 'complete',
+          processedFiles: 1,
+          totalFiles: 1,
+          message: 'done',
+          error: null,
+          startedAt: '2026-05-18T00:00:00.000Z',
+          updatedAt: '2026-05-18T00:00:00.000Z',
+        },
+      },
+      files: [
+        {
+          relativePath: 'src/auth/login.ts',
+          language: 'ts',
+          byteSize: 600,
+          lineCount: 20,
+          fileHash: 'a',
+          rank: 10,
+          importCount: 0,
+          exportCount: 1,
+          summary: 'Login flow implementation.',
+          summarySource: 'fallback',
+        },
+      ],
+      chunks: [
+        {
+          id: 'chunk-login',
+          filePath: 'src/auth/login.ts',
+          chunkIndex: 0,
+          startLine: 1,
+          endLine: 12,
+          content: 'export async function loginUser(input) { return input; }',
+          tokenCount: 16,
+          summary: 'Login entrypoint.',
+          contentHash: 'c1',
+          summarySource: 'fallback',
+        },
+      ],
+      functions: [
+        {
+          id: 'fn-login',
+          filePath: 'src/auth/login.ts',
+          name: 'loginUser',
+          kind: 'function',
+          signature: 'export async function loginUser(input)',
+          startLine: 1,
+          endLine: 12,
+          line: 1,
+          column: 1,
+          parentFunctionId: null,
+        },
+      ],
+      functionEdges: [],
+    });
+    loadCodeMapFromDbMock.mockResolvedValue({
+      repositoryId: 'repo-ask',
+      branch: 'main',
+      rootDirectory: process.cwd(),
+      generatedAt: '2026-05-18T00:00:00.000Z',
+      manifestHash: 'ask-hash',
+      files: [],
+      edges: [],
+      stats: {
+        fileCount: 1,
+        symbolCount: 0,
+        edgeCount: 0,
+        totalLines: 20,
+      },
+    });
+    generateTextWithDefaultProviderMock.mockResolvedValue(
+      'Likely implemented in src/auth/login.ts:1-12 via loginUser.',
+    );
+
+    const app = express();
+    app.use(express.json());
+    registerCodeIndexRoutes(app, {
+      requirePermission: allowAllRequirePermission,
+      auditMutation: vi.fn(),
+    });
+
+    const response = await inject(app, {
+      method: 'POST',
+      url: '/api/code-index/repo-ask/ask?branch=main',
+      headers: { 'content-type': 'application/json' },
+      payload: {
+        question: 'where is login implemented',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(JSON.parse(response.body)).toMatchObject({
+      answer: 'Likely implemented in src/auth/login.ts:1-12 via loginUser.',
+    });
+    expect(generateTextWithDefaultProviderMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('persists graph query artifacts and exposes list/detail endpoints', async () => {
+    const artifactRepoId = 'repo-graph-artifacts';
+    const artifactBranch = 'main';
+    fs.rmSync(
+      path.join(DATA_DIR, 'project-graph-queries', artifactRepoId, artifactBranch),
+      { recursive: true, force: true },
+    );
+    getReviewRepositoryByIdMock.mockResolvedValue({
+      id: artifactRepoId,
+      name: 'Repo Graph Artifacts',
+      default_target_branch: artifactBranch,
+      local_repo_path: process.cwd(),
+      clone_url: null,
+    });
+    loadCodeIndexSnapshotMock.mockResolvedValue({
+      meta: {
+        repositoryId: artifactRepoId,
+        branch: artifactBranch,
+        rootDirectory: process.cwd(),
+        manifestHash: 'artifact-hash',
+        status: 'ready',
+        stage: 'complete',
+        generatedAt: '2026-05-18T00:00:00.000Z',
+        stats: {
+          fileCount: 1,
+          chunkCount: 1,
+          functionCount: 1,
+          functionEdgeCount: 0,
+          totalLines: 20,
+          embeddedChunkCount: 0,
+        },
+        capabilities: {
+          chunkSearch: true,
+          fileSummaries: true,
+          functionGraph: true,
+          embeddings: false,
+        },
+        progress: {
+          status: 'ready',
+          stage: 'complete',
+          processedFiles: 1,
+          totalFiles: 1,
+          message: 'done',
+          error: null,
+          startedAt: '2026-05-18T00:00:00.000Z',
+          updatedAt: '2026-05-18T00:00:00.000Z',
+        },
+      },
+      files: [
+        {
+          relativePath: 'src/auth/login.ts',
+          language: 'ts',
+          byteSize: 600,
+          lineCount: 20,
+          fileHash: 'a',
+          rank: 10,
+          importCount: 0,
+          exportCount: 1,
+          summary: 'Login flow implementation.',
+          summarySource: 'fallback',
+        },
+      ],
+      chunks: [
+        {
+          id: 'chunk-login',
+          filePath: 'src/auth/login.ts',
+          chunkIndex: 0,
+          startLine: 1,
+          endLine: 12,
+          content: 'export async function loginUser(input) { return input; }',
+          tokenCount: 16,
+          summary: 'Login entrypoint.',
+          contentHash: 'c1',
+          summarySource: 'fallback',
+        },
+      ],
+      functions: [
+        {
+          id: 'fn-login',
+          filePath: 'src/auth/login.ts',
+          name: 'loginUser',
+          kind: 'function',
+          signature: 'export async function loginUser(input)',
+          startLine: 1,
+          endLine: 12,
+          line: 1,
+          column: 1,
+          parentFunctionId: null,
+        },
+      ],
+      functionEdges: [],
+    });
+    loadCodeMapFromDbMock.mockResolvedValue({
+      repositoryId: artifactRepoId,
+      branch: artifactBranch,
+      rootDirectory: process.cwd(),
+      generatedAt: '2026-05-18T00:00:00.000Z',
+      manifestHash: 'artifact-hash',
+      files: [],
+      edges: [],
+      stats: {
+        fileCount: 1,
+        symbolCount: 0,
+        edgeCount: 0,
+        totalLines: 20,
+      },
+    });
+
+    const app = express();
+    app.use(express.json());
+    registerCodeIndexRoutes(app, {
+      requirePermission: allowAllRequirePermission,
+      auditMutation: vi.fn(),
+    });
+
+    const queryResponse = await inject(app, {
+      method: 'POST',
+      url: `/api/code-index/${artifactRepoId}/graph/query?branch=${artifactBranch}`,
+      headers: { 'content-type': 'application/json' },
+      payload: {
+        question: 'where is login implemented',
+      },
+    });
+
+    expect(queryResponse.statusCode).toBe(200);
+    const queryPayload = JSON.parse(queryResponse.body);
+    expect(queryPayload.artifact?.id).toBeTruthy();
+
+    const listResponse = await inject(app, {
+      method: 'GET',
+      url: `/api/code-index/${artifactRepoId}/graph/queries?branch=${artifactBranch}`,
+    });
+    expect(listResponse.statusCode).toBe(200);
+    const listPayload = JSON.parse(listResponse.body);
+    expect(listPayload.artifacts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: queryPayload.artifact.id,
+          question: 'where is login implemented',
+        }),
+      ]),
+    );
+
+    const detailResponse = await inject(app, {
+      method: 'GET',
+      url: `/api/code-index/${artifactRepoId}/graph/queries/${queryPayload.artifact.id}?branch=${artifactBranch}`,
+    });
+    expect(detailResponse.statusCode).toBe(200);
+    expect(JSON.parse(detailResponse.body)).toMatchObject({
+      artifact: {
+        id: queryPayload.artifact.id,
+        question: 'where is login implemented',
       },
     });
   });

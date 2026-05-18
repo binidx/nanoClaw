@@ -3,7 +3,14 @@ import crypto from 'crypto';
 import { getAssistantName } from '../config-store.js';
 import { runAgentProcess, requestAgentClose, type AgentRunOutput } from '../agent/agent-runner.js';
 import { resolveAssistantRuntimeConfig } from '../assistant/assistant-runtime.js';
+import { getRepositoryById } from '../db/repositories.js';
 import * as workflowDb from '../db/workflows.js';
+import {
+  buildWorkflowProjectGraphQuestion,
+  prepareProjectGraphContext,
+} from '../code-intelligence/project-graph-context.js';
+import { listOwnerBindings } from '../tenant/resource-binding-service.js';
+import { getCurrentUserId } from '../tenant/tenant-context.js';
 import type { RegisteredGroup } from '../types.js';
 import type {
   WorkflowNodeRecord,
@@ -109,6 +116,63 @@ function effectiveToolPolicy(
   return taskPolicy ?? workflowPolicy ?? { mode: 'assistant_default' };
 }
 
+async function buildWorkflowTaskProjectContext(input: {
+  workflowId: string;
+  workflowName?: string;
+  repositoryBindingKey?: string;
+  roleNode?: WorkflowNodeRecord;
+  taskNode: WorkflowNodeRecord;
+  runInput: string;
+  upstreamMessages: Array<{
+    from: string;
+    to: string;
+    direction: string;
+    content: string;
+  }>;
+}): Promise<string> {
+  const bindings = await listOwnerBindings(
+    'workflow',
+    input.workflowId,
+    getCurrentUserId(),
+  );
+  const binding = bindings.find(
+    (item) =>
+      item.resourceType === 'repository' &&
+      (!input.repositoryBindingKey ||
+        item.bindingKey === input.repositoryBindingKey),
+  );
+  if (!binding) return '';
+  const repository = await getRepositoryById(binding.resourceId, getCurrentUserId());
+  if (!repository) return '';
+  const taskCfg = parseTaskConfig(input.taskNode);
+  const question = buildWorkflowProjectGraphQuestion({
+    workflowName: input.workflowName,
+    roleName: input.roleNode?.name,
+    taskName: input.taskNode.name,
+    taskDescription: input.taskNode.description,
+    taskPrompt: taskCfg.prompt,
+    runInput: input.runInput,
+    upstreamMessages: input.upstreamMessages,
+  });
+  const context = await prepareProjectGraphContext({
+    repositoryId: binding.resourceId,
+    branch: binding.branch || repository.default_target_branch || 'main',
+    intent: 'workflow',
+    question,
+    persist: {
+      source: 'workflow',
+      kind: 'prepared_context',
+      metadata: {
+        workflowId: input.workflowId,
+        workflowName: input.workflowName || '',
+        taskNodeId: input.taskNode.id,
+        taskNodeName: input.taskNode.name,
+      },
+    },
+  });
+  return context.contextText;
+}
+
 function restrictResolvedMcpServers(
   servers: Awaited<ReturnType<typeof resolveAssistantRuntimeConfig>>['resolvedMcpServers'],
   allowedIds: string[] | undefined,
@@ -138,6 +202,7 @@ export function buildTaskPrompt(
     direction: string;
     content: string;
   }>,
+  projectContextBlock = '',
 ): string {
   const resolvedRoleNode = roleNode ?? fallbackRoleNode(taskNode);
   const roleCfg = parseRoleConfig(resolvedRoleNode);
@@ -172,6 +237,9 @@ ${runInput}
 ## Upstream Messages
 ${ctx || 'No upstream messages yet.'}
 
+## Project Graph Context
+${projectContextBlock || 'No repository graph context available.'}
+
 ## Task Prompt
 ${taskCfg.prompt || 'Complete the task and return a concise but actionable result.'}
 
@@ -180,6 +248,7 @@ If this node is part of a two-way discussion loop, read the latest upstream mess
 
 export async function executeWorkflowTask(input: {
   workflowId: string;
+  workflowName?: string;
   runId: string;
   roleNode?: WorkflowNodeRecord;
   taskNode: WorkflowNodeRecord;
@@ -191,16 +260,19 @@ export async function executeWorkflowTask(input: {
     content: string;
   }>;
   toolPolicy?: WorkflowToolPolicy;
+  repositoryBindingKey?: string;
   signal?: AbortSignal;
 }): Promise<WorkflowAgentExecutionResult> {
   const {
     workflowId,
+    workflowName,
     runId,
     roleNode,
     taskNode,
     runInput,
     upstreamMessages,
     toolPolicy: workflowToolPolicy,
+    repositoryBindingKey,
     signal,
   } =
     input;
@@ -210,11 +282,21 @@ export async function executeWorkflowTask(input: {
 
   let executionId = '';
   try {
+    const projectContextBlock = await buildWorkflowTaskProjectContext({
+      workflowId,
+      workflowName,
+      repositoryBindingKey,
+      roleNode,
+      taskNode,
+      runInput,
+      upstreamMessages,
+    });
     const prompt = buildTaskPrompt(
       roleNode,
       taskNode,
       runInput,
       upstreamMessages,
+      projectContextBlock,
     );
     const latestExecution = await workflowDb.getLatestWorkflowNodeExecution(
       runId,

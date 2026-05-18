@@ -761,14 +761,17 @@ export class WorkflowOrchestrator {
       roleNodeId: resolvedRoleNode?.id || '',
     });
 
+    const workflowConfig = parseWorkflowConfig(this.workflow);
     const result = await executeWorkflowTask({
       workflowId: this.workflowId,
+      workflowName: this.workflow?.name || '',
       runId: graph.run.id,
       roleNode: resolvedRoleNode,
       taskNode: node,
       runInput: graph.run.input,
       upstreamMessages,
-      toolPolicy: parseWorkflowConfig(this.workflow).toolPolicy,
+      toolPolicy: workflowConfig.toolPolicy,
+      repositoryBindingKey: workflowConfig.repositoryPolicy?.bindingKey,
       signal: abortController.signal,
     });
     if (timeout) clearTimeout(timeout);

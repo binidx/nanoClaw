@@ -35,7 +35,20 @@ import {
 } from '../db/review.js';
 import { cachedEmbedQuery, searchByVector } from '../embedding/vector-store.js';
 import { resolveEmbeddingProvider } from '../embedding/resolve.js';
+import { generateTextWithDefaultProvider } from '../provider/provider-api.js';
 import { computeCodeMapManifestHash } from '../code-intelligence/code-map-builder.js';
+import {
+  buildProjectGraphFallbackAnswer,
+  explainProjectGraphNode,
+  loadProjectGraph,
+  queryProjectGraph,
+  shortestProjectGraphPath,
+} from '../code-intelligence/project-graph.js';
+import {
+  listProjectGraphQueryArtifacts,
+  loadProjectGraphQueryArtifact,
+  saveProjectGraphQueryArtifact,
+} from '../code-intelligence/project-graph-query-store.js';
 import { canAccessRepositoryResource } from '../auth/resource-access-policy.js';
 import {
   listCandidateFiles,
@@ -49,6 +62,7 @@ import { getCurrentUserId } from '../tenant-context.js';
 import { acquireWorktree, listWorktrees } from '../worktree-manager.js';
 import { DATA_DIR } from '../config.js';
 import { runGitCommand } from '../repo-review/repo-review-git.js';
+import { resolvePromptText } from '../prompt/prompt-service.js';
 import { t } from '../i18n/index.js';
 
 export interface CodeIndexRouteOptions {
@@ -398,6 +412,25 @@ function collectFunctionDeps(
   }
 
   return results;
+}
+
+function buildProjectQaPrompt(input: {
+  question: string;
+  contextText: string;
+}): string {
+  return [
+    'Answer the repository question using only the graph-grounded evidence below.',
+    'Prefer concrete implementation locations over broad architecture prose.',
+    'When you mention an implementation point, cite file path and line range when available.',
+    'If evidence is partial, say "likely" instead of overstating certainty.',
+    'Keep the answer concise and high-signal.',
+    '',
+    `Question: ${input.question}`,
+    '',
+    input.contextText,
+    '',
+    'Output only the answer.',
+  ].join('\n');
 }
 
 function getTenantUserId(req: Request): string {
@@ -1038,4 +1071,393 @@ export function registerCodeIndexRoutes(
       }
     },
   );
+
+  app.get(
+    '/api/code-index/:repositoryId/graph/stats',
+    guard,
+    async (req, res) => {
+      try {
+        const repositoryId = decodeURIComponent(
+          String(req.params.repositoryId || ''),
+        );
+        const repo = await requireRepositoryAccess(req, res, repositoryId);
+        if (!repo) return;
+        const branch =
+          String(req.query.branch || '').trim() || resolveDefaultBranch(repo);
+        const graph = await loadProjectGraph(repositoryId, branch);
+        if (!graph) {
+          res
+            .status(404)
+            .json({ error: t('errors.auto_ec3333', {}, req.locale) });
+          return;
+        }
+        res.json({
+          repositoryId,
+          branch,
+          manifestHash: graph.manifestHash,
+          generatedAt: graph.generatedAt,
+          stats: graph.stats,
+          communities: graph.communities.slice(0, 16),
+        });
+      } catch (err) {
+        res.status(500).json({ error: t('errors.auto_c989d4', {}, undefined) });
+      }
+    },
+  );
+
+  app.post(
+    '/api/code-index/:repositoryId/graph/query',
+    guard,
+    async (req, res) => {
+      try {
+        const repositoryId = decodeURIComponent(
+          String(req.params.repositoryId || ''),
+        );
+        const repo = await requireRepositoryAccess(req, res, repositoryId);
+        if (!repo) return;
+        const branch =
+          String(req.query.branch || req.body?.branch || '').trim() ||
+          resolveDefaultBranch(repo);
+        const question = String(req.body?.question || req.body?.query || '').trim();
+        if (!question) {
+          res
+            .status(400)
+            .json({ error: t('errors.auto_913994', {}, req.locale) });
+          return;
+        }
+        const graph = await loadProjectGraph(repositoryId, branch);
+        if (!graph) {
+          res
+            .status(404)
+            .json({ error: t('errors.auto_ec3333', {}, req.locale) });
+          return;
+        }
+        const result = queryProjectGraph(graph, question, {
+          mode: req.body?.mode === 'dfs' ? 'dfs' : 'bfs',
+          depth: Number(req.body?.depth) || 2,
+          tokenBudget: Number(req.body?.tokenBudget) || 2200,
+          maxSeeds: Number(req.body?.maxSeeds) || 5,
+          maxNodes: Number(req.body?.maxNodes) || 36,
+          relationFilter: Array.isArray(req.body?.relationFilter)
+            ? req.body.relationFilter
+            : undefined,
+          seedNodeIds: Array.isArray(req.body?.seedNodeIds)
+            ? req.body.seedNodeIds
+            : undefined,
+        });
+        const artifact = saveProjectGraphQueryArtifact({
+          repositoryId,
+          branch,
+          manifestHash: graph.manifestHash,
+          source: 'code-index.graph.query',
+          kind: 'query',
+          status: 'ready',
+          question,
+          focusPaths: Array.isArray(req.body?.focusPaths)
+            ? req.body.focusPaths
+            : [],
+          metadata: {
+            planner: result.planner,
+            confidence: result.confidence,
+            contextFilterStats: result.contextFilterStats,
+          },
+          payload: {
+            question,
+            options: {
+              mode: req.body?.mode === 'dfs' ? 'dfs' : 'bfs',
+              depth: Number(req.body?.depth) || 2,
+              tokenBudget: Number(req.body?.tokenBudget) || 2200,
+              maxSeeds: Number(req.body?.maxSeeds) || 5,
+              maxNodes: Number(req.body?.maxNodes) || 36,
+              relationFilter: Array.isArray(req.body?.relationFilter)
+                ? req.body.relationFilter
+                : undefined,
+              seedNodeIds: Array.isArray(req.body?.seedNodeIds)
+                ? req.body.seedNodeIds
+                : undefined,
+            },
+            result,
+          },
+        });
+        res.json({
+          repositoryId,
+          branch,
+          manifestHash: graph.manifestHash,
+          stats: graph.stats,
+          artifact,
+          result,
+        });
+      } catch (err) {
+        res.status(500).json({ error: t('errors.auto_c989d4', {}, undefined) });
+      }
+    },
+  );
+
+  app.get(
+    '/api/code-index/:repositoryId/graph/queries',
+    guard,
+    async (req, res) => {
+      try {
+        const repositoryId = decodeURIComponent(
+          String(req.params.repositoryId || ''),
+        );
+        const repo = await requireRepositoryAccess(req, res, repositoryId);
+        if (!repo) return;
+        const branch =
+          String(req.query.branch || '').trim() || resolveDefaultBranch(repo);
+        const artifacts = listProjectGraphQueryArtifacts({
+          repositoryId,
+          branch,
+          limit: Number(req.query.limit) || 20,
+        });
+        res.json({
+          repositoryId,
+          branch,
+          artifacts,
+        });
+      } catch (err) {
+        res.status(500).json({ error: t('errors.auto_c989d4', {}, undefined) });
+      }
+    },
+  );
+
+  app.get(
+    '/api/code-index/:repositoryId/graph/queries/:queryId',
+    guard,
+    async (req, res) => {
+      try {
+        const repositoryId = decodeURIComponent(
+          String(req.params.repositoryId || ''),
+        );
+        const repo = await requireRepositoryAccess(req, res, repositoryId);
+        if (!repo) return;
+        const branch =
+          String(req.query.branch || '').trim() || resolveDefaultBranch(repo);
+        const queryId = decodeURIComponent(String(req.params.queryId || ''));
+        if (!queryId) {
+          res
+            .status(400)
+            .json({ error: t('errors.auto_913994', {}, req.locale) });
+          return;
+        }
+        const artifact = loadProjectGraphQueryArtifact({
+          repositoryId,
+          branch,
+          id: queryId,
+        });
+        if (!artifact) {
+          res.status(404).json({ error: 'query_artifact_not_found' });
+          return;
+        }
+        res.json({
+          repositoryId,
+          branch,
+          artifact,
+        });
+      } catch (err) {
+        res.status(500).json({ error: t('errors.auto_c989d4', {}, undefined) });
+      }
+    },
+  );
+
+  app.get(
+    '/api/code-index/:repositoryId/graph/path',
+    guard,
+    async (req, res) => {
+      try {
+        const repositoryId = decodeURIComponent(
+          String(req.params.repositoryId || ''),
+        );
+        const repo = await requireRepositoryAccess(req, res, repositoryId);
+        if (!repo) return;
+        const branch =
+          String(req.query.branch || '').trim() || resolveDefaultBranch(repo);
+        const source = String(req.query.source || '').trim();
+        const target = String(req.query.target || '').trim();
+        if (!source || !target) {
+          res
+            .status(400)
+            .json({ error: t('errors.auto_913994', {}, req.locale) });
+          return;
+        }
+        const graph = await loadProjectGraph(repositoryId, branch);
+        if (!graph) {
+          res
+            .status(404)
+            .json({ error: t('errors.auto_ec3333', {}, req.locale) });
+          return;
+        }
+        const result = shortestProjectGraphPath(
+          graph,
+          source,
+          target,
+          Math.min(Math.max(Number(req.query.maxHops) || 8, 1), 12),
+        );
+        if (!result) {
+          res.status(404).json({ error: 'path_not_found' });
+          return;
+        }
+        res.json({
+          repositoryId,
+          branch,
+          manifestHash: graph.manifestHash,
+          result,
+        });
+      } catch (err) {
+        res.status(500).json({ error: t('errors.auto_c989d4', {}, undefined) });
+      }
+    },
+  );
+
+  app.get(
+    '/api/code-index/:repositoryId/graph/explain',
+    guard,
+    async (req, res) => {
+      try {
+        const repositoryId = decodeURIComponent(
+          String(req.params.repositoryId || ''),
+        );
+        const repo = await requireRepositoryAccess(req, res, repositoryId);
+        if (!repo) return;
+        const branch =
+          String(req.query.branch || '').trim() || resolveDefaultBranch(repo);
+        const label = String(req.query.label || req.query.node || '').trim();
+        if (!label) {
+          res
+            .status(400)
+            .json({ error: t('errors.auto_913994', {}, req.locale) });
+          return;
+        }
+        const graph = await loadProjectGraph(repositoryId, branch);
+        if (!graph) {
+          res
+            .status(404)
+            .json({ error: t('errors.auto_ec3333', {}, req.locale) });
+          return;
+        }
+        const result = explainProjectGraphNode(graph, label);
+        if (!result) {
+          res.status(404).json({ error: 'node_not_found' });
+          return;
+        }
+        res.json({
+          repositoryId,
+          branch,
+          manifestHash: graph.manifestHash,
+          result,
+        });
+      } catch (err) {
+        res.status(500).json({ error: t('errors.auto_c989d4', {}, undefined) });
+      }
+    },
+  );
+
+  app.post('/api/code-index/:repositoryId/ask', guard, async (req, res) => {
+    try {
+      const repositoryId = decodeURIComponent(
+        String(req.params.repositoryId || ''),
+      );
+      const repo = await requireRepositoryAccess(req, res, repositoryId);
+      if (!repo) return;
+      const branch =
+        String(req.query.branch || req.body?.branch || '').trim() ||
+        resolveDefaultBranch(repo);
+      const question = String(req.body?.question || '').trim();
+      if (!question) {
+        res
+          .status(400)
+          .json({ error: t('errors.auto_913994', {}, req.locale) });
+        return;
+      }
+      const graph = await loadProjectGraph(repositoryId, branch);
+      if (!graph) {
+        res
+          .status(404)
+          .json({ error: t('errors.auto_ec3333', {}, req.locale) });
+        return;
+      }
+      const result = queryProjectGraph(graph, question, {
+        mode: req.body?.mode === 'dfs' ? 'dfs' : 'bfs',
+        depth: Number(req.body?.depth) || 2,
+        tokenBudget: Number(req.body?.tokenBudget) || 2400,
+        maxSeeds: Number(req.body?.maxSeeds) || 5,
+        maxNodes: Number(req.body?.maxNodes) || 36,
+        relationFilter: Array.isArray(req.body?.relationFilter)
+          ? req.body.relationFilter
+          : undefined,
+        seedNodeIds: Array.isArray(req.body?.seedNodeIds)
+          ? req.body.seedNodeIds
+          : undefined,
+      });
+
+      const fallbackAnswer = buildProjectGraphFallbackAnswer(question, result);
+      let answer = fallbackAnswer;
+      let noAi = false;
+      try {
+        const systemPrompt = await resolvePromptText({
+          promptKey: 'code_index.project_qa_guard',
+          fallbackText:
+            'Answer only from the provided repository graph context. Cite file paths and line ranges when available. Do not invent files or functions.',
+        });
+        answer = await generateTextWithDefaultProvider(
+          [
+            systemPrompt.text,
+            '',
+            buildProjectQaPrompt({
+              question,
+              contextText: result.contextText,
+            }),
+          ].join('\n'),
+          {
+            maxTokens: 700,
+          },
+        );
+      } catch (err) {
+        const isNoProvider =
+          err instanceof Error && err.message.includes('No default AI provider');
+        if (!isNoProvider) throw err;
+        noAi = true;
+      }
+
+      const artifact = saveProjectGraphQueryArtifact({
+        repositoryId,
+        branch,
+        manifestHash: graph.manifestHash,
+        source: 'code-index.ask',
+        kind: 'ask',
+        status: noAi ? 'fallback' : 'ready',
+        question,
+        focusPaths: Array.isArray(req.body?.focusPaths)
+          ? req.body.focusPaths
+          : [],
+        metadata: {
+          noAi,
+          planner: result.planner,
+          confidence: result.confidence,
+          contextFilterStats: result.contextFilterStats,
+        },
+        payload: {
+          question,
+          answer,
+          fallbackAnswer,
+          noAi,
+          result,
+        },
+      });
+
+      res.json({
+        repositoryId,
+        branch,
+        manifestHash: graph.manifestHash,
+        stats: graph.stats,
+        artifact,
+        answer,
+        fallbackAnswer,
+        noAi,
+        result,
+      });
+    } catch (err) {
+      res.status(500).json({ error: t('errors.auto_c989d4', {}, undefined) });
+    }
+  });
 }

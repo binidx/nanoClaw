@@ -2,6 +2,7 @@ import path from 'path';
 
 import type { RepoReviewCloudDocSection } from './repo-review-doc-render.js';
 import type { RepoReviewDiffIndex } from './repo-review-diff-index.js';
+import type { PreparedProjectGraphContext } from '../code-intelligence/project-graph-context.js';
 import type {
   ReviewBlockingMode,
   ReviewOverall,
@@ -359,6 +360,7 @@ export interface ReviewEvidenceBundle {
   changedFiles: string[];
   changedHunks: ReviewEvidenceChangedHunk[];
   changedFunctions: ReviewEvidenceImpactFunction[];
+  projectGraphContext?: PreparedProjectGraphContext;
   impactGraph: {
     functions: ReviewEvidenceImpactFunction[];
     edges: ReviewEvidenceImpactEdge[];

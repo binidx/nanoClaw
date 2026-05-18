@@ -118,8 +118,36 @@
 
 - `src/routes/workflow-routes.ts` 继续使用现有 workflow/node/edge CRUD，但 task 节点创建与保存不再要求显式 role 绑定，后端用隐藏 runtime role 兼容当前执行结构。
 - `src/workflow/orchestrator.ts` / `agent-adapter.ts` 将 assistant 缺失收敛为运行时错误“该节点缺少执行主体”，不再把 assistant 绑定作为建图阶段前提。
+
+## [2026-05-18] update | Code Index project graph retrieval 与项目问答入口
+
+- 新增 `src/code-intelligence/project-graph.ts`，把 Code Index / CodeMap 统一成可缓存的 project graph，包含 directory/file/chunk/function 节点、contains/imports/calls/references 边、社区聚合和 graph-aware retrieval。
+- `src/routes/code-index-routes.ts` 新增 `graph/stats`、`graph/query`、`graph/path`、`graph/explain`、`ask` 入口，供项目实现问答、关系追踪和最小上下文检索复用。
+- CodeMap 的 AI summary / repo description 已开始复用更丰富的 Code Index 上下文；Repo Review 继续消费 diff-aware evidence bundle，后续可进一步接到统一 project graph。
 - `web/src/pages/WorkteamPage.tsx` 列表页收敛为 workflow 卡片网格，详情页恢复新增节点、拖拽、连线、删边、删节点、返回工作流、删除 workflow、简化配置与只读运行查看。
 - 将 feature map 元数据同步到当前已提交代码 `source_head_sha=becad113d7dc577b4424663ddf46b6aa06340707`。
+
+## [2026-05-18] update | 代码智能图谱优化文档
+
+- 新增 `docs/代码智能图谱优化文档.md`，系统说明 CodeMap / CodeIndex / CodeLLM 的重新分工、ProjectGraph 检索层设计、当前效果与 graphify 的差距，以及面向项目问答 / Repo Review / 工作流复用的后续演进路线。
+- 将该文档加入 `docs/文档索引.md` 与 Code Index / CodeMap 功能行，方便后续 agent 和开发者统一查阅。
+
+## [2026-05-18] update | 代码智能图谱后续优化总路线
+
+- 扩展 `docs/代码智能图谱优化文档.md` 的后续路线章节，明确下一阶段的统一目标是让 Repo Review 主审查链路和 Workflow / Workteam 节点直接复用 graph retrieval，而不是继续各自拼上下文。
+- 补充 community / hotspot / god node、confidence / path ranking / context filter、持久化 query artifact 与统一 planner 的目标形态和阶段完成标准，作为后续追平 graphify 的设计基线。
+
+## [2026-05-18] update | Repo Review / Workflow 接入统一 graph retrieval
+
+- 新增 `src/code-intelligence/project-graph-context.ts`，把 project graph 的问题组装、强制 seed、模式化 query 参数和上下文 block 渲染统一为可复用层。
+- `src/repo-review/repo-review-run-executor.ts` 的准备阶段现在会生成 `repo_review` 图检索上下文，并将其写入 evidence bundle，主审查与子任务切片都会优先消费这层最小子图结果。
+- `src/workflow/agent-adapter.ts` 在 workflow 绑定仓库时会基于 repository binding 自动生成 `workflow` 图检索上下文，并在节点 prompt 中显式注入项目子图，减少节点自行盲搜仓库的需要。
+
+## [2026-05-18] update | Project Graph community / ranking / artifact persistence
+
+- `src/code-intelligence/project-graph.ts` 新增图结构社区发现、路径加权排序、上下文筛选、query confidence 和 context filter 统计，不再只是简单路径前缀社区和 BFS/DFS 子图展开。
+- 新增 `src/code-intelligence/project-graph-query-store.ts`，把 graph query / ask / prepared context 持久化到 query artifact，支持后续审计、回放和效果调优。
+- `src/routes/code-index-routes.ts` 新增 `graph/queries` 列表与详情入口，并让 `graph/query`、`ask` 返回 artifact summary；Repo Review / Workflow 的 graph retrieval 也会留下持久化 query 轨迹。
 
 ## [2026-05-17] update | 酒馆人格与新会话绑定入口
 

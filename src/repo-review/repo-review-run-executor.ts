@@ -8,6 +8,11 @@ import { AGENT_TIMEOUT, DATA_DIR } from '../config.js';
 import { isDuplicateKeyError } from '../db/sql-adapters.js';
 import { loadCodeIndexReviewContextData } from '../db/code-index-db.js';
 import { loadCodeMapFromDb } from '../code-intelligence/code-map-persist.js';
+import {
+  buildRepoReviewProjectGraphQuestion,
+  filterPreparedProjectGraphContextForFiles,
+  prepareProjectGraphContext,
+} from '../code-intelligence/project-graph-context.js';
 
 import {
   backfillConversationParticipantsFromMessages,
@@ -5787,6 +5792,7 @@ export function buildRepoReviewDiffAwareEvidenceBundle(input: {
   prepared: ReviewPreparedContext;
   codeMapSnapshot: CodeMapSnapshot | null;
   codeIndexSnapshot: ReviewCodeIndexContextData | null;
+  projectGraphContext?: ReviewEvidenceBundle['projectGraphContext'];
   branch: string;
   codeMapError?: unknown;
   codeIndexError?: unknown;
@@ -5830,11 +5836,17 @@ export function buildRepoReviewDiffAwareEvidenceBundle(input: {
       `Code Index ${codeIndexStatus.status}: ${codeIndexStatus.reason || 'unavailable'}`,
     );
   }
+  if (input.projectGraphContext?.status !== 'ready') {
+    missingContext.push(
+      `Project Graph ${input.projectGraphContext?.status || 'missing'}: ${input.projectGraphContext?.message || 'unavailable'}`,
+    );
+  }
   return {
     diffSummary: buildRepoReviewDiffSummary(input.prepared),
     changedFiles: input.prepared.changedFiles,
     changedHunks,
     changedFunctions: functionImpact.changedFunctions,
+    projectGraphContext: input.projectGraphContext,
     fileImpact: fileImpact.fileImpact,
     impactGraph: functionImpact.impactGraph,
     codeMapStatus,
@@ -5862,6 +5874,12 @@ function formatEvidenceFunction(fn: ReviewEvidenceImpactFunction): string {
   return `${fn.filePath}:${fn.startLine}-${fn.endLine} ${fn.kind} ${fn.name}`;
 }
 
+function buildRepoReviewProjectGraphContextBlock(
+  context: ReviewEvidenceBundle['projectGraphContext'] | undefined,
+): string {
+  return context?.contextText || 'Project Graph Retrieval:\nstatus: missing';
+}
+
 function renderRepoReviewEvidenceBundleBlock(
   bundle: ReviewEvidenceBundle,
 ): string {
@@ -5878,6 +5896,8 @@ function renderRepoReviewEvidenceBundleBlock(
     buildRepoReviewDiffSummaryBlock({
       summary: bundle.diffSummary,
     }),
+    '',
+    buildRepoReviewProjectGraphContextBlock(bundle.projectGraphContext),
     '',
     'File impact（changed files + 1-hop file neighbors）：',
   ];
@@ -5983,6 +6003,7 @@ function renderRepoReviewEvidenceBundleBlock(
 export function buildRepoReviewEvidenceBundleBlock(input: {
   bundle?: ReviewEvidenceBundle;
   diffSummaryBlock?: string;
+  projectGraphContextBlock?: string;
   codeMapContextBlock?: string;
   codeIndexContextBlock?: string;
 }): string {
@@ -5995,6 +6016,8 @@ export function buildRepoReviewEvidenceBundleBlock(input: {
     '',
     'Diff 文件摘要：',
     input.diffSummaryBlock || '- (none)',
+    '',
+    input.projectGraphContextBlock || 'Project Graph Retrieval:\nstatus: missing',
     '',
     input.codeMapContextBlock || 'CodeMap 影响图：unavailable',
     '',
@@ -6057,6 +6080,12 @@ function filterRepoReviewEvidenceBundleForFiles(input: {
     changedFiles: input.bundle.changedFiles.filter((file) => fileSet.has(file)),
     changedHunks,
     changedFunctions,
+    projectGraphContext: input.bundle.projectGraphContext
+      ? filterPreparedProjectGraphContextForFiles({
+          context: input.bundle.projectGraphContext,
+          files: input.files,
+        })
+      : undefined,
     fileImpact: input.bundle.fileImpact
       ? {
           changedFiles: input.bundle.fileImpact.changedFiles.filter((file) =>
@@ -6153,12 +6182,38 @@ async function enrichReviewPreparedContextWithCodeIntelligence(input: {
   }
   let codeIndexSnapshot: ReviewCodeIndexContextData | null = null;
   let codeMapSnapshot: CodeMapSnapshot | null = null;
+  let projectGraphContext: ReviewEvidenceBundle['projectGraphContext'];
   let codeIndexError: unknown;
   let codeMapError: unknown;
-  const [codeIndexResult, codeMapResult] = await Promise.allSettled([
-    loadCodeIndexReviewContextData(input.repository.id, branch),
-    loadCodeMapFromDb(input.repository.id, branch),
-  ]);
+  const projectGraphQuestion = buildRepoReviewProjectGraphQuestion({
+    repositoryName: input.repository.name,
+    branch,
+    changedFiles: input.prepared.changedFiles,
+    commitSummaryLines: input.prepared.commitSummaryLines,
+    actor: input.prepared.actor,
+  });
+  const [codeIndexResult, codeMapResult, projectGraphResult] =
+    await Promise.allSettled([
+      loadCodeIndexReviewContextData(input.repository.id, branch),
+      loadCodeMapFromDb(input.repository.id, branch),
+    prepareProjectGraphContext({
+      repositoryId: input.repository.id,
+      branch,
+      intent: 'repo_review',
+      question: projectGraphQuestion,
+      focusPaths: input.prepared.changedFiles,
+      persist: {
+        source: 'repo-review',
+        kind: 'prepared_context',
+        metadata: {
+          branch,
+          changedFiles: input.prepared.changedFiles,
+          headSha: input.prepared.headSha,
+          baseSha: input.prepared.baseSha,
+        },
+      },
+    }),
+    ]);
   if (codeIndexResult.status === 'fulfilled') {
     codeIndexSnapshot = codeIndexResult.value;
   } else {
@@ -6185,11 +6240,65 @@ async function enrichReviewPreparedContextWithCodeIntelligence(input: {
       'Failed to load repo review CodeMap context',
     );
   }
+  if (projectGraphResult.status === 'fulfilled') {
+    projectGraphContext = projectGraphResult.value;
+  } else {
+    projectGraphContext = {
+      status: 'error',
+      repositoryId: input.repository.id,
+      branch,
+      intent: 'repo_review',
+      question: projectGraphQuestion,
+      focusPaths: [...input.prepared.changedFiles],
+      relationFilter: [],
+      communities: [],
+      nodeCount: 0,
+      edgeCount: 0,
+      tokenBudget: 0,
+      startNodes: [],
+      topFiles: [],
+      topFunctions: [],
+      topChunks: [],
+      edges: [],
+      planner: {
+        strategy: 'failed',
+        forcedSeedCount: 0,
+        communityHintCount: 0,
+      },
+      confidence: {
+        seedScore: 0,
+        graphScore: 0,
+        contextScore: 0,
+        overall: 0,
+      },
+      contextFilterStats: {
+        candidateNodeCount: 0,
+        selectedNodeCount: 0,
+        droppedNodeCount: 0,
+        selectedEdgeCount: 0,
+        estimatedTokens: 0,
+      },
+      contextText: 'Project Graph Retrieval:\nstatus: error',
+      message:
+        projectGraphResult.reason instanceof Error
+          ? projectGraphResult.reason.message
+          : 'graph_query_failed',
+    };
+    logger.warn(
+      {
+        err: projectGraphResult.reason,
+        repositoryId: input.repository.id,
+        branch,
+      },
+      'Failed to load repo review Project Graph context',
+    );
+  }
 
   const evidenceBundle = buildRepoReviewDiffAwareEvidenceBundle({
     prepared: input.prepared,
     codeMapSnapshot,
     codeIndexSnapshot,
+    projectGraphContext,
     branch,
     codeMapError,
     codeIndexError,
