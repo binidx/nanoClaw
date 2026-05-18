@@ -8,7 +8,9 @@ import {
   type RepoReviewEvidenceBundle,
 } from './repo-review-coordinator.js';
 
-function makeBundle(overrides: Partial<RepoReviewEvidenceBundle> = {}): RepoReviewEvidenceBundle {
+function makeBundle(
+  overrides: Partial<RepoReviewEvidenceBundle> = {},
+): RepoReviewEvidenceBundle {
   return {
     repository: {
       id: 'repo-1',
@@ -67,7 +69,12 @@ function makeBundle(overrides: Partial<RepoReviewEvidenceBundle> = {}): RepoRevi
       diffSubagentThreshold: 0,
       enabled: true,
     },
-    event: { source: 'local-hook', stage: 'push', repositoryId: 'repo-1', blockingExpected: false },
+    event: {
+      source: 'local-hook',
+      stage: 'push',
+      repositoryId: 'repo-1',
+      blockingExpected: false,
+    },
     prepared: {
       diffText: '',
       changedFiles: [],
@@ -108,7 +115,10 @@ describe('repo-review coordinator', () => {
         isTestFile: false,
         language: 'ts',
       })),
-      changedFiles: Array.from({ length: 10 }, (_, index) => `src/file-${index}.ts`),
+      changedFiles: Array.from(
+        { length: 10 },
+        (_, index) => `src/file-${index}.ts`,
+      ),
       totalPromptBytes: 140000,
       fileContentBytes: 120000,
       diffBytes: 20000,
@@ -134,7 +144,10 @@ describe('repo-review coordinator', () => {
         isTestFile: false,
         language: 'ts',
       })),
-      changedFiles: Array.from({ length: 4 }, (_, index) => `src/file-${index}.ts`),
+      changedFiles: Array.from(
+        { length: 4 },
+        (_, index) => `src/file-${index}.ts`,
+      ),
       totalPromptBytes: 160000,
       fileContentBytes: 0,
       diffBytes: 160000,
@@ -145,26 +158,37 @@ describe('repo-review coordinator', () => {
     expect(chunks.every((chunk) => chunk.files.length === 2)).toBe(true);
   });
 
-  it('uses the file-count threshold as the worker delegation gate', () => {
+  it('uses file count and prompt bytes together as the worker delegation gate', () => {
     expect(
       shouldDirectMainAgentReview({
         changedFileCount: 7,
-        totalPromptBytes: 500000,
+        totalPromptBytes: 50_000,
         diffSubagentThreshold: 8,
+        maxMainAgentPromptBytes: 96 * 1024,
       }),
     ).toBe(true);
     expect(
       shouldDirectMainAgentReview({
-        changedFileCount: 8,
-        totalPromptBytes: 50000,
+        changedFileCount: 7,
+        totalPromptBytes: 500_000,
         diffSubagentThreshold: 8,
+        maxMainAgentPromptBytes: 96 * 1024,
+      }),
+    ).toBe(false);
+    expect(
+      shouldDirectMainAgentReview({
+        changedFileCount: 8,
+        totalPromptBytes: 50_000,
+        diffSubagentThreshold: 8,
+        maxMainAgentPromptBytes: 96 * 1024,
       }),
     ).toBe(false);
     expect(
       shouldDirectMainAgentReview({
         changedFileCount: 9,
-        totalPromptBytes: 500000,
+        totalPromptBytes: 500_000,
         diffSubagentThreshold: 8,
+        maxMainAgentPromptBytes: 96 * 1024,
       }),
     ).toBe(false);
   });
@@ -194,8 +218,39 @@ describe('repo-review coordinator', () => {
     });
 
     expect(bundle.files[0]?.fileContent).toBe('');
-    expect(bundle.files[0]?.fileContentReason).toContain('lazy full file context');
+    expect(bundle.files[0]?.fileContentReason).toContain(
+      'lazy full file context',
+    );
     expect(bundle.directMainAgentReview).toBe(true);
+  });
+
+  it('keeps a single-file oversized diff on the worker path', async () => {
+    const bundle = await buildRepoReviewEvidenceBundle({
+      repository: makeBundle().repository,
+      profile: {
+        ...makeBundle().profile,
+        includeFullFileContext: false,
+        diffSubagentThreshold: 2,
+      },
+      event: makeBundle().event,
+      prepared: {
+        ...makeBundle().prepared,
+        diffText: [
+          'diff --git a/src/huge.ts b/src/huge.ts',
+          '--- a/src/huge.ts',
+          '+++ b/src/huge.ts',
+          '@@ -1 +1 @@',
+          `-${'x'.repeat(140000)}`,
+          `+${'y'.repeat(140000)}`,
+        ].join('\n'),
+        changedFiles: ['src/huge.ts'],
+      },
+      workspacePath: '/tmp/repo-review-missing-workspace',
+    });
+
+    expect(bundle.changedFiles).toEqual(['src/huge.ts']);
+    expect(bundle.totalPromptBytes).toBeGreaterThan(96 * 1024);
+    expect(bundle.directMainAgentReview).toBe(false);
   });
 
   it('renders markdown from structured results and falls back when needed', () => {

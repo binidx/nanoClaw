@@ -75,7 +75,25 @@ const WORKER_TIMEOUT_GRACE_MS = Math.max(
     Number(process.env.NANOCLAW_REVIEW_WORKER_TIMEOUT_GRACE_MS) ||
     20_000,
 );
+const MAIN_DIRECT_REVIEW_TIMEOUT_MS = Math.max(
+  1_000,
+  Number(process.env.NANOCLAW_REVIEW_MAIN_DIRECT_TIMEOUT_MS) || 240_000,
+);
+const MAIN_FALLBACK_REVIEW_TIMEOUT_MS = Math.max(
+  1_000,
+  Number(process.env.NANOCLAW_REVIEW_MAIN_FALLBACK_TIMEOUT_MS) || 180_000,
+);
+const MAIN_REVIEW_TIMEOUT_GRACE_MS = Math.max(
+  25,
+  Number(process.env.NANOCLAW_REVIEW_MAIN_TIMEOUT_GRACE_MS) ||
+    Number(process.env.NANOCLAW_REVIEW_SUBAGENT_TIMEOUT_GRACE_MS) ||
+    20_000,
+);
 const REDUCER_TIMEOUT_MS = 120_000;
+const MAX_DIRECT_MAIN_AGENT_PROMPT_BYTES = Math.max(
+  16 * 1024,
+  Number(process.env.NANOCLAW_REVIEW_MAIN_DIRECT_PROMPT_MAX_BYTES) || 96 * 1024,
+);
 
 export interface RepoReviewEvidenceFile {
   filePath: string;
@@ -626,7 +644,22 @@ function extractLatestCompletedAssistantMessageText(
   return extractLatestRepoReviewAssistantMessageText(turns, {
     allowInProgress: false,
     requireUsableTerminalOutput: false,
+    allowedTerminalKinds: ['main'],
   });
+}
+
+type RepoReviewTerminalOutputKind = 'main' | 'worker' | 'timeout_followup';
+
+function parseRepoReviewTerminalRecord(
+  text: string,
+): Record<string, unknown> | null {
+  const trimmed = String(text || '').trim();
+  if (!trimmed) return null;
+  try {
+    return JSON.parse(extractJsonObject(trimmed)) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
 }
 
 function extractBalancedJson(source: string): string | null {
@@ -664,6 +697,7 @@ function extractLatestRepoReviewAssistantMessageText(
   input: {
     allowInProgress: boolean;
     requireUsableTerminalOutput: boolean;
+    allowedTerminalKinds: RepoReviewTerminalOutputKind[];
   },
 ): string {
   for (let turnIndex = turns.length - 1; turnIndex >= 0; turnIndex -= 1) {
@@ -684,7 +718,7 @@ function extractLatestRepoReviewAssistantMessageText(
       const text = item.text.trim();
       if (
         input.requireUsableTerminalOutput &&
-        !looksLikeRepoReviewTerminalOutput(text)
+        !looksLikeRepoReviewTerminalOutput(text, input.allowedTerminalKinds)
       ) {
         continue;
       }
@@ -719,29 +753,70 @@ function extractJsonObject(text: string): string {
   return trimmed;
 }
 
-function looksLikeRepoReviewTerminalOutput(text: string): boolean {
+function looksLikeRepoReviewTerminalOutput(
+  text: string,
+  allowedKinds: RepoReviewTerminalOutputKind[] = ['main'],
+): boolean {
   const trimmed = String(text || '').trim();
   if (!trimmed) return false;
-  if (/代码审查报告|markdown_body|raw_report_markdown/i.test(trimmed)) {
+  if (
+    allowedKinds.includes('main') &&
+    /代码审查报告|markdown_body|raw_report_markdown/i.test(trimmed)
+  ) {
     return true;
   }
-  try {
-    const parsed = JSON.parse(extractJsonObject(trimmed)) as Record<
-      string,
-      unknown
-    >;
-    return Boolean(parsed.overall || parsed.summary || parsed.findings);
-  } catch {
-    return false;
+  const parsed = parseRepoReviewTerminalRecord(trimmed);
+  if (!parsed) return false;
+  for (const kind of allowedKinds) {
+    if (
+      kind === 'main' &&
+      (Boolean(stringValue(parsed.result_type || parsed.resultType)) ||
+        parsed.final === true ||
+        String(parsed.final || '')
+          .trim()
+          .toLowerCase() === 'true' ||
+        (stringValue(parsed.overall) && stringValue(parsed.summary)) ||
+        stringValue(parsed.markdown_body || parsed.markdownBody) ||
+        stringValue(parsed.raw_report_markdown || parsed.rawReportMarkdown))
+    ) {
+      return true;
+    }
+    if (
+      kind === 'worker' &&
+      (Array.isArray(parsed.checked_files) ||
+        Array.isArray(parsed.checkedFiles) ||
+        Array.isArray(parsed.findings) ||
+        Array.isArray(parsed.evidence_requests) ||
+        Array.isArray(parsed.evidenceRequests) ||
+        stringValue(parsed.confidence))
+    ) {
+      return true;
+    }
+    if (
+      kind === 'timeout_followup' &&
+      stringValue(parsed.summary) &&
+      (Array.isArray(parsed.read_files) ||
+        Array.isArray(parsed.readFiles) ||
+        Array.isArray(parsed.remaining_checks) ||
+        Array.isArray(parsed.remainingChecks) ||
+        Array.isArray(parsed.main_agent_questions) ||
+        Array.isArray(parsed.mainAgentQuestions))
+    ) {
+      return true;
+    }
   }
+  return false;
 }
 
-function hasBalancedRepoReviewTerminalOutput(text: string): boolean {
+function hasBalancedRepoReviewTerminalOutput(
+  text: string,
+  allowedKinds: RepoReviewTerminalOutputKind[] = ['main'],
+): boolean {
   const trimmed = String(text || '').trim();
   if (!trimmed) return false;
   return (
     Boolean(extractBalancedJson(trimmed)) &&
-    looksLikeRepoReviewTerminalOutput(trimmed)
+    looksLikeRepoReviewTerminalOutput(trimmed, allowedKinds)
   );
 }
 
@@ -920,6 +995,17 @@ async function runBoundedReviewAgent(input: {
   let timeoutFollowupCompleted = false;
   let timeoutFollowupTurnBoundary = -1;
   let currentPhase = input.turnContext?.phase || 'worker';
+  let sawTerminalTurnBoundary = false;
+  let earlyTerminalTimer: NodeJS.Timeout | null = null;
+  const resolveAllowedTerminalKinds = (): RepoReviewTerminalOutputKind[] => {
+    if (currentPhase === 'timeout_followup') {
+      return ['timeout_followup', 'worker'];
+    }
+    if (currentPhase === 'worker') {
+      return ['worker'];
+    }
+    return ['main'];
+  };
   let earlyTerminalOutputResolved = false;
   let resolveEarlyTerminalOutput: ((value: AgentRunOutput) => void) | null =
     null;
@@ -929,8 +1015,23 @@ async function runBoundedReviewAgent(input: {
   const emitTurns = async () => {
     await input.onTurnProgress?.(reviewTurns);
   };
-  const settleEarlyTerminalOutput = (text: string) => {
-    if (earlyTerminalOutputResolved) return;
+  const settleEarlyTerminalOutputIfReady = (force = false) => {
+    if (earlyTerminalOutputResolved || !terminalOutputSeen) return;
+    if (!force && sawTurnEvent && !sawTerminalTurnBoundary) {
+      if (!earlyTerminalTimer) {
+        earlyTerminalTimer = setTimeout(() => {
+          earlyTerminalTimer = null;
+          settleEarlyTerminalOutputIfReady(true);
+        }, 750);
+        earlyTerminalTimer.unref?.();
+      }
+      return;
+    }
+    if (earlyTerminalTimer) {
+      clearTimeout(earlyTerminalTimer);
+      earlyTerminalTimer = null;
+    }
+    const text = streamedResult || latestResultText || latestUsableAssistantMessageText;
     if (!String(text || '').trim()) return;
     earlyTerminalOutputResolved = true;
     resolveEarlyTerminalOutput?.({
@@ -1004,6 +1105,7 @@ async function runBoundedReviewAgent(input: {
             extractLatestRepoReviewAssistantMessageText(reviewTurns, {
               allowInProgress: true,
               requireUsableTerminalOutput: true,
+              allowedTerminalKinds: resolveAllowedTerminalKinds(),
             }) || latestUsableAssistantMessageText;
           await emitTurns();
           if (
@@ -1019,6 +1121,7 @@ async function runBoundedReviewAgent(input: {
               {
                 allowInProgress: true,
                 requireUsableTerminalOutput: true,
+                allowedTerminalKinds: ['timeout_followup', 'worker'],
               },
             );
             if (followupText) {
@@ -1031,7 +1134,10 @@ async function runBoundedReviewAgent(input: {
             output.turnEvent.item.type === 'assistant_message' &&
             (output.turnEvent.item.status === 'completed' ||
               output.turnEvent.item.status === 'in_progress') &&
-            hasBalancedRepoReviewTerminalOutput(output.turnEvent.item.text)
+            hasBalancedRepoReviewTerminalOutput(
+              output.turnEvent.item.text,
+              resolveAllowedTerminalKinds(),
+            )
           ) {
             streamedResult = preferRepoReviewTerminalOutput(
               streamedResult,
@@ -1040,13 +1146,15 @@ async function runBoundedReviewAgent(input: {
             maybeRecordFollowupOutput(output.turnEvent.item.text);
             terminalOutputSeen = true;
             closeAgentInput();
-            settleEarlyTerminalOutput(streamedResult);
+            settleEarlyTerminalOutputIfReady();
           }
           if (
             output.turnEvent.type === 'turn.completed' ||
             output.turnEvent.type === 'turn.failed'
           ) {
+            sawTerminalTurnBoundary = true;
             closeAgentInput();
+            settleEarlyTerminalOutputIfReady(true);
           }
         }
         if (output.result) {
@@ -1061,8 +1169,9 @@ async function runBoundedReviewAgent(input: {
             !sawTurnEvent ||
             getRepoReviewTerminalOutputScore(output.result) >= 2
           ) {
+            sawTerminalTurnBoundary = true;
             closeAgentInput();
-            settleEarlyTerminalOutput(streamedResult);
+            settleEarlyTerminalOutputIfReady(true);
           }
         } else if (output.status === 'error') {
           terminalOutputSeen = true;
@@ -1143,6 +1252,9 @@ async function runBoundedReviewAgent(input: {
         result.result,
       );
     }
+    if (earlyTerminalOutputResolved) {
+      forceStopAgentProcess();
+    }
     if (
       result.status !== 'success' &&
       !timedOut &&
@@ -1162,6 +1274,10 @@ async function runBoundedReviewAgent(input: {
       clearTimeout(timeoutGraceTimer);
       timeoutGraceTimer = null;
     }
+    if (earlyTerminalTimer) {
+      clearTimeout(earlyTerminalTimer);
+      earlyTerminalTimer = null;
+    }
   }
 
   if (timeoutFollowupSent) {
@@ -1174,6 +1290,7 @@ async function runBoundedReviewAgent(input: {
         extractLatestRepoReviewAssistantMessageText(followupTurns, {
           allowInProgress: true,
           requireUsableTerminalOutput: true,
+          allowedTerminalKinds: ['timeout_followup', 'worker'],
         }) || '';
     }
     timeoutFollowupCompleted = Boolean(timeoutFollowupOutputText.trim());
@@ -1299,6 +1416,9 @@ function buildRepoReviewTimeoutFollowupPrompt(input: {
     '只返回一个 JSON 对象，不要输出 Markdown 代码块。',
     'JSON 顶层字段必须包含：',
     '{',
+    '  "schema_version": "repo_review.timeout_followup.v1",',
+    '  "result_type": "repo_review_timeout_followup",',
+    '  "final": true,',
     '  "summary": "当前进度总结",',
     '  "read_files": ["已读取文件"],',
     '  "confirmed_issues": ["已确认问题"],',
@@ -1355,6 +1475,9 @@ function buildRepoReviewWorkerPrompt(input: {
     '## 输出协议',
     '只返回一个 JSON 对象，不要输出 Markdown 代码块。',
     '{',
+    '  "schema_version": "repo_review.worker.v1",',
+    '  "result_type": "repo_review_worker",',
+    '  "final": true,',
     '  "checked_files": ["已检查的文件路径"],',
     '  "findings": [',
     '    {',
@@ -1428,6 +1551,9 @@ function buildRepoReviewReducerPrompt(input: {
     '## 输出协议',
     '只返回一个 JSON 对象，不要输出 Markdown 代码块。',
     '{',
+    '  "schema_version": "repo_review.reducer.v1",',
+    '  "result_type": "repo_review_final",',
+    '  "final": true,',
     '  "overall": "pass | warn | fail | error | skipped",',
     '  "summary": "一句话总体结论",',
     '  "findings": [',
@@ -1565,6 +1691,9 @@ function buildRepoReviewMainReviewPrompt(input: {
     '## 输出协议',
     '只返回一个 JSON 对象，不要输出 Markdown 代码块。',
     '{',
+    '  "schema_version": "repo_review.main.v1",',
+    '  "result_type": "repo_review_final",',
+    '  "final": true,',
     '  "overall": "pass | warn | fail | error | skipped",',
     '  "summary": "一句话总体结论",',
     '  "findings": [',
@@ -1709,12 +1838,18 @@ function parseRepoReviewTimeoutFollowupSummary(
 }
 
 function parseReducerResult(output: string): RepoReviewStructuredResult {
-  const parsed = JSON.parse(extractJsonObject(output)) as Record<
+  const [jsonPart, separatedMarkdownBody] = String(output || '').includes(
+    '---REVIEW_BODY---',
+  )
+    ? String(output || '').split('---REVIEW_BODY---', 2)
+    : [output, ''];
+  const parsed = JSON.parse(extractJsonObject(jsonPart)) as Record<
     string,
     unknown
   >;
   const markdownBody = String(
-    parsed.markdown_body ||
+    separatedMarkdownBody ||
+      parsed.markdown_body ||
       parsed.markdownBody ||
       parsed.raw_report_markdown ||
       parsed.rawReportMarkdown ||
@@ -1744,18 +1879,23 @@ function parseReducerResult(output: string): RepoReviewStructuredResult {
   const fileReviews = Array.isArray(parsed.file_reviews || parsed.fileReviews)
     ? ((parsed.file_reviews || parsed.fileReviews) as RepoReviewFileReview[])
     : [];
+  const extracted = extractScopeLimitationsFromStructuredResult({
+    findings,
+    commitReviews,
+    explicitLimitations: scopeLimitations,
+  });
   const result: RepoReviewStructuredResult = {
     overall: (String(parsed.overall || '').trim() || 'warn') as ReviewOverall,
     summary: String(parsed.summary || '').trim() || '审查完成。',
-    findings,
-    scopeLimitations,
+    findings: extracted.findings,
+    scopeLimitations: extracted.scopeLimitations,
     suggestions,
     recommendedBlock: Boolean(
       parsed.recommended_block ?? parsed.recommendedBlock,
     ),
     markdownBody,
     rawModelOutput: output,
-    commitReviews,
+    commitReviews: extracted.commitReviews,
     fileReviews,
   };
   return result;
@@ -1818,6 +1958,38 @@ function buildLocalStructuredResultFallback(input: {
     markdownSummary ||
     normalizeLine(input.outputText).slice(0, 240) ||
     (hasFinding ? '审查完成，发现候选问题。' : '审查完成，未发现明确问题。');
+  const looksLikeStructuredMarkdown =
+    Boolean(markdownSummary) ||
+    Boolean(issueMatch) ||
+    /代码审查报告|###\s*[一二三四五六七八九十]/.test(markdown);
+  if (!looksLikeStructuredMarkdown) {
+    return {
+      overall: 'warn',
+      summary: '模型输出未完全结构化，已回退展示原始审查结果。',
+      findings: [
+        {
+          severity: 'medium',
+          title: '审查输出格式不符合要求',
+          detail: '无法从模型输出中提取结构化审查结论。',
+        },
+      ],
+      scopeLimitations: uniqueStrings([
+        'main agent returned unstructured output; local structured fallback rendered the report',
+        ...input.workerResults.flatMap((result) => result.scopeLimitations),
+        ...input.workerResults.flatMap((result) =>
+          result.evidenceRequests.map(
+            (request) => `worker evidence request: ${request}`,
+          ),
+        ),
+      ]),
+      suggestions: [],
+      recommendedBlock: false,
+      markdownBody: markdown.trim(),
+      rawModelOutput: input.outputText,
+      commitReviews: [],
+      fileReviews: [],
+    };
+  }
   const result: RepoReviewStructuredResult = {
     overall: hasHigh ? 'fail' : hasFinding ? 'warn' : 'pass',
     summary,
@@ -1834,6 +2006,74 @@ function buildLocalStructuredResultFallback(input: {
     result.markdownBody = buildStructuredMarkdownFallback(result);
   }
   return result;
+}
+
+const REVIEW_SCOPE_LIMITATION_PATTERNS = [
+  /仅基于当前分支总 diff/i,
+  /无法确认.*冲突/i,
+  /无法还原.*merge/i,
+  /无法精确核对/i,
+  /审查粒度受限/i,
+  /上下文不足/i,
+  /冲突取舍/i,
+  /覆盖上游变更/i,
+  /合并提交.*局限/i,
+  /merge commit/i,
+];
+
+function isScopeLimitationText(value: string): boolean {
+  const normalized = value.trim();
+  if (!normalized) return false;
+  return REVIEW_SCOPE_LIMITATION_PATTERNS.some((pattern) =>
+    pattern.test(normalized),
+  );
+}
+
+function isScopeLimitationFinding(finding: RepoReviewRunFinding): boolean {
+  if (
+    finding.file &&
+    finding.file !== 'N/A' &&
+    finding.file !== '(none)' &&
+    finding.file !== 'unknown'
+  ) {
+    return false;
+  }
+  return isScopeLimitationText(
+    [finding.title, finding.detail, finding.suggestion || ''].join(' '),
+  );
+}
+
+function extractScopeLimitationsFromStructuredResult(input: {
+  findings: RepoReviewRunFinding[];
+  commitReviews: RepoReviewCommitReview[];
+  explicitLimitations: string[];
+}): {
+  findings: RepoReviewRunFinding[];
+  scopeLimitations: string[];
+  commitReviews: RepoReviewCommitReview[];
+} {
+  const scopeLimitations = [...input.explicitLimitations];
+  const findings = input.findings.filter((finding) => {
+    if (!isScopeLimitationFinding(finding)) {
+      return true;
+    }
+    const message = [finding.title, finding.detail].filter(Boolean).join(' - ');
+    if (message) scopeLimitations.push(message);
+    return false;
+  });
+  const commitReviews = input.commitReviews.map((review) => ({
+    ...review,
+    issues: review.issues.filter((issue) => {
+      if (!isScopeLimitationText(issue)) return true;
+      scopeLimitations.push(issue);
+      return false;
+    }),
+  }));
+  return {
+    findings,
+    scopeLimitations: uniqueStrings(scopeLimitations),
+    commitReviews,
+  };
 }
 
 function buildPromptFileBlock(file: RepoReviewEvidenceFile): string {
@@ -1951,7 +2191,15 @@ export function shouldDirectMainAgentReview(input: {
   maxMainAgentPromptBytes?: number;
 }): boolean {
   const threshold = Math.max(0, Math.trunc(input.diffSubagentThreshold));
-  return input.changedFileCount < threshold;
+  const maxMainAgentPromptBytes = Math.max(
+    0,
+    Math.trunc(input.maxMainAgentPromptBytes ?? 0),
+  );
+  return (
+    input.changedFileCount < threshold &&
+    (maxMainAgentPromptBytes <= 0 ||
+      input.totalPromptBytes <= maxMainAgentPromptBytes)
+  );
 }
 
 function buildGraphAwareGroupKeys(input: {
@@ -2106,6 +2354,7 @@ async function createEvidenceBundle(input: {
     changedFileCount: input.prepared.changedFiles.length,
     totalPromptBytes,
     diffSubagentThreshold: input.profile.diffSubagentThreshold,
+    maxMainAgentPromptBytes: MAX_DIRECT_MAIN_AGENT_PROMPT_BYTES,
   });
   return {
     repository: input.repository,
@@ -3266,7 +3515,10 @@ export async function runRepoReviewGraphCoordinator(input: {
       input.repository.localRepoPath,
     userId: input.userId,
     providerOverrideId: mainProvider?.id,
-    timeoutMs: bundle.directMainAgentReview ? 0 : undefined,
+    timeoutMs: bundle.directMainAgentReview
+      ? MAIN_DIRECT_REVIEW_TIMEOUT_MS
+      : MAIN_FALLBACK_REVIEW_TIMEOUT_MS,
+    timeoutGraceMs: MAIN_REVIEW_TIMEOUT_GRACE_MS,
     turnContext: buildRepoReviewTurnContext({
       groupKey: mainReviewStepId,
       groupLabel: mainReviewStepLabel,

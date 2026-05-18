@@ -288,7 +288,32 @@ describe('repo review evidence bundle context', () => {
           updatedAt: '2026-04-23T00:00:00.000Z',
         },
       },
-      files: [],
+      files: [
+        {
+          relativePath: 'src/a.ts',
+          language: 'ts',
+          byteSize: 1200,
+          lineCount: 80,
+          fileHash: 'a-hash',
+          rank: 10,
+          importCount: 2,
+          exportCount: 1,
+          summary: 'Handles repository review execution.',
+          summarySource: 'fallback' as const,
+        },
+        {
+          relativePath: 'src/helper.ts',
+          language: 'ts',
+          byteSize: 600,
+          lineCount: 30,
+          fileHash: 'helper-hash',
+          rank: 4,
+          importCount: 0,
+          exportCount: 1,
+          summary: 'Calls into the main review entrypoint.',
+          summarySource: 'fallback' as const,
+        },
+      ],
       functions: [
         {
           id: 'fn-a',
@@ -347,6 +372,25 @@ describe('repo review evidence bundle context', () => {
 
     expect(bundle.changedHunks).toHaveLength(1);
     expect(bundle.changedFunctions).toHaveLength(1);
+    expect(bundle.fileImpact?.changedFiles).toEqual([
+      expect.objectContaining({
+        filePath: 'src/a.ts',
+        changed: true,
+        summary: 'Handles repository review execution.',
+      }),
+    ]);
+    expect(bundle.fileImpact?.relatedFiles).toEqual([
+      expect.objectContaining({
+        filePath: 'src/helper.ts',
+        changed: false,
+      }),
+    ]);
+    expect(bundle.fileImpact?.edges).toEqual([
+      expect.objectContaining({
+        fromFile: 'src/helper.ts',
+        toFile: 'src/a.ts',
+      }),
+    ]);
     expect(bundle.changedFunctions[0]).toMatchObject({
       id: 'fn-a',
       filePath: 'src/a.ts',
@@ -516,6 +560,61 @@ describe('repo review evidence bundle context', () => {
           impactGraph: {
             functions: [],
             edges: [],
+          },
+          fileImpact: {
+            changedFiles: [
+              {
+                filePath: 'src/a.ts',
+                language: 'ts',
+                rank: 1,
+                lineCount: 1,
+                importCount: 0,
+                exportCount: 1,
+                dependentCount: 0,
+                dependencyCount: 1,
+                topSymbols: ['function a@1'],
+                changed: true,
+              },
+              {
+                filePath: 'src/b.ts',
+                language: 'ts',
+                rank: 1,
+                lineCount: 1,
+                importCount: 0,
+                exportCount: 1,
+                dependentCount: 1,
+                dependencyCount: 0,
+                topSymbols: ['function b@1'],
+                changed: true,
+              },
+            ],
+            relatedFiles: [
+              {
+                filePath: 'src/shared.ts',
+                language: 'ts',
+                rank: 0.5,
+                lineCount: 10,
+                importCount: 0,
+                exportCount: 1,
+                dependentCount: 2,
+                dependencyCount: 0,
+                topSymbols: ['function shared@1'],
+                changed: false,
+                linkScore: 2,
+              },
+            ],
+            edges: [
+              {
+                fromFile: 'src/a.ts',
+                toFile: 'src/shared.ts',
+                symbols: ['shared'],
+              },
+              {
+                fromFile: 'src/b.ts',
+                toFile: 'src/shared.ts',
+                symbols: ['shared'],
+              },
+            ],
           },
           codeMapStatus: { status: 'ready' },
           codeIndexStatus: { status: 'ready' },

@@ -172,6 +172,7 @@ import type {
   ReviewEvidenceBundle,
   ReviewEvidenceChangedHunk,
   ReviewEvidenceContextStatus,
+  ReviewEvidenceImpactFile,
   ReviewEvidenceImpactFunction,
 } from './repo-review-model.js';
 import type {
@@ -1858,13 +1859,23 @@ function upsertRepoReviewProgressStep(
   const now = input.now || new Date().toISOString();
   const existingIndex = steps.findIndex((step) => step.id === input.id);
   const existing = existingIndex >= 0 ? steps[existingIndex]! : null;
-  const startedAt = existing?.startedAt || now;
-  const activeStartedAt =
-    existing?.activeStartedAt || (input.status === 'running' ? now : undefined);
-  const terminal =
+  const existingTerminal =
+    existing?.status === 'completed' ||
+    existing?.status === 'failed' ||
+    existing?.status === 'skipped';
+  const incomingTerminal =
     input.status === 'completed' ||
     input.status === 'failed' ||
     input.status === 'skipped';
+  const nextStatus =
+    existingTerminal && !incomingTerminal ? existing.status : input.status;
+  const startedAt = existing?.startedAt || now;
+  const activeStartedAt =
+    existing?.activeStartedAt || (nextStatus === 'running' ? now : undefined);
+  const terminal =
+    nextStatus === 'completed' ||
+    nextStatus === 'failed' ||
+    nextStatus === 'skipped';
   const completedAt = terminal ? now : existing?.completedAt;
   const durationMs =
     completedAt && activeStartedAt
@@ -1874,7 +1885,7 @@ function upsertRepoReviewProgressStep(
     id: input.id,
     label: input.label,
     kind: input.kind || existing?.kind,
-    status: input.status,
+    status: nextStatus,
     startedAt,
     ...(activeStartedAt ? { activeStartedAt } : {}),
     ...(completedAt ? { completedAt } : {}),
@@ -2063,8 +2074,17 @@ function hasUsableRepoReviewFinalResult(text: string): boolean {
   if (trimmed.includes('---REVIEW_BODY---')) return true;
   try {
     const json = extractBalancedJson(trimmed) ?? extractJsonObject(trimmed);
-    JSON.parse(json);
-    return true;
+    const parsed = JSON.parse(json) as Record<string, unknown>;
+    const resultType = stringValue(parsed.result_type || parsed.resultType);
+    const overall = stringValue(parsed.overall);
+    const summary = stringValue(parsed.summary);
+    return Boolean(
+      (resultType && /repo_review/i.test(resultType)) ||
+      normalizeBoolean(parsed.final, false) ||
+      (overall && summary) ||
+      stringValue(parsed.markdown_body || parsed.markdownBody) ||
+      stringValue(parsed.raw_report_markdown || parsed.rawReportMarkdown),
+    );
   } catch {
     return false;
   }
@@ -4463,6 +4483,18 @@ async function resolveLocalActor(
 ): Promise<string> {
   const fromEvent = stringValue(event.actor);
   if (fromEvent) return fromEvent;
+  const localName = await runGitCommandAsync(
+    repoPath,
+    ['config', '--local', '--get', 'user.name'],
+    true,
+  );
+  if (localName) return localName;
+  const localEmail = await runGitCommandAsync(
+    repoPath,
+    ['config', '--local', '--get', 'user.email'],
+    true,
+  );
+  if (localEmail) return localEmail;
   const name = await runGitCommandAsync(
     repoPath,
     ['config', '--get', 'user.name'],
@@ -5075,6 +5107,240 @@ function toReviewEvidenceFunctionRef(fn: CodeIndexFunctionRecord) {
   };
 }
 
+function buildReviewEvidenceFileSymbols(input: {
+  codeMapSymbols?: Array<{
+    name: string;
+    kind: string;
+    line: number;
+    rank: number;
+  }>;
+  functions?: CodeIndexFunctionRecord[];
+}): string[] {
+  const symbols: string[] = [];
+  const seen = new Set<string>();
+  for (const symbol of [...(input.codeMapSymbols || [])]
+    .sort((left, right) => right.rank - left.rank)
+    .slice(0, 6)) {
+    const label = `${symbol.kind} ${symbol.name}@${symbol.line}`;
+    if (seen.has(label)) continue;
+    seen.add(label);
+    symbols.push(label);
+  }
+  for (const fn of (input.functions || []).slice(0, 6)) {
+    const label = `${fn.kind} ${fn.name}@${fn.line}`;
+    if (seen.has(label)) continue;
+    seen.add(label);
+    symbols.push(label);
+  }
+  return symbols.slice(0, 6);
+}
+
+function buildReviewEvidenceFileImpact(input: {
+  changedFiles: string[];
+  codeMapSnapshot: CodeMapSnapshot | null;
+  codeIndexSnapshot: ReviewCodeIndexContextData | null;
+}): {
+  fileImpact: NonNullable<ReviewEvidenceBundle['fileImpact']>;
+  missingContext: string[];
+} {
+  const missingContext: string[] = [];
+  const changedFileSet = new Set(input.changedFiles);
+  const functionsById = new Map(
+    (input.codeIndexSnapshot?.functions || []).map((fn) => [fn.id, fn]),
+  );
+  const functionsByFile = new Map<string, CodeIndexFunctionRecord[]>();
+  for (const fn of input.codeIndexSnapshot?.functions || []) {
+    const entries = functionsByFile.get(fn.filePath) || [];
+    entries.push(fn);
+    functionsByFile.set(fn.filePath, entries);
+  }
+
+  const nodeMap = new Map<
+    string,
+    {
+      filePath: string;
+      language: string;
+      rank: number;
+      lineCount: number;
+      importCount: number;
+      exportCount: number;
+      topSymbols: string[];
+      summary?: string;
+    }
+  >();
+  for (const file of input.codeIndexSnapshot?.files || []) {
+    nodeMap.set(file.relativePath, {
+      filePath: file.relativePath,
+      language: file.language,
+      rank: file.rank,
+      lineCount: file.lineCount,
+      importCount: file.importCount,
+      exportCount: file.exportCount,
+      summary: file.summary || undefined,
+      topSymbols: buildReviewEvidenceFileSymbols({
+        functions: functionsByFile.get(file.relativePath) || [],
+      }),
+    });
+  }
+  for (const file of input.codeMapSnapshot?.files || []) {
+    const existing = nodeMap.get(file.relativePath);
+    nodeMap.set(file.relativePath, {
+      filePath: file.relativePath,
+      language: file.language || existing?.language || 'text',
+      rank: file.rank || existing?.rank || 0,
+      lineCount: file.lineCount || existing?.lineCount || 0,
+      importCount: file.importCount ?? existing?.importCount ?? 0,
+      exportCount: file.exportCount ?? existing?.exportCount ?? 0,
+      summary: existing?.summary,
+      topSymbols: buildReviewEvidenceFileSymbols({
+        codeMapSymbols: file.symbols,
+        functions: functionsByFile.get(file.relativePath) || [],
+      }),
+    });
+  }
+
+  const edgeMap = new Map<
+    string,
+    { fromFile: string; toFile: string; symbols: Set<string> }
+  >();
+  const pushEdge = (fromFile: string, toFile: string, symbols: string[]) => {
+    if (!fromFile || !toFile) return;
+    const key = `${fromFile}\0${toFile}`;
+    const existing = edgeMap.get(key) || {
+      fromFile,
+      toFile,
+      symbols: new Set<string>(),
+    };
+    for (const symbol of symbols) {
+      if (symbol) existing.symbols.add(symbol);
+    }
+    edgeMap.set(key, existing);
+  };
+  for (const edge of input.codeMapSnapshot?.edges || []) {
+    pushEdge(edge.fromFile, edge.toFile, edge.symbols);
+  }
+  for (const edge of input.codeIndexSnapshot?.functionEdges || []) {
+    const from = functionsById.get(edge.fromFunctionId);
+    const to = functionsById.get(edge.toFunctionId);
+    if (!from?.filePath || !to?.filePath || from.filePath === to.filePath) {
+      continue;
+    }
+    pushEdge(from.filePath, to.filePath, [edge.symbol || to.name || 'call']);
+  }
+
+  const incomingByFile = new Map<string, number>();
+  const outgoingByFile = new Map<string, number>();
+  for (const edge of edgeMap.values()) {
+    outgoingByFile.set(
+      edge.fromFile,
+      (outgoingByFile.get(edge.fromFile) || 0) + 1,
+    );
+    incomingByFile.set(
+      edge.toFile,
+      (incomingByFile.get(edge.toFile) || 0) + 1,
+    );
+  }
+
+  const relatedScores = new Map<string, number>();
+  for (const edge of edgeMap.values()) {
+    if (changedFileSet.has(edge.fromFile) && !changedFileSet.has(edge.toFile)) {
+      relatedScores.set(
+        edge.toFile,
+        (relatedScores.get(edge.toFile) || 0) + 1 + edge.symbols.size,
+      );
+    }
+    if (changedFileSet.has(edge.toFile) && !changedFileSet.has(edge.fromFile)) {
+      relatedScores.set(
+        edge.fromFile,
+        (relatedScores.get(edge.fromFile) || 0) + 1 + edge.symbols.size,
+      );
+    }
+  }
+
+  const toImpactFile = (
+    filePath: string,
+    options: { changed: boolean; linkScore?: number },
+  ): ReviewEvidenceImpactFile | null => {
+    const node = nodeMap.get(filePath);
+    if (!node) return null;
+    return {
+      filePath,
+      language: node.language || 'text',
+      rank: node.rank || 0,
+      lineCount: node.lineCount || 0,
+      importCount: node.importCount || 0,
+      exportCount: node.exportCount || 0,
+      dependentCount: incomingByFile.get(filePath) || 0,
+      dependencyCount: outgoingByFile.get(filePath) || 0,
+      topSymbols: node.topSymbols,
+      changed: options.changed,
+      ...(options.linkScore !== undefined
+        ? { linkScore: options.linkScore }
+        : {}),
+      ...(node.summary ? { summary: node.summary } : {}),
+    };
+  };
+
+  const changedFiles = input.changedFiles
+    .map((filePath) => toImpactFile(filePath, { changed: true }))
+    .filter((file): file is ReviewEvidenceImpactFile => Boolean(file));
+  const relatedFiles = [...relatedScores.entries()]
+    .sort((left, right) => {
+      if (right[1] !== left[1]) return right[1] - left[1];
+      return left[0].localeCompare(right[0], 'en');
+    })
+    .slice(0, 16)
+    .map(([filePath, score]) =>
+      toImpactFile(filePath, { changed: false, linkScore: score }),
+    )
+    .filter((file): file is ReviewEvidenceImpactFile => Boolean(file));
+
+  const visibleFiles = new Set<string>([
+    ...changedFiles.map((file) => file.filePath),
+    ...relatedFiles.map((file) => file.filePath),
+  ]);
+  const visibleEdges = [...edgeMap.values()]
+    .filter(
+      (edge) =>
+        visibleFiles.has(edge.fromFile) &&
+        visibleFiles.has(edge.toFile) &&
+        (changedFileSet.has(edge.fromFile) || changedFileSet.has(edge.toFile)),
+    )
+    .map((edge) => ({
+      fromFile: edge.fromFile,
+      toFile: edge.toFile,
+      symbols: Array.from(edge.symbols.values()).slice(0, 6),
+    }))
+    .sort((left, right) =>
+      left.fromFile === right.fromFile
+        ? left.toFile.localeCompare(right.toFile, 'en')
+        : left.fromFile.localeCompare(right.fromFile, 'en'),
+    );
+
+  if (input.changedFiles.length > 0 && changedFiles.length === 0) {
+    missingContext.push(
+      '未能为变更文件构建文件级结构画像，可能是索引缺失或变更文件不在当前代码图谱中。',
+    );
+  }
+  if (!input.codeMapSnapshot && input.codeIndexSnapshot) {
+    missingContext.push(
+      'CodeMap 缺失，文件级影响图回退为 Code Index 函数调用聚合视图。',
+    );
+  }
+  if (!input.codeMapSnapshot && !input.codeIndexSnapshot) {
+    missingContext.push('CodeMap 和 Code Index 均不可用，无法构建文件级影响图。');
+  }
+
+  return {
+    fileImpact: {
+      changedFiles,
+      relatedFiles,
+      edges: visibleEdges,
+    },
+    missingContext,
+  };
+}
+
 function buildReviewEvidenceFunctionImpact(input: {
   changedHunks: ReviewEvidenceChangedHunk[];
   codeIndexSnapshot: ReviewCodeIndexContextData | null;
@@ -5530,6 +5796,11 @@ export function buildRepoReviewDiffAwareEvidenceBundle(input: {
   const changedHunks = diffIndex.hunks
     .filter((hunk) => changedFileSet.has(hunk.filePath))
     .map(toReviewEvidenceChangedHunk);
+  const fileImpact = buildReviewEvidenceFileImpact({
+    changedFiles: input.prepared.changedFiles,
+    codeMapSnapshot: input.codeMapSnapshot,
+    codeIndexSnapshot: input.codeIndexSnapshot,
+  });
   const functionImpact = buildReviewEvidenceFunctionImpact({
     changedHunks,
     codeIndexSnapshot: input.codeIndexSnapshot,
@@ -5545,7 +5816,10 @@ export function buildRepoReviewDiffAwareEvidenceBundle(input: {
     headSha: input.prepared.headSha,
     error: input.codeIndexError,
   });
-  const missingContext = [...functionImpact.missingContext];
+  const missingContext = [
+    ...fileImpact.missingContext,
+    ...functionImpact.missingContext,
+  ];
   if (codeMapStatus.status !== 'ready') {
     missingContext.push(
       `CodeMap ${codeMapStatus.status}: ${codeMapStatus.reason || 'unavailable'}`,
@@ -5561,6 +5835,7 @@ export function buildRepoReviewDiffAwareEvidenceBundle(input: {
     changedFiles: input.prepared.changedFiles,
     changedHunks,
     changedFunctions: functionImpact.changedFunctions,
+    fileImpact: fileImpact.fileImpact,
     impactGraph: functionImpact.impactGraph,
     codeMapStatus,
     codeIndexStatus,
@@ -5597,15 +5872,58 @@ function renderRepoReviewEvidenceBundleBlock(
     'Evidence 状态：',
     `- CodeMap: ${formatEvidenceStatus(bundle.codeMapStatus)}`,
     `- Code Index: ${formatEvidenceStatus(bundle.codeIndexStatus)}`,
-    `- bundle: files=${bundle.changedFiles.length}, hunks=${bundle.changedHunks.length}, changed_functions=${bundle.changedFunctions.length}, impact_edges=${bundle.impactGraph.edges.length}`,
+    `- bundle: files=${bundle.changedFiles.length}, hunks=${bundle.changedHunks.length}, changed_functions=${bundle.changedFunctions.length}, file_edges=${bundle.fileImpact?.edges.length || 0}, impact_edges=${bundle.impactGraph.edges.length}`,
     '',
     'Diff 文件摘要：',
     buildRepoReviewDiffSummaryBlock({
       summary: bundle.diffSummary,
     }),
     '',
-    'Changed hunks：',
+    'File impact（changed files + 1-hop file neighbors）：',
   ];
+  for (const file of bundle.fileImpact?.changedFiles.slice(0, 32) || []) {
+    lines.push(
+      `- changed ${file.filePath} | lang=${file.language} | rank=${file.rank.toFixed(4)} | lines=${file.lineCount} | imports=${file.importCount} | exports=${file.exportCount} | dependents=${file.dependentCount} | dependencies=${file.dependencyCount}`,
+    );
+    if (file.summary) {
+      lines.push(`  summary: ${trimContextBlock(file.summary, 240)}`);
+    }
+    if (file.topSymbols.length > 0) {
+      lines.push(`  top_symbols: ${file.topSymbols.join(', ')}`);
+    }
+  }
+  if ((bundle.fileImpact?.changedFiles.length || 0) === 0) {
+    lines.push('- (none)');
+  }
+
+  lines.push('', 'Related file neighbors：');
+  for (const file of bundle.fileImpact?.relatedFiles.slice(0, 24) || []) {
+    lines.push(
+      `- related ${file.filePath} | link_score=${file.linkScore || 0} | lang=${file.language} | rank=${file.rank.toFixed(4)} | dependents=${file.dependentCount} | dependencies=${file.dependencyCount}`,
+    );
+    if (file.summary) {
+      lines.push(`  summary: ${trimContextBlock(file.summary, 200)}`);
+    }
+    if (file.topSymbols.length > 0) {
+      lines.push(`  top_symbols: ${file.topSymbols.join(', ')}`);
+    }
+  }
+  if ((bundle.fileImpact?.relatedFiles.length || 0) === 0) {
+    lines.push('- (none)');
+  }
+
+  lines.push('', 'File edges：');
+  for (const edge of bundle.fileImpact?.edges.slice(0, 80) || []) {
+    lines.push(
+      `- ${edge.fromFile} -> ${edge.toFile} | symbols=${edge.symbols.join(', ') || '-'}`,
+    );
+  }
+  if ((bundle.fileImpact?.edges.length || 0) === 0) lines.push('- (none)');
+
+  lines.push(
+    '',
+    'Changed hunks：',
+  );
   for (const hunk of bundle.changedHunks.slice(0, 64)) {
     lines.push(
       `- ${hunk.filePath} | ${hunk.header} | new ${hunk.newStart}-${hunk.newEnd} | added ${hunk.addedLineNumbers.join(',') || '-'} | removed ${hunk.removedLineNumbers.join(',') || '-'}`,
@@ -5712,6 +6030,14 @@ function filterRepoReviewEvidenceBundleForFiles(input: {
   const graphFunctions = input.bundle.impactGraph.functions.filter((fn) =>
     graphFunctionIds.has(fn.id),
   );
+  const fileImpactEdges = (input.bundle.fileImpact?.edges || []).filter(
+    (edge) => fileSet.has(edge.fromFile) || fileSet.has(edge.toFile),
+  );
+  const visibleFileImpactPaths = new Set<string>(input.files);
+  for (const edge of fileImpactEdges) {
+    visibleFileImpactPaths.add(edge.fromFile);
+    visibleFileImpactPaths.add(edge.toFile);
+  }
   return {
     ...input.bundle,
     diffSummary: {
@@ -5731,6 +6057,17 @@ function filterRepoReviewEvidenceBundleForFiles(input: {
     changedFiles: input.bundle.changedFiles.filter((file) => fileSet.has(file)),
     changedHunks,
     changedFunctions,
+    fileImpact: input.bundle.fileImpact
+      ? {
+          changedFiles: input.bundle.fileImpact.changedFiles.filter((file) =>
+            fileSet.has(file.filePath),
+          ),
+          relatedFiles: input.bundle.fileImpact.relatedFiles.filter((file) =>
+            visibleFileImpactPaths.has(file.filePath),
+          ),
+          edges: fileImpactEdges,
+        }
+      : undefined,
     impactGraph: {
       functions: graphFunctions,
       edges: edgeByChangedFunction,
@@ -5770,9 +6107,17 @@ function buildRepoReviewImpactGraphBlock(
   if (!bundle) return 'Impact Graph：unavailable';
   const lines = [
     'Impact Graph：',
+    `changed_files=${bundle.fileImpact?.changedFiles.length || 0}`,
+    `related_files=${bundle.fileImpact?.relatedFiles.length || 0}`,
+    `file_edges=${bundle.fileImpact?.edges.length || 0}`,
     `changed_functions=${bundle.changedFunctions.length}`,
     `one_hop_edges=${bundle.impactGraph.edges.length}`,
   ];
+  for (const edge of bundle.fileImpact?.edges.slice(0, 20) || []) {
+    lines.push(
+      `- file: ${edge.fromFile} -> ${edge.toFile} | symbols=${edge.symbols.join(', ') || '-'}`,
+    );
+  }
   for (const edge of bundle.impactGraph.edges.slice(0, 40)) {
     const from = edge.fromFunction
       ? `${edge.fromFunction.filePath}:${edge.fromFunction.startLine} ${edge.fromFunction.name}`
@@ -12027,11 +12372,10 @@ async function runReviewAgent(input: {
                 output.turnEvent.item.text,
               )
             ) {
-              sawTerminalTurnEvent = true;
               terminalOutputSeen = true;
               streamedResult = output.turnEvent.item.text;
-              maybeCloseAgentInput();
-              resolveEarlyFinalIfReady(true);
+              closeAgentInput();
+              resolveEarlyFinalIfReady();
             }
           }
           const visibleTurnEvent = sanitizeReviewTurnEventForWeb(

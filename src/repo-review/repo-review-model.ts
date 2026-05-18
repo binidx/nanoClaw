@@ -333,6 +333,27 @@ export interface ReviewEvidenceImpactEdge {
   >;
 }
 
+export interface ReviewEvidenceImpactFile {
+  filePath: string;
+  language: string;
+  rank: number;
+  lineCount: number;
+  importCount: number;
+  exportCount: number;
+  dependentCount: number;
+  dependencyCount: number;
+  topSymbols: string[];
+  changed: boolean;
+  linkScore?: number;
+  summary?: string;
+}
+
+export interface ReviewEvidenceImpactFileEdge {
+  fromFile: string;
+  toFile: string;
+  symbols: string[];
+}
+
 export interface ReviewEvidenceBundle {
   diffSummary: ReviewEvidenceDiffSummary;
   changedFiles: string[];
@@ -341,6 +362,11 @@ export interface ReviewEvidenceBundle {
   impactGraph: {
     functions: ReviewEvidenceImpactFunction[];
     edges: ReviewEvidenceImpactEdge[];
+  };
+  fileImpact?: {
+    changedFiles: ReviewEvidenceImpactFile[];
+    relatedFiles: ReviewEvidenceImpactFile[];
+    edges: ReviewEvidenceImpactFileEdge[];
   };
   codeMapStatus: ReviewEvidenceContextStatus;
   codeIndexStatus: ReviewEvidenceContextStatus;
