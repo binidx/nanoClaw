@@ -196,6 +196,73 @@ export interface CodeIndexFunctionDepsResponse {
   downstream: Array<{ edge: CodeIndexFunctionEdgeRecord; node: CodeIndexFunctionRecord }>;
 }
 
+export interface ProjectGraphQueryArtifactSummary {
+  id: string;
+  source: string;
+  kind: string;
+  status: string;
+  question: string;
+  createdAt: string;
+}
+
+export interface ProjectQaMatchNode {
+  id: string;
+  label: string;
+  type: 'directory' | 'file' | 'chunk' | 'function';
+  filePath?: string;
+  startLine?: number;
+  endLine?: number;
+  score: number;
+  reasons: string[];
+  community?: string;
+}
+
+export interface ProjectQaResult {
+  question: string;
+  confidence: {
+    seedScore: number;
+    graphScore: number;
+    contextScore: number;
+    overall: number;
+  };
+  communities: Array<{
+    id: string;
+    label: string;
+    nodeIds: string[];
+    topNodeIds: string[];
+    bridgeNodeIds: string[];
+    filePaths: string[];
+    score: number;
+  }>;
+  matches: {
+    files: ProjectQaMatchNode[];
+    functions: ProjectQaMatchNode[];
+    chunks: ProjectQaMatchNode[];
+    directories: ProjectQaMatchNode[];
+  };
+}
+
+export interface ProjectQaResponse {
+  repositoryId: string;
+  branch: string;
+  manifestHash: string;
+  artifact?: ProjectGraphQueryArtifactSummary;
+  answer: string;
+  fallbackAnswer: string;
+  noAi: boolean;
+  qa: {
+    retrievalProfile: string;
+    focusPaths: string[];
+    exploration: {
+      selectedFiles: string[];
+      matchedFunctionCount: number;
+      matchedChunkCount: number;
+      contextText: string;
+    };
+  };
+  result: ProjectQaResult;
+}
+
 export interface CodeMapFetchResult {
   source: string;
   snapshot: CodeMapSnapshot | null;
@@ -502,6 +569,29 @@ export async function fetchCodeIndexFileDetail(
 ): Promise<CodeIndexFileDetail> {
   const url = `${apiBase}/api/code-index/${encodeURIComponent(repositoryId)}/files/${encodeURIComponent(filePath)}?branch=${encodeURIComponent(branch)}`;
   const resp = await fetch(url);
+  if (!resp.ok) {
+    const body = await resp.json().catch(() => ({}));
+    throw new Error((body as { error?: string }).error || `HTTP ${resp.status}`);
+  }
+  return resp.json();
+}
+
+export async function askProjectCodebase(
+  apiBase: string,
+  repositoryId: string,
+  branch: string,
+  payload: {
+    question: string;
+    focusPaths?: string[];
+    profile?: string;
+  },
+): Promise<ProjectQaResponse> {
+  const url = `${apiBase}/api/code-index/${encodeURIComponent(repositoryId)}/ask?branch=${encodeURIComponent(branch)}`;
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
   if (!resp.ok) {
     const body = await resp.json().catch(() => ({}));
     throw new Error((body as { error?: string }).error || `HTTP ${resp.status}`);

@@ -7,6 +7,7 @@ import { CodeMapGraphView } from '../components/code-map/CodeMapGraphView';
 import { CodeMapAnalysisView } from '../components/code-map/CodeMapAnalysisView';
 import { CodeMapRepoOverview } from '../components/code-map/CodeMapRepoOverview';
 import { CodeIndexSearchView } from '../components/code-map/CodeIndexSearchView';
+import { ProjectQaView } from '../components/code-map/ProjectQaView';
 import type {
   CodeMapSnapshot,
   CodeMapStats,
@@ -70,7 +71,7 @@ export interface CodeMapPageProps {
   onNavigateBack?: () => void;
 }
 
-type ViewTab = 'overview' | 'graph' | 'analysis' | 'detail' | 'search' | 'text';
+type ViewTab = 'overview' | 'graph' | 'analysis' | 'detail' | 'search' | 'qa' | 'text';
 
 export function CodeMapPage({ apiBase, repositoryIdProp, branchProp, repoNameProp, onClose, embedded, onNavigateBack }: CodeMapPageProps) {
   const { t } = useTranslation('codeMap');
@@ -453,6 +454,7 @@ export function CodeMapPage({ apiBase, repositoryIdProp, branchProp, repoNamePro
                 { key: 'analysis', label: t('auto.ffd208bb') },
                 { key: 'detail', label: t('auto.e6fc1cd7') },
                 { key: 'search', label: t('search.semanticSearch') },
+                { key: 'qa', label: t('qa.tab') },
                 { key: 'text', label: t('panel.tab.text') },
               ]}
               activeKey={viewTab}
@@ -519,6 +521,20 @@ export function CodeMapPage({ apiBase, repositoryIdProp, branchProp, repoNamePro
                   apiBase={apiBase}
                   repositoryId={repositoryId}
                   branch={branch}
+                  onOpenFile={(filePath) => {
+                    handleSelectFile(filePath);
+                    setViewTab('detail');
+                  }}
+                />
+              )}
+
+              {viewTab === 'qa' && (
+                <ProjectQaView
+                  apiBase={apiBase}
+                  repositoryId={repositoryId}
+                  branch={branch}
+                  selectedFile={selectedFile}
+                  scopedFiles={filteredFiles.map((file) => file.relativePath)}
                   onOpenFile={(filePath) => {
                     handleSelectFile(filePath);
                     setViewTab('detail');

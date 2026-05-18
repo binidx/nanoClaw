@@ -1006,8 +1006,23 @@ describe('code-index routes', () => {
     expect(response.statusCode).toBe(200);
     expect(JSON.parse(response.body)).toMatchObject({
       answer: 'Likely implemented in src/auth/login.ts:1-12 via loginUser.',
+      qa: {
+        retrievalProfile: 'implementation',
+        focusPaths: [],
+        exploration: {
+          selectedFiles: ['src/auth/login.ts'],
+          matchedFunctionCount: 1,
+          matchedChunkCount: 1,
+        },
+      },
     });
     expect(generateTextWithDefaultProviderMock).toHaveBeenCalledTimes(1);
+    expect(String(generateTextWithDefaultProviderMock.mock.calls[0]?.[0] || '')).toContain(
+      'Focused exploration evidence:',
+    );
+    expect(String(generateTextWithDefaultProviderMock.mock.calls[0]?.[0] || '')).toContain(
+      'file: src/auth/login.ts',
+    );
   });
 
   it('persists graph query artifacts and exposes list/detail endpoints', async () => {

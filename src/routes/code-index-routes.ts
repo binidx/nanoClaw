@@ -45,6 +45,10 @@ import {
   shortestProjectGraphPath,
 } from '../code-intelligence/project-graph.js';
 import {
+  buildProjectGraphQueryOptions,
+  type ProjectGraphRetrievalProfile,
+} from '../code-intelligence/project-graph-context.js';
+import {
   listProjectGraphQueryArtifacts,
   loadProjectGraphQueryArtifact,
   saveProjectGraphQueryArtifact,
@@ -417,6 +421,7 @@ function collectFunctionDeps(
 function buildProjectQaPrompt(input: {
   question: string;
   contextText: string;
+  explorationText?: string;
 }): string {
   return [
     'Answer the repository question using only the graph-grounded evidence below.',
@@ -427,10 +432,169 @@ function buildProjectQaPrompt(input: {
     '',
     `Question: ${input.question}`,
     '',
+    'Graph retrieval context:',
     input.contextText,
     '',
+    'Focused exploration evidence:',
+    input.explorationText || 'No additional exploration evidence.',
+    '',
+    'Synthesize the answer from graph retrieval first, then use the focused exploration evidence to confirm or narrow the result.',
     'Output only the answer.',
   ].join('\n');
+}
+
+function inferProjectQaProfile(
+  question: string,
+): ProjectGraphRetrievalProfile {
+  const normalized = question.toLowerCase();
+  if (/(test|spec|coverage|verify|验证|测试)/.test(normalized)) {
+    return 'tests';
+  }
+  if (/(config|env|setting|flag|配置)/.test(normalized)) {
+    return 'config';
+  }
+  if (/(impact|dependency|blast radius|影响|依赖|谁调用|谁引用)/.test(normalized)) {
+    return 'impact';
+  }
+  if (/(workflow|pipeline|orchestrator|agent|工作流|编排)/.test(normalized)) {
+    return 'workflow';
+  }
+  if (/(where|implement|location|入口|实现|在哪|功能)/.test(normalized)) {
+    return 'implementation';
+  }
+  return 'default';
+}
+
+function normalizeProjectQaFocusPaths(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value.map((entry) => String(entry || '').trim()).filter(Boolean))];
+}
+
+function buildProjectQaExploration(input: {
+  question: string;
+  snapshot: CodeIndexSnapshot | null;
+  queryResult: ReturnType<typeof queryProjectGraph>;
+  focusPaths: string[];
+  maxFiles?: number;
+  maxFunctionsPerFile?: number;
+  maxChunksPerFile?: number;
+}): {
+  selectedFiles: string[];
+  matchedFunctionCount: number;
+  matchedChunkCount: number;
+  contextText: string;
+} {
+  const snapshot = input.snapshot;
+  if (!snapshot) {
+    return {
+      selectedFiles: [],
+      matchedFunctionCount: 0,
+      matchedChunkCount: 0,
+      contextText: 'Project QA exploration:\nstatus: missing_snapshot',
+    };
+  }
+  const maxFiles = Math.max(1, input.maxFiles || 4);
+  const maxFunctionsPerFile = Math.max(1, input.maxFunctionsPerFile || 3);
+  const maxChunksPerFile = Math.max(1, input.maxChunksPerFile || 2);
+  const selectedFileSet = new Set<string>(input.focusPaths);
+  const addFile = (filePath?: string) => {
+    if (!filePath || selectedFileSet.size >= maxFiles) return;
+    selectedFileSet.add(filePath);
+  };
+  for (const node of input.queryResult.startNodes) addFile(node.filePath);
+  for (const node of input.queryResult.matches.files) addFile(node.filePath);
+  for (const node of input.queryResult.matches.functions) addFile(node.filePath);
+  for (const node of input.queryResult.matches.chunks) addFile(node.filePath);
+  const selectedFiles = Array.from(selectedFileSet).slice(0, maxFiles);
+  const filesByPath = new Map(
+    snapshot.files.map((file) => [file.relativePath, file] as const),
+  );
+  const matchedFunctionsByFile = new Map<string, typeof input.queryResult.matches.functions>();
+  for (const fn of input.queryResult.matches.functions) {
+    if (!fn.filePath || !selectedFileSet.has(fn.filePath)) continue;
+    const bucket = matchedFunctionsByFile.get(fn.filePath) || [];
+    bucket.push(fn);
+    matchedFunctionsByFile.set(fn.filePath, bucket);
+  }
+  const matchedChunksByFile = new Map<string, typeof input.queryResult.matches.chunks>();
+  for (const chunk of input.queryResult.matches.chunks) {
+    if (!chunk.filePath || !selectedFileSet.has(chunk.filePath)) continue;
+    const bucket = matchedChunksByFile.get(chunk.filePath) || [];
+    bucket.push(chunk);
+    matchedChunksByFile.set(chunk.filePath, bucket);
+  }
+  const resultEdgeNodeIds = new Set(input.queryResult.nodes.map((node) => node.id));
+  const relevantEdges = input.queryResult.edges.filter(
+    (edge) => resultEdgeNodeIds.has(edge.fromId) && resultEdgeNodeIds.has(edge.toId),
+  );
+  let matchedFunctionCount = 0;
+  let matchedChunkCount = 0;
+  const lines = [
+    'Project QA exploration:',
+    `question: ${input.question}`,
+    `selected_files: ${selectedFiles.length}`,
+  ];
+  for (const filePath of selectedFiles) {
+    const file = filesByPath.get(filePath);
+    const functions = (matchedFunctionsByFile.get(filePath) || []).slice(
+      0,
+      maxFunctionsPerFile,
+    );
+    const chunks = (matchedChunksByFile.get(filePath) || []).slice(
+      0,
+      maxChunksPerFile,
+    );
+    matchedFunctionCount += functions.length;
+    matchedChunkCount += chunks.length;
+    lines.push(
+      '',
+      `file: ${filePath}`,
+      `summary: ${file?.summary || '(no file summary)'}`,
+    );
+    if (functions.length > 0) {
+      lines.push('matched_functions:');
+      for (const fn of functions) {
+        lines.push(
+          `- ${fn.label} [${fn.startLine || '?'}-${fn.endLine || '?'}] | score=${fn.score.toFixed(2)} | reasons=${fn.reasons.join(', ') || '-'}`,
+        );
+      }
+    }
+    if (chunks.length > 0) {
+      lines.push('matched_chunks:');
+      for (const chunk of chunks) {
+        const preview = String(chunk.snippet || '')
+          .replace(/\s+/g, ' ')
+          .slice(0, 220);
+        lines.push(
+          `- L${chunk.startLine || '?'}-${chunk.endLine || '?'} | score=${chunk.score.toFixed(2)} | ${preview || '(no snippet)'}`,
+        );
+      }
+    }
+    const fileEdges = relevantEdges
+      .filter((edge) => {
+        const fromNode = input.queryResult.nodes.find((node) => node.id === edge.fromId);
+        const toNode = input.queryResult.nodes.find((node) => node.id === edge.toId);
+        return fromNode?.filePath === filePath || toNode?.filePath === filePath;
+      })
+      .slice(0, 4);
+    if (fileEdges.length > 0) {
+      lines.push('relevant_edges:');
+      for (const edge of fileEdges) {
+        lines.push(
+          `- ${edge.relation} | ${edge.fromId} -> ${edge.toId}${edge.symbol ? ` | ${edge.symbol}` : ''}`,
+        );
+      }
+    }
+  }
+  if (selectedFiles.length === 0) {
+    lines.push('status: no_selected_files');
+  }
+  return {
+    selectedFiles,
+    matchedFunctionCount,
+    matchedChunkCount,
+    contextText: lines.join('\n'),
+  };
 }
 
 function getTenantUserId(req: Request): string {
@@ -1363,6 +1527,9 @@ export function registerCodeIndexRoutes(
         String(req.query.branch || req.body?.branch || '').trim() ||
         resolveDefaultBranch(repo);
       const question = String(req.body?.question || '').trim();
+      const focusPaths = normalizeProjectQaFocusPaths(req.body?.focusPaths);
+      const retrievalProfile =
+        String(req.body?.profile || '').trim() || inferProjectQaProfile(question);
       if (!question) {
         res
           .status(400)
@@ -1376,18 +1543,47 @@ export function registerCodeIndexRoutes(
           .json({ error: t('errors.auto_ec3333', {}, req.locale) });
         return;
       }
+      const snapshot = await loadCodeIndexSnapshot(repositoryId, branch);
+      const focusSeedNodeIds = graph.nodes
+        .filter(
+          (node) =>
+            node.type === 'file' &&
+            node.filePath &&
+            focusPaths.includes(node.filePath),
+        )
+        .map((node) => node.id);
+      const queryOptions = {
+        ...buildProjectGraphQueryOptions({
+          intent: 'question_answering',
+          profile: retrievalProfile as ProjectGraphRetrievalProfile,
+          queryOptions: {
+            mode: req.body?.mode === 'dfs' ? 'dfs' : 'bfs',
+            depth: Number(req.body?.depth) || undefined,
+            tokenBudget: Number(req.body?.tokenBudget) || undefined,
+            maxSeeds: Number(req.body?.maxSeeds) || undefined,
+            maxNodes: Number(req.body?.maxNodes) || undefined,
+            relationFilter: Array.isArray(req.body?.relationFilter)
+              ? req.body.relationFilter
+              : undefined,
+            seedNodeIds: Array.isArray(req.body?.seedNodeIds)
+              ? req.body.seedNodeIds
+              : focusSeedNodeIds.length > 0
+                ? focusSeedNodeIds
+                : undefined,
+          },
+        }),
+      };
       const result = queryProjectGraph(graph, question, {
-        mode: req.body?.mode === 'dfs' ? 'dfs' : 'bfs',
-        depth: Number(req.body?.depth) || 2,
-        tokenBudget: Number(req.body?.tokenBudget) || 2400,
-        maxSeeds: Number(req.body?.maxSeeds) || 5,
-        maxNodes: Number(req.body?.maxNodes) || 36,
-        relationFilter: Array.isArray(req.body?.relationFilter)
-          ? req.body.relationFilter
-          : undefined,
-        seedNodeIds: Array.isArray(req.body?.seedNodeIds)
-          ? req.body.seedNodeIds
-          : undefined,
+        ...queryOptions,
+      });
+      const exploration = buildProjectQaExploration({
+        question,
+        snapshot,
+        queryResult: result,
+        focusPaths,
+        maxFiles: Number(req.body?.maxExplorationFiles) || undefined,
+        maxFunctionsPerFile: Number(req.body?.maxFunctionsPerFile) || undefined,
+        maxChunksPerFile: Number(req.body?.maxChunksPerFile) || undefined,
       });
 
       const fallbackAnswer = buildProjectGraphFallbackAnswer(question, result);
@@ -1406,6 +1602,7 @@ export function registerCodeIndexRoutes(
             buildProjectQaPrompt({
               question,
               contextText: result.contextText,
+              explorationText: exploration.contextText,
             }),
           ].join('\n'),
           {
@@ -1432,6 +1629,12 @@ export function registerCodeIndexRoutes(
           : [],
         metadata: {
           noAi,
+          retrievalProfile,
+          exploration: {
+            selectedFiles: exploration.selectedFiles,
+            matchedFunctionCount: exploration.matchedFunctionCount,
+            matchedChunkCount: exploration.matchedChunkCount,
+          },
           planner: result.planner,
           confidence: result.confidence,
           contextFilterStats: result.contextFilterStats,
@@ -1441,6 +1644,11 @@ export function registerCodeIndexRoutes(
           answer,
           fallbackAnswer,
           noAi,
+          qa: {
+            retrievalProfile,
+            focusPaths,
+            exploration,
+          },
           result,
         },
       });
@@ -1454,6 +1662,11 @@ export function registerCodeIndexRoutes(
         answer,
         fallbackAnswer,
         noAi,
+        qa: {
+          retrievalProfile,
+          focusPaths,
+          exploration,
+        },
         result,
       });
     } catch (err) {
