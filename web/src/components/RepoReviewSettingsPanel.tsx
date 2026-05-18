@@ -1092,6 +1092,8 @@ export function RepoReviewSettingsPanel({
   const overviewRequestIdRef = useRef(0);
   const runsRequestIdRef = useRef(0);
   const runSnapshotRequestIdRef = useRef(0);
+  const runsRefreshInFlightRef = useRef(false);
+  const runDetailRefreshInFlightRef = useRef(false);
   const remoteBranchRequestIdRef = useRef(0);
   const digestRunsRequestIdRef = useRef(0);
   const reviewRealtimeLastSeqByJidRef = useRef<Record<string, number>>({});
@@ -1968,6 +1970,8 @@ export function RepoReviewSettingsPanel({
   };
 
   const refreshRunSummaries = async (preserveFeedback = true) => {
+    if (runsRefreshInFlightRef.current) return;
+    runsRefreshInFlightRef.current = true;
     const requestId = ++runsRequestIdRef.current;
     const runSnapshotRequestId = ++runSnapshotRequestIdRef.current;
     setLoading(true);
@@ -1992,11 +1996,29 @@ export function RepoReviewSettingsPanel({
     } catch (err) {
       setError(err instanceof Error ? err.message : i18n.t('repoReview.error.loadRuns'));
     } finally {
+      runsRefreshInFlightRef.current = false;
       if (requestId === runsRequestIdRef.current && mountedRef.current) {
         setLoading(false);
       }
     }
   };
+
+  const refreshSelectedRunDetail = useCallback(async (runId: string) => {
+    const detailRunId = runId.trim();
+    if (!detailRunId || runDetailRefreshInFlightRef.current) return;
+    runDetailRefreshInFlightRef.current = true;
+    try {
+      const data = await fetchRepoReviewRunDetail(apiBase, detailRunId);
+      if (!mountedRef.current) return;
+      setSelectedRunDetail((current) =>
+        mergeFetchedRepoReviewRunSnapshot(data.run || null, current),
+      );
+    } catch {
+      // Best effort poll refresh.
+    } finally {
+      runDetailRefreshInFlightRef.current = false;
+    }
+  }, [apiBase]);
 
   const refreshDigestRuns = async (preserveFeedback = true) => {
     const repositoryId = selectedRepositoryId;
@@ -2130,17 +2152,10 @@ export function RepoReviewSettingsPanel({
         void refreshRunSummaries(true);
         const detailRunId = runId || selectedRunId;
         if (!detailRunId) return;
-        void fetchRepoReviewRunDetail(apiBase, detailRunId)
-          .then((data) => {
-            if (!mountedRef.current) return;
-            setSelectedRunDetail((current) =>
-              mergeFetchedRepoReviewRunSnapshot(data.run || null, current),
-            );
-          })
-          .catch(() => {});
+        void refreshSelectedRunDetail(detailRunId);
       }, 250);
     },
-    [apiBase, refreshRunSummaries, selectedRunId],
+    [refreshRunSummaries, refreshSelectedRunDetail, selectedRunId],
   );
 
   const applyRepoReviewRealtimeEvents = useCallback(
@@ -2375,10 +2390,10 @@ export function RepoReviewSettingsPanel({
   }, [runsPage, totalRunsPages]);
 
   useEffect(() => {
-    if (!hasActiveRuns || pauseOverviewRefresh) return;
+    if (pauseOverviewRefresh) return;
     const timer = window.setInterval(() => {
       void refreshRunSummaries(true);
-    }, 4000);
+    }, hasActiveRuns ? 5000 : 30_000);
     return () => window.clearInterval(timer);
   }, [
     hasActiveRuns,
@@ -2389,14 +2404,6 @@ export function RepoReviewSettingsPanel({
   ]);
 
   useEffect(() => {
-    if (pauseOverviewRefresh) return;
-    const timer = window.setInterval(() => {
-      void refreshRunSummaries(true);
-    }, hasActiveRuns ? 3000 : 30_000);
-    return () => window.clearInterval(timer);
-  }, [hasActiveRuns, pauseOverviewRefresh, selectedRepositoryId]);
-
-  useEffect(() => {
     if (!selectedRunId || pauseOverviewRefresh) return;
     const selectedRun = runs.find((entry) => entry.id === selectedRunId);
     if (!selectedRun) return;
@@ -2404,17 +2411,10 @@ export function RepoReviewSettingsPanel({
       return;
     }
     const timer = window.setInterval(() => {
-      void fetchRepoReviewRunDetail(apiBase, selectedRunId)
-        .then((data) => {
-          if (!mountedRef.current) return;
-          setSelectedRunDetail((current) =>
-            mergeFetchedRepoReviewRunSnapshot(data.run || null, current),
-          );
-        })
-        .catch(() => {});
-    }, 3000);
+      void refreshSelectedRunDetail(selectedRunId);
+    }, 5000);
     return () => window.clearInterval(timer);
-  }, [apiBase, pauseOverviewRefresh, runs, selectedRunId]);
+  }, [pauseOverviewRefresh, refreshSelectedRunDetail, runs, selectedRunId]);
 
   useEffect(() => {
     if (!latestRunWithProgress) return;

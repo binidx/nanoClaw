@@ -1838,6 +1838,83 @@ function extractLatestCompletedAssistantMessageText(
   return '';
 }
 
+function isStructuredRepoReviewAssistantMessage(text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed) return false;
+  try {
+    const parsed = JSON.parse(extractJsonObject(trimmed)) as Record<
+      string,
+      unknown
+    >;
+    const reviewPlan = asRecord(parsed.review_plan || parsed.reviewPlan);
+    if (Object.keys(reviewPlan).length > 0) return true;
+    return Boolean(
+      Array.isArray(parsed.checked_files) ||
+        Array.isArray(parsed.checkedFiles) ||
+        Array.isArray(parsed.findings) ||
+        stringValue(parsed.summary) ||
+        stringValue(parsed.overall) ||
+        stringValue(parsed.result_type || parsed.resultType) ||
+        normalizeBoolean(parsed.final),
+    );
+  } catch {
+    return false;
+  }
+}
+
+function extractLatestProgressAssistantMessageText(
+  turns: RepoReviewAssistantTurn[],
+): string {
+  const completed = extractLatestCompletedAssistantMessageText(turns);
+  if (completed) return completed;
+  for (let turnIndex = turns.length - 1; turnIndex >= 0; turnIndex -= 1) {
+    const turn = turns[turnIndex];
+    for (
+      let itemIndex = turn.items.length - 1;
+      itemIndex >= 0;
+      itemIndex -= 1
+    ) {
+      const item = turn.items[itemIndex];
+      if (item.type !== 'assistant_message') continue;
+      if (item.status !== 'in_progress') continue;
+      if (!item.text.trim()) continue;
+      if (!isStructuredRepoReviewAssistantMessage(item.text)) continue;
+      return item.text.trim();
+    }
+  }
+  return '';
+}
+
+function buildIntermediateRepoReviewProgressTurns(
+  turns: RepoReviewAssistantTurn[],
+): RepoReviewAssistantTurn[] {
+  return turns
+    .map((turn) => {
+      const items = turn.items.filter((item) => {
+        if (item.type === 'assistant_message') {
+          if (!item.text.trim()) return false;
+          if (item.status === 'completed') {
+            return true;
+          }
+          return (
+            item.status === 'in_progress' &&
+            isStructuredRepoReviewAssistantMessage(item.text)
+          );
+        }
+        if (item.type === 'tool_call') {
+          return item.status === 'completed' || item.status === 'failed';
+        }
+        return false;
+      });
+      if (items.length === 0 && !turn.error?.trim()) return null;
+      return {
+        ...turn,
+        items,
+      };
+    })
+    .filter((turn): turn is RepoReviewAssistantTurn => Boolean(turn));
+}
+
 function extractLatestRepoReviewTurnErrorText(
   turns: RepoReviewAssistantTurn[],
 ): string | null {
@@ -1866,7 +1943,7 @@ function buildRepoReviewProgressSnapshot(
   steps: RepoReviewProgressStep[] = [],
   options: { runTerminal?: boolean } = {},
 ): RepoReviewProgressSnapshot {
-  const latestAssistantText = extractLatestCompletedAssistantMessageText(turns);
+  const latestAssistantText = extractLatestProgressAssistantMessageText(turns);
   return {
     snapshotVersion: 1,
     heartbeatAt: new Date().toISOString(),
@@ -1878,7 +1955,12 @@ function buildRepoReviewProgressSnapshot(
     latestErrorText: extractLatestRepoReviewTurnErrorText(turns),
     hasTerminalOutput: turns.some((turn) =>
       turn.items.some(
-        (item) => item.status === 'completed' || item.status === 'failed',
+        (item) =>
+          item.status === 'completed' ||
+          item.status === 'failed' ||
+          (item.type === 'assistant_message' &&
+            item.status === 'in_progress' &&
+            isStructuredRepoReviewAssistantMessage(item.text)),
       ),
     ),
     ...(steps.length > 0 ? { steps } : {}),
@@ -13530,39 +13612,94 @@ async function executeRepoReviewEvent(
         asRecord(runCallbackContext).reviewProgress,
       )?.steps || [];
     let reviewRunTerminal = false;
+    const REPO_REVIEW_PROGRESS_PERSIST_DEBOUNCE_MS = 750;
     let persistReviewProgressQueue: Promise<void> = Promise.resolve();
-    const persistReviewProgressNow = async (
+    let persistReviewProgressTimer: NodeJS.Timeout | null = null;
+    let pendingPersistPatch: Record<string, unknown> = {};
+    let pendingPersistIncludeFullTurns = false;
+    let pendingPersistForce = false;
+    let lastPersistedProgressSnapshot = '';
+    const buildReviewProgressContext = (
       patch: Record<string, unknown> = {},
-    ): Promise<void> => {
+      options: { includeFullTurns?: boolean } = {},
+    ) => {
       const reviewProgress = buildRepoReviewProgressSnapshot(
         reviewTurns,
         progressSteps,
         { runTerminal: reviewRunTerminal },
       );
-      runCallbackContext = mergeCallbackContext(runCallbackContext, {
+      const persistedReviewTurns =
+        (options.includeFullTurns ?? reviewRunTerminal)
+          ? reviewTurns
+          : buildIntermediateRepoReviewProgressTurns(reviewTurns);
+      const nextContext = mergeCallbackContext(runCallbackContext, {
         ...patch,
-        reviewTurns,
+        reviewTurns: persistedReviewTurns,
         reviewProgress,
         ...(executionStats ? { executionStats } : {}),
       });
       if (executionStats) {
         executionStats.progressSnapshotBytes = Math.max(
           executionStats.progressSnapshotBytes,
-          getRepoReviewJsonBytes(runCallbackContext),
+          getRepoReviewJsonBytes(nextContext),
         );
+      }
+      return nextContext;
+    };
+    const persistReviewProgressNow = async (
+      patch: Record<string, unknown> = {},
+      options: { includeFullTurns?: boolean; force?: boolean } = {},
+    ): Promise<void> => {
+      runCallbackContext = buildReviewProgressContext(patch, options);
+      const serialized = JSON.stringify(runCallbackContext);
+      if (!options.force && serialized === lastPersistedProgressSnapshot) {
+        return;
       }
       await updateReviewRun(runRecord.id, {
         callback_context: runCallbackContext,
       });
+      lastPersistedProgressSnapshot = serialized;
     };
-    const persistReviewProgress = async (
-      patch: Record<string, unknown> = {},
-    ): Promise<void> => {
+    const flushPersistReviewProgress = async (): Promise<void> => {
+      if (persistReviewProgressTimer) {
+        clearTimeout(persistReviewProgressTimer);
+        persistReviewProgressTimer = null;
+      }
+      const patch = pendingPersistPatch;
+      const includeFullTurns = pendingPersistIncludeFullTurns;
+      const force = pendingPersistForce;
+      pendingPersistPatch = {};
+      pendingPersistIncludeFullTurns = false;
+      pendingPersistForce = false;
       const nextPersist = persistReviewProgressQueue.then(() =>
-        persistReviewProgressNow(patch),
+        persistReviewProgressNow(patch, { includeFullTurns, force }),
       );
       persistReviewProgressQueue = nextPersist.catch(() => undefined);
       await nextPersist;
+    };
+    const persistReviewProgress = async (
+      patch: Record<string, unknown> = {},
+      options: { flush?: boolean; includeFullTurns?: boolean; force?: boolean } = {},
+    ): Promise<void> => {
+      pendingPersistPatch = mergeCallbackContext(pendingPersistPatch, patch);
+      pendingPersistIncludeFullTurns =
+        pendingPersistIncludeFullTurns || Boolean(options.includeFullTurns);
+      pendingPersistForce = pendingPersistForce || Boolean(options.force);
+      if (options.flush) {
+        await flushPersistReviewProgress();
+        return;
+      }
+      if (persistReviewProgressTimer) return;
+      persistReviewProgressTimer = setTimeout(() => {
+        persistReviewProgressTimer = null;
+        void flushPersistReviewProgress().catch((err) => {
+          logger.warn(
+            { err, runId: runRecord.id },
+            'Failed to persist repo review progress snapshot',
+          );
+        });
+      }, REPO_REVIEW_PROGRESS_PERSIST_DEBOUNCE_MS);
+      persistReviewProgressTimer.unref?.();
     };
     const setProgressStep = async (
       id: string,
@@ -13657,13 +13794,10 @@ async function executeRepoReviewEvent(
         progressSteps,
         'skipped',
       );
-      runCallbackContext = mergeCallbackContext(runCallbackContext, {
-        reviewTurns,
-        reviewProgress: buildRepoReviewProgressSnapshot(
-          reviewTurns,
-          progressSteps,
-          { runTerminal: true },
-        ),
+      await persistReviewProgress({}, {
+        flush: true,
+        includeFullTurns: true,
+        force: true,
       });
       const updated = await updateReviewRun(runRecord.id, {
         status: 'skipped',
@@ -13972,13 +14106,10 @@ async function executeRepoReviewEvent(
           progressSteps,
           prepared.overall === 'skipped' ? 'skipped' : 'completed',
         );
-        runCallbackContext = mergeCallbackContext(runCallbackContext, {
-          reviewTurns,
-          reviewProgress: buildRepoReviewProgressSnapshot(
-            reviewTurns,
-            progressSteps,
-            { runTerminal: true },
-          ),
+        await persistReviewProgress({}, {
+          flush: true,
+          includeFullTurns: true,
+          force: true,
         });
         const updated = await updateReviewRun(runRecord.id, {
           status: prepared.overall === 'skipped' ? 'skipped' : 'completed',
@@ -14238,6 +14369,7 @@ async function executeRepoReviewEvent(
         overall: finalReview.overall,
         blocking,
       });
+      reviewRunTerminal = true;
       await setProgressStep('persist_result', '保存审查结果', 'running');
       progressSteps = upsertRepoReviewProgressStep(progressSteps, {
         id: 'persist_result',
@@ -14247,6 +14379,20 @@ async function executeRepoReviewEvent(
       progressSteps = repairTerminalRepoReviewProgressSteps(
         progressSteps,
         'completed',
+      );
+      await persistReviewProgress(
+        {
+          commitSummaryLines: prepared.commitSummaryLines,
+          commitDetails: prepared.commitDetails,
+          scopeLimitations: finalReview.scopeLimitations,
+          fileReviews: finalReview.fileReviews,
+          commitReviews: parsed.commitReviews,
+        },
+        {
+          flush: true,
+          includeFullTurns: true,
+          force: true,
+        },
       );
       const updated = await updateReviewRun(runRecord.id, {
         status: 'completed',
@@ -14265,24 +14411,7 @@ async function executeRepoReviewEvent(
         raw_model_output: parsed.rawModelOutput || null,
         diff_bytes: Buffer.byteLength(prepared.diffText, 'utf8'),
         duration_ms: runDurationMs(),
-        callback_context: (() => {
-          const reviewProgress = buildRepoReviewProgressSnapshot(
-            reviewTurns,
-            progressSteps,
-            { runTerminal: reviewRunTerminal },
-          );
-          runCallbackContext = mergeCallbackContext(runCallbackContext, {
-            commitSummaryLines: prepared.commitSummaryLines,
-            commitDetails: prepared.commitDetails,
-            reviewTurns,
-            reviewProgress,
-            scopeLimitations: finalReview.scopeLimitations,
-            fileReviews: finalReview.fileReviews,
-            commitReviews: parsed.commitReviews,
-            executionStats: activeExecutionStats,
-          });
-          return runCallbackContext;
-        })(),
+        callback_context: runCallbackContext,
         completed_at: new Date().toISOString(),
       });
       let normalized = await normalizeRunRecord(updated);
@@ -14473,7 +14602,11 @@ async function executeRepoReviewEvent(
         progressSteps,
         'completed',
       );
-      await persistReviewProgress();
+      await persistReviewProgress({}, {
+        flush: true,
+        includeFullTurns: true,
+        force: true,
+      });
       return {
         run: normalized,
         allowed: !blocking,
@@ -14505,26 +14638,16 @@ async function executeRepoReviewEvent(
         repoReviewCancellationRequestedRunIds.has(runRecord.id);
       repoReviewCancellationRequestedRunIds.delete(runRecord.id);
       const durationMs = Date.now() - Date.parse(startedAtIso);
-      const persistedReviewTurns = normalizeReviewTurns(
-        asRecord(
-          errorRunRecord
-            ? (await parseReviewRunRecord(errorRunRecord)).callbackContext
-            : null,
-        ).reviewTurns,
-      );
       reviewRunTerminal = true;
       progressSteps = repairTerminalRepoReviewProgressSteps(
         progressSteps,
         'failed',
         errorMessageForProgress(err),
       );
-      runCallbackContext = mergeCallbackContext(runCallbackContext, {
-        reviewTurns: persistedReviewTurns,
-        reviewProgress: buildRepoReviewProgressSnapshot(
-          persistedReviewTurns,
-          progressSteps,
-          { runTerminal: true },
-        ),
+      await persistReviewProgress({}, {
+        flush: true,
+        includeFullTurns: true,
+        force: true,
       });
       const updated = await updateReviewRun(runRecord.id, {
         status: 'error',

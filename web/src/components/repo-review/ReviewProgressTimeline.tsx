@@ -66,7 +66,7 @@ const ToolCallDurationLabel = memo(function ToolCallDurationLabel({
 
   useEffect(() => {
     if (status !== 'in_progress' || !startedAt) return undefined;
-    const timer = window.setInterval(() => setNow(Date.now()), 100);
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(timer);
   }, [status, startedAt]);
 
