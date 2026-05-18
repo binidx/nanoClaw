@@ -38,6 +38,7 @@ export interface ProjectGraphNode {
   summary?: string;
   snippet?: string;
   signature?: string;
+  tags?: string[];
   community: string;
   degree: number;
   searchText: string;
@@ -479,6 +480,7 @@ function buildNodeSearchText(input: {
   summary?: string;
   snippet?: string;
   signature?: string;
+  tags?: string[];
 }): string {
   return [
     input.label,
@@ -486,6 +488,7 @@ function buildNodeSearchText(input: {
     input.summary || '',
     input.snippet || '',
     input.signature || '',
+    ...(input.tags || []),
   ]
     .join('\n')
     .toLowerCase();
@@ -506,15 +509,17 @@ function ensureProjectGraphNode(
     rank: Math.max(existing.rank, node.rank),
     summary: existing.summary || node.summary,
     snippet: existing.snippet || node.snippet,
-    signature: existing.signature || node.signature,
-    searchText: buildNodeSearchText({
-      label: existing.label || node.label,
-      filePath: existing.filePath || node.filePath,
-      summary: existing.summary || node.summary,
-      snippet: existing.snippet || node.snippet,
       signature: existing.signature || node.signature,
-    }),
-  });
+      tags: Array.from(new Set([...(existing.tags || []), ...(node.tags || [])])),
+      searchText: buildNodeSearchText({
+        label: existing.label || node.label,
+        filePath: existing.filePath || node.filePath,
+        summary: existing.summary || node.summary,
+        snippet: existing.snippet || node.snippet,
+        signature: existing.signature || node.signature,
+        tags: Array.from(new Set([...(existing.tags || []), ...(node.tags || [])])),
+      }),
+    });
 }
 
 function ensureProjectGraphEdge(
@@ -532,6 +537,59 @@ function rankForChunk(chunk: CodeIndexChunkRecord, fileRank: number): number {
 
 function rankForFunction(fn: CodeIndexFunctionRecord, fileRank: number): number {
   return Math.max(0.01, fileRank * 0.9 - fn.startLine * 0.0001);
+}
+
+function inferFileTags(input: {
+  filePath: string;
+  language?: string;
+  summary?: string;
+  symbols?: Array<{ name: string; kind?: string; signature?: string }>;
+}): string[] {
+  const filePath = input.filePath.toLowerCase();
+  const summary = String(input.summary || '').toLowerCase();
+  const symbolText = (input.symbols || [])
+    .map((symbol) =>
+      [symbol.name, symbol.kind || '', symbol.signature || ''].join(' '),
+    )
+    .join(' ')
+    .toLowerCase();
+  const tags = new Set<string>();
+  if (
+    /(^|\/)(routes?|router|controllers?|api)(\/|\.|$)/.test(filePath) ||
+    /\bexpress\b|\brouter\b|\broute\b|\bendpoint\b/.test(summary + ' ' + symbolText)
+  ) {
+    tags.add('route');
+    tags.add('api');
+  }
+  if (
+    /(^|\/)(tests?|__tests__|spec|fixtures?)(\/|\.|$)/.test(filePath) ||
+    /\.(test|spec)\.[a-z0-9]+$/.test(filePath)
+  ) {
+    tags.add('test');
+  }
+  if (
+    /(^|\/)(config|settings|env|profiles?)(\/|\.|$)/.test(filePath) ||
+    /(config|settings|feature flags?|policy)/.test(summary)
+  ) {
+    tags.add('config');
+  }
+  if (
+    /(^|\/)(schema|schemas|migrations?|sql|db|database)(\/|\.|$)/.test(filePath) ||
+    /\btable\b|\bschema\b|\bsql\b|\bpostgres\b|\bsqlite\b/.test(symbolText + ' ' + summary)
+  ) {
+    tags.add('schema');
+    tags.add('database');
+  }
+  if (/(workflow|workteam|pipeline|orchestrator)/.test(filePath + ' ' + summary)) {
+    tags.add('workflow');
+  }
+  if (/(prompt|template)/.test(filePath + ' ' + summary)) {
+    tags.add('prompt');
+  }
+  if (/(auth|login|session|permission|role|token)/.test(filePath + ' ' + summary)) {
+    tags.add('auth');
+  }
+  return [...tags];
 }
 
 export function buildProjectGraph(input: {
@@ -597,6 +655,12 @@ export function buildProjectGraph(input: {
     }
 
     const effectiveRank = file?.rank || codeMapFile?.rank || 0.1;
+    const fileTags = inferFileTags({
+      filePath,
+      language: file?.language || codeMapFile?.language || 'text',
+      summary: file?.summary || undefined,
+      symbols: codeMapFile?.symbols || [],
+    });
     ensureProjectGraphNode(nodeMap, {
       id: fileId(filePath),
       label: filePath,
@@ -605,12 +669,14 @@ export function buildProjectGraph(input: {
       language: file?.language || codeMapFile?.language || 'text',
       rank: effectiveRank,
       summary: file?.summary || undefined,
+      tags: fileTags,
       community: '',
       degree: 0,
       searchText: buildNodeSearchText({
         label: filePath,
         filePath,
         summary: file?.summary || undefined,
+        tags: fileTags,
       }),
     });
     ensureProjectGraphEdge(edgeMap, {
@@ -633,6 +699,7 @@ export function buildProjectGraph(input: {
         rank: rankForChunk(chunk, effectiveRank),
         summary: chunk.summary || undefined,
         snippet: chunk.content,
+        tags: fileTags,
         community: '',
         degree: 0,
         searchText: buildNodeSearchText({
@@ -640,6 +707,7 @@ export function buildProjectGraph(input: {
           filePath,
           summary: chunk.summary || undefined,
           snippet: chunk.content,
+          tags: fileTags,
         }),
       });
       ensureProjectGraphEdge(edgeMap, {
@@ -663,12 +731,14 @@ export function buildProjectGraph(input: {
         line: fn.line,
         rank: rankForFunction(fn, effectiveRank),
         signature: fn.signature,
+        tags: fileTags,
         community: '',
         degree: 0,
         searchText: buildNodeSearchText({
           label: fn.name,
           filePath,
           signature: fn.signature,
+          tags: fileTags,
         }),
       });
       ensureProjectGraphEdge(edgeMap, {
@@ -864,6 +934,9 @@ function scoreProjectGraphNode(
     } else if (node.snippet?.toLowerCase().includes(term)) {
       score += node.type === 'chunk' ? 3 : 1.5;
       reasons.push(`term:snippet:${term}`);
+    } else if (node.tags?.some((tag) => tag.includes(term) || term.includes(tag))) {
+      score += node.type === 'file' ? 4.5 : 3;
+      reasons.push(`term:tag:${term}`);
     }
   }
 

@@ -5,6 +5,8 @@ import {
   buildRepoReviewCodeMapContextBlock,
   buildRepoReviewDiffAwareEvidenceBundle,
   buildRepoReviewEvidenceBundleBlock,
+  getRepoReviewProjectGraphFileCommunity,
+  groupFilesForReview,
   resolveRepoReviewAgenticSubagentPrompt,
   splitDiffByFile,
   stripRepoReviewExecutionContext,
@@ -645,5 +647,81 @@ describe('repo review evidence bundle context', () => {
     expect(parts.get('src/foo bar.ts')).toContain(
       'diff --git "a/src/foo bar.ts" "b/src/foo bar.ts"',
     );
+  });
+});
+
+describe('repo review project graph grouping', () => {
+  it('keeps same-community files together when splitting review groups', () => {
+    const groups = groupFilesForReview(
+      [
+        {
+          filePath: 'src/features/auth/login.ts',
+          fileDiff: 'auth-a',
+          fileContent: '',
+          relatedFindings: [],
+          communityId: 'community:001',
+          communityLabel: 'src/features/auth',
+        },
+        {
+          filePath: 'src/features/auth/session.ts',
+          fileDiff: 'auth-b',
+          fileContent: '',
+          relatedFindings: [],
+          communityId: 'community:001',
+          communityLabel: 'src/features/auth',
+        },
+        {
+          filePath: 'src/billing/invoice.ts',
+          fileDiff: 'billing',
+          fileContent: '',
+          relatedFindings: [],
+          communityId: 'community:002',
+          communityLabel: 'src/billing',
+        },
+      ],
+      2,
+    );
+
+    expect(groups).toHaveLength(2);
+    expect(
+      groups.some((group) =>
+        ['src/features/auth/login.ts', 'src/features/auth/session.ts'].every(
+          (filePath) => group.some((task) => task.filePath === filePath),
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  it('prefers readable community labels from project graph context', () => {
+    const result = getRepoReviewProjectGraphFileCommunity({
+      prepared: {
+        evidenceBundle: {
+          projectGraphContext: {
+            status: 'ready',
+            startNodes: [
+              {
+                id: 'file:src/features/auth/login.ts',
+                type: 'file',
+                label: 'src/features/auth/login.ts',
+                filePath: 'src/features/auth/login.ts',
+                score: 10,
+                reasons: ['term:file:auth'],
+                community: 'community:001',
+                communityLabel: 'src/features/auth',
+              },
+            ],
+            topFiles: [],
+            topFunctions: [],
+            topChunks: [],
+          },
+        },
+      } as any,
+      filePath: 'src/features/auth/login.ts',
+    });
+
+    expect(result).toEqual({
+      communityId: 'community:001',
+      communityLabel: 'src/features/auth',
+    });
   });
 });

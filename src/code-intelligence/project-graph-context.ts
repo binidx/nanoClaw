@@ -27,6 +27,7 @@ export interface PreparedProjectGraphContextNode {
   score: number;
   reasons: string[];
   community?: string;
+  communityLabel?: string;
 }
 
 export interface PreparedProjectGraphContextEdge {
@@ -128,6 +129,7 @@ function toPreparedNode(
     reasons: string[];
     community?: string;
   } | null | undefined,
+  communityLabelsById?: ReadonlyMap<string, string>,
 ): PreparedProjectGraphContextNode | null {
   if (!node) return null;
   return {
@@ -140,6 +142,9 @@ function toPreparedNode(
     score: node.score,
     reasons: [...node.reasons],
     community: node.community,
+    communityLabel: node.community
+      ? communityLabelsById?.get(node.community) || node.community
+      : undefined,
   };
 }
 
@@ -148,7 +153,10 @@ function buildNodeLine(node: PreparedProjectGraphContextNode): string {
     node.filePath && node.startLine
       ? `${node.filePath}:${node.startLine}${node.endLine ? `-${node.endLine}` : ''}`
       : node.filePath || '';
-  return `- ${node.type} ${node.label}${location ? ` [${location}]` : ''} | score=${node.score.toFixed(2)} | reasons=${node.reasons.join(', ') || '-'}`;
+  const communityText = node.communityLabel
+    ? ` | community=${node.communityLabel}`
+    : '';
+  return `- ${node.type} ${node.label}${location ? ` [${location}]` : ''}${communityText} | score=${node.score.toFixed(2)} | reasons=${node.reasons.join(', ') || '-'}`;
 }
 
 function renderPreparedNodeSection(
@@ -265,10 +273,14 @@ export function filterPreparedProjectGraphContextForFiles(input: {
   filtered.edgeCount = filtered.edges.length;
   filtered.communities = uniqueStrings(
     [
-      ...filtered.startNodes.map((node) => node.community),
-      ...filtered.topFiles.map((node) => node.community),
-      ...filtered.topFunctions.map((node) => node.community),
-      ...filtered.topChunks.map((node) => node.community),
+      ...filtered.startNodes.map(
+        (node) => node.communityLabel || node.community,
+      ),
+      ...filtered.topFiles.map((node) => node.communityLabel || node.community),
+      ...filtered.topFunctions.map(
+        (node) => node.communityLabel || node.community,
+      ),
+      ...filtered.topChunks.map((node) => node.communityLabel || node.community),
     ].filter(Boolean),
   );
   filtered.contextFilterStats = {
@@ -492,6 +504,9 @@ export async function prepareProjectGraphContext(
     } satisfies ProjectGraphQueryOptions;
     const result = queryProjectGraph(graph, question, options);
     const nodeById = new Map(graph.nodes.map((node) => [node.id, node]));
+    const communityLabelsById = new Map(
+      result.communities.map((community) => [community.id, community.label]),
+    );
     const prepared: PreparedProjectGraphContext = {
       status: 'ready',
       repositoryId: input.repositoryId,
@@ -505,19 +520,19 @@ export async function prepareProjectGraphContext(
       edgeCount: result.edges.length,
       tokenBudget: result.tokenBudget,
       startNodes: result.startNodes
-        .map((node) => toPreparedNode(node))
+        .map((node) => toPreparedNode(node, communityLabelsById))
         .filter((node): node is PreparedProjectGraphContextNode => Boolean(node))
         .slice(0, 8),
       topFiles: result.matches.files
-        .map((node) => toPreparedNode(node))
+        .map((node) => toPreparedNode(node, communityLabelsById))
         .filter((node): node is PreparedProjectGraphContextNode => Boolean(node))
         .slice(0, 8),
       topFunctions: result.matches.functions
-        .map((node) => toPreparedNode(node))
+        .map((node) => toPreparedNode(node, communityLabelsById))
         .filter((node): node is PreparedProjectGraphContextNode => Boolean(node))
         .slice(0, 10),
       topChunks: result.matches.chunks
-        .map((node) => toPreparedNode(node))
+        .map((node) => toPreparedNode(node, communityLabelsById))
         .filter((node): node is PreparedProjectGraphContextNode => Boolean(node))
         .slice(0, 8),
       edges: result.edges.slice(0, 32).map((edge) => ({

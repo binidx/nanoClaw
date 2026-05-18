@@ -328,4 +328,57 @@ describe('project graph', () => {
     expect(answer).toContain('src/features/auth/login.ts:1-12');
     expect(answer).toContain('src/features/auth/session.ts');
   });
+
+  it('uses inferred file tags to boost route-style implementation lookup', () => {
+    const graph = buildProjectGraph({
+      codeIndexSnapshot: {
+        ...codeIndexSnapshot,
+        files: [
+          {
+            relativePath: 'src/http/login-handler.ts',
+            language: 'ts',
+            byteSize: 900,
+            lineCount: 45,
+            fileHash: 'route-a',
+            rank: 9,
+            importCount: 1,
+            exportCount: 1,
+            summary: 'Endpoint for auth login requests.',
+            summarySource: 'fallback',
+          },
+          {
+            relativePath: 'src/config/auth-settings.ts',
+            language: 'ts',
+            byteSize: 400,
+            lineCount: 20,
+            fileHash: 'config-b',
+            rank: 7,
+            importCount: 0,
+            exportCount: 1,
+            summary: 'Auth settings and token values.',
+            summarySource: 'fallback',
+          },
+        ],
+        chunks: [],
+        functions: [],
+        functionEdges: [],
+        meta: {
+          ...codeIndexSnapshot.meta,
+          stats: {
+            ...codeIndexSnapshot.meta.stats,
+            fileCount: 2,
+            chunkCount: 0,
+            functionCount: 0,
+            functionEdgeCount: 0,
+          },
+        },
+      } as any,
+      codeMapSnapshot: null,
+    });
+
+    const result = queryProjectGraph(graph, 'where is the auth api implemented');
+
+    expect(result.matches.files[0]?.filePath).toBe('src/http/login-handler.ts');
+    expect(result.matches.files[0]?.reasons).toContain('term:tag:api');
+  });
 });

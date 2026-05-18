@@ -399,7 +399,7 @@ async function resolveRepoReviewMaxSubagents(): Promise<number> {
   return Math.max(1, base);
 }
 
-function groupFilesForReview(
+export function groupFilesForReview(
   tasks: RepoReviewSupplementalPreparedFileTask[],
   maxGroups: number = REPO_REVIEW_GROUP_DEFAULT_MAX_COUNT,
 ): RepoReviewSupplementalPreparedFileTask[][] {
@@ -420,12 +420,31 @@ function groupFilesForReview(
   const weight = hasByteWeight
     ? byteWeight
     : (_t: RepoReviewSupplementalPreparedFileTask) => 1;
-  const sorted = [...tasks].sort((a, b) => weight(b) - weight(a));
+  const sorted = [...tasks].sort((a, b) => {
+    const communityCompare = String(a.communityLabel || a.communityId || '').localeCompare(
+      String(b.communityLabel || b.communityId || ''),
+      'en',
+    );
+    if (communityCompare !== 0) return communityCompare;
+    return weight(b) - weight(a);
+  });
   const groups = sorted
     .slice(0, effectiveMax)
     .map((t) => ({ tasks: [t], weight: weight(t) }));
   for (const task of sorted.slice(effectiveMax)) {
     let lightest = groups[0]!;
+    const preferred = groups.find((group) =>
+      group.tasks.some(
+        (entry) =>
+          entry.communityId &&
+          entry.communityId === task.communityId,
+      ),
+    );
+    if (preferred) {
+      preferred.tasks.push(task);
+      preferred.weight += weight(task);
+      continue;
+    }
     for (const g of groups) {
       if (g.weight < lightest.weight) lightest = g;
     }
@@ -445,6 +464,26 @@ function getRepoReviewJsonBytes(value: unknown): number {
   } catch {
     return 0;
   }
+}
+
+export function getRepoReviewProjectGraphFileCommunity(input: {
+  prepared: ReviewPreparedContext;
+  filePath: string;
+}): { communityId?: string; communityLabel?: string } {
+  const context = input.prepared.evidenceBundle?.projectGraphContext;
+  if (!context || context.status !== 'ready') return {};
+  const candidates = [
+    ...context.startNodes,
+    ...context.topFiles,
+    ...context.topFunctions,
+    ...context.topChunks,
+  ].filter((node) => node.filePath === input.filePath && node.community);
+  const communityId = candidates[0]?.community;
+  if (!communityId) return {};
+  return {
+    communityId,
+    communityLabel: candidates[0]?.communityLabel || communityId,
+  };
 }
 
 function buildInitialRepoReviewExecutionStats(input: {
@@ -6337,6 +6376,8 @@ interface RepoReviewFullFileTaskManifest {
   estimatedFileBytes: number;
   estimatedBytes: number;
   relatedFindings: RepoReviewRunFinding[];
+  communityId?: string;
+  communityLabel?: string;
 }
 
 interface RepoReviewHydratedFullFileTask extends RepoReviewSupplementalPreparedFileTask {
@@ -7259,6 +7300,10 @@ async function runSplitDiffReview(input: {
       ),
       fileContent: '',
       relatedFindings: [],
+      ...getRepoReviewProjectGraphFileCommunity({
+        prepared,
+        filePath: f,
+      }),
     }));
   const taskGroups = groupFilesForReview(tasks, maxSubagents);
   if (input.executionStats) {
@@ -9416,6 +9461,7 @@ function buildSupplementalFullFileManifestTaskBlock(
       : '暂无关联发现。';
   return [
     `文件路径：${input.filePath}`,
+    input.communityLabel ? `实现社区：${input.communityLabel}` : '',
     `估算 diff 大小：${input.estimatedDiffBytes} bytes`,
     `估算全文大小：${input.estimatedFileBytes} bytes`,
     `估算 payload 大小：${input.estimatedBytes} bytes`,
@@ -10141,6 +10187,10 @@ function buildRepoReviewFullFileTaskManifest(input: {
       relatedFindingBytes: getRepoReviewJsonBytes(relatedFindings),
     }),
     relatedFindings,
+    ...getRepoReviewProjectGraphFileCommunity({
+      prepared: input.prepared,
+      filePath,
+    }),
   };
 }
 
@@ -10193,6 +10243,8 @@ async function hydrateRepoReviewFullFileTaskManifest(input: {
     fileDiff,
     fileContent: trimmedFileContent,
     relatedFindings: input.manifest.relatedFindings,
+    communityId: input.manifest.communityId,
+    communityLabel: input.manifest.communityLabel,
     estimatedBytes: estimateRepoReviewPayloadBytes({
       diffBytes: getRepoReviewUtf8Bytes(fileDiff),
       fileContentBytes: getRepoReviewUtf8Bytes(trimmedFileContent),

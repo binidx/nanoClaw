@@ -256,6 +256,8 @@ export interface RepoReviewSupplementalPreparedFileTask {
   fileDiff: string;
   fileContent: string;
   relatedFindings: RepoReviewRunFinding[];
+  communityId?: string;
+  communityLabel?: string;
 }
 
 export type ReviewEvidenceContextStatusValue =
