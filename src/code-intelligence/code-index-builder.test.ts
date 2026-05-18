@@ -23,7 +23,13 @@ vi.mock('../embedding/vector-store.js', () => ({
 import { buildCodeIndex, enrichCodeIndexSnapshotAsync } from './code-index-builder.js';
 import { buildCodeMap } from './code-map-builder.js';
 import { _initTestDatabase } from '../db.js';
-import { loadCodeIndexSnapshot, saveCodeIndexSnapshot } from '../db/code-index-db.js';
+import {
+  loadCodeIndexSnapshot,
+  saveCodeIndexSnapshot,
+  saveCodeIndexStateDelta,
+  saveCodeIndexSummaryDelta,
+} from '../db/code-index-db.js';
+import { getSqliteRawDatabase } from '../db/engine-access.js';
 
 const tempRoots: string[] = [];
 
@@ -116,6 +122,168 @@ describe('buildCodeIndex', () => {
     expect(loaded).not.toBeNull();
     expect(loaded?.meta.stats.chunkCount).toBe(snapshot.meta.stats.chunkCount);
     expect(loaded?.functions.map((fn) => fn.name)).toEqual(snapshot.functions.map((fn) => fn.name));
+  });
+
+  it('persists identical chunk content for different snapshots without id collisions', async () => {
+    const root = createTempWorkspace();
+    writeFile(root, 'src/index.ts', [
+      'export function main() {',
+      "  return 'ok';",
+      '}',
+    ].join('\n'));
+
+    const first = await buildCodeIndex(root, 'repo-first', 'main', {
+      embedChunks: false,
+    });
+    const second = await buildCodeIndex(root, 'repo-second', 'main', {
+      embedChunks: false,
+    });
+
+    expect(first.chunks[0]?.contentHash).toBe(second.chunks[0]?.contentHash);
+    expect(first.chunks[0]?.id).not.toBe(second.chunks[0]?.id);
+
+    await saveCodeIndexSnapshot(first);
+    await saveCodeIndexSnapshot(second);
+
+    const loadedFirst = await loadCodeIndexSnapshot('repo-first', 'main');
+    const loadedSecond = await loadCodeIndexSnapshot('repo-second', 'main');
+    expect(loadedFirst?.chunks[0]?.contentHash).toBe(first.chunks[0]?.contentHash);
+    expect(loadedSecond?.chunks[0]?.contentHash).toBe(second.chunks[0]?.contentHash);
+  });
+
+  it('avoids rewriting child tables when saving an unchanged snapshot again', async () => {
+    const root = createTempWorkspace();
+    writeFile(root, 'src/index.ts', [
+      'export function main() {',
+      "  return 'ok';",
+      '}',
+    ].join('\n'));
+
+    const snapshot = await buildCodeIndex(root, 'repo-stable-save', 'main', {
+      embedChunks: false,
+    });
+    await saveCodeIndexSnapshot(snapshot);
+
+    const rawDb = getSqliteRawDatabase();
+    expect(rawDb).toBeDefined();
+    const beforeChanges = Number(
+      rawDb!.prepare('SELECT total_changes() AS total_changes').get().total_changes || 0,
+    );
+
+    await saveCodeIndexSnapshot({
+      ...snapshot,
+      meta: {
+        ...snapshot.meta,
+        progress: {
+          ...snapshot.meta.progress,
+          message: 'saved again',
+        },
+      },
+    });
+
+    const afterChanges = Number(
+      rawDb!.prepare('SELECT total_changes() AS total_changes').get().total_changes || 0,
+    );
+    const delta = afterChanges - beforeChanges;
+    expect(delta).toBeLessThanOrEqual(3);
+  });
+
+  it('persists summary deltas without changing the function graph payload', async () => {
+    const root = createTempWorkspace();
+    writeFile(root, 'src/index.ts', [
+      'export function main() {',
+      "  return 'ok';",
+      '}',
+    ].join('\n'));
+
+    const snapshot = await buildCodeIndex(root, 'repo-summary-delta', 'main', {
+      embedChunks: false,
+    });
+    await saveCodeIndexSnapshot(snapshot);
+
+    const summarySnapshot = {
+      ...snapshot,
+      meta: {
+        ...snapshot.meta,
+        status: 'ready' as const,
+        stage: 'complete' as const,
+        generatedAt: '2026-04-23T00:01:00.000Z',
+      },
+      files: snapshot.files.map((file) => ({
+        ...file,
+        summary: `${file.summary} updated`,
+        summarySource: 'ai' as const,
+      })),
+      chunks: snapshot.chunks.map((chunk) => ({
+        ...chunk,
+        summary: `${chunk.summary} updated`,
+        summarySource: 'ai' as const,
+      })),
+    };
+
+    await saveCodeIndexSummaryDelta(summarySnapshot);
+
+    const loaded = await loadCodeIndexSnapshot('repo-summary-delta', 'main');
+    expect(loaded?.files[0]?.summarySource).toBe('ai');
+    expect(loaded?.chunks[0]?.summarySource).toBe('ai');
+    expect(loaded?.functions).toEqual(snapshot.functions);
+    expect(loaded?.functionEdges).toEqual(snapshot.functionEdges);
+  });
+
+  it('persists embedding state deltas without rewriting child index tables', async () => {
+    const root = createTempWorkspace();
+    writeFile(root, 'src/index.ts', [
+      'export function main() {',
+      "  return 'ok';",
+      '}',
+    ].join('\n'));
+
+    const snapshot = await buildCodeIndex(root, 'repo-state-delta', 'main', {
+      embedChunks: false,
+    });
+    await saveCodeIndexSnapshot(snapshot);
+
+    const rawDb = getSqliteRawDatabase();
+    expect(rawDb).toBeDefined();
+    const beforeChanges = Number(
+      rawDb!.prepare('SELECT total_changes() AS total_changes').get().total_changes || 0,
+    );
+
+    await saveCodeIndexStateDelta({
+      ...snapshot,
+      meta: {
+        ...snapshot.meta,
+        status: 'ready',
+        stage: 'complete',
+        generatedAt: '2026-04-23T00:02:00.000Z',
+        stats: {
+          ...snapshot.meta.stats,
+          embeddedChunkCount: snapshot.chunks.length,
+        },
+        capabilities: {
+          ...snapshot.meta.capabilities,
+          embeddings: true,
+        },
+        progress: {
+          ...snapshot.meta.progress,
+          status: 'ready',
+          stage: 'complete',
+          processedFiles: snapshot.chunks.length,
+          totalFiles: snapshot.chunks.length,
+          message: 'embeddings ready',
+        },
+      },
+    });
+
+    const afterChanges = Number(
+      rawDb!.prepare('SELECT total_changes() AS total_changes').get().total_changes || 0,
+    );
+    const loaded = await loadCodeIndexSnapshot('repo-state-delta', 'main');
+    expect(loaded?.meta.capabilities.embeddings).toBe(true);
+    expect(loaded?.meta.stats.embeddedChunkCount).toBe(snapshot.chunks.length);
+    expect(loaded?.files).toEqual(snapshot.files);
+    expect(loaded?.chunks).toEqual(snapshot.chunks);
+    expect(afterChanges - beforeChanges).toBeLessThanOrEqual(3);
   });
 
   it('tracks member calls, aliased imports, namespace imports, and nested functions in ts/js', async () => {
@@ -452,6 +620,15 @@ describe('buildCodeIndex', () => {
         { stage: 'embeddings', processed: 0, total: baseSnapshot.chunks.length },
         { stage: 'embeddings', processed: baseSnapshot.chunks.length, total: baseSnapshot.chunks.length },
       ]),
+    );
+    expect(batchEmbedAndStoreMock).toHaveBeenCalledTimes(1);
+    expect(batchEmbedAndStoreMock.mock.calls[0]?.[1]).toEqual(
+      expect.arrayContaining(
+        baseSnapshot.chunks.map((chunk) => ({
+          ownerId: chunk.contentHash,
+          text: chunk.content.trim(),
+        })),
+      ),
     );
     expect(enriched.meta.stats.embeddedChunkCount).toBe(baseSnapshot.chunks.length);
   });

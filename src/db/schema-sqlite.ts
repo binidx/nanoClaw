@@ -886,6 +886,10 @@ export function createSchema(database: Database.Database): void {
       generated_at TEXT,
       stats_json TEXT NOT NULL,
       capabilities_json TEXT NOT NULL,
+      files_hash TEXT NOT NULL DEFAULT '',
+      chunks_hash TEXT NOT NULL DEFAULT '',
+      functions_hash TEXT NOT NULL DEFAULT '',
+      function_edges_hash TEXT NOT NULL DEFAULT '',
       user_id TEXT NOT NULL DEFAULT '__system__',
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
@@ -2293,6 +2297,34 @@ export function createSchema(database: Database.Database): void {
   try {
     database.exec(
       `ALTER TABLE code_index_snapshots ADD COLUMN source_head_sha TEXT NOT NULL DEFAULT ''`,
+    );
+  } catch {
+    /* column already exists */
+  }
+  try {
+    database.exec(
+      `ALTER TABLE code_index_snapshots ADD COLUMN files_hash TEXT NOT NULL DEFAULT ''`,
+    );
+  } catch {
+    /* column already exists */
+  }
+  try {
+    database.exec(
+      `ALTER TABLE code_index_snapshots ADD COLUMN chunks_hash TEXT NOT NULL DEFAULT ''`,
+    );
+  } catch {
+    /* column already exists */
+  }
+  try {
+    database.exec(
+      `ALTER TABLE code_index_snapshots ADD COLUMN functions_hash TEXT NOT NULL DEFAULT ''`,
+    );
+  } catch {
+    /* column already exists */
+  }
+  try {
+    database.exec(
+      `ALTER TABLE code_index_snapshots ADD COLUMN function_edges_hash TEXT NOT NULL DEFAULT ''`,
     );
   } catch {
     /* column already exists */

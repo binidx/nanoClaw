@@ -1,3 +1,5 @@
+import crypto from 'node:crypto';
+
 import { dba, eng } from './engine-access.js';
 import type {
   CodeIndexChunkRecord,
@@ -27,6 +29,10 @@ interface CodeIndexSnapshotRow {
   generated_at: string | null;
   stats_json: string;
   capabilities_json: string;
+  files_hash: string;
+  chunks_hash: string;
+  functions_hash: string;
+  function_edges_hash: string;
   user_id: string;
   created_at: string;
   updated_at: string;
@@ -94,6 +100,199 @@ function parseJson<T>(value: string, fallback: T): T {
   } catch {
     return fallback;
   }
+}
+
+const SQLITE_BULK_INSERT_PARAM_LIMIT = 900;
+const DEFAULT_BULK_INSERT_PARAM_LIMIT = 10_000;
+
+interface CodeIndexEntityHashes {
+  filesHash: string;
+  chunksHash: string;
+  functionsHash: string;
+  functionEdgesHash: string;
+}
+
+interface CodeIndexSnapshotPersistenceRow {
+  snapshot_id: string;
+  created_at: string;
+  manifest_hash: string;
+  files_hash: string;
+  chunks_hash: string;
+  functions_hash: string;
+  function_edges_hash: string;
+}
+
+function flattenInsertRows(
+  rows: ReadonlyArray<ReadonlyArray<unknown>>,
+): unknown[] {
+  const params: unknown[] = [];
+  for (const row of rows) {
+    params.push(...row);
+  }
+  return params;
+}
+
+async function runBatchedInsert(
+  table: string,
+  columns: string[],
+  rows: ReadonlyArray<ReadonlyArray<unknown>>,
+): Promise<void> {
+  if (rows.length === 0) return;
+
+  const columnCount = columns.length;
+  const maxParams =
+    eng().dialect === 'sqlite'
+      ? SQLITE_BULK_INSERT_PARAM_LIMIT
+      : DEFAULT_BULK_INSERT_PARAM_LIMIT;
+  const batchSize = Math.max(1, Math.floor(maxParams / columnCount));
+  const columnSql = columns.join(', ');
+
+  for (let index = 0; index < rows.length; index += batchSize) {
+    const batch = rows.slice(index, index + batchSize);
+    const valuesSql = batch
+      .map(() => `(${columns.map(() => '?').join(', ')})`)
+      .join(', ');
+    await dba
+      .prepare(`INSERT INTO ${table} ( ${columnSql} ) VALUES ${valuesSql}`)
+      .run(...flattenInsertRows(batch));
+  }
+}
+
+function hashPayload(value: unknown): string {
+  return crypto
+    .createHash('sha256')
+    .update(JSON.stringify(value))
+    .digest('hex');
+}
+
+function buildEntityHashes(snapshot: Pick<
+  CodeIndexSnapshot,
+  'files' | 'chunks' | 'functions' | 'functionEdges'
+>): CodeIndexEntityHashes {
+  return {
+    filesHash: hashPayload(
+      snapshot.files.map((file) => [
+        file.relativePath,
+        file.language,
+        file.byteSize,
+        file.lineCount,
+        file.fileHash,
+        file.rank,
+        file.importCount,
+        file.exportCount,
+        file.summary,
+        file.summarySource,
+      ]),
+    ),
+    chunksHash: hashPayload(
+      snapshot.chunks.map((chunk) => [
+        chunk.id,
+        chunk.filePath,
+        chunk.chunkIndex,
+        chunk.startLine,
+        chunk.endLine,
+        chunk.contentHash,
+        chunk.tokenCount,
+        chunk.summary,
+        chunk.summarySource,
+      ]),
+    ),
+    functionsHash: hashPayload(
+      snapshot.functions.map((fn) => [
+        fn.id,
+        fn.filePath,
+        fn.name,
+        fn.kind,
+        fn.signature,
+        fn.startLine,
+        fn.endLine,
+        fn.line,
+        fn.column,
+        fn.parentFunctionId,
+      ]),
+    ),
+    functionEdgesHash: hashPayload(
+      snapshot.functionEdges.map((edge) => [
+        edge.id,
+        edge.fromFunctionId,
+        edge.toFunctionId,
+        edge.edgeType,
+        edge.symbol,
+        edge.line,
+      ]),
+    ),
+  };
+}
+
+function entityHashesFromRow(
+  row?: Partial<CodeIndexSnapshotRow> | Partial<CodeIndexSnapshotPersistenceRow>,
+): CodeIndexEntityHashes {
+  return {
+    filesHash: row?.files_hash || '',
+    chunksHash: row?.chunks_hash || '',
+    functionsHash: row?.functions_hash || '',
+    functionEdgesHash: row?.function_edges_hash || '',
+  };
+}
+
+async function upsertSnapshotRow(input: {
+  snapshotId: string;
+  repositoryId: string;
+  branch: string;
+  rootDirectory: string;
+  sourceKind: CodeIndexSnapshotMeta['sourceKind'];
+  sourceBranch: string;
+  sourceHeadSha: string;
+  manifestHash: string;
+  status: CodeIndexSnapshotMeta['status'];
+  stage: CodeIndexSnapshotMeta['stage'];
+  processedFiles: number;
+  totalFiles: number;
+  message: string;
+  errorMessage: string | null;
+  generatedAt: string | null;
+  stats: CodeIndexSnapshotMeta['stats'];
+  capabilities: CodeIndexSnapshotMeta['capabilities'];
+  entityHashes: CodeIndexEntityHashes;
+  userId: string;
+  createdAt: string;
+  updatedAt: string;
+}): Promise<void> {
+  await dba
+    .prepare(
+      `INSERT OR REPLACE INTO code_index_snapshots (
+        snapshot_id, repository_id, branch, root_directory, source_kind, source_branch, source_head_sha, manifest_hash,
+        status, stage, processed_files, total_files, message, error_message,
+        generated_at, stats_json, capabilities_json, files_hash, chunks_hash, functions_hash, function_edges_hash,
+        user_id, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    )
+    .run(
+      input.snapshotId,
+      input.repositoryId,
+      input.branch,
+      input.rootDirectory,
+      input.sourceKind || 'unknown',
+      input.sourceBranch || input.branch,
+      input.sourceHeadSha || '',
+      input.manifestHash,
+      input.status,
+      input.stage,
+      input.processedFiles,
+      input.totalFiles,
+      input.message,
+      input.errorMessage,
+      input.generatedAt,
+      JSON.stringify(input.stats),
+      JSON.stringify(input.capabilities),
+      input.entityHashes.filesHash,
+      input.entityHashes.chunksHash,
+      input.entityHashes.functionsHash,
+      input.entityHashes.functionEdgesHash,
+      input.userId,
+      input.createdAt,
+      input.updatedAt,
+    );
 }
 
 function rowToMeta(row: CodeIndexSnapshotRow): CodeIndexSnapshotMeta {
@@ -337,6 +536,20 @@ async function getCodeIndexSnapshotRow(
     .get(repositoryId, branch)) as CodeIndexSnapshotRow | undefined;
 }
 
+async function getCodeIndexSnapshotPersistenceRow(
+  repositoryId: string,
+  branch: string,
+): Promise<CodeIndexSnapshotPersistenceRow | undefined> {
+  return (await dba
+    .prepare(
+      `SELECT snapshot_id, created_at, manifest_hash, files_hash, chunks_hash, functions_hash, function_edges_hash
+       FROM code_index_snapshots
+       WHERE repository_id = ? AND branch = ?
+       LIMIT 1`,
+    )
+    .get(repositoryId, branch)) as CodeIndexSnapshotPersistenceRow | undefined;
+}
+
 export async function loadCodeIndexSearchData(
   repositoryId: string,
   branch: string,
@@ -519,41 +732,173 @@ export async function saveCodeIndexSnapshotMeta(input: {
           functionGraph: false,
           embeddings: false,
         });
-
-  await dba
-    .prepare(
-      `INSERT OR REPLACE INTO code_index_snapshots (
-        snapshot_id, repository_id, branch, root_directory, source_kind, source_branch, source_head_sha, manifest_hash,
-        status, stage, processed_files, total_files, message, error_message,
-        generated_at, stats_json, capabilities_json, user_id, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    )
-    .run(
-      effectiveSnapshotId,
-      input.repositoryId,
-      input.branch,
-      input.rootDirectory || existing?.root_directory || '',
+  await upsertSnapshotRow({
+    snapshotId: effectiveSnapshotId,
+    repositoryId: input.repositoryId,
+    branch: input.branch,
+    rootDirectory: input.rootDirectory || existing?.root_directory || '',
+    sourceKind:
       input.sourceKind ||
-        (existing?.source_kind as CodeIndexSnapshotMeta['sourceKind']) ||
-        'unknown',
-      input.sourceBranch || existing?.source_branch || input.branch,
-      input.sourceHeadSha || existing?.source_head_sha || '',
-      input.manifestHash ||
-        existing?.manifest_hash ||
-        `building:${input.branch}`,
-      input.progress.status,
-      input.progress.stage,
-      input.progress.processedFiles,
-      input.progress.totalFiles,
-      input.progress.message,
-      input.progress.error,
-      input.generatedAt ?? existing?.generated_at ?? null,
-      JSON.stringify(stats),
-      JSON.stringify(capabilities),
-      input.userId || existing?.user_id || '__system__',
-      existing?.created_at || now,
-      now,
-    );
+      (existing?.source_kind as CodeIndexSnapshotMeta['sourceKind']) ||
+      'unknown',
+    sourceBranch: input.sourceBranch || existing?.source_branch || input.branch,
+    sourceHeadSha: input.sourceHeadSha || existing?.source_head_sha || '',
+    manifestHash:
+      input.manifestHash || existing?.manifest_hash || `building:${input.branch}`,
+    status: input.progress.status,
+    stage: input.progress.stage,
+    processedFiles: input.progress.processedFiles,
+    totalFiles: input.progress.totalFiles,
+    message: input.progress.message,
+    errorMessage: input.progress.error,
+    generatedAt: input.generatedAt ?? existing?.generated_at ?? null,
+    stats,
+    capabilities,
+    entityHashes: entityHashesFromRow(existing),
+    userId: input.userId || existing?.user_id || '__system__',
+    createdAt: existing?.created_at || now,
+    updatedAt: now,
+  });
+}
+
+async function replaceSnapshotFiles(
+  snapshotId: string,
+  files: readonly CodeIndexFileRecord[],
+): Promise<void> {
+  await dba.prepare(`DELETE FROM code_index_files WHERE snapshot_id = ?`).run(snapshotId);
+  await runBatchedInsert(
+    'code_index_files',
+    [
+      'snapshot_id',
+      'relative_path',
+      'language',
+      'byte_size',
+      'line_count',
+      'file_hash',
+      codeIndexRankColumnSql(),
+      'import_count',
+      'export_count',
+      'summary_text',
+      'summary_source',
+    ],
+    files.map((file) => [
+      snapshotId,
+      file.relativePath,
+      file.language,
+      file.byteSize,
+      file.lineCount,
+      file.fileHash,
+      file.rank,
+      file.importCount,
+      file.exportCount,
+      file.summary,
+      file.summarySource,
+    ]),
+  );
+}
+
+async function replaceSnapshotChunks(
+  snapshotId: string,
+  chunks: readonly CodeIndexChunkRecord[],
+): Promise<void> {
+  await dba.prepare(`DELETE FROM code_index_chunks WHERE snapshot_id = ?`).run(snapshotId);
+  await runBatchedInsert(
+    'code_index_chunks',
+    [
+      'id',
+      'snapshot_id',
+      'file_path',
+      'chunk_index',
+      'start_line',
+      'end_line',
+      'content',
+      'token_count',
+      'summary_text',
+      'content_hash',
+      'summary_source',
+    ],
+    chunks.map((chunk) => [
+      chunk.id,
+      snapshotId,
+      chunk.filePath,
+      chunk.chunkIndex,
+      chunk.startLine,
+      chunk.endLine,
+      chunk.content,
+      chunk.tokenCount,
+      chunk.summary,
+      chunk.contentHash,
+      chunk.summarySource,
+    ]),
+  );
+}
+
+async function replaceSnapshotFunctions(
+  snapshotId: string,
+  functions: readonly CodeIndexFunctionRecord[],
+): Promise<void> {
+  await dba
+    .prepare(`DELETE FROM code_index_functions WHERE snapshot_id = ?`)
+    .run(snapshotId);
+  await runBatchedInsert(
+    'code_index_functions',
+    [
+      'id',
+      'snapshot_id',
+      'file_path',
+      'name',
+      'kind',
+      'signature',
+      'start_line',
+      'end_line',
+      'line',
+      'column_number',
+      'parent_function_id',
+    ],
+    functions.map((fn) => [
+      fn.id,
+      snapshotId,
+      fn.filePath,
+      fn.name,
+      fn.kind,
+      fn.signature,
+      fn.startLine,
+      fn.endLine,
+      fn.line,
+      fn.column,
+      fn.parentFunctionId,
+    ]),
+  );
+}
+
+async function replaceSnapshotFunctionEdges(
+  snapshotId: string,
+  functionEdges: readonly CodeIndexFunctionEdgeRecord[],
+): Promise<void> {
+  await dba
+    .prepare(`DELETE FROM code_index_function_edges WHERE snapshot_id = ?`)
+    .run(snapshotId);
+  await runBatchedInsert(
+    'code_index_function_edges',
+    [
+      'id',
+      'snapshot_id',
+      'from_function_id',
+      'to_function_id',
+      'edge_type',
+      'symbol_name',
+      'line',
+    ],
+    functionEdges.map((edge) => [
+      edge.id,
+      snapshotId,
+      edge.fromFunctionId,
+      edge.toFunctionId,
+      edge.edgeType,
+      edge.symbol,
+      edge.line,
+    ]),
+  );
 }
 
 export async function saveCodeIndexSnapshot(
@@ -561,151 +906,194 @@ export async function saveCodeIndexSnapshot(
   userId = '__system__',
 ): Promise<void> {
   const now = new Date().toISOString();
+  const entityHashes = buildEntityHashes(snapshot);
   const snapshotId =
     `cis_${snapshot.meta.repositoryId}_${snapshot.meta.branch}`.replace(
       /[^a-zA-Z0-9_:-]/g,
       '_',
     );
-  const existing = (await dba
-    .prepare(
-      `SELECT snapshot_id, created_at FROM code_index_snapshots
-       WHERE repository_id = ? AND branch = ?
-       LIMIT 1`,
-    )
-    .get(snapshot.meta.repositoryId, snapshot.meta.branch)) as
-    | { snapshot_id: string; created_at: string }
-    | undefined;
+  const existing = await getCodeIndexSnapshotPersistenceRow(
+    snapshot.meta.repositoryId,
+    snapshot.meta.branch,
+  );
   const effectiveSnapshotId = existing?.snapshot_id || snapshotId;
+  const sameManifest =
+    existing?.manifest_hash === snapshot.meta.manifestHash;
+  const hasStoredEntityHashes =
+    !!existing?.files_hash &&
+    !!existing?.chunks_hash &&
+    !!existing?.functions_hash &&
+    !!existing?.function_edges_hash;
+  const replaceFiles =
+    !sameManifest || !hasStoredEntityHashes || existing.files_hash !== entityHashes.filesHash;
+  const replaceChunks =
+    !sameManifest || !hasStoredEntityHashes || existing.chunks_hash !== entityHashes.chunksHash;
+  const replaceFunctions =
+    !sameManifest ||
+    !hasStoredEntityHashes ||
+    existing.functions_hash !== entityHashes.functionsHash;
+  const replaceFunctionEdges =
+    !sameManifest ||
+    !hasStoredEntityHashes ||
+    existing.function_edges_hash !== entityHashes.functionEdgesHash;
 
-  const transaction = dba.transaction(() => {
-    dba
-      .prepare(
-        `INSERT OR REPLACE INTO code_index_snapshots (
-          snapshot_id, repository_id, branch, root_directory, source_kind, source_branch, source_head_sha, manifest_hash,
-          status, stage, processed_files, total_files, message, error_message,
-          generated_at, stats_json, capabilities_json, user_id, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .run(
-        effectiveSnapshotId,
-        snapshot.meta.repositoryId,
-        snapshot.meta.branch,
-        snapshot.meta.rootDirectory,
-        snapshot.meta.sourceKind || 'unknown',
-        snapshot.meta.sourceBranch || snapshot.meta.branch,
-        snapshot.meta.sourceHeadSha || '',
-        snapshot.meta.manifestHash,
-        snapshot.meta.status,
-        snapshot.meta.stage,
-        snapshot.meta.progress.processedFiles,
-        snapshot.meta.progress.totalFiles,
-        snapshot.meta.progress.message,
-        snapshot.meta.progress.error,
-        snapshot.meta.generatedAt,
-        JSON.stringify(snapshot.meta.stats),
-        JSON.stringify(snapshot.meta.capabilities),
-        userId,
-        existing?.created_at || now,
-        now,
-      );
-
-    dba
-      .prepare(`DELETE FROM code_index_files WHERE snapshot_id = ?`)
-      .run(effectiveSnapshotId);
-    dba
-      .prepare(`DELETE FROM code_index_chunks WHERE snapshot_id = ?`)
-      .run(effectiveSnapshotId);
-    dba
-      .prepare(`DELETE FROM code_index_functions WHERE snapshot_id = ?`)
-      .run(effectiveSnapshotId);
-    dba
-      .prepare(`DELETE FROM code_index_function_edges WHERE snapshot_id = ?`)
-      .run(effectiveSnapshotId);
-
-    const insertFile = dba.prepare(
-      `INSERT INTO code_index_files (
-        snapshot_id, relative_path, language, byte_size, line_count, file_hash,
-        ${codeIndexRankColumnSql()}, import_count, export_count, summary_text, summary_source
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    );
-    const insertChunk = dba.prepare(
-      `INSERT INTO code_index_chunks (
-        id, snapshot_id, file_path, chunk_index, start_line, end_line,
-        content, token_count, summary_text, content_hash, summary_source
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    );
-    const insertFunction = dba.prepare(
-      `INSERT INTO code_index_functions (
-        id, snapshot_id, file_path, name, kind, signature,
-        start_line, end_line, line, column_number, parent_function_id
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    );
-    const insertFunctionEdge = dba.prepare(
-      `INSERT INTO code_index_function_edges (
-        id, snapshot_id, from_function_id, to_function_id, edge_type, symbol_name, line
-      ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    );
-
-    snapshot.files.forEach((file) => {
-      insertFile.run(
-        effectiveSnapshotId,
-        file.relativePath,
-        file.language,
-        file.byteSize,
-        file.lineCount,
-        file.fileHash,
-        file.rank,
-        file.importCount,
-        file.exportCount,
-        file.summary,
-        file.summarySource,
-      );
+  const transaction = dba.transaction(async () => {
+    await upsertSnapshotRow({
+      snapshotId: effectiveSnapshotId,
+      repositoryId: snapshot.meta.repositoryId,
+      branch: snapshot.meta.branch,
+      rootDirectory: snapshot.meta.rootDirectory,
+      sourceKind: snapshot.meta.sourceKind || 'unknown',
+      sourceBranch: snapshot.meta.sourceBranch || snapshot.meta.branch,
+      sourceHeadSha: snapshot.meta.sourceHeadSha || '',
+      manifestHash: snapshot.meta.manifestHash,
+      status: snapshot.meta.status,
+      stage: snapshot.meta.stage,
+      processedFiles: snapshot.meta.progress.processedFiles,
+      totalFiles: snapshot.meta.progress.totalFiles,
+      message: snapshot.meta.progress.message,
+      errorMessage: snapshot.meta.progress.error,
+      generatedAt: snapshot.meta.generatedAt,
+      stats: snapshot.meta.stats,
+      capabilities: snapshot.meta.capabilities,
+      entityHashes,
+      userId,
+      createdAt: existing?.created_at || now,
+      updatedAt: now,
     });
 
-    snapshot.chunks.forEach((chunk) => {
-      insertChunk.run(
-        chunk.id,
-        effectiveSnapshotId,
-        chunk.filePath,
-        chunk.chunkIndex,
-        chunk.startLine,
-        chunk.endLine,
-        chunk.content,
-        chunk.tokenCount,
-        chunk.summary,
-        chunk.contentHash,
-        chunk.summarySource,
-      );
-    });
+    if (replaceFiles) {
+      await replaceSnapshotFiles(effectiveSnapshotId, snapshot.files);
+    }
 
-    snapshot.functions.forEach((fn) => {
-      insertFunction.run(
-        fn.id,
-        effectiveSnapshotId,
-        fn.filePath,
-        fn.name,
-        fn.kind,
-        fn.signature,
-        fn.startLine,
-        fn.endLine,
-        fn.line,
-        fn.column,
-        fn.parentFunctionId,
-      );
-    });
+    if (replaceChunks) {
+      await replaceSnapshotChunks(effectiveSnapshotId, snapshot.chunks);
+    }
 
-    snapshot.functionEdges.forEach((edge) => {
-      insertFunctionEdge.run(
-        edge.id,
+    if (replaceFunctions) {
+      await replaceSnapshotFunctions(effectiveSnapshotId, snapshot.functions);
+    }
+
+    if (replaceFunctionEdges) {
+      await replaceSnapshotFunctionEdges(
         effectiveSnapshotId,
-        edge.fromFunctionId,
-        edge.toFunctionId,
-        edge.edgeType,
-        edge.symbol,
-        edge.line,
+        snapshot.functionEdges,
       );
-    });
+    }
   });
 
-  transaction();
+  await transaction();
+}
+
+export async function saveCodeIndexSummaryDelta(
+  snapshot: CodeIndexSnapshot,
+  userId = '__system__',
+): Promise<void> {
+  const now = new Date().toISOString();
+  const entityHashes = buildEntityHashes(snapshot);
+  const existing = await getCodeIndexSnapshotPersistenceRow(
+    snapshot.meta.repositoryId,
+    snapshot.meta.branch,
+  );
+  if (!existing || existing.manifest_hash !== snapshot.meta.manifestHash) {
+    await saveCodeIndexSnapshot(snapshot, userId);
+    return;
+  }
+
+  const effectiveSnapshotId = existing.snapshot_id;
+  const filesChanged = existing.files_hash !== entityHashes.filesHash;
+  const chunksChanged = existing.chunks_hash !== entityHashes.chunksHash;
+  const functionsChanged = existing.functions_hash !== entityHashes.functionsHash;
+  const functionEdgesChanged =
+    existing.function_edges_hash !== entityHashes.functionEdgesHash;
+
+  if (functionsChanged || functionEdgesChanged) {
+    await saveCodeIndexSnapshot(snapshot, userId);
+    return;
+  }
+
+  const transaction = dba.transaction(async () => {
+    await upsertSnapshotRow({
+      snapshotId: effectiveSnapshotId,
+      repositoryId: snapshot.meta.repositoryId,
+      branch: snapshot.meta.branch,
+      rootDirectory: snapshot.meta.rootDirectory,
+      sourceKind: snapshot.meta.sourceKind || 'unknown',
+      sourceBranch: snapshot.meta.sourceBranch || snapshot.meta.branch,
+      sourceHeadSha: snapshot.meta.sourceHeadSha || '',
+      manifestHash: snapshot.meta.manifestHash,
+      status: snapshot.meta.status,
+      stage: snapshot.meta.stage,
+      processedFiles: snapshot.meta.progress.processedFiles,
+      totalFiles: snapshot.meta.progress.totalFiles,
+      message: snapshot.meta.progress.message,
+      errorMessage: snapshot.meta.progress.error,
+      generatedAt: snapshot.meta.generatedAt,
+      stats: snapshot.meta.stats,
+      capabilities: snapshot.meta.capabilities,
+      entityHashes,
+      userId,
+      createdAt: existing.created_at,
+      updatedAt: now,
+    });
+
+    if (filesChanged) {
+      await replaceSnapshotFiles(effectiveSnapshotId, snapshot.files);
+    }
+    if (chunksChanged) {
+      await replaceSnapshotChunks(effectiveSnapshotId, snapshot.chunks);
+    }
+  });
+
+  await transaction();
+}
+
+export async function saveCodeIndexStateDelta(
+  snapshot: CodeIndexSnapshot,
+  userId = '__system__',
+): Promise<void> {
+  const now = new Date().toISOString();
+  const entityHashes = buildEntityHashes(snapshot);
+  const existing = await getCodeIndexSnapshotPersistenceRow(
+    snapshot.meta.repositoryId,
+    snapshot.meta.branch,
+  );
+  if (!existing || existing.manifest_hash !== snapshot.meta.manifestHash) {
+    await saveCodeIndexSnapshot(snapshot, userId);
+    return;
+  }
+
+  const sameEntityHashes =
+    existing.files_hash === entityHashes.filesHash &&
+    existing.chunks_hash === entityHashes.chunksHash &&
+    existing.functions_hash === entityHashes.functionsHash &&
+    existing.function_edges_hash === entityHashes.functionEdgesHash;
+  if (!sameEntityHashes) {
+    await saveCodeIndexSnapshot(snapshot, userId);
+    return;
+  }
+
+  await upsertSnapshotRow({
+    snapshotId: existing.snapshot_id,
+    repositoryId: snapshot.meta.repositoryId,
+    branch: snapshot.meta.branch,
+    rootDirectory: snapshot.meta.rootDirectory,
+    sourceKind: snapshot.meta.sourceKind || 'unknown',
+    sourceBranch: snapshot.meta.sourceBranch || snapshot.meta.branch,
+    sourceHeadSha: snapshot.meta.sourceHeadSha || '',
+    manifestHash: snapshot.meta.manifestHash,
+    status: snapshot.meta.status,
+    stage: snapshot.meta.stage,
+    processedFiles: snapshot.meta.progress.processedFiles,
+    totalFiles: snapshot.meta.progress.totalFiles,
+    message: snapshot.meta.progress.message,
+    errorMessage: snapshot.meta.progress.error,
+    generatedAt: snapshot.meta.generatedAt,
+    stats: snapshot.meta.stats,
+    capabilities: snapshot.meta.capabilities,
+    entityHashes,
+    userId,
+    createdAt: existing.created_at,
+    updatedAt: now,
+  });
 }

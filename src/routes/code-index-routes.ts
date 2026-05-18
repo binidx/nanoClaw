@@ -22,8 +22,10 @@ import {
   loadCodeIndexFunctionGraphData,
   getCodeIndexSnapshotMeta,
   listCodeIndexSnapshotMetasByStatus,
+  saveCodeIndexStateDelta,
   saveCodeIndexSnapshot,
   saveCodeIndexSnapshotMeta,
+  saveCodeIndexSummaryDelta,
 } from '../db/code-index-db.js';
 import {
   loadCodeMapFromDb,
@@ -765,6 +767,7 @@ async function startCodeIndexEnrichment(input: {
     input.branch,
   );
   enrichingSet.add(key);
+  let summaryPersisted = false;
   void enrichCodeIndexSnapshotAsync(input.rootDirectory, snapshot, {
     summarizeWithAi: input.summarizeWithAi,
     embedChunks: input.embedChunks,
@@ -794,6 +797,15 @@ async function startCodeIndexEnrichment(input: {
         branch: input.branch,
         ...nextSnapshot.meta.progress,
       });
+      if (input.summarizeWithAi && !summaryPersisted) {
+        summaryPersisted = true;
+        await saveCodeIndexSummaryDelta(nextSnapshot, input.userId);
+        return;
+      }
+      if (input.embedChunks) {
+        await saveCodeIndexStateDelta(nextSnapshot, input.userId);
+        return;
+      }
       await saveCodeIndexSnapshot(nextSnapshot, input.userId);
     },
   })
@@ -1076,11 +1088,19 @@ export function registerCodeIndexRoutes(
             limit * 4,
             0.18,
           );
-          const allowed = new Set(snapshot.chunks.map((chunk) => chunk.id));
-          vectorScores = new Map(
+          const allowedContentHashes = new Set(
+            snapshot.chunks.map((chunk) => chunk.contentHash),
+          );
+          const vectorScoresByContentHash = new Map(
             raw
-              .filter((entry) => allowed.has(entry.ownerId))
+              .filter((entry) => allowedContentHashes.has(entry.ownerId))
               .map((entry) => [entry.ownerId, entry.score]),
+          );
+          vectorScores = new Map(
+            snapshot.chunks.map((chunk) => [
+              chunk.id,
+              vectorScoresByContentHash.get(chunk.contentHash) || 0,
+            ]),
           );
         }
       }

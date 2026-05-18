@@ -852,6 +852,10 @@ export function buildMySQLSchema(autoPk: string): string {
       generated_at VARCHAR(64) DEFAULT NULL,
       stats_json MEDIUMTEXT NOT NULL,
       capabilities_json TEXT NOT NULL,
+      files_hash VARCHAR(64) NOT NULL DEFAULT '',
+      chunks_hash VARCHAR(64) NOT NULL DEFAULT '',
+      functions_hash VARCHAR(64) NOT NULL DEFAULT '',
+      function_edges_hash VARCHAR(64) NOT NULL DEFAULT '',
       user_id VARCHAR(64) NOT NULL DEFAULT '__system__',
       created_at VARCHAR(64) NOT NULL,
       updated_at VARCHAR(64) NOT NULL,
@@ -1817,6 +1821,18 @@ export async function runMySQLMigrations(engine: DbEngine): Promise<void> {
   );
   await safeMigrate(
     `ALTER TABLE code_index_snapshots ADD COLUMN source_head_sha VARCHAR(64) NOT NULL DEFAULT ''`,
+  );
+  await safeMigrate(
+    `ALTER TABLE code_index_snapshots ADD COLUMN files_hash VARCHAR(64) NOT NULL DEFAULT ''`,
+  );
+  await safeMigrate(
+    `ALTER TABLE code_index_snapshots ADD COLUMN chunks_hash VARCHAR(64) NOT NULL DEFAULT ''`,
+  );
+  await safeMigrate(
+    `ALTER TABLE code_index_snapshots ADD COLUMN functions_hash VARCHAR(64) NOT NULL DEFAULT ''`,
+  );
+  await safeMigrate(
+    `ALTER TABLE code_index_snapshots ADD COLUMN function_edges_hash VARCHAR(64) NOT NULL DEFAULT ''`,
   );
   await safeMigrate(
     `CREATE INDEX idx_code_index_snapshots_repo_branch ON code_index_snapshots(repository_id, branch)`,

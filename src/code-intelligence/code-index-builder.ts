@@ -85,8 +85,38 @@ function buildSnapshotId(repositoryId: string, branch: string): string {
   return `cis_${shortHash(`${repositoryId}\0${branch}`)}`;
 }
 
-function buildFunctionId(manifestHash: string, filePath: string, localId: string): string {
-  return `cif_${shortHash(`${manifestHash}\0${filePath}\0${localId}`)}`;
+function buildFunctionId(
+  repositoryId: string,
+  branch: string,
+  manifestHash: string,
+  filePath: string,
+  localId: string,
+): string {
+  return `cif_${shortHash(
+    `${repositoryId}\0${branch}\0${manifestHash}\0${filePath}\0${localId}`,
+  )}`;
+}
+
+function buildChunkId(
+  repositoryId: string,
+  branch: string,
+  manifestHash: string,
+  filePath: string,
+  startLine: number,
+  endLine: number,
+  contentHash: string,
+): string {
+  return `cic_${shortHash(
+    `${repositoryId}\0${branch}\0${manifestHash}\0${filePath}\0${startLine}\0${endLine}\0${contentHash}`,
+  )}`;
+}
+
+function chunkEmbeddingOwnerId(chunk: Pick<CodeIndexChunkRecord, 'contentHash'>): string {
+  return chunk.contentHash;
+}
+
+function chunkEmbeddingText(chunk: Pick<CodeIndexChunkRecord, 'content'>): string {
+  return chunk.content.trim();
 }
 
 function countChar(text: string, char: string): number {
@@ -376,7 +406,15 @@ function buildChunks(files: CodeSearchFile[], snapshot: CodeMapSnapshot): CodeIn
       const summary = buildChunkSummary(file, range.startLine, range.endLine);
       const contentHash = shortHash(`${file.relativePath}\0${range.startLine}\0${range.endLine}\0${content}`);
       chunks.push({
-        id: `cic_${contentHash}`,
+        id: buildChunkId(
+          snapshot.repositoryId,
+          snapshot.branch,
+          snapshot.manifestHash,
+          file.relativePath,
+          range.startLine,
+          range.endLine,
+          contentHash,
+        ),
         filePath: file.relativePath,
         chunkIndex: index,
         startLine: range.startLine,
@@ -521,14 +559,20 @@ function reuseCachedSummaries(
   return filePathsNeedingSummary;
 }
 
-function buildFunctions(files: CodeSearchFile[], manifestHash: string): CodeIndexFunctionRecord[] {
+function buildFunctions(files: CodeSearchFile[], snapshot: CodeMapSnapshot): CodeIndexFunctionRecord[] {
   const functions: CodeIndexFunctionRecord[] = [];
   for (const file of files) {
     if (file.language === 'typescript' || file.language === 'javascript') {
       const graph = getTsJsFunctionGraph(file);
       graph.functions.forEach((fn) => {
         functions.push({
-          id: buildFunctionId(manifestHash, file.relativePath, fn.localId),
+          id: buildFunctionId(
+            snapshot.repositoryId,
+            snapshot.branch,
+            snapshot.manifestHash,
+            file.relativePath,
+            fn.localId,
+          ),
           filePath: file.relativePath,
           name: fn.name,
           kind: fn.kind,
@@ -538,7 +582,13 @@ function buildFunctions(files: CodeSearchFile[], manifestHash: string): CodeInde
           line: fn.line,
           column: fn.column,
           parentFunctionId: fn.parentLocalId
-            ? buildFunctionId(manifestHash, file.relativePath, fn.parentLocalId)
+            ? buildFunctionId(
+                snapshot.repositoryId,
+                snapshot.branch,
+                snapshot.manifestHash,
+                file.relativePath,
+                fn.parentLocalId,
+              )
             : null,
         });
       });
@@ -556,7 +606,9 @@ function buildFunctions(files: CodeSearchFile[], manifestHash: string): CodeInde
       );
       functions.push({
         id: buildFunctionId(
-          manifestHash,
+          snapshot.repositoryId,
+          snapshot.branch,
+          snapshot.manifestHash,
           file.relativePath,
           `${symbol.name}:${symbol.line}:${symbol.column}`,
         ),
@@ -1050,7 +1102,7 @@ async function buildCodeIndexCore(
     createProgress('chunks', totalFiles, totalFiles, t('prompts.auto_bc4c4d', {}, undefined), startedAt),
   );
 
-  const functions = buildFunctions(context.indexedFiles, context.mapSnapshot.manifestHash);
+  const functions = buildFunctions(context.indexedFiles, context.mapSnapshot);
   const functionEdges = buildFunctionEdges(context.indexedFiles, functions, context.mapSnapshot);
   await reportProgress(
     repositoryId,
@@ -1190,8 +1242,8 @@ async function buildCodeIndexCore(
       embeddedChunkCount = await batchEmbedAndStore(
         'code_chunk',
         chunks.map((chunk) => ({
-          ownerId: chunk.id,
-          text: `${chunk.summary}\n\n${chunk.content}`.trim(),
+          ownerId: chunkEmbeddingOwnerId(chunk),
+          text: chunkEmbeddingText(chunk),
         })),
         provider,
       );
@@ -1369,8 +1421,8 @@ export async function enrichCodeIndexSnapshotAsync(
       embeddedChunkCount += await batchEmbedAndStore(
         'code_chunk',
         chunks.map((chunk) => ({
-          ownerId: chunk.id,
-          text: `${chunk.summary}\n\n${chunk.content}`.trim(),
+          ownerId: chunkEmbeddingOwnerId(chunk),
+          text: chunkEmbeddingText(chunk),
         })),
         provider,
       );

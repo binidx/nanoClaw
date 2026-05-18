@@ -17,15 +17,20 @@ const {
   loadCodeIndexFunctionGraphDataMock,
   getCodeIndexSnapshotMetaMock,
   listCodeIndexSnapshotMetasByStatusMock,
+  saveCodeIndexStateDeltaMock,
   saveCodeIndexSnapshotMock,
   saveCodeIndexSnapshotMetaMock,
+  saveCodeIndexSummaryDeltaMock,
   loadCodeMapFromDbMock,
   saveCodeMapToDbMock,
   getReviewRepositoryByIdMock,
   listWorktreesMock,
   acquireWorktreeMock,
   generateTextWithDefaultProviderMock,
+  cachedEmbedQueryMock,
   resolvePromptTextMock,
+  resolveEmbeddingProviderMock,
+  searchByVectorMock,
 } = vi.hoisted(() => ({
   buildCodeIndexAsyncMock: vi.fn(),
   enrichCodeIndexSnapshotAsyncMock: vi.fn(),
@@ -36,15 +41,20 @@ const {
   loadCodeIndexFunctionGraphDataMock: vi.fn(async () => null),
   getCodeIndexSnapshotMetaMock: vi.fn(),
   listCodeIndexSnapshotMetasByStatusMock: vi.fn(async () => []),
+  saveCodeIndexStateDeltaMock: vi.fn(async () => undefined),
   saveCodeIndexSnapshotMock: vi.fn(async () => undefined),
   saveCodeIndexSnapshotMetaMock: vi.fn(async () => undefined),
+  saveCodeIndexSummaryDeltaMock: vi.fn(async () => undefined),
   loadCodeMapFromDbMock: vi.fn(async () => null),
   saveCodeMapToDbMock: vi.fn(async () => undefined),
   getReviewRepositoryByIdMock: vi.fn(),
   listWorktreesMock: vi.fn(async () => []),
   acquireWorktreeMock: vi.fn(async () => null),
   generateTextWithDefaultProviderMock: vi.fn(async () => 'AI answer'),
+  cachedEmbedQueryMock: vi.fn(async () => [0.1, 0.2, 0.3]),
   resolvePromptTextMock: vi.fn(async () => ({ text: 'Use only provided context.' })),
+  resolveEmbeddingProviderMock: vi.fn(async () => null),
+  searchByVectorMock: vi.fn(async () => []),
 }));
 
 vi.mock('./code-index-builder.js', () => ({
@@ -59,8 +69,10 @@ vi.mock('./db/code-index-db.js', () => ({
   loadCodeIndexFunctionsData: loadCodeIndexFunctionsDataMock,
   loadCodeIndexFunctionGraphData: loadCodeIndexFunctionGraphDataMock,
   getCodeIndexSnapshotMeta: getCodeIndexSnapshotMetaMock,
+  saveCodeIndexStateDelta: saveCodeIndexStateDeltaMock,
   saveCodeIndexSnapshot: saveCodeIndexSnapshotMock,
   saveCodeIndexSnapshotMeta: saveCodeIndexSnapshotMetaMock,
+  saveCodeIndexSummaryDelta: saveCodeIndexSummaryDeltaMock,
   listCodeIndexSnapshotMetasByStatus: listCodeIndexSnapshotMetasByStatusMock,
 }));
 
@@ -71,6 +83,15 @@ vi.mock('./code-intelligence/code-map-persist.js', () => ({
 
 vi.mock('./provider/provider-api.js', () => ({
   generateTextWithDefaultProvider: generateTextWithDefaultProviderMock,
+}));
+
+vi.mock('./embedding/resolve.js', () => ({
+  resolveEmbeddingProvider: resolveEmbeddingProviderMock,
+}));
+
+vi.mock('./embedding/vector-store.js', () => ({
+  cachedEmbedQuery: cachedEmbedQueryMock,
+  searchByVector: searchByVectorMock,
 }));
 
 vi.mock('./prompt/prompt-service.js', () => ({
@@ -116,8 +137,18 @@ describe('code-index routes', () => {
     loadCodeIndexFunctionGraphDataMock.mockResolvedValue(null);
     listCodeIndexSnapshotMetasByStatusMock.mockReset();
     listCodeIndexSnapshotMetasByStatusMock.mockResolvedValue([]);
+    saveCodeIndexStateDeltaMock.mockReset();
+    saveCodeIndexStateDeltaMock.mockResolvedValue(undefined);
+    cachedEmbedQueryMock.mockReset();
+    cachedEmbedQueryMock.mockResolvedValue([0.1, 0.2, 0.3]);
     loadCodeMapFromDbMock.mockReset();
     loadCodeMapFromDbMock.mockResolvedValue(null);
+    resolveEmbeddingProviderMock.mockReset();
+    resolveEmbeddingProviderMock.mockResolvedValue(null);
+    saveCodeIndexSummaryDeltaMock.mockReset();
+    saveCodeIndexSummaryDeltaMock.mockResolvedValue(undefined);
+    searchByVectorMock.mockReset();
+    searchByVectorMock.mockResolvedValue([]);
     saveCodeMapToDbMock.mockReset();
     generateTextWithDefaultProviderMock.mockReset();
     generateTextWithDefaultProviderMock.mockResolvedValue('AI answer');
@@ -469,6 +500,130 @@ describe('code-index routes', () => {
     });
   });
 
+  it('routes enrichment snapshots through summary and state delta persistence', async () => {
+    getCodeIndexSnapshotMetaMock.mockResolvedValue(null);
+    getReviewRepositoryByIdMock.mockResolvedValue({
+      id: 'repo-enrich-deltas',
+      name: 'Repo Enrich Deltas',
+      default_target_branch: 'main',
+      local_repo_path: process.cwd(),
+      clone_url: null,
+    });
+    const baseSnapshot = {
+      meta: {
+        repositoryId: 'repo-enrich-deltas',
+        branch: 'main',
+        rootDirectory: process.cwd(),
+        manifestHash: 'hash-delta',
+        status: 'building',
+        stage: 'summaries',
+        generatedAt: null,
+        stats: {
+          fileCount: 1,
+          chunkCount: 1,
+          functionCount: 1,
+          functionEdgeCount: 0,
+          totalLines: 1,
+          embeddedChunkCount: 0,
+        },
+        capabilities: {
+          chunkSearch: true,
+          fileSummaries: true,
+          functionGraph: true,
+          embeddings: false,
+        },
+        progress: {
+          status: 'building',
+          stage: 'summaries',
+          processedFiles: 0,
+          totalFiles: 1,
+          message: 'building summaries',
+          error: null,
+          startedAt: '2026-04-23T00:00:00.000Z',
+          updatedAt: '2026-04-23T00:00:00.000Z',
+        },
+      },
+      files: [],
+      chunks: [],
+      functions: [],
+      functionEdges: [],
+    };
+    const summarySnapshot = {
+      ...baseSnapshot,
+      meta: {
+        ...baseSnapshot.meta,
+        stage: 'embeddings',
+        progress: {
+          ...baseSnapshot.meta.progress,
+          stage: 'embeddings',
+          processedFiles: 1,
+          message: 'embedding next',
+        },
+      },
+    };
+    const finalSnapshot = {
+      ...baseSnapshot,
+      meta: {
+        ...baseSnapshot.meta,
+        status: 'ready',
+        stage: 'complete',
+        generatedAt: '2026-04-23T00:01:00.000Z',
+        stats: {
+          ...baseSnapshot.meta.stats,
+          embeddedChunkCount: 1,
+        },
+        capabilities: {
+          ...baseSnapshot.meta.capabilities,
+          embeddings: true,
+        },
+        progress: {
+          ...baseSnapshot.meta.progress,
+          status: 'ready',
+          stage: 'complete',
+          processedFiles: 1,
+          message: 'done',
+        },
+      },
+    };
+
+    buildCodeIndexAsyncMock.mockResolvedValue(baseSnapshot);
+    loadCodeIndexSnapshotMock.mockResolvedValue(baseSnapshot);
+    enrichCodeIndexSnapshotAsyncMock.mockImplementation(async (_root, _snapshot, options) => {
+      await options?.onSnapshot?.(summarySnapshot as never);
+      await options?.onSnapshot?.(finalSnapshot as never);
+      return finalSnapshot as never;
+    });
+
+    const app = express();
+    app.use(express.json());
+    registerCodeIndexRoutes(app, {
+      requirePermission: allowAllRequirePermission,
+      auditMutation: vi.fn(),
+    });
+
+    const response = await inject(app, {
+      method: 'POST',
+      url: '/api/code-index/repo-enrich-deltas/rebuild?branch=main&enableAiSummaries=1&enableEmbeddings=1',
+      headers: { 'content-type': 'application/json' },
+    });
+
+    expect(response.statusCode).toBe(202);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(saveCodeIndexSnapshotMock).toHaveBeenCalledTimes(1);
+    expect(saveCodeIndexSummaryDeltaMock).toHaveBeenCalledTimes(1);
+    expect(saveCodeIndexSummaryDeltaMock).toHaveBeenCalledWith(
+      summarySnapshot,
+      'test-user',
+    );
+    expect(saveCodeIndexStateDeltaMock).toHaveBeenCalledTimes(1);
+    expect(saveCodeIndexStateDeltaMock).toHaveBeenCalledWith(
+      finalSnapshot,
+      'test-user',
+    );
+  });
+
   it('returns source and readiness metadata from status', async () => {
     getReviewRepositoryByIdMock.mockResolvedValue({
       id: 'repo-status',
@@ -536,6 +691,120 @@ describe('code-index routes', () => {
         summaryReady: true,
         embeddingsReady: false,
       },
+    });
+  });
+
+  it('maps vector hits back to chunks by content hash for code search', async () => {
+    getReviewRepositoryByIdMock.mockResolvedValue({
+      id: 'repo-search',
+      name: 'Repo Search',
+      default_target_branch: 'main',
+      local_repo_path: process.cwd(),
+      clone_url: null,
+    });
+    loadCodeIndexSearchDataMock.mockResolvedValue({
+      meta: {
+        repositoryId: 'repo-search',
+        branch: 'main',
+        rootDirectory: process.cwd(),
+        manifestHash: 'hash-search',
+        status: 'ready',
+        stage: 'complete',
+        generatedAt: '2026-04-23T00:00:00.000Z',
+        stats: {
+          fileCount: 1,
+          chunkCount: 2,
+          functionCount: 0,
+          functionEdgeCount: 0,
+          totalLines: 10,
+          embeddedChunkCount: 2,
+        },
+        capabilities: {
+          chunkSearch: true,
+          fileSummaries: true,
+          functionGraph: false,
+          embeddings: true,
+        },
+        progress: {
+          status: 'ready',
+          stage: 'complete',
+          processedFiles: 1,
+          totalFiles: 1,
+          message: 'done',
+          error: null,
+          startedAt: '2026-04-23T00:00:00.000Z',
+          updatedAt: '2026-04-23T00:00:00.000Z',
+        },
+      },
+      files: [
+        {
+          relativePath: 'src/search.ts',
+          language: 'typescript',
+          byteSize: 100,
+          lineCount: 4,
+          fileHash: 'file-hash',
+          rank: 1,
+          importCount: 0,
+          exportCount: 1,
+          summary: 'search file',
+          summarySource: 'fallback',
+        },
+      ],
+      chunks: [
+        {
+          id: 'chunk-1',
+          filePath: 'src/search.ts',
+          chunkIndex: 0,
+          startLine: 1,
+          endLine: 2,
+          content: 'export const alpha = 1;',
+          tokenCount: 5,
+          summary: 'alpha chunk',
+          contentHash: 'shared-hash',
+          summarySource: 'fallback',
+        },
+        {
+          id: 'chunk-2',
+          filePath: 'src/search.ts',
+          chunkIndex: 1,
+          startLine: 3,
+          endLine: 4,
+          content: 'export const beta = 2;',
+          tokenCount: 5,
+          summary: 'beta chunk',
+          contentHash: 'other-hash',
+          summarySource: 'fallback',
+        },
+      ],
+    });
+    resolveEmbeddingProviderMock.mockResolvedValue({ id: 'provider-1' });
+    searchByVectorMock.mockResolvedValue([
+      { id: 'vec-1', ownerId: 'shared-hash', ownerType: 'code_chunk', score: 0.92 },
+    ]);
+
+    const app = express();
+    app.use(express.json());
+    registerCodeIndexRoutes(app, {
+      requirePermission: allowAllRequirePermission,
+      auditMutation: vi.fn(),
+    });
+
+    const response = await inject(app, {
+      method: 'POST',
+      url: '/api/code-index/repo-search/search?branch=main',
+      headers: { 'content-type': 'application/json' },
+      payload: { query: 'zzznomatch', limit: 5 },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(searchByVectorMock).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(response.body)).toMatchObject({
+      results: [
+        {
+          chunkId: 'chunk-1',
+          matchedBy: 'vector',
+        },
+      ],
     });
   });
 

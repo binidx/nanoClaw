@@ -886,6 +886,10 @@ export function buildPostgresSchema(autoPk: string): string {
       generated_at TEXT,
       stats_json TEXT NOT NULL,
       capabilities_json TEXT NOT NULL,
+      files_hash TEXT NOT NULL DEFAULT '',
+      chunks_hash TEXT NOT NULL DEFAULT '',
+      functions_hash TEXT NOT NULL DEFAULT '',
+      function_edges_hash TEXT NOT NULL DEFAULT '',
       user_id TEXT NOT NULL DEFAULT '__system__',
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
@@ -1782,6 +1786,18 @@ export async function runPostgresMigrations(engine: DbEngine): Promise<void> {
   );
   await safeMigrate(
     `ALTER TABLE code_index_snapshots ADD COLUMN IF NOT EXISTS source_head_sha TEXT NOT NULL DEFAULT ''`,
+  );
+  await safeMigrate(
+    `ALTER TABLE code_index_snapshots ADD COLUMN IF NOT EXISTS files_hash TEXT NOT NULL DEFAULT ''`,
+  );
+  await safeMigrate(
+    `ALTER TABLE code_index_snapshots ADD COLUMN IF NOT EXISTS chunks_hash TEXT NOT NULL DEFAULT ''`,
+  );
+  await safeMigrate(
+    `ALTER TABLE code_index_snapshots ADD COLUMN IF NOT EXISTS functions_hash TEXT NOT NULL DEFAULT ''`,
+  );
+  await safeMigrate(
+    `ALTER TABLE code_index_snapshots ADD COLUMN IF NOT EXISTS function_edges_hash TEXT NOT NULL DEFAULT ''`,
   );
   await safeMigrate(`
     CREATE TABLE IF NOT EXISTS code_search_index_payload_chunks (
