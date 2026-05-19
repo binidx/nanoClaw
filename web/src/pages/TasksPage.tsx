@@ -1,14 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AppSelect, type AppSelectOption } from '../components/AppSelect';
-import { IconChevronDown, IconSort } from '../components/AppIcons';
-import { Drawer, PageHeader } from '../components/common';
-import { Pagination } from '../components/common/Pagination';
+import { IconCalendar, IconSearch } from '../components/AppIcons';
+import { CatalogPageShell, Drawer, SearchPill } from '../components/common';
 
 import type { Conversation, ScheduledTaskSummary } from '../app-types';
 import { getConversationTitle } from '../app-helpers';
-
-const TASKS_PAGE_SIZE = 15;
 
 interface TaskDraft {
   title: string;
@@ -28,8 +25,6 @@ interface TasksPageProps {
   setSelectedChatJid: (jid: string) => void;
   tasks: ScheduledTaskSummary[];
   loading: boolean;
-  refreshing: boolean;
-  onRefresh: () => void;
   onCreateTask: (
     input: TaskDraft & { chatJid: string },
   ) => Promise<boolean | void>;
@@ -41,22 +36,12 @@ interface TasksPageProps {
   onRunTask: (taskId: string) => Promise<boolean | void>;
 }
 
-type TaskFilter = 'all' | 'active' | 'paused' | 'completed';
-type TaskSort = 'next-run' | 'created-desc' | 'status';
 type TaskNoticeTone = 'info' | 'success' | 'error';
 
 interface TaskNoticeState {
   text: string;
   tone: TaskNoticeTone;
   autoDismissMs?: number;
-}
-
-function getTaskSortOptions(t: (key: string) => string): AppSelectOption[] {
-  return [
-    { value: 'next-run', label: t('tasks.按下次运行') },
-    { value: 'created-desc', label: t('tasks.按创建时间') },
-    { value: 'status', label: t('tasks.按状态') },
-  ];
 }
 
 function getTaskScheduleTypeOptions(t: (key: string) => string): AppSelectOption[] {
@@ -237,12 +222,6 @@ function getSchedulePresets(scheduleType: TaskDraft['scheduleType'], t: (key: st
   ];
 }
 
-function getSortLabel(sort: TaskSort, t: (key: string) => string) {
-  if (sort === 'next-run') return t('tasks.按下次运行');
-  if (sort === 'created-desc') return t('tasks.按创建时间');
-  return t('tasks.按状态');
-}
-
 function compareByNextRun(
   left: ScheduledTaskSummary,
   right: ScheduledTaskSummary,
@@ -254,25 +233,6 @@ function compareByNextRun(
     ? new Date(right.next_run).getTime()
     : Number.POSITIVE_INFINITY;
   return leftTime - rightTime;
-}
-
-function compareByCreatedDesc(
-  left: ScheduledTaskSummary,
-  right: ScheduledTaskSummary,
-) {
-  return (
-    new Date(right.created_at).getTime() - new Date(left.created_at).getTime()
-  );
-}
-
-function compareByStatus(
-  left: ScheduledTaskSummary,
-  right: ScheduledTaskSummary,
-) {
-  const order = { active: 0, paused: 1, completed: 2 };
-  const diff = order[left.status] - order[right.status];
-  if (diff !== 0) return diff;
-  return compareByNextRun(left, right);
 }
 
 function truncateText(value: string | null | undefined, max = 56) {
@@ -307,8 +267,6 @@ export function TasksPage({
   setSelectedChatJid,
   tasks,
   loading,
-  refreshing,
-  onRefresh,
   onCreateTask,
   onParseTaskDraft,
   onPauseTask,
@@ -323,9 +281,7 @@ export function TasksPage({
   const [createBusy, setCreateBusy] = useState(false);
   const [showCreator, setShowCreator] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
-  const [taskFilter, setTaskFilter] = useState<TaskFilter>('all');
-  const [taskSort, setTaskSort] = useState<TaskSort>('next-run');
-  const [tasksPage, setTasksPage] = useState(1);
+  const [taskSearch, setTaskSearch] = useState('');
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [taskNotice, setTaskNotice] = useState<TaskNoticeState | null>(null);
   const [taskEditor, setTaskEditor] = useState<
@@ -342,53 +298,10 @@ export function TasksPage({
   } | null>(null);
   const [draft, setDraft] = useState<TaskDraft>(createEmptyDraft());
 
-  const selectedConversation = useMemo(
-    () =>
-      conversations.find(
-        (conversation) => conversation.jid === selectedChatJid,
-      ) || null,
-    [conversations, selectedChatJid],
-  );
   const selectedTask = useMemo(
     () => tasks.find((task) => task.id === selectedTaskId) || null,
     [selectedTaskId, tasks],
   );
-
-  const taskMetrics = useMemo(() => {
-    let active = 0;
-    let paused = 0;
-    let completed = 0;
-    let inactiveGroupCount = 0;
-    let latestExecutedTask: ScheduledTaskSummary | null = null;
-    let latestRunTime = 0;
-
-    for (const task of tasks) {
-      if (task.status === 'active') active += 1;
-      else if (task.status === 'paused') paused += 1;
-      else completed += 1;
-
-      if (task.group_folder_active === false) {
-        inactiveGroupCount += 1;
-      }
-
-      const runAt = task.last_run ? new Date(task.last_run).getTime() : 0;
-      if (runAt > latestRunTime) {
-        latestRunTime = runAt;
-        latestExecutedTask = task;
-      }
-    }
-
-    return {
-      counts: {
-        all: tasks.length,
-        active,
-        paused,
-        completed,
-      },
-      inactiveGroupCount,
-      latestExecutedTask,
-    };
-  }, [tasks]);
 
   const conversationNameByJid = useMemo(
     () =>
@@ -408,8 +321,6 @@ export function TasksPage({
       })),
     [conversations, t],
   );
-
-  const taskSortOptions = useMemo(() => getTaskSortOptions(t), [t]);
   const scheduleTypeOptions = useMemo(() => getTaskScheduleTypeOptions(t), [t]);
   const contextModeOptions = useMemo(() => getTaskContextModeOptions(t), [t]);
   const failureModeOptions = useMemo(() => getTaskFailureModeOptions(t), [t]);
@@ -419,17 +330,24 @@ export function TasksPage({
     [draft.scheduleType, t],
   );
 
-  const filteredTasks = useMemo(() => {
-    const filtered =
-      taskFilter === 'all'
-        ? tasks
-        : tasks.filter((task) => task.status === taskFilter);
-    const sorted = [...filtered];
-    if (taskSort === 'created-desc') sorted.sort(compareByCreatedDesc);
-    else if (taskSort === 'status') sorted.sort(compareByStatus);
-    else sorted.sort(compareByNextRun);
-    return sorted;
-  }, [taskFilter, taskSort, tasks]);
+  const searchedTasks = useMemo(() => {
+    const query = taskSearch.trim().toLowerCase();
+    return tasks.filter((task) => {
+      if (!query) return true;
+      const conversationLabel =
+        conversationNameByJid.get(task.chat_jid) ||
+        task.conversation_name ||
+        task.chat_jid;
+      return [task.title, task.prompt, task.id, task.schedule_value, conversationLabel]
+        .join('\n')
+        .toLowerCase()
+        .includes(query);
+    });
+  }, [conversationNameByJid, taskSearch, tasks]);
+
+  const sortedTasks = useMemo(() => {
+    return [...searchedTasks].sort(compareByNextRun);
+  }, [searchedTasks]);
 
   const hasDraft = Boolean(
     draft.title.trim() || draft.prompt.trim() || draft.summary?.trim(),
@@ -692,16 +610,6 @@ export function TasksPage({
     setSelectedTaskId(task.id);
   };
 
-  const summaryConversation = selectedConversation
-    ? getConversationLabel(selectedConversation, t)
-    : t('tasks.未选择');
-  const { counts, inactiveGroupCount, latestExecutedTask } = taskMetrics;
-
-  const latestSummary = latestExecutedTask
-    ? `${truncateText(latestExecutedTask.title, 18)} · ${formatWhen(latestExecutedTask.last_run)}`
-    : inactiveGroupCount > 0
-      ? t('tasks.N个任务目录异常', { count: inactiveGroupCount })
-      : t('tasks.暂无执行记录');
   const selectedTaskConversationLabel = selectedTask
     ? conversationNameByJid.get(selectedTask.chat_jid) ||
       selectedTask.conversation_name ||
@@ -709,160 +617,50 @@ export function TasksPage({
     : '';
 
   return (
-    <div className="page-view">
-      <PageHeader
+    <CatalogPageShell
         title={t('tasks.定时任务')}
-        subtitle={
-          selectedConversation
-            ? summaryConversation
-            : t('tasks.先选择一个对话后再创建任务')
-        }
-        meta={
-          <div className="nc-page-metrics">
-            <div className="nc-page-metric">
-              <span className="nc-page-metric-label">{t('tasks.任务总数')}</span>
-              <strong className="nc-page-metric-value">{counts.all}</strong>
-              <span className="nc-page-metric-note">
-                {t('tasks.当前对话下全部任务')}
-              </span>
-            </div>
-            <div className="nc-page-metric">
-              <span className="nc-page-metric-label">{t('tasks.状态')}</span>
-              <strong className="nc-page-metric-value">
-                {counts.active} / {counts.paused} / {counts.completed}
-              </strong>
-              <span className="nc-page-metric-note">
-                {t('tasks.运行中暂停完成')}
-              </span>
-            </div>
-            <div className="nc-page-metric">
-              <span className="nc-page-metric-label">{t('tasks.最近执行')}</span>
-              <strong className="nc-page-metric-value">
-                {latestExecutedTask
-                  ? truncateText(latestExecutedTask.title, 18)
-                  : t('tasks.暂无')}
-              </strong>
-              <span className="nc-page-metric-note">{latestSummary}</span>
-            </div>
-          </div>
-        }
-        actions={
-          <div className="nc-page-actions-group">
-            <div className="tasks-header-target">
-              <span className="tasks-header-label">{t('tasks.当前对话')}</span>
-              <AppSelect
-                value={selectedChatJid || ''}
-                onChange={(val) => setSelectedChatJid(val)}
-                options={conversationOptions}
-                ariaLabel={t('tasks.选择目标对话')}
-                compact
-                className="tasks-header-conv-select"
-              />
-            </div>
+        subtitle={t('tasks.页面副标题')}
+        controls={
+          <>
+            <SearchPill
+              value={taskSearch}
+              onChange={setTaskSearch}
+              placeholder={t('tasks.搜索任务placeholder')}
+              aria-label={t('tasks.搜索任务placeholder')}
+              leadingIcon={<IconSearch />}
+              clearLabel={t('清空搜索')}
+              className="tasks-page-search"
+            />
             <button
-              className="btn-outline btn-sm"
-              onClick={onRefresh}
-              disabled={refreshing}
+              className="btn-primary workflow-create-action tasks-hero-create-btn"
+              type="button"
+              onClick={() => setShowCreator(true)}
             >
-              {refreshing ? t('tasks.刷新中') : t('tasks.刷新')}
+              {t('tasks.新建任务')}
             </button>
-          </div>
+          </>
         }
-      />
-
-      <div className="page-body tasks-page-body">
+        bodyClassName="tasks-page-body"
+      >
         {!showCreator && taskNotice ? (
           <div className={`tasks-notice ${taskNotice.tone}`}>
             {taskNotice.text}
           </div>
         ) : null}
 
-        <section className="tasks-list-panel tasks-list-panel-wide">
-          <div className="tasks-list-controls-shell">
-            <div className="tasks-list-header">
-              <div>
-                <h3>{t('tasks.任务列表')}</h3>
-                <p className="tasks-panel-copy">
-                  {t('tasks.列表优先管理任务')}
-                </p>
-              </div>
-              <div className="tasks-list-header-actions">
-                <span className="tasks-list-meta">
-                  {loading
-                    ? t('tasks.加载中')
-                    : `${filteredTasks.length} ${t('tasks.项')} · ${getSortLabel(taskSort, t)}`}
-                </span>
-                <button
-                  className="btn-primary"
-                  type="button"
-                  onClick={() => setShowCreator(true)}
-                >
-                  {t('tasks.智能创建')}
-                </button>
-              </div>
-            </div>
-
-            <div className="tasks-list-toolbar">
-              <div className="tasks-filter-bar">
-                <button
-                  className={`tasks-filter-chip ${taskFilter === 'all' ? 'active' : ''}`}
-                  onClick={() => { setTaskFilter('all'); setTasksPage(1); }}
-                  type="button"
-                >
-                  {t('tasks.全部')}<span className="tasks-filter-count">{counts.all}</span>
-                </button>
-                <button
-                  className={`tasks-filter-chip ${taskFilter === 'active' ? 'active' : ''}`}
-                  onClick={() => { setTaskFilter('active'); setTasksPage(1); }}
-                  type="button"
-                >
-                  {t('tasks.运行中')}
-                  <span className="tasks-filter-count">{counts.active}</span>
-                </button>
-                <button
-                  className={`tasks-filter-chip ${taskFilter === 'paused' ? 'active' : ''}`}
-                  onClick={() => { setTaskFilter('paused'); setTasksPage(1); }}
-                  type="button"
-                >
-                  {t('tasks.已暂停')}
-                  <span className="tasks-filter-count">{counts.paused}</span>
-                </button>
-                <button
-                  className={`tasks-filter-chip ${taskFilter === 'completed' ? 'active' : ''}`}
-                  onClick={() => { setTaskFilter('completed'); setTasksPage(1); }}
-                  type="button"
-                >
-                  {t('tasks.已完成')}
-                  <span className="tasks-filter-count">{counts.completed}</span>
-                </button>
-              </div>
-
-              <AppSelect
-                value={taskSort}
-                onChange={(nextValue) => setTaskSort(nextValue as TaskSort)}
-                ariaLabel={t('tasks.任务排序', { current: getSortLabel(taskSort, t) })}
-                iconOnly
-                triggerIcon={<IconSort />}
-                compact
-                className="tasks-sort-select conversation-sort-icon-button"
-                options={taskSortOptions}
-              />
+        {loading ? (
+          <div className="provider-empty">{t('tasks.加载中')}</div>
+        ) : searchedTasks.length === 0 ? (
+          <div className="tasks-empty-state">
+            <div className="tasks-empty-title">{t('tasks.暂无任务')}</div>
+            <div className="tasks-empty-copy">
+              {t('tasks.点击智能创建生成第一个任务')}
             </div>
           </div>
-
-          {loading ? (
-            <div className="provider-empty">{t('tasks.加载中')}</div>
-          ) : filteredTasks.length === 0 ? (
-            <div className="tasks-empty-state">
-              <div className="tasks-empty-title">{t('tasks.暂无任务')}</div>
-              <div className="tasks-empty-copy">
-                {t('tasks.点击智能创建生成第一个任务')}
-              </div>
-            </div>
-          ) : (
-            <div className="tasks-list">
-              <Pagination page={tasksPage} pageSize={TASKS_PAGE_SIZE} total={filteredTasks.length} onPageChange={setTasksPage} />
-              {filteredTasks.slice((tasksPage - 1) * TASKS_PAGE_SIZE, tasksPage * TASKS_PAGE_SIZE).map((task) => {
+        ) : (
+          <section className="tasks-grid-shell">
+            <div className="tasks-grid">
+              {sortedTasks.map((task) => {
                 const taskBusy = !!taskActionBusyById[task.id];
                 const conversationLabel =
                   conversationNameByJid.get(task.chat_jid) ||
@@ -881,72 +679,80 @@ export function TasksPage({
                     >
                       <div className="tasks-card-summary-main">
                         <div className="tasks-card-top">
+                          <div className={`tasks-card-icon-badge ${task.status}`}>
+                            <IconCalendar />
+                          </div>
                           <div className="tasks-card-title-wrap">
-                            <div className="tasks-card-title-line">
+                            <div className="tasks-card-title-row">
                               <div className="provider-alias">
                                 {task.title || t('tasks.未命名任务')}
                               </div>
                               <span
-                                className={`tasks-context-badge ${task.context_mode}`}
-                                title={getContextLabel(task.context_mode, t)}
+                                className={`tasks-status-badge ${task.status}`}
                               >
-                                {getContextLabel(task.context_mode, t)}
+                                {getStatusLabel(task.status, t)}
                               </span>
-                              {task.group_folder_active === false ? (
-                                <span
-                                  className="tasks-warning-badge"
-                                  title={t('tasks.任务对应的工作目录当前不可用')}
-                                >
-                                  {t('tasks.目录异常')}
-                                </span>
-                              ) : null}
+                            </div>
+                            <div className="tasks-card-preview">
+                              {truncateText(task.prompt, 96)}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="tasks-card-meta-list">
+                          <div className="tasks-card-meta-line">
+                            <span className="tasks-card-meta-key">
+                              {t('tasks.调度方式')}
+                            </span>
+                            <span className="tasks-card-meta-value">
+                              {formatSchedule(task, t)}
+                            </span>
+                          </div>
+                          <div className="tasks-card-meta-line">
+                            <span className="tasks-card-meta-key">
+                              {t('tasks.目标对话')}
+                            </span>
+                            <span className="tasks-card-meta-value">
+                              {conversationLabel}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="tasks-card-badges">
+                          <span
+                            className={`tasks-context-badge ${task.context_mode}`}
+                            title={getContextLabel(task.context_mode, t)}
+                          >
+                            {getContextLabel(task.context_mode, t)}
+                          </span>
+                          {task.group_folder_active === false ? (
+                            <span
+                              className="tasks-warning-badge"
+                              title={t('tasks.任务对应的工作目录当前不可用')}
+                            >
+                              {t('tasks.目录异常')}
+                            </span>
+                          ) : null}
+                          {Math.max(
+                            0,
+                            Number(task.consecutive_failures || 0),
+                          ) > 0 ? (
+                            <span
+                              className="tasks-warning-badge"
+                              title={getLatestTaskError(task)}
+                            >
+                              {t('tasks.连续失败')}{' '}
                               {Math.max(
                                 0,
                                 Number(task.consecutive_failures || 0),
-                              ) > 0 ? (
-                                <span
-                                  className="tasks-warning-badge"
-                                  title={getLatestTaskError(task)}
-                                >
-                                  {t('tasks.连续失败')}{' '}
-                                  {Math.max(
-                                    0,
-                                    Number(task.consecutive_failures || 0),
-                                  )}
-                                </span>
-                              ) : null}
-                            </div>
-                            <div className="tasks-card-subline">
-                              {t('tasks.目标对话')}{conversationLabel}
-                            </div>
-                            <div className="tasks-card-preview">
-                              {truncateText(task.prompt, 132)}
-                            </div>
-                            <div className="tasks-card-id">{task.id}</div>
-                          </div>
-                          <div className="tasks-card-summary-side">
-                            <span
-                              className={`tasks-status-badge ${task.status}`}
-                            >
-                              {getStatusLabel(task.status, t)}
+                              )}
                             </span>
-                            <span className="tasks-card-summary-next">
-                              {formatWhen(task.next_run)}
-                            </span>
-                            <span
-                              className="tasks-card-summary-icon"
-                              aria-hidden="true"
-                            >
-                              <IconChevronDown />
-                            </span>
-                          </div>
+                          ) : null}
                         </div>
                       </div>
                     </button>
 
-                    <div className="provider-card-actions tasks-card-actions tasks-card-actions-compact">
+                    <div className="tasks-card-actions tasks-card-actions-compact">
                       <button
-                        className="btn-outline btn-sm"
+                        className="tasks-inline-action"
                         onClick={() => void handleRunTask(task)}
                         disabled={
                           taskBusy ||
@@ -960,66 +766,17 @@ export function TasksPage({
                             ? t('tasks.排队中')
                             : task.runtime_status === 'running'
                               ? t('tasks.执行中')
-                              : t('tasks.执行')}
-                      </button>
-                      <button
-                        className="btn-outline btn-sm"
-                        onClick={() => beginEditTask(task)}
-                        disabled={taskBusy}
-                      >
-                        {t('tasks.编辑')}
-                      </button>
-                      {task.status === 'active' ? (
-                        <button
-                          className="btn-outline btn-sm"
-                          onClick={() => {
-                            if (!beginTaskAction(task.id)) return;
-                            void onPauseTask(task.id).finally(() =>
-                              finishTaskAction(task.id),
-                            );
-                          }}
-                          disabled={taskBusy}
-                        >
-                          {t('tasks.暂停')}
-                        </button>
-                      ) : null}
-                      {task.status === 'paused' ? (
-                        <button
-                          className="btn-outline btn-sm"
-                          onClick={() => {
-                            if (!beginTaskAction(task.id)) return;
-                            void onResumeTask(task.id).finally(() =>
-                              finishTaskAction(task.id),
-                            );
-                          }}
-                          disabled={taskBusy}
-                        >
-                          {t('tasks.恢复')}
-                        </button>
-                      ) : null}
-                      <button
-                        className="btn-danger btn-sm"
-                        onClick={() => {
-                          if (!beginTaskAction(task.id)) return;
-                          void onDeleteTask(task.id)
-                            .finally(() => finishTaskAction(task.id))
-                            .finally(() => {
-                              if (selectedTaskId === task.id) {
-                                setSelectedTaskId(null);
-                              }
-                            });
-                        }}
-                        disabled={taskBusy}
-                      >
-                        {t('tasks.删除')}
+                              : task.status === 'paused'
+                                ? t('tasks.恢复运行')
+                                : t('tasks.立即执行')}
                       </button>
                     </div>
                   </article>
                 );
               })}
             </div>
-          )}
-        </section>
+          </section>
+        )}
 
         {showCreator ? (
           <div className="modal-overlay" onClick={closeCreator}>
@@ -1363,21 +1120,21 @@ export function TasksPage({
               <>
                 <button
                   type="button"
-                  className="btn-outline"
+                  className="tasks-inline-action"
                   onClick={() => setSelectedTaskId(null)}
                 >
                   {t('tasks.关闭')}
                 </button>
                 <button
                   type="button"
-                  className="btn-outline"
+                  className="tasks-inline-action"
                   onClick={() => beginEditTask(selectedTask)}
                 >
                   {t('tasks.编辑')}
                 </button>
                 <button
                   type="button"
-                  className="btn-outline"
+                  className="tasks-inline-action"
                   onClick={() => void handleRunTask(selectedTask)}
                   disabled={
                     !!taskActionBusyById[selectedTask.id] ||
@@ -1394,7 +1151,7 @@ export function TasksPage({
                 {selectedTask.status === 'active' ? (
                   <button
                     type="button"
-                    className="btn-outline"
+                    className="tasks-inline-action"
                     onClick={() => {
                       if (!beginTaskAction(selectedTask.id)) return;
                       void onPauseTask(selectedTask.id).finally(() =>
@@ -1409,7 +1166,7 @@ export function TasksPage({
                 {selectedTask.status === 'paused' ? (
                   <button
                     type="button"
-                    className="btn-outline"
+                    className="tasks-inline-action"
                     onClick={() => {
                       if (!beginTaskAction(selectedTask.id)) return;
                       void onResumeTask(selectedTask.id).finally(() =>
@@ -1423,7 +1180,7 @@ export function TasksPage({
                 ) : null}
                 <button
                   type="button"
-                  className="btn-danger"
+                  className="tasks-inline-action tasks-inline-action-danger"
                   onClick={() => {
                     if (!beginTaskAction(selectedTask.id)) return;
                     void onDeleteTask(selectedTask.id)
@@ -1749,7 +1506,6 @@ export function TasksPage({
             </div>
           </div>
         ) : null}
-      </div>
-    </div>
+    </CatalogPageShell>
   );
 }

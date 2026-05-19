@@ -11,9 +11,9 @@ import { useTranslation } from 'react-i18next';
 
 import { AppSelect, type AppSelectOption } from '../components/AppSelect';
 import {
-  AppHeroHeader,
-  LibraryCard,
+  CatalogPageShell,
   NcCheckbox,
+  LibraryCard,
   SearchPill,
 } from '../components/common';
 import type {
@@ -2619,11 +2619,11 @@ export function AssistantsPage({
   };
 
   return (
-    <div className="page-view workflow-page is-library assistants-page">
-      <AppHeroHeader
+    <>
+      <CatalogPageShell
+        className="assistants-page"
         title={t('Agent')}
         subtitle={t('管理自定义 Agent 与运行配置')}
-        className="assistant-page-topbar"
         controls={
           <>
             <SearchPill
@@ -2632,7 +2632,6 @@ export function AssistantsPage({
               placeholder={t('搜索助手名称、描述或标签...')}
               aria-label={t('搜索助手名称、描述或标签...')}
               clearLabel={t('清空搜索')}
-              kbdLabel="K"
               leadingIcon={
                 <svg
                   width="18"
@@ -2658,7 +2657,7 @@ export function AssistantsPage({
             </button>
           </>
         }
-      />
+      >
 
       {error ? (
         <div className="page-error">
@@ -2666,7 +2665,7 @@ export function AssistantsPage({
         </div>
       ) : null}
 
-      <div className="workflow-body assistants-catalog-section">
+      <div className="nc-catalog-stack">
         {loading ? (
           <div className="assistant-empty-state assistant-compact-empty">
             <p>{t('助手列表加载中')}</p>
@@ -2682,8 +2681,7 @@ export function AssistantsPage({
             <p>{t('试试更短的关键词或检查拼写')}</p>
           </div>
         ) : (
-          <section className="workflow-library">
-            <div className="workflow-card-grid assistant-cards-grid assistant-cards-grid--showcase">
+            <div className="nc-catalog-grid">
               {filteredAssistants.map((assistant) => {
                 const meta = assistantCatalogMetaById[assistant.id];
                 const conversationCount =
@@ -2704,29 +2702,57 @@ export function AssistantsPage({
                   providers,
                   t,
                 );
+                const status = meta?.status || 'attention';
+                const resourceSummary =
+                  (assistant.config.kbIds?.length ?? 0) > 0 ||
+                  (assistant.config.skillIds?.length ?? 0) > 0 ||
+                  (assistant.config.mcpServerIds?.length ?? 0) > 0
+                    ? [
+                        (assistant.config.kbIds?.length ?? 0) > 0
+                          ? t('知识库计数', {
+                              count: assistant.config.kbIds.length,
+                            })
+                          : null,
+                        (assistant.config.skillIds?.length ?? 0) > 0
+                          ? t('技能计数', {
+                              count: assistant.config.skillIds.length,
+                            })
+                          : null,
+                        (assistant.config.mcpServerIds?.length ?? 0) > 0
+                          ? t('MCP计数', {
+                              count: assistant.config.mcpServerIds.length,
+                            })
+                          : null,
+                      ]
+                        .filter(Boolean)
+                        .join(' · ')
+                    : t('暂无绑定');
 
                 return (
                   <LibraryCard
                     key={assistant.id}
-                    className={`workflow-library-card assistant-card-item assistant-card-item--showcase ${
-                      assistantWorkbenchOpen &&
-                      selectedAssistantId === assistant.id
-                        ? 'active'
-                        : ''
-                    }`}
+                    className={
+                      `assistant-catalog-card ${
+                        assistantWorkbenchOpen &&
+                        selectedAssistantId === assistant.id
+                          ? 'active'
+                          : ''
+                      }`
+                    }
                     onClick={() => openAssistantWorkbench(assistant.id)}
                     heading={assistant.name}
                     badge={
                       <span
-                        className={`repo-review-badge assistant-card-badge is-${formatAssistantCatalogStatusTone(meta?.status || 'attention')}`}
+                        className={`repo-review-badge assistant-card-badge is-${formatAssistantCatalogStatusTone(
+                          status,
+                        )}`}
                       >
                         {formatAssistantCatalogStatusLabel(
-                          meta?.status || 'attention',
+                          status,
                           t,
                         )}
                       </span>
                     }
-                    bodyClassName="assistant-card-body"
                     rows={[
                       {
                         label: t('说明'),
@@ -2741,58 +2767,30 @@ export function AssistantsPage({
                         value: assistant.config.persona?.role || t('未设置'),
                       },
                       {
-                        label: t('状态'),
-                        value: `${runState.label} · ${modelLabel}${
+                        label: t('资源'),
+                        value: resourceSummary,
+                      },
+                      {
+                        label: t('运行'),
+                        value: [
+                          runState.label,
+                          modelLabel,
                           conversationCount > 0
-                            ? ` · ${t('会话计数', { count: conversationCount })}`
-                            : ''
-                        }`,
-                      },
-                      {
-                        label:
-                          (assistant.config.kbIds?.length ?? 0) > 0 ||
-                          (assistant.config.skillIds?.length ?? 0) > 0 ||
-                          (assistant.config.mcpServerIds?.length ?? 0) > 0
-                            ? t('资源')
-                            : t('模型'),
-                        value:
-                          (assistant.config.kbIds?.length ?? 0) > 0 ||
-                          (assistant.config.skillIds?.length ?? 0) > 0 ||
-                          (assistant.config.mcpServerIds?.length ?? 0) > 0
-                            ? [
-                                (assistant.config.kbIds?.length ?? 0) > 0
-                                  ? t('知识库计数', {
-                                      count: assistant.config.kbIds.length,
-                                    })
-                                  : null,
-                                (assistant.config.skillIds?.length ?? 0) > 0
-                                  ? t('技能计数', {
-                                      count: assistant.config.skillIds.length,
-                                    })
-                                  : null,
-                                (assistant.config.mcpServerIds?.length ?? 0) > 0
-                                  ? t('MCP计数', {
-                                      count:
-                                        assistant.config.mcpServerIds.length,
-                                    })
-                                  : null,
-                              ]
-                                .filter(Boolean)
-                                .join(' · ')
-                            : modelLabel,
-                      },
-                      {
-                        label: t('可用性'),
-                        value: !assistant.enabled ? t('已停用') : null,
+                            ? t('会话计数', { count: conversationCount })
+                            : null,
+                          !assistant.enabled ? t('已停用') : null,
+                        ]
+                          .filter(Boolean)
+                          .join(' · '),
                       },
                     ]}
                   />
                 );
               })}
             </div>
-          </section>
         )}
       </div>
+      </CatalogPageShell>
 
       {assistantWorkbenchOpen && selectedAssistant ? (
         <div
@@ -2973,6 +2971,6 @@ export function AssistantsPage({
           </div>
         </div>
       ) : null}
-    </div>
+    </>
   );
 }

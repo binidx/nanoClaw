@@ -1,4 +1,5 @@
 import React from 'react';
+import { CatalogCard } from './CatalogCard';
 
 export interface LibraryCardRow {
   key?: React.Key;
@@ -29,30 +30,14 @@ export function LibraryCard({
   );
 
   return (
-    <button
+    <CatalogCard
       type={type}
+      title={heading}
+      badge={badge}
+      rows={visibleRows}
+      bodyClassName={bodyClassName}
       className={['nc-library-card', className].filter(Boolean).join(' ')}
       {...rest}
-    >
-      <div className="nc-library-card-header">
-        <strong>{heading}</strong>
-        {badge ? <span className="nc-library-card-badge">{badge}</span> : null}
-      </div>
-      <div
-        className={['nc-library-card-body', bodyClassName]
-          .filter(Boolean)
-          .join(' ')}
-      >
-        {visibleRows.map((row, index) => (
-          <div
-            key={row.key ?? `${String(row.label)}-${index}`}
-            className="nc-library-card-row"
-          >
-            <span className="nc-library-card-label">{row.label}</span>
-            <span className="nc-library-card-value">{row.value}</span>
-          </div>
-        ))}
-      </div>
-    </button>
+    />
   );
 }

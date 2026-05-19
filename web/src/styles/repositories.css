@@ -286,15 +286,19 @@
 
 .repository-review-page-body {
   padding-top: 0;
-  max-width: 1360px;
-  margin: 0 auto;
+  max-width: none;
+  margin: 0;
   width: 100%;
   display: grid;
-  gap: 14px;
+  gap: 18px;
 }
 
-.repo-review-panel--embedded.workflow-page.is-library {
-  gap: 0;
+.repo-review-panel--embedded.repo-review-panel {
+  display: flex;
+  flex-direction: column;
+  align-content: flex-start;
+  align-items: stretch;
+  gap: 18px;
 }
 
 .repo-review-panel--embedded.settings-section {
@@ -305,16 +309,105 @@
   box-shadow: none;
 }
 
+.repo-review-panel--embedded .repo-review-topbar,
+.repo-review-panel--embedded .repository-review-page-body {
+  flex: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.repo-review-panel--embedded .repo-review-topbar {
+  padding-top: 6px;
+}
+
+.repo-review-panel--embedded .repo-review-workspace-layout {
+  gap: 18px;
+}
+
+.repo-review-panel--embedded .repo-review-workspace-detail,
+.repo-review-panel--embedded .repo-review-card-list-toolbar,
+.repo-review-panel--embedded .repo-review-card,
+.repo-review-panel--embedded .repo-review-overview-hero,
+.repo-review-panel--embedded .repo-review-workspace-card,
+.repo-review-panel--embedded .repo-review-run-card,
+.repo-review-panel--embedded .repo-review-detail-card,
+.repo-review-panel--embedded .repo-review-progress-turn-group,
+.repo-review-panel--embedded .repo-review-empty-hint,
+.repo-review-panel--embedded .repo-review-empty-card-hint,
+.repo-review-panel--embedded .repo-review-conversation-preview,
+.repo-review-panel--embedded .repo-review-spotlight-item {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.repo-review-panel--embedded .repo-review-workspace-detail,
+.repo-review-panel--embedded .repo-review-card-list-toolbar {
+  padding: 0;
+}
+
+.repo-review-panel--embedded .repo-review-card,
+.repo-review-panel--embedded .repo-review-overview-hero,
+.repo-review-panel--embedded .repo-review-workspace-card,
+.repo-review-panel--embedded .repo-review-run-card,
+.repo-review-panel--embedded .repo-review-detail-card,
+.repo-review-panel--embedded .repo-review-progress-turn-group {
+  border-radius: 0;
+}
+
+.repo-review-panel--embedded .repo-review-fold-summary,
+.repo-review-panel--embedded .repo-review-detail-card-summary,
+.repo-review-panel--embedded .repo-review-detail-card-body,
+.repo-review-panel--embedded .repo-review-fold-body {
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.repo-review-panel--embedded .repo-review-fold-summary {
+  border-bottom: 0;
+}
+
+.repo-review-panel--embedded .repo-review-overview-hero {
+  padding: 0 0 10px;
+}
+
 .repo-review-panel--embedded .repo-review-workspace-list {
   position: static;
   max-height: none;
   overflow: visible;
+  align-content: start;
 }
 
 .repo-review-panel--embedded .repo-review-library-pagination {
   display: flex;
   justify-content: flex-end;
   margin-top: 12px;
+}
+
+.repo-review-panel--embedded .repo-review-card-list,
+.repo-review-panel--embedded .repo-review-library,
+.repo-review-panel--embedded .repo-review-cards-grid {
+  min-height: 0;
+  align-content: start;
+}
+
+.repo-review-panel--embedded .repo-review-library {
+  padding-top: 0;
+}
+
+.repo-review-panel--embedded .repo-review-cards-grid {
+  grid-template-columns: repeat(auto-fill, minmax(min(336px, 100%), 380px));
+  justify-content: start;
+  gap: 20px;
+}
+
+.repo-review-panel--embedded .repo-review-repo-card {
+  min-height: 228px;
 }
 
 .repository-review-page .repo-review-panel-toolbar--embedded {
@@ -326,24 +419,24 @@
   grid-template-columns: minmax(0, 1fr);
 }
 
+.repo-review-topbar .nc-app-hero-controls {
+  flex-wrap: nowrap;
+  gap: 14px;
+}
+
+.repo-review-topbar .nc-search-pill {
+  width: min(520px, 100%);
+}
+
 .repo-review-workspace-layout--focused .repo-review-workspace-detail {
   min-width: 0;
   max-height: none;
   overflow: visible;
-  padding: 14px;
-  border: 1px solid var(--border-color, rgba(15, 23, 42, 0.12));
-  border-radius: 8px;
-  background: var(--card-bg, rgba(255, 255, 255, 0.92));
-  box-shadow: var(--card-shadow, 0 6px 16px rgba(15, 23, 42, 0.05));
-}
-
-.repo-review-workspace-layout--focused .repo-review-card {
-  border-radius: 8px;
-}
-
-.repo-review-workspace-layout--focused .repo-review-overview-hero {
-  padding: 14px;
-  border-radius: 8px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .repo-review-workspace-layout--focused .repo-review-overview-copy h3 {
@@ -359,13 +452,48 @@
   gap: 10px;
 }
 
+.repo-review-workspace-layout--focused .repo-review-card,
+.repo-review-workspace-layout--focused .repo-review-overview-hero,
+.repo-review-workspace-layout--focused .repo-review-workspace-card,
+.repo-review-workspace-layout--focused .repo-review-run-card,
+.repo-review-workspace-layout--focused .repo-review-detail-card,
+.repo-review-workspace-layout--focused .repo-review-progress-turn-group,
+.repo-review-workspace-layout--focused .repo-review-empty-hint,
+.repo-review-workspace-layout--focused .repo-review-empty-card-hint,
+.repo-review-workspace-layout--focused .repo-review-conversation-preview,
+.repo-review-workspace-layout--focused .repo-review-spotlight-item,
+.repo-review-workspace-layout--focused .repo-review-summary-item {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.repo-review-workspace-layout--focused .repo-review-overview-hero,
 .repo-review-workspace-layout--focused .repo-review-workspace-card,
 .repo-review-workspace-layout--focused .repo-review-run-card {
-  border-radius: 8px;
-  padding: 12px;
+  padding: 0 0 10px;
+}
+
+.repo-review-workspace-layout--focused .repo-review-fold-summary,
+.repo-review-workspace-layout--focused .repo-review-detail-card-summary,
+.repo-review-workspace-layout--focused .repo-review-detail-card-body,
+.repo-review-workspace-layout--focused .repo-review-fold-body {
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.repo-review-workspace-layout--focused .repo-review-fold-summary {
+  border-bottom: 0;
 }
 
 @media (max-width: 1180px) {
+  .repo-review-topbar .nc-app-hero-controls {
+    flex-wrap: wrap;
+  }
+
   .repository-page-body,
   .repository-summary-grid,
   .repository-detail-grid {

@@ -3030,7 +3030,6 @@ export function KnowledgePage({ apiBase }: KnowledgePageProps) {
               placeholder={t('按名称、描述筛选')}
               aria-label={t('按名称、描述筛选')}
               clearLabel={t('清空搜索')}
-              kbdLabel="K"
               leadingIcon={<IconSearch />}
             />
             <div className="knowledge-page-actions">

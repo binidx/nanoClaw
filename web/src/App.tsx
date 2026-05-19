@@ -4001,7 +4001,13 @@ function AppShell() {
   };
 
   const mainContent = (
-    <main className={`main-content page-${page}`}>
+    <main
+      className={`main-content page-${page}${
+        page === 'chat' || page === 'im' || page === 'companion'
+          ? ''
+          : ' canvas-page'
+      }`}
+    >
         {page === 'chat' && (
           <Suspense fallback={<div className="settings-hint">{t('app.1604ea')}</div>}>
           <ChatPage

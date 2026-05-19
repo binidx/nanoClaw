@@ -17,6 +17,7 @@ import type {
   RepoReviewChatMembersResponse,
   RepoReviewOverview,
   RepoReviewProfileListResponse,
+  RepoReviewRepositoryDetailResponse,
   RepoReviewRepositoryListResponse,
   RepoReviewRunDetailResponse,
   RepoReviewSingleBranchSyncResponse,
@@ -107,13 +108,32 @@ export async function fetchRepoReviewOverview(
 
 export async function fetchRepoReviewRepositories(
   apiBase: string,
+  options: {
+    summary?: boolean;
+  } = {},
 ): Promise<RepoReviewRepositoryListResponse['repositories']> {
-  const response = await fetchRepoReview(`${apiBase}/api/repo-reviews/repositories`);
+  const query = options.summary ? '?summary=1' : '';
+  const response = await fetchRepoReview(
+    `${apiBase}/api/repo-reviews/repositories${query}`,
+  );
   const data = await requireOk<RepoReviewRepositoryListResponse>(
     response,
     i18n.t('error.loadRepositories', { ns: 'repoReview' }),
   );
   return Array.isArray(data.repositories) ? data.repositories : [];
+}
+
+export async function fetchRepoReviewRepositoryDetail(
+  apiBase: string,
+  repositoryId: string,
+): Promise<RepoReviewRepositoryDetailResponse> {
+  const response = await fetchRepoReview(
+    `${apiBase}/api/repo-reviews/repositories/${encodeURIComponent(repositoryId)}`,
+  );
+  return requireOk<RepoReviewRepositoryDetailResponse>(
+    response,
+    i18n.t('error.loadRepositories', { ns: 'repoReview' }),
+  );
 }
 
 export async function fetchRepoReviewProfiles(

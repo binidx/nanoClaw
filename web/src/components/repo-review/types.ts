@@ -105,6 +105,11 @@ export type RepoReviewRepositoryListResponse = {
   repositories: RepoReviewRepository[];
 };
 
+export type RepoReviewRepositoryDetailResponse = {
+  repository: RepoReviewRepository;
+  profiles: RepoReviewProfile[];
+};
+
 export type RepoReviewProfileSaveResponse = {
   profile?: RepoReviewProfile;
   error?: string;

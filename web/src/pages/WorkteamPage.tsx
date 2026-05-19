@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation } from 'react-router-dom';
-import { AppHeroHeader, LibraryCard, SearchPill } from '../components/common';
+import {
+  CatalogPageShell,
+  LibraryCard,
+  SearchPill,
+} from '../components/common';
 import { getUrlSubPath } from '../router/paths';
 import { useWebSocket } from '../hooks/useWebSocket';
 import type { AiProvider } from '../app-types';
@@ -2365,159 +2369,177 @@ export function WorkteamPage({
     });
   };
 
-  return (
-    <div
-      className={`page-view workflow-page ${
-        snapshot ? 'is-workspace' : 'is-library'
-      }`}
-    >
-      {snapshot ? (
-        <div className="workflow-topbar">
-          <div className="workflow-topbar-title">
-            <div
-              className="workflow-title-stack is-clickable"
-              onClick={() => setActiveWorkflowId('')}
-              role="button"
-              tabIndex={0}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' || event.key === ' ') {
-                  event.preventDefault();
-                  setActiveWorkflowId('');
-                }
-              }}
+  if (!snapshot) {
+    return (
+      <CatalogPageShell
+        title={t('pageTitle')}
+        subtitle={t('workteam.连接节点构建自动化流程')}
+        className="workflow-catalog-page"
+        controls={
+          <>
+            <SearchPill
+              value={workflowQuery}
+              onChange={setWorkflowQuery}
+              placeholder={t('workteam.搜索工作流')}
+              aria-label={t('workteam.搜索工作流')}
+              leadingIcon={<SearchIcon />}
+              clearLabel={t('清空搜索')}
+            />
+            <button
+              type="button"
+              className="btn-primary workflow-create-action"
+              disabled={!canCreateWorkflow || busy}
+              onClick={() => setActiveModal('create')}
             >
-              <h2>{t('pageTitle')}</h2>
-            </div>
+              <span className="workflow-topbar-btn-icon">
+                <PlusIcon />
+              </span>
+              {t('workteam.新建工作流')}
+            </button>
+          </>
+        }
+      >
+        {error ? <div className="workflow-banner error">{error}</div> : null}
+        {info ? <div className="workflow-banner info">{info}</div> : null}
+        {filteredWorkflows.length === 0 ? (
+          <div className="nc-catalog-empty">
+            <h3>{t('workteam.先选择或创建一个工作流')}</h3>
           </div>
-          <div className="workflow-topbar-controls">
-            <button
-              type="button"
-              className="btn-primary"
-              onClick={() => {
-                setRunPanelExpanded(true);
-                void startRun();
-              }}
-              disabled={!workflowId || busy}
-            >
-              <span className="workflow-topbar-btn-icon">
-                <PlayIcon />
-              </span>
-              {t('workteam.运行')}
-            </button>
-            <button
-              type="button"
-              className="btn-outline"
-              onClick={() => setActiveModal('settings')}
-              disabled={!workflowId || !snapshot}
-            >
-              <span className="workflow-topbar-btn-icon">
-                <SettingsIcon />
-              </span>
-              {t('workteam.配置')}
-            </button>
-            <button
-              type="button"
-              className="btn-outline"
-              onClick={() => void publishWorkflow()}
-              disabled={!workflowId || !snapshot || busy}
-            >
-              <span className="workflow-topbar-btn-icon">
-                <PublishIcon />
-              </span>
-              {t('workteam.发布')}
-            </button>
+        ) : (
+          <div className="nc-catalog-grid">
+            {filteredWorkflows.map((workflow) => {
+              const summary = workflowSummaries[workflow.id];
+              const config = parseWorkflowConfig(workflow.workflow_config);
+              const kindLabel =
+                config.kind === 'repository'
+                  ? t('workteam.仓库')
+                  : config.kind === 'skill'
+                    ? t('workteam.技能')
+                    : config.kind === 'mcp'
+                      ? t('workteam.MCP')
+                      : config.kind === 'system_capability'
+                        ? t('workteam.系统能力')
+                        : t('workteam.通用');
+              const visibilityLabel =
+                config.visibility === 'shared'
+                  ? t('workteam.共享')
+                  : config.visibility === 'system'
+                    ? t('workteam.系统')
+                    : t('workteam.私有');
+              return (
+                <LibraryCard
+                  key={workflow.id}
+                  className={`workflow-catalog-card ${
+                    activeWorkflowId === workflow.id ? 'active' : ''
+                  }`}
+                  onClick={() => setActiveWorkflowId(workflow.id)}
+                  heading={workflow.name}
+                  badge={
+                    <span
+                      className={`repo-review-badge workflow-card-badge is-${workflow.status}`}
+                    >
+                      {workflow.status}
+                    </span>
+                  }
+                  bodyClassName="workflow-card-body"
+                  rows={[
+                    {
+                      label: t('workteam.说明'),
+                      value: workflow.description || t('workteam.无描述'),
+                    },
+                    {
+                      label: t('workteam.类型'),
+                      value: `${kindLabel} · ${visibilityLabel}`,
+                    },
+                    {
+                      label: t('workteam.结构'),
+                      value: `${summary?.workerCount ?? 0} ${t('workteam.节点')} · ${
+                        summary?.edgeCount ?? 0
+                      } ${t('workteam.连线')}`,
+                    },
+                    {
+                      label: t('workteam.运行'),
+                      value: summary?.latestRunStatus
+                        ? `${summary.latestRunStatus}${
+                            summary.latestRunAt
+                              ? ` · ${fmt(summary.latestRunAt)}`
+                              : ''
+                          }`
+                        : t('workteam.未运行'),
+                    },
+                  ]}
+                />
+              );
+            })}
+          </div>
+        )}
+      </CatalogPageShell>
+    );
+  }
+
+  return (
+    <div className="page-view workflow-page is-workspace">
+      <div className="workflow-topbar">
+        <div className="workflow-topbar-title">
+          <div
+            className="workflow-title-stack is-clickable"
+            onClick={() => setActiveWorkflowId('')}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                setActiveWorkflowId('');
+              }
+            }}
+          >
+            <h2>{t('pageTitle')}</h2>
           </div>
         </div>
-      ) : (
-        <AppHeroHeader
-          title={t('pageTitle')}
-          subtitle={t('workteam.连接节点构建自动化流程')}
-          controls={
-            <>
-              <SearchPill
-                value={workflowQuery}
-                onChange={setWorkflowQuery}
-                placeholder={t('workteam.搜索工作流')}
-                aria-label={t('workteam.搜索工作流')}
-                leadingIcon={<SearchIcon />}
-                kbdLabel="K"
-                clearLabel={t('清空搜索')}
-              />
-              <button
-                type="button"
-                className="btn-primary workflow-create-action"
-                disabled={!canCreateWorkflow || busy}
-                onClick={() => setActiveModal('create')}
-              >
-                <span className="workflow-topbar-btn-icon">
-                  <PlusIcon />
-                </span>
-                {t('workteam.新建工作流')}
-              </button>
-            </>
-          }
-        />
-      )}
+        <div className="workflow-topbar-controls">
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={() => {
+              setRunPanelExpanded(true);
+              void startRun();
+            }}
+            disabled={!workflowId || busy}
+          >
+            <span className="workflow-topbar-btn-icon">
+              <PlayIcon />
+            </span>
+            {t('workteam.运行')}
+          </button>
+          <button
+            type="button"
+            className="btn-outline"
+            onClick={() => setActiveModal('settings')}
+            disabled={!workflowId || !snapshot}
+          >
+            <span className="workflow-topbar-btn-icon">
+              <SettingsIcon />
+            </span>
+            {t('workteam.配置')}
+          </button>
+          <button
+            type="button"
+            className="btn-outline"
+            onClick={() => void publishWorkflow()}
+            disabled={!workflowId || !snapshot || busy}
+          >
+            <span className="workflow-topbar-btn-icon">
+              <PublishIcon />
+            </span>
+            {t('workteam.发布')}
+          </button>
+        </div>
+      </div>
 
       <div className="page-body workflow-body">
         {error ? <div className="workflow-banner error">{error}</div> : null}
         {info ? <div className="workflow-banner info">{info}</div> : null}
-
-        {!snapshot ? (
-          <section className="workflow-library">
-            <div className="workflow-card-grid">
-              {filteredWorkflows.map((workflow) => {
-                const summary = workflowSummaries[workflow.id];
-                return (
-                  <LibraryCard
-                    key={workflow.id}
-                    className="workflow-library-card"
-                    onClick={() => setActiveWorkflowId(workflow.id)}
-                    heading={workflow.name}
-                    badge={
-                      <span
-                        className={`repo-review-badge workflow-card-badge is-${workflow.status}`}
-                      >
-                        {workflow.status}
-                      </span>
-                    }
-                    bodyClassName="workflow-card-body"
-                    rows={[
-                      {
-                        label: t('workteam.说明'),
-                        value: workflow.description || t('workteam.无描述'),
-                      },
-                      {
-                        label: t('workteam.结构'),
-                        value: `${summary?.workerCount ?? 0} ${t('workteam.节点')} · ${
-                          summary?.edgeCount ?? 0
-                        } ${t('workteam.连线')}`,
-                      },
-                      {
-                        label: t('workteam.运行'),
-                        value: summary?.latestRunStatus
-                          ? `${summary.latestRunStatus}${
-                              summary.latestRunAt
-                                ? ` · ${fmt(summary.latestRunAt)}`
-                                : ''
-                            }`
-                          : t('workteam.未运行'),
-                      },
-                    ]}
-                  />
-                );
-              })}
-              {filteredWorkflows.length === 0 ? (
-                <div className="workflow-empty">
-                  <div className="workflow-empty-copy">
-                    <h3>{t('workteam.先选择或创建一个工作流')}</h3>
-                  </div>
-                </div>
-              ) : null}
-            </div>
-          </section>
-        ) : (
-          <section className="workflow-workbench">
+        <section className="workflow-workbench">
             <div className="workflow-workbench-grid">
               <section className="workflow-canvas-panel" ref={canvasPanelRef}>
                 <div className="workflow-canvas-toolbar">
@@ -3401,7 +3423,6 @@ export function WorkteamPage({
               ) : null}
             </section>
           </section>
-        )}
       </div>
       {activeModal === 'create' ? (
         <div

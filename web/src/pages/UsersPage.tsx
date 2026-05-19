@@ -1045,7 +1045,7 @@ export function UsersPage({ apiBase }: UsersPageProps) {
   const loadRepositories = useCallback(async () => {
     try {
       const payload = await requestJsonT<{ repositories?: unknown[] }>(
-        '/api/repo-reviews/repositories',
+        '/api/repo-reviews/repositories?summary=1',
       );
       const repos = Array.isArray(payload.repositories)
         ? payload.repositories

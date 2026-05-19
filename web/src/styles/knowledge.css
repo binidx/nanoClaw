@@ -354,8 +354,12 @@
 
 .knowledge-base-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(
+    auto-fill,
+    minmax(min(300px, 100%), 360px)
+  );
+  justify-content: start;
+  gap: 16px;
 }
 
 .knowledge-base-card {

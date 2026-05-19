@@ -832,6 +832,7 @@ export interface RepoReviewRepository {
   platformTokenPreview?: string;
   webhookUrl?: string;
   sshKeyId?: string;
+  profileCount?: number;
 }
 
 export interface SshKeyInfo {

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import type { Conversation, ScheduledTaskSummary } from '../app-types';
 import { TasksPage } from './TasksPage';
@@ -44,30 +44,18 @@ export function TasksPageContainer({
 }: TasksPageContainerProps) {
   const [tasks, setTasks] = useState<ScheduledTaskSummary[]>([]);
   const [loading, setLoading] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
   const [selectedChatJid, setSelectedChatJid] = useState<string>(() =>
     resolvePreferredChatJid(conversations, activeJid),
   );
-  const selectedChatJidRef = useRef<string>(selectedChatJid);
-
-  useEffect(() => {
-    selectedChatJidRef.current = selectedChatJid;
-  }, [selectedChatJid]);
 
   const loadTasks = useCallback(
-    async (chatJid?: string | null, options?: { background?: boolean }) => {
-      const targetJid = chatJid || selectedChatJidRef.current;
-      if (!targetJid) return;
-
+    async (_chatJid?: string | null, options?: { background?: boolean }) => {
       if (!options?.background) {
         setLoading(true);
-        setRefreshing(true);
       }
 
       try {
-        const res = await fetch(
-          `${apiBase}/api/tasks?chat_jid=${encodeURIComponent(targetJid)}`,
-        );
+        const res = await fetch(`${apiBase}/api/tasks`);
         if (!res.ok) return;
         const data = await res.json();
         setTasks(data.tasks || []);
@@ -76,7 +64,6 @@ export function TasksPageContainer({
       } finally {
         if (!options?.background) {
           setLoading(false);
-          setRefreshing(false);
         }
       }
     },
@@ -222,28 +209,18 @@ export function TasksPageContainer({
   }, [activeJid, conversations, selectedChatJid]);
 
   useEffect(() => {
-    if (!selectedChatJid) {
-      setTasks([]);
-      setLoading(false);
-      setRefreshing(false);
-      return;
-    }
-    if (!authenticated || !selectedChatJid) return;
-    void loadTasks(selectedChatJid);
-  }, [authenticated, loadTasks, selectedChatJid]);
+    if (!authenticated) return;
+    void loadTasks();
+  }, [authenticated, loadTasks]);
 
   useEffect(() => {
-    if (!selectedChatJid || !hasRuntimeTasks) return;
+    if (!hasRuntimeTasks) return;
 
     const timer = window.setInterval(() => {
-      void loadTasks(selectedChatJid, { background: true });
+      void loadTasks(undefined, { background: true });
     }, 1500);
     return () => window.clearInterval(timer);
-  }, [hasRuntimeTasks, loadTasks, selectedChatJid]);
-
-  const refreshSelectedTasks = useCallback(() => {
-    void loadTasks(selectedChatJid);
-  }, [loadTasks, selectedChatJid]);
+  }, [hasRuntimeTasks, loadTasks]);
 
   return (
     <TasksPage
@@ -252,8 +229,6 @@ export function TasksPageContainer({
       setSelectedChatJid={setSelectedChatJid}
       tasks={tasks}
       loading={loading}
-      refreshing={refreshing}
-      onRefresh={refreshSelectedTasks}
       onCreateTask={createScheduledTask}
       onParseTaskDraft={parseTaskDraft}
       onPauseTask={pauseTask}

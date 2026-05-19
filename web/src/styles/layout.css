@@ -120,6 +120,10 @@
   backdrop-filter: blur(20px);
 }
 
+.main-content.canvas-page {
+  overflow-y: auto;
+}
+
 .main-content.page-channels {
   overflow-y: auto;
 }
@@ -136,6 +140,66 @@
 .main-content.page-assistants .page-view {
   height: auto;
   min-height: 100%;
+}
+
+.main-content.canvas-page > .page-view {
+  height: auto;
+  min-height: 100%;
+  padding: 18px 22px 24px;
+}
+
+.main-content.canvas-page .page-header,
+.main-content.canvas-page .page-body,
+.main-content.canvas-page .section-header {
+  margin: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.main-content.canvas-page .page-header {
+  padding: 6px 0 0;
+}
+
+.main-content.canvas-page .page-body {
+  padding: 18px 0 0;
+  overflow: visible;
+}
+
+.main-content.canvas-page .section-header {
+  padding: 0 0 12px;
+}
+
+.main-content.canvas-page .settings-section,
+.main-content.canvas-page .channel-settings-panel,
+.main-content.canvas-page .apps-v2-content-surface,
+.main-content.canvas-page .terminal-page-panel,
+.main-content.canvas-page .users-sidebar,
+.main-content.canvas-page .users-detail-pane,
+.main-content.canvas-page .assistant-modal-panel,
+.main-content.canvas-page .assistant-modal-hero-main,
+.main-content.canvas-page .assistant-modal-hero-side,
+.main-content.canvas-page .assistant-secret-modal {
+  border-color: rgba(255, 255, 255, 0.42);
+  background:
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.54) 0%,
+      rgba(247, 250, 255, 0.28) 100%
+    );
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.76),
+    0 12px 30px rgba(80, 101, 150, 0.06);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+.main-content.canvas-page .users-tab-bar,
+.main-content.canvas-page .soul-surface-switch,
+.main-content.canvas-page .soul-tab-bar {
+  margin-top: 18px;
 }
 
 .empty-state {

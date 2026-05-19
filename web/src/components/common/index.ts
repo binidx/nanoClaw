@@ -22,6 +22,12 @@ export type { PageHeaderProps } from './PageHeader';
 export { AppHeroHeader } from './AppHeroHeader';
 export type { AppHeroHeaderProps, AppHeroHeaderVariant } from './AppHeroHeader';
 
+export { CatalogPageShell } from './CatalogPageShell';
+export type { CatalogPageShellProps } from './CatalogPageShell';
+
+export { CatalogCard } from './CatalogCard';
+export type { CatalogCardProps, CatalogCardRow } from './CatalogCard';
+
 export { NcSurface } from './NcSurface';
 export type { NcSurfaceProps, NcSurfaceVariant } from './NcSurface';
 
