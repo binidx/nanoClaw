@@ -12,6 +12,7 @@ import {
 import { MEMORY_COMPACTION_POLL_INTERVAL } from '../config.js';
 import { logger } from '../logger.js';
 
+import { getChatContextConfig } from './chat-context-config.js';
 import { getMemoryContextConfig } from './context-config.js';
 import { runPreCompactionFlush } from './pre-compaction-flush.js';
 import {
@@ -30,11 +31,14 @@ async function runClaimedContextCompaction(job: {
   chat_jid: string;
   group_folder: string;
 }): Promise<void> {
-  const memoryConfig = await getMemoryContextConfig();
+  const [memoryConfig, chatContextConfig] = await Promise.all([
+    getMemoryContextConfig(),
+    getChatContextConfig(),
+  ]);
   if (
     !memoryConfig.memoryEnabled ||
     !memoryConfig.memoryReadEnabled ||
-    !memoryConfig.compactionEnabled
+    !chatContextConfig.compactionEnabled
   ) {
     return;
   }
@@ -45,7 +49,7 @@ async function runClaimedContextCompaction(job: {
     // Pre-compaction flush: extract durable memories before compression
     try {
       const eligible = await getCompactionEligibleContextEntriesPublic(job.chat_jid);
-      const keepRecent = memoryConfig.compactionKeepRecentEntries;
+      const keepRecent = chatContextConfig.chatCompactionKeepRecentEntries;
       const entriesToCompress = eligible.length > keepRecent
         ? eligible.slice(0, -keepRecent)
         : [];
@@ -58,8 +62,8 @@ async function runClaimedContextCompaction(job: {
 
     const summary = await compactContextEntries({
       chatJid: job.chat_jid,
-      triggerEntries: memoryConfig.compactionTriggerEntries,
-      keepRecentEntries: memoryConfig.compactionKeepRecentEntries,
+      triggerEntries: chatContextConfig.chatCompactionTriggerEntries,
+      keepRecentEntries: chatContextConfig.chatCompactionKeepRecentEntries,
     });
     if (summary) {
       const sourceEntryIds = (() => {

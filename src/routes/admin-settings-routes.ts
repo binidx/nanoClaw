@@ -126,6 +126,17 @@ const MEMORY_BOOLEAN_CONFIG_KEYS = new Set([
 
 const MEMORY_WRITE_MODES = new Set(['disabled', 'daily-only']);
 const MEMORY_SEARCH_SCOPES = new Set(['group', 'global', 'all']);
+const CHAT_CONTEXT_INTEGER_KEYS = new Map<string, { min: number; max: number }>([
+  ['CHAT_CONTEXT_TOKEN_BUDGET', { min: 0, max: 12000 }],
+  ['CHAT_CONTEXT_RECENT_CHAT_RATIO', { min: 0, max: 100 }],
+  ['CHAT_CONTEXT_RECENT_TOOL_RATIO', { min: 0, max: 100 }],
+  ['CHAT_CONTEXT_MEMORY_RECALL_RATIO', { min: 0, max: 100 }],
+  ['CHAT_CONTEXT_SUMMARY_RATIO', { min: 0, max: 100 }],
+  ['CHAT_CONTEXT_RAW_CHAT_KEEP_ENTRIES', { min: 1, max: 100 }],
+  ['CHAT_CONTEXT_RAW_TOOL_KEEP_CALLS', { min: 1, max: 50 }],
+  ['CHAT_CONTEXT_CHAT_COMPACTION_TRIGGER_ENTRIES', { min: 10, max: 500 }],
+  ['CHAT_CONTEXT_CHAT_COMPACTION_KEEP_RECENT_ENTRIES', { min: 1, max: 100 }],
+]);
 
 function normalizeBooleanConfigValue(key: string, value: unknown): string {
   if (typeof value === 'boolean') {
@@ -216,6 +227,16 @@ export function normalizeMemoryConfigEntry(
 
   if (key === 'MEMORY_COMPACTION_KEEP_RECENT_ENTRIES') {
     return normalizeBoundedIntegerConfigValue(key, value, 1, 100);
+  }
+
+  const chatContextBounds = CHAT_CONTEXT_INTEGER_KEYS.get(key);
+  if (chatContextBounds) {
+    return normalizeBoundedIntegerConfigValue(
+      key,
+      value,
+      chatContextBounds.min,
+      chatContextBounds.max,
+    );
   }
 
   return rawValue;

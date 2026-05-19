@@ -1270,6 +1270,7 @@ async function normalizeRepositoryRecord(
     webhookSecretPreview: maskSensitivePreview(record.webhook_secret || ''),
     platformTokenPreview: maskSensitivePreview(record.platform_token || ''),
     webhookUrl: await buildWebhookUrl(record.id, provider),
+    ...(record.ssh_key_id ? { sshKeyId: record.ssh_key_id } : {}),
   };
 }
 

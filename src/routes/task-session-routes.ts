@@ -73,10 +73,16 @@ export function registerTaskSessionRoutes(
     try {
       const chatJid =
         typeof req.query.chat_jid === 'string' ? req.query.chat_jid : '';
-      const registeredGroup = chatJid ? await getRegisteredGroup(chatJid) : undefined;
       const tasks = chatJid ? await getTasksForChat(chatJid) : await getAllTasks();
       const taskIds = [...new Set(tasks.map((task) => task.id))];
       const chatJids = [...new Set(tasks.map((task) => task.chat_jid))];
+      const registeredGroupsByChatJid = new Map(
+        (
+          await Promise.all(
+            chatJids.map(async (jid) => [jid, await getRegisteredGroup(jid)] as const),
+          )
+        ).map(([jid, group]) => [jid, group]),
+      );
       const conversationNames = await getConversationDisplayNames(
         chatJids,
         getTenantUserId(req),
@@ -92,9 +98,9 @@ export function registerTaskSessionRoutes(
           ...task,
           title: opts.deriveTaskTitle(task.title, task.prompt),
           conversation_name: conversationNames[task.chat_jid] || task.chat_jid,
-          group_folder_active: registeredGroup
-            ? registeredGroup.folder === task.group_folder
-            : true,
+          group_folder_active:
+            registeredGroupsByChatJid.get(task.chat_jid)?.folder ===
+            task.group_folder,
           latest_run: latestRunMap.get(task.id) || null,
           runtime_status: opts.getTaskRuntimeState?.(task.id) || null,
         })),

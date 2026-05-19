@@ -30,4 +30,10 @@ Keep entries short. Link to tests, docs, or skills when possible.
 
 ## Current Lessons
 
-No recurring lessons have been recorded since this file was introduced.
+## 2026-05-19 - Nav Pages Must Stay Single-Canvas
+
+- Symptom: repeated UI passes left nav-based pages with visible section shells, white inset boxes, or mixed card styles even after a redesign request.
+- Root cause: page-level wrappers were updated, but repository/detail sub-panels and page-specific cards kept their own legacy backgrounds and shadows.
+- Fix: enforce the single-canvas rule in repo guidance and flatten nested business-page panels instead of only restyling the outer shell.
+- Guardrail: when a user asks for integrated canvas UI, audit inner page panels and card grids, not just the page header or outer container.
+- References: `AGENTS.md`, `docs/agent-harness.md`, `.codex/skills/nanoclaw-frontend-ts/SKILL.md`

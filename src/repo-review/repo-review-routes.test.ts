@@ -5,6 +5,7 @@ const {
   getRepoReviewDigestRunDetailReadMock,
   getRepoReviewOverviewReadMock,
   listRepoReviewDigestRunsReadMock,
+  listRepoReviewRepositorySummariesReadMock,
   listRepoReviewRunSummariesResultMock,
 } = vi.hoisted(() => ({
   getRepoReviewDigestRunDetailReadMock: vi.fn(async () => null),
@@ -28,12 +29,21 @@ const {
     total: 0,
   })),
   listRepoReviewDigestRunsReadMock: vi.fn(async () => []),
+  listRepoReviewRepositorySummariesReadMock: vi.fn(async () => [
+    {
+      id: 'repo-main',
+      name: 'main',
+      profileCount: 3,
+    },
+  ]),
 }));
 
 vi.mock('./repo-review-read-service.js', () => ({
   getRepoReviewDigestRunDetailRead: getRepoReviewDigestRunDetailReadMock,
   getRepoReviewOverviewRead: getRepoReviewOverviewReadMock,
   listRepoReviewDigestRunsRead: listRepoReviewDigestRunsReadMock,
+  listRepoReviewRepositorySummariesRead:
+    listRepoReviewRepositorySummariesReadMock,
   listRepoReviewRunSummariesResult: listRepoReviewRunSummariesResultMock,
 }));
 
@@ -193,6 +203,33 @@ describe('repo review routes', () => {
       expect(await summaryResponse.json()).toEqual({
         runs: [],
         total: 0,
+      });
+    });
+  });
+
+  it('supports lightweight repository summaries for the initial repository list', async () => {
+    const app = express();
+    registerRepoReviewAdminRoutes(app, {
+      auditMutation: vi.fn(),
+      getAuthenticatedUsername: vi.fn(() => 'admin'),
+      requirePermission: vi.fn(() => async (_req, _res, next) => {
+        next();
+      }),
+    });
+
+    await withServer(app, async (baseUrl) => {
+      const response = await fetch(
+        `${baseUrl}/api/repo-reviews/repositories?summary=1`,
+      );
+
+      expect(await response.json()).toEqual({
+        repositories: [
+          {
+            id: 'repo-main',
+            name: 'main',
+            profileCount: 3,
+          },
+        ],
       });
     });
   });

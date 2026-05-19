@@ -25,6 +25,7 @@ import { createModuleLogger } from '../logger.js';
 const persistenceLog = createModuleLogger('persistence');
 import { autoPromoteMemoryFromEntries } from '../memory/ingest-promotion.js';
 import { scheduleContextCompaction } from '../memory/compaction-scheduler.js';
+import { persistToolContextFromTurn } from '../memory/tool-context.js';
 import { getRepoReviewConversationBinding } from '../repo-review/repo-review-service.js';
 import type {
   AgentTurnEventPayload,
@@ -564,6 +565,13 @@ async function persistBotReplyContextEntries(
   }
 
   await storeContextEntries(entries);
+  if (turn) {
+    await persistToolContextFromTurn({
+      groupFolder: group.folder,
+      chatJid,
+      turn,
+    });
+  }
   scheduleContextCompaction({ chatJid, groupFolder: group.folder });
 }
 

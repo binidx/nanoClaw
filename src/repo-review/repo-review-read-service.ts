@@ -3,11 +3,14 @@ import {
   getReviewProfileById,
   getReviewRepositoryById,
   listDigestRunsByRepository,
+  listReviewProfiles,
+  listReviewRepositories,
   listReviewRepositoriesForUser,
   listReviewRunsSummary,
   parseReviewRunRecord,
   type DigestRunRecord,
   type ReviewProfileRecord,
+  type ReviewRepositoryRecord,
   type ReviewRunSummaryQueryInput,
   type ReviewRunRecord,
 } from '../db.js';
@@ -36,6 +39,50 @@ export interface RepoReviewRunSummaryQuery {
 export interface RepoReviewRunsSummaryReadResult {
   runs: RepoReviewRun[];
   total: number;
+}
+
+function normalizeRepositorySummaryRecord(
+  record: ReviewRepositoryRecord,
+  profileCount: number,
+): RepoReviewRepository {
+  const provider = record.remote_provider || '';
+  return {
+    id: record.id,
+    name: record.name,
+    language: record.language || '',
+    localRepoPath: record.local_repo_path || '',
+    remoteProvider: provider,
+    remoteRepoSlug: record.remote_repo_slug || '',
+    remoteBaseUrl: '',
+    cloneUrl: '',
+    defaultTargetBranch: record.default_target_branch || '',
+    reviewChatJid: record.review_chat_jid || `repo-review:${record.id}`,
+    actorMentionMappings: [],
+    autoSyncEnabled: record.auto_sync_enabled === 1,
+    autoSyncIntervalMinutes: Math.max(
+      5,
+      Math.min(1440, Number(record.auto_sync_interval_minutes) || 30),
+    ),
+    lastAutoSyncAt: record.last_auto_sync_at || '',
+    nextAutoSyncAt: '',
+    lastAutoSyncStatus: record.last_auto_sync_status || '',
+    lastAutoSyncMessage: '',
+    digestDailyEnabled: false,
+    digestWeeklyEnabled: false,
+    digestDailyHour: 18,
+    digestWeeklyDay: 5,
+    digestWeeklyHour: 18,
+    lastDigestDailyAt: '',
+    nextDigestDailyAt: '',
+    lastDigestWeeklyAt: '',
+    nextDigestWeeklyAt: '',
+    enabled: record.enabled === 1,
+    allowAiFix: false,
+    hasWebhookSecret: false,
+    hasPlatformToken: false,
+    profileCount,
+    ...(record.ssh_key_id ? { sshKeyId: record.ssh_key_id } : {}),
+  };
 }
 
 function normalizeDigestRunRecord(
@@ -312,6 +359,27 @@ export async function listRepoReviewRunsSummaryRead(
 
 export function listRepoReviewRepositoriesRead() {
   return listRepoReviewRepositories();
+}
+
+export async function listRepoReviewRepositorySummariesRead(
+  userId?: string,
+) {
+  const repositoryRecords = userId
+    ? await listReviewRepositoriesForUser(userId)
+    : await listReviewRepositories();
+  const profileCounts = new Map<string, number>();
+  for (const profile of await listReviewProfiles()) {
+    profileCounts.set(
+      profile.repository_id,
+      (profileCounts.get(profile.repository_id) || 0) + 1,
+    );
+  }
+  return repositoryRecords.map((record) =>
+    normalizeRepositorySummaryRecord(
+      record,
+      profileCounts.get(record.id) || 0,
+    ),
+  );
 }
 
 export function listRepoReviewProfilesRead(repositoryId?: string) {

@@ -13,6 +13,8 @@ export type ContextEntrySourceType =
   | 'assistant_message'
   | 'assistant_turn'
   | 'tool_result'
+  | 'tool_call_recent'
+  | 'tool_call_summary'
   | 'compaction_summary'
   | 'memory_recall'
   | 'memory_promotion'
@@ -61,6 +63,15 @@ export interface MemoryEffectiveConfigSnapshot {
   compactionEnabled: boolean;
   compactionTriggerEntries: number;
   compactionKeepRecentEntries: number;
+  chatContextTokenBudget?: number;
+  chatContextRecentChatRatio?: number;
+  chatContextRecentToolRatio?: number;
+  chatContextMemoryRecallRatio?: number;
+  chatContextSummaryRatio?: number;
+  chatContextRawChatKeepEntries?: number;
+  chatContextRawToolKeepCalls?: number;
+  chatContextChatCompactionTriggerEntries?: number;
+  chatContextChatCompactionKeepRecentEntries?: number;
 }
 
 export interface MemoryLedgerStatsSnapshot {
@@ -267,6 +278,17 @@ export interface MemoryPromptStatsSnapshot {
   lastRecentTokens: number | null;
   lastSummaryTokens: number | null;
   lastRecallTokens: number | null;
+  lastRecentChatTokens?: number | null;
+  lastRecentToolTokens?: number | null;
+  lastMemoryRecallTokens?: number | null;
+  lastCompactedSummaryTokens?: number | null;
+  lastRecentChatCount?: number | null;
+  lastRecentToolCount?: number | null;
+  lastMemoryRecallCount?: number | null;
+  lastCompactedSummaryCount?: number | null;
+  activeChatCompactionId?: string | null;
+  activeToolSummaryId?: string | null;
+  toolContextMode?: 'recent' | 'summary' | 'mixed' | 'none' | null;
 }
 
 export interface MemoryObservabilitySnapshot {

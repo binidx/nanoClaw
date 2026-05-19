@@ -49,6 +49,8 @@ export interface RepoReviewRepository {
   webhookSecretPreview?: string;
   platformTokenPreview?: string;
   webhookUrl?: string;
+  sshKeyId?: string;
+  profileCount?: number;
 }
 
 export interface RepoReviewRepositoryDetection {

@@ -12,6 +12,8 @@ Follow a Karpathy-style operating model inspired by `forrestchang/andrej-karpath
 - Simplicity first: do not add speculative features, generic frameworks, or abstractions without a concrete need.
 - Surgical changes: every changed line should trace back to the user request.
 - Goal-driven execution: finish with the relevant verification command or a clear reason it could not run.
+- Frontend canvas baseline: nav-based business pages should read as one continuous pale-blue frosted-glass canvas, without nested white cards, hard segmented page shells, or extra visual hierarchy unless a user explicitly asks for it.
+- Frontend rewrite trigger: if a frontend style bug has already been patched three times and the target page still visibly misses the requested result, stop layering overrides and rewrite the offending component or page shell onto the shared global component path.
 
 ## Read Order
 

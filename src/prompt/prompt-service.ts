@@ -47,6 +47,10 @@ function inferSegmentLayer(segment: PromptSegment): PromptLayer {
   if (segment.source === 'conversation_context') return 'context_runtime';
   if (segment.source === 'context_summary') return 'context_runtime';
   if (segment.source === 'context_recent') return 'context_runtime';
+  if (segment.source === 'context_chat_recent') return 'context_runtime';
+  if (segment.source === 'context_chat_summary') return 'context_runtime';
+  if (segment.source === 'context_tool_recent') return 'context_runtime';
+  if (segment.source === 'context_tool_summary') return 'context_runtime';
   if (segment.source === 'upload_context') return 'context_runtime';
   if (segment.source === 'memory_recall_tool') return 'context_memory';
   if (segment.source === 'memory_recall_session') return 'context_memory';

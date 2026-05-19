@@ -198,6 +198,87 @@ describe('repo-review-read-service', () => {
     });
   });
 
+  it('lists lightweight repository summaries with profile counts', async () => {
+    const { saveReviewProfile, saveReviewRepository } = await import('../db.js');
+    const { listRepoReviewRepositorySummariesRead } = await import(
+      './repo-review-read-service.js'
+    );
+
+    await saveReviewRepository({
+      id: 'repo-summary',
+      name: 'Summary Repo',
+      language: 'TypeScript',
+      local_repo_path: '/tmp/repo-summary',
+      remote_provider: 'github',
+      remote_repo_slug: 'org/repo-summary',
+      default_target_branch: 'main',
+      review_chat_jid: 'feishu:summary',
+      enabled: true,
+      auto_sync_enabled: true,
+      auto_sync_interval_minutes: 45,
+      last_auto_sync_status: 'ok',
+    });
+    await saveReviewProfile({
+      id: 'profile-summary-1',
+      repository_id: 'repo-summary',
+      name: 'Push Review',
+      stage: 'push',
+      source_mode: 'remote',
+      blocking_mode: 'soft_fail',
+      pass_decision_mode: 'ai',
+      review_scope: 'commit_range',
+      target_branches: ['main'],
+      skill_ids: [],
+      mcp_server_ids: [],
+      prompt_template: null,
+      include_globs: [],
+      exclude_globs: [],
+      max_files: 80,
+      max_diff_bytes: 200000,
+      write_to_chat: true,
+      write_to_platform: true,
+      enabled: true,
+    });
+    await saveReviewProfile({
+      id: 'profile-summary-2',
+      repository_id: 'repo-summary',
+      name: 'Commit Review',
+      stage: 'commit',
+      source_mode: 'local',
+      blocking_mode: 'soft_fail',
+      pass_decision_mode: 'ai',
+      review_scope: 'staged_diff',
+      target_branches: [],
+      skill_ids: [],
+      mcp_server_ids: [],
+      prompt_template: null,
+      include_globs: [],
+      exclude_globs: [],
+      max_files: 80,
+      max_diff_bytes: 200000,
+      write_to_chat: true,
+      write_to_platform: true,
+      enabled: true,
+    });
+
+    const summaries = await listRepoReviewRepositorySummariesRead();
+    expect(summaries).toEqual([
+      expect.objectContaining({
+        id: 'repo-summary',
+        name: 'Summary Repo',
+        localRepoPath: '/tmp/repo-summary',
+        remoteProvider: 'github',
+        remoteRepoSlug: 'org/repo-summary',
+        reviewChatJid: 'feishu:summary',
+        autoSyncEnabled: true,
+        autoSyncIntervalMinutes: 45,
+        lastAutoSyncStatus: 'ok',
+        enabled: true,
+        profileCount: 2,
+      }),
+    ]);
+  });
+
   it('keeps user-scoped overview runs from being displaced by hidden repositories', async () => {
     vi.setSystemTime(new Date('2026-04-25T10:00:00.000Z'));
     const {

@@ -522,15 +522,41 @@ export async function searchMemoryDocuments(
   }
 }
 
+let lastPromptLaneSnapshot: Partial<MemoryPromptStatsSnapshot> | null = null;
+
 export async function updateMemoryPromptStats(input: {
   scope?: string;
   lastAssembledTokenEstimate: number | null;
   lastRecentTokens: number | null;
   lastSummaryTokens: number | null;
   lastRecallTokens: number | null;
+  lastRecentChatTokens?: number | null;
+  lastRecentToolTokens?: number | null;
+  lastMemoryRecallTokens?: number | null;
+  lastCompactedSummaryTokens?: number | null;
+  lastRecentChatCount?: number | null;
+  lastRecentToolCount?: number | null;
+  lastMemoryRecallCount?: number | null;
+  lastCompactedSummaryCount?: number | null;
+  activeChatCompactionId?: string | null;
+  activeToolSummaryId?: string | null;
+  toolContextMode?: 'recent' | 'summary' | 'mixed' | 'none' | null;
   updatedAt?: string;
 }): Promise<void> {
   const updatedAt = input.updatedAt || new Date().toISOString();
+  lastPromptLaneSnapshot = {
+    lastRecentChatTokens: input.lastRecentChatTokens ?? null,
+    lastRecentToolTokens: input.lastRecentToolTokens ?? null,
+    lastMemoryRecallTokens: input.lastMemoryRecallTokens ?? null,
+    lastCompactedSummaryTokens: input.lastCompactedSummaryTokens ?? null,
+    lastRecentChatCount: input.lastRecentChatCount ?? null,
+    lastRecentToolCount: input.lastRecentToolCount ?? null,
+    lastMemoryRecallCount: input.lastMemoryRecallCount ?? null,
+    lastCompactedSummaryCount: input.lastCompactedSummaryCount ?? null,
+    activeChatCompactionId: input.activeChatCompactionId ?? null,
+    activeToolSummaryId: input.activeToolSummaryId ?? null,
+    toolContextMode: input.toolContextMode ?? null,
+  };
   await dba.prepare(
     `
       INSERT INTO memory_prompt_stats (
@@ -587,6 +613,19 @@ export async function getMemoryPromptStats(): Promise<MemoryPromptStatsSnapshot>
     lastRecentTokens: row?.last_recent_tokens ?? null,
     lastSummaryTokens: row?.last_summary_tokens ?? null,
     lastRecallTokens: row?.last_recall_tokens ?? null,
+    lastRecentChatTokens: lastPromptLaneSnapshot?.lastRecentChatTokens ?? null,
+    lastRecentToolTokens: lastPromptLaneSnapshot?.lastRecentToolTokens ?? null,
+    lastMemoryRecallTokens: lastPromptLaneSnapshot?.lastMemoryRecallTokens ?? null,
+    lastCompactedSummaryTokens:
+      lastPromptLaneSnapshot?.lastCompactedSummaryTokens ?? null,
+    lastRecentChatCount: lastPromptLaneSnapshot?.lastRecentChatCount ?? null,
+    lastRecentToolCount: lastPromptLaneSnapshot?.lastRecentToolCount ?? null,
+    lastMemoryRecallCount: lastPromptLaneSnapshot?.lastMemoryRecallCount ?? null,
+    lastCompactedSummaryCount:
+      lastPromptLaneSnapshot?.lastCompactedSummaryCount ?? null,
+    activeChatCompactionId: lastPromptLaneSnapshot?.activeChatCompactionId ?? null,
+    activeToolSummaryId: lastPromptLaneSnapshot?.activeToolSummaryId ?? null,
+    toolContextMode: lastPromptLaneSnapshot?.toolContextMode ?? null,
   };
 }
 

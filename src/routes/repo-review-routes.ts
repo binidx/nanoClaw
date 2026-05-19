@@ -70,6 +70,7 @@ import {
   getRepoReviewDigestRunDetailRead,
   getRepoReviewOverviewRead,
   listRepoReviewDigestRunsRead,
+  listRepoReviewRepositorySummariesRead,
   listRepoReviewRunSummariesResult,
 } from '../repo-review/repo-review-read-service.js';
 import { t } from '../i18n/index.js';
@@ -192,9 +193,16 @@ export function registerRepoReviewAdminRoutes(
   });
 
   app.get('/api/repo-reviews/repositories', viewGuard, async (req, res) => {
+    const summaryOnly =
+      typeof req.query.summary === 'string' &&
+      (req.query.summary === '1' || req.query.summary === 'true');
     const username = opts.getAuthenticatedUsername(req.headers.cookie);
     if (await userHasAllReviewPermissions(username)) {
-      res.json({ repositories: await listRepoReviewRepositories() });
+      res.json({
+        repositories: summaryOnly
+          ? await listRepoReviewRepositorySummariesRead()
+          : await listRepoReviewRepositories(),
+      });
       return;
     }
     if (!username) {
@@ -207,13 +215,45 @@ export function registerRepoReviewAdminRoutes(
       return;
     }
     res.json({
-      repositories: await Promise.all(
-        (await listReviewRepositoriesForUser(user.id)).map((record) =>
-          normalizeRepoReviewRepositoryRecord(record),
-        ),
-      ),
+      repositories: summaryOnly
+        ? await listRepoReviewRepositorySummariesRead(user.id)
+        : await Promise.all(
+            (await listReviewRepositoriesForUser(user.id)).map((record) =>
+              normalizeRepoReviewRepositoryRecord(record),
+            ),
+          ),
     });
   });
+
+  app.get(
+    '/api/repo-reviews/repositories/:repositoryId',
+    viewGuard,
+    async (req, res) => {
+      const repositoryId = decodeURIComponent(
+        String(req.params.repositoryId || ''),
+      );
+      const username = opts.getAuthenticatedUsername(req.headers.cookie);
+      if (!(await userHasAllReviewPermissions(username))) {
+        const user = username ? await getUserByUsername(username) : null;
+        if (
+          !user ||
+          !(await userCanAccessReviewRepository(user.id, repositoryId))
+        ) {
+          res.status(404).json({ error: 'Repository not found' });
+          return;
+        }
+      }
+      const record = await getRepoReviewRepositoryRecord(repositoryId);
+      if (!record) {
+        res.status(404).json({ error: 'Repository not found' });
+        return;
+      }
+      res.json({
+        repository: await normalizeRepoReviewRepositoryRecord(record),
+        profiles: await listRepoReviewProfiles(repositoryId),
+      });
+    },
+  );
 
   app.post(
     '/api/repo-reviews/repositories/discover',

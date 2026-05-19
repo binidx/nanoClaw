@@ -64,6 +64,8 @@ For broad refactors, architecture changes, or multi-step optimization work, pref
 
 - Backend work under `src/**` should follow backend guidance.
 - Frontend work under `web/src/**` should follow frontend guidance.
+- Frontend visual baseline for nav-based business pages: one continuous pale-blue frosted-glass canvas, no nested white content boxes, no hard header/body segmentation, and no extra visual hierarchy unless the user explicitly requests it.
+- If a frontend style issue has already been patched three times and the page still does not match the requested visual result, rewrite the offending shell or component instead of adding more overrides.
 - Conversation creation, naming, replay, cursor, pending-message, or websocket flow changes should also use conversation-flow guidance.
 - When code and docs diverge, update the relevant docs in the same change; if a stable feature entry moved, also update `docs/repo-feature-map/index.md` and `docs/repo-feature-map/log.md`.
 - Architecture changes (new/modified tables, new modules, data flow changes, search/index mechanism changes, new background tasks) must include corresponding updates to `docs/` and `README.md` in the same commit. Do not split architecture code and documentation updates into separate commits.

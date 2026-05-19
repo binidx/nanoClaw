@@ -18,6 +18,7 @@ import {
   type MemorySharedConfigKey,
   parseMemorySharedConfigFromNormalized,
 } from './context-config.js';
+import { getChatContextConfig } from './chat-context-config.js';
 
 const MEMORY_CONFIG_KEYS = [
   ...MEMORY_SHARED_CONFIG_KEYS,
@@ -39,7 +40,10 @@ function parseIntegerConfigValue(
 }
 
 export async function getMemoryEffectiveConfig(): Promise<MemoryEffectiveConfigSnapshot> {
-  const config = await getConfigValues([...MEMORY_CONFIG_KEYS]);
+  const [config, chatContext] = await Promise.all([
+    getConfigValues([...MEMORY_CONFIG_KEYS]),
+    getChatContextConfig(),
+  ]);
   const normalized = Object.fromEntries(
     MEMORY_CONFIG_KEYS.map((key) => [key, config[key] || DEFAULTS[key] || '']),
   ) as Record<(typeof MEMORY_CONFIG_KEYS)[number], string>;
@@ -74,6 +78,16 @@ export async function getMemoryEffectiveConfig(): Promise<MemoryEffectiveConfigS
     compactionEnabled: shared.compactionEnabled,
     compactionTriggerEntries: shared.compactionTriggerEntries,
     compactionKeepRecentEntries: shared.compactionKeepRecentEntries,
+    chatContextTokenBudget: chatContext.tokenBudget,
+    chatContextRecentChatRatio: chatContext.recentChatRatio,
+    chatContextRecentToolRatio: chatContext.recentToolRatio,
+    chatContextMemoryRecallRatio: chatContext.memoryRecallRatio,
+    chatContextSummaryRatio: chatContext.summaryRatio,
+    chatContextRawChatKeepEntries: chatContext.rawChatKeepEntries,
+    chatContextRawToolKeepCalls: chatContext.rawToolKeepCalls,
+    chatContextChatCompactionTriggerEntries: chatContext.chatCompactionTriggerEntries,
+    chatContextChatCompactionKeepRecentEntries:
+      chatContext.chatCompactionKeepRecentEntries,
   };
 }
 

@@ -22,6 +22,7 @@ import type {
 } from '../types.js';
 import type { PromptSegment } from '../types/prompt.js';
 
+import { getChatContextConfig } from './chat-context-config.js';
 import { getMemoryContextConfig } from './context-config.js';
 import { applyTemporalDecay } from './temporal-decay.js';
 
@@ -62,6 +63,8 @@ function shouldIncludePromptContextEntry(
   return (
     entry.source_type === 'chat_message' ||
     entry.source_type === 'assistant_message' ||
+    entry.source_type === 'tool_call_recent' ||
+    entry.source_type === 'tool_call_summary' ||
     entry.source_type === 'compaction_summary' ||
     entry.source_type === 'memory_recall' ||
     entry.source_type === 'post_compaction_context'
@@ -93,7 +96,15 @@ function inferPromptMemorySource(entry: ContextEntryRecord): string {
       ? 'session_memory'
       : 'recent_context';
   }
+  if (entry.source_type === 'tool_call_recent') return 'tool_recent';
+  if (entry.source_type === 'tool_call_summary') return 'tool_summary';
   if (entry.source_type === 'compaction_summary') return 'compaction_summary';
+  if (
+    entry.source_type === 'chat_message' ||
+    entry.source_type === 'assistant_message'
+  ) {
+    return 'recent_chat';
+  }
   return 'recent_context';
 }
 
@@ -116,7 +127,8 @@ function formatPromptContextEntries(entries: ContextEntryRecord[]): string {
 }
 
 function derivePromptSegmentSource(entry: ContextEntryRecord): PromptSegment['source'] {
-  if (entry.source_type === 'compaction_summary') return 'context_summary';
+  if (entry.source_type === 'compaction_summary') return 'context_chat_summary';
+  if (entry.source_type === 'tool_call_summary') return 'context_tool_summary';
   if (entry.source_type === 'memory_recall') return 'memory_recall_tool';
   if (entry.source_type === 'post_compaction_context') {
     const parsed = parseEntryJson(entry);
@@ -124,17 +136,32 @@ function derivePromptSegmentSource(entry: ContextEntryRecord): PromptSegment['so
       ? 'memory_recall_session'
       : 'context_recent';
   }
+  if (entry.source_type === 'tool_call_recent') return 'context_tool_recent';
+  if (
+    entry.source_type === 'chat_message' ||
+    entry.source_type === 'assistant_message'
+  ) {
+    return 'context_chat_recent';
+  }
   return 'context_recent';
 }
 
 function derivePromptSegmentLabel(entry: ContextEntryRecord): string {
-  if (entry.source_type === 'compaction_summary') return 'Compaction Summary';
+  if (entry.source_type === 'compaction_summary') return 'Chat Summary';
+  if (entry.source_type === 'tool_call_summary') return 'Tool Summary';
   if (entry.source_type === 'memory_recall') return 'Memory Recall';
   if (entry.source_type === 'post_compaction_context') {
     const parsed = parseEntryJson(entry);
     return parsed.visibility === 'session_only'
       ? 'Session Memory'
       : 'Recent Context';
+  }
+  if (entry.source_type === 'tool_call_recent') return 'Recent Tool Activity';
+  if (
+    entry.source_type === 'chat_message' ||
+    entry.source_type === 'assistant_message'
+  ) {
+    return 'Recent Chat';
   }
   return 'Recent Context';
 }
@@ -165,6 +192,24 @@ function parseCompactedSourceEntryIds(
     if (!Array.isArray(parsed)) return new Set<string>();
     return new Set(
       parsed.filter((value): value is string => typeof value === 'string'),
+    );
+  } catch {
+    return new Set<string>();
+  }
+}
+
+function parseContextEntrySourceIds(entry: ContextEntryRecord | undefined): Set<string> {
+  if (!entry?.content_json) return new Set<string>();
+  try {
+    const parsed = JSON.parse(entry.content_json) as Record<string, unknown>;
+    const candidate = Array.isArray(parsed.sourceEntryIds)
+      ? parsed.sourceEntryIds
+      : Array.isArray(parsed.source_entry_ids)
+        ? parsed.source_entry_ids
+        : null;
+    if (!candidate) return new Set<string>();
+    return new Set(
+      candidate.filter((value): value is string => typeof value === 'string'),
     );
   } catch {
     return new Set<string>();
@@ -324,6 +369,195 @@ function summarizePromptEntryTokens(entries: ContextEntryRecord[]): {
     }
   }
   return totals;
+}
+
+interface LanePromptEntries {
+  recentChatEntries: ContextEntryRecord[];
+  recentToolEntries: ContextEntryRecord[];
+  memoryRecallEntries: ContextEntryRecord[];
+  summaryEntries: ContextEntryRecord[];
+  activeChatCompactionId: string | null;
+  activeToolSummaryId: string | null;
+}
+
+interface LanePromptSelection {
+  orderedEntries: ContextEntryRecord[];
+  activeChatCompactionId: string | null;
+  activeToolSummaryId: string | null;
+  stats: {
+    totalTokens: number;
+    recentTokens: number;
+    summaryTokens: number;
+    recallTokens: number;
+    recentChatTokens: number;
+    recentToolTokens: number;
+    memoryRecallTokens: number;
+    compactedSummaryTokens: number;
+    recentChatCount: number;
+    recentToolCount: number;
+    memoryRecallCount: number;
+    compactedSummaryCount: number;
+    toolContextMode: 'recent' | 'summary' | 'mixed' | 'none';
+  };
+}
+
+function selectNewestEntriesWithinBudget(
+  entries: ContextEntryRecord[],
+  budget: number,
+  maxCount?: number,
+): ContextEntryRecord[] {
+  if (entries.length === 0) return [];
+  const selected: ContextEntryRecord[] = [];
+  let remainingBudget = Math.max(0, budget);
+  let remainingCount = typeof maxCount === 'number' ? Math.max(0, maxCount) : Number.POSITIVE_INFINITY;
+  for (let index = entries.length - 1; index >= 0; index -= 1) {
+    if (remainingBudget <= 0 || remainingCount <= 0) break;
+    const entry = entries[index]!;
+    const tokens = estimatePromptEntryTokens(entry);
+    if (tokens > remainingBudget) continue;
+    selected.push(entry);
+    remainingBudget -= tokens;
+    remainingCount -= 1;
+  }
+  return selected.reverse();
+}
+
+function selectSummaryEntriesWithinBudget(
+  entries: ContextEntryRecord[],
+  budget: number,
+): ContextEntryRecord[] {
+  if (entries.length === 0 || budget <= 0) return [];
+  const selected: ContextEntryRecord[] = [];
+  let remainingBudget = budget;
+  for (const entry of entries) {
+    const tokens = estimatePromptEntryTokens(entry);
+    if (tokens > remainingBudget) continue;
+    selected.push(entry);
+    remainingBudget -= tokens;
+  }
+  return selected;
+}
+
+function buildLanePromptSelection(
+  laneEntries: LanePromptEntries,
+  config: {
+    tokenBudget: number;
+    recentChatRatio: number;
+    recentToolRatio: number;
+    memoryRecallRatio: number;
+    summaryRatio: number;
+    memoryRecallMaxEntries: number;
+  },
+): LanePromptSelection {
+  const totalBudget = Math.max(0, Math.floor(config.tokenBudget));
+  const recentChatBudget = Math.floor(totalBudget * (clampRatio(config.recentChatRatio) / 100));
+  const recentToolBudget = Math.floor(totalBudget * (clampRatio(config.recentToolRatio) / 100));
+  const memoryRecallBudget = Math.floor(
+    totalBudget * (clampRatio(config.memoryRecallRatio) / 100),
+  );
+  const summaryBudget = Math.floor(totalBudget * (clampRatio(config.summaryRatio) / 100));
+  let carryBudget = Math.max(
+    0,
+    totalBudget -
+      recentChatBudget -
+      recentToolBudget -
+      memoryRecallBudget -
+      summaryBudget,
+  );
+
+  const recentChatSelected = selectNewestEntriesWithinBudget(
+    laneEntries.recentChatEntries,
+    recentChatBudget + carryBudget,
+  );
+  carryBudget += recentChatBudget - recentChatSelected.reduce(
+    (sum, entry) => sum + estimatePromptEntryTokens(entry),
+    0,
+  );
+
+  const recentToolSelected = selectNewestEntriesWithinBudget(
+    laneEntries.recentToolEntries,
+    recentToolBudget + carryBudget,
+  );
+  carryBudget += recentToolBudget - recentToolSelected.reduce(
+    (sum, entry) => sum + estimatePromptEntryTokens(entry),
+    0,
+  );
+
+  const memoryRecallSelected = selectNewestEntriesWithinBudget(
+    laneEntries.memoryRecallEntries,
+    memoryRecallBudget + carryBudget,
+    config.memoryRecallMaxEntries,
+  );
+  carryBudget += memoryRecallBudget - memoryRecallSelected.reduce(
+    (sum, entry) => sum + estimatePromptEntryTokens(entry),
+    0,
+  );
+
+  const summarySelected = selectSummaryEntriesWithinBudget(
+    laneEntries.summaryEntries,
+    summaryBudget + carryBudget,
+  );
+
+  const orderedEntries = [
+    ...recentChatSelected,
+    ...recentToolSelected,
+    ...memoryRecallSelected,
+    ...summarySelected,
+  ];
+
+  const recentChatTokens = recentChatSelected.reduce(
+    (sum, entry) => sum + estimatePromptEntryTokens(entry),
+    0,
+  );
+  const recentToolTokens = recentToolSelected.reduce(
+    (sum, entry) => sum + estimatePromptEntryTokens(entry),
+    0,
+  );
+  const memoryRecallTokens = memoryRecallSelected.reduce(
+    (sum, entry) => sum + estimatePromptEntryTokens(entry),
+    0,
+  );
+  const compactedSummaryTokens = summarySelected.reduce(
+    (sum, entry) => sum + estimatePromptEntryTokens(entry),
+    0,
+  );
+
+  const hasRecentTools = recentToolSelected.length > 0;
+  const hasToolSummary = summarySelected.some(
+    (entry) => entry.source_type === 'tool_call_summary',
+  );
+
+  return {
+    orderedEntries,
+    activeChatCompactionId: laneEntries.activeChatCompactionId,
+    activeToolSummaryId: laneEntries.activeToolSummaryId,
+    stats: {
+      totalTokens:
+        recentChatTokens +
+        recentToolTokens +
+        memoryRecallTokens +
+        compactedSummaryTokens,
+      recentTokens: recentChatTokens + recentToolTokens,
+      summaryTokens: compactedSummaryTokens,
+      recallTokens: memoryRecallTokens,
+      recentChatTokens,
+      recentToolTokens,
+      memoryRecallTokens,
+      compactedSummaryTokens,
+      recentChatCount: recentChatSelected.length,
+      recentToolCount: recentToolSelected.length,
+      memoryRecallCount: memoryRecallSelected.length,
+      compactedSummaryCount: summarySelected.length,
+      toolContextMode:
+        hasRecentTools && hasToolSummary
+          ? 'mixed'
+          : hasRecentTools
+            ? 'recent'
+            : hasToolSummary
+              ? 'summary'
+              : 'none',
+    },
+  };
 }
 
 function buildCurrentMemoryQuery(sourceMessages: NewMessage[]): string {
@@ -728,7 +962,10 @@ export async function assembleAgentContextEnvelope(
   chatJid: string,
   sourceMessages: NewMessage[],
 ): Promise<AssembledAgentContext> {
-  const memoryConfig = await getMemoryContextConfig();
+  const [memoryConfig, chatContextConfig] = await Promise.all([
+    getMemoryContextConfig(),
+    getChatContextConfig(),
+  ]);
   const currentMessages = formatMessages(sourceMessages);
   if (!memoryConfig.memoryEnabled || !memoryConfig.memoryReadEnabled) {
     return {
@@ -750,80 +987,205 @@ export async function assembleAgentContextEnvelope(
   }
 
   const currentMessageIds = new Set(sourceMessages.map((message) => message.id));
-  const latestSummary = memoryConfig.compactionEnabled
+  const latestSummary = chatContextConfig.compactionEnabled
     ? await getLatestContextCompaction(chatJid)
     : undefined;
   const compactedSourceEntryIds = parseCompactedSourceEntryIds(latestSummary);
-  const promptEntries = await (async () => {
+  const laneSelection = await (async (): Promise<LanePromptSelection> => {
     try {
       const recentEntriesRaw = await getContextEntries(
         chatJid,
         Math.max(
-          64,
-          memoryConfig.compactionKeepRecentEntries +
+          96,
+          chatContextConfig.rawChatKeepEntries +
+            chatContextConfig.rawToolKeepCalls +
             memoryConfig.promptMaxSnippets +
-            8,
+            12,
         ),
       );
       const recentEntries = recentEntriesRaw.filter((entry) =>
         shouldIncludePromptContextEntry(entry, currentMessageIds) &&
         !compactedSourceEntryIds.has(entry.id),
       );
-      // Durable memory is now tool-first. Prompt assembly only reuses explicit
-      // memory recall entries already written into the session ledger, instead
-      // of performing another automatic recall pass on every turn.
-      const storedRecallEntries = recentEntries
-        .filter((entry) => entry.source_type === 'memory_recall')
-        .slice(-1);
-      const recallEntries = dedupeRecallEntries(storedRecallEntries);
-      const recentRawEntries = recentEntries.filter(
-        (entry) => entry.source_type !== 'memory_recall',
+      const latestToolSummary = [...recentEntriesRaw]
+        .filter((entry) => entry.source_type === 'tool_call_summary')
+        .sort((left, right) => right.created_at.localeCompare(left.created_at))[0];
+      const toolSummaryCoveredIds = parseContextEntrySourceIds(latestToolSummary);
+
+      const recentChatEntries = recentEntries.filter(
+        (entry) =>
+          entry.source_type === 'chat_message' ||
+          entry.source_type === 'assistant_message',
       );
-      if (memoryConfig.promptTokenBudget > 0) {
-        return buildPromptEntriesWithBudget({
-          latestSummary,
-          recallEntries,
-          recentRawEntries,
-          maxSnippets: memoryConfig.promptMaxSnippets,
-          tokenBudget: memoryConfig.promptTokenBudget,
-          summaryRatio: memoryConfig.promptSummaryRatio,
-          recallRatio: memoryConfig.promptRecallRatio,
-          recentRatio: memoryConfig.promptRecentRatio,
+      const recentToolEntries = recentEntries.filter(
+        (entry) =>
+          entry.source_type === 'tool_call_recent' &&
+          !toolSummaryCoveredIds.has(entry.id),
+      );
+      const memoryRecallEntries = dedupeRecallEntries(
+        recentEntries.filter(
+          (entry) =>
+            entry.source_type === 'memory_recall' ||
+            entry.source_type === 'post_compaction_context',
+        ),
+      );
+      const summaryEntries: ContextEntryRecord[] = [];
+      if (latestToolSummary && toolSummaryCoveredIds.size > 0) {
+        summaryEntries.push(latestToolSummary);
+      }
+      if (latestSummary) {
+        summaryEntries.push(createPromptSummaryEntry(latestSummary));
+      }
+
+      const laneEntries: LanePromptEntries = {
+        recentChatEntries,
+        recentToolEntries,
+        memoryRecallEntries,
+        summaryEntries,
+        activeChatCompactionId: latestSummary?.id || null,
+        activeToolSummaryId: latestToolSummary?.id || null,
+      };
+
+      if (chatContextConfig.tokenBudget > 0) {
+        return buildLanePromptSelection(laneEntries, {
+          tokenBudget: chatContextConfig.tokenBudget,
+          recentChatRatio: chatContextConfig.recentChatRatio,
+          recentToolRatio: chatContextConfig.recentToolRatio,
+          memoryRecallRatio: chatContextConfig.memoryRecallRatio,
+          summaryRatio: chatContextConfig.summaryRatio,
+          memoryRecallMaxEntries: memoryConfig.promptMaxSnippets,
         });
       }
 
-      const entries: ContextEntryRecord[] = [];
-      let remainingSlots = memoryConfig.promptMaxSnippets;
-      if (latestSummary && remainingSlots > 0) {
-        entries.push(createPromptSummaryEntry(latestSummary));
-        remainingSlots -= 1;
-      }
-      if (remainingSlots > 0 && recallEntries.length > 0) {
-        const selectedRecallEntries = recallEntries.slice(0, remainingSlots);
-        entries.push(...selectedRecallEntries);
-        remainingSlots -= selectedRecallEntries.length;
-      }
-      if (remainingSlots > 0) {
-        entries.push(...recentRawEntries.slice(-remainingSlots));
-      }
-      return entries;
+      const orderedEntries = [
+        ...recentChatEntries.slice(-chatContextConfig.rawChatKeepEntries),
+        ...recentToolEntries.slice(-chatContextConfig.rawToolKeepCalls),
+        ...memoryRecallEntries.slice(-memoryConfig.promptMaxSnippets),
+        ...summaryEntries,
+      ];
+      const recentChatCount = orderedEntries.filter(
+        (entry) =>
+          entry.source_type === 'chat_message' ||
+          entry.source_type === 'assistant_message',
+      ).length;
+      const recentToolCount = orderedEntries.filter(
+        (entry) => entry.source_type === 'tool_call_recent',
+      ).length;
+      const memoryRecallCount = orderedEntries.filter(
+        (entry) =>
+          entry.source_type === 'memory_recall' ||
+          entry.source_type === 'post_compaction_context',
+      ).length;
+      const compactedSummaryCount = orderedEntries.filter(
+        (entry) =>
+          entry.source_type === 'tool_call_summary' ||
+          entry.source_type === 'compaction_summary',
+      ).length;
+      const hasToolSummary = orderedEntries.some(
+        (entry) => entry.source_type === 'tool_call_summary',
+      );
+      const recentChatTokens = orderedEntries
+        .filter(
+          (entry) =>
+            entry.source_type === 'chat_message' ||
+            entry.source_type === 'assistant_message',
+        )
+        .reduce((sum, entry) => sum + estimatePromptEntryTokens(entry), 0);
+      const recentToolTokens = orderedEntries
+        .filter((entry) => entry.source_type === 'tool_call_recent')
+        .reduce((sum, entry) => sum + estimatePromptEntryTokens(entry), 0);
+      const memoryRecallTokens = orderedEntries
+        .filter(
+          (entry) =>
+            entry.source_type === 'memory_recall' ||
+            entry.source_type === 'post_compaction_context',
+        )
+        .reduce((sum, entry) => sum + estimatePromptEntryTokens(entry), 0);
+      const compactedSummaryTokens = orderedEntries
+        .filter(
+          (entry) =>
+            entry.source_type === 'tool_call_summary' ||
+            entry.source_type === 'compaction_summary',
+        )
+        .reduce((sum, entry) => sum + estimatePromptEntryTokens(entry), 0);
+      return {
+        orderedEntries,
+        activeChatCompactionId: laneEntries.activeChatCompactionId,
+        activeToolSummaryId: laneEntries.activeToolSummaryId,
+        stats: {
+          totalTokens:
+            recentChatTokens +
+            recentToolTokens +
+            memoryRecallTokens +
+            compactedSummaryTokens,
+          recentTokens: recentChatTokens + recentToolTokens,
+          summaryTokens: compactedSummaryTokens,
+          recallTokens: memoryRecallTokens,
+          recentChatTokens,
+          recentToolTokens,
+          memoryRecallTokens,
+          compactedSummaryTokens,
+          recentChatCount,
+          recentToolCount,
+          memoryRecallCount,
+          compactedSummaryCount,
+          toolContextMode:
+            recentToolCount > 0 && hasToolSummary
+              ? 'mixed'
+            : recentToolCount > 0
+              ? 'recent'
+                : hasToolSummary
+                  ? 'summary'
+                  : 'none',
+        },
+      };
     } catch {
-      return [];
+      return {
+        orderedEntries: [],
+        activeChatCompactionId: null,
+        activeToolSummaryId: null,
+        stats: {
+          totalTokens: 0,
+          recentTokens: 0,
+          summaryTokens: 0,
+          recallTokens: 0,
+          recentChatTokens: 0,
+          recentToolTokens: 0,
+          memoryRecallTokens: 0,
+          compactedSummaryTokens: 0,
+          recentChatCount: 0,
+          recentToolCount: 0,
+          memoryRecallCount: 0,
+          compactedSummaryCount: 0,
+          toolContextMode: 'none',
+        },
+      };
     }
   })();
+  const promptEntries = laneSelection.orderedEntries;
   try {
     await recordMemoryRecallEvents(chatJid, promptEntries);
   } catch {
     /* recall audit must not block prompt assembly */
   }
   try {
-    const promptStats = summarizePromptEntryTokens(promptEntries);
     await updateMemoryPromptStats({
       scope: chatJid,
-      lastAssembledTokenEstimate: promptStats.total,
-      lastRecentTokens: promptStats.recent,
-      lastSummaryTokens: promptStats.summary,
-      lastRecallTokens: promptStats.recall,
+      lastAssembledTokenEstimate: laneSelection.stats.totalTokens,
+      lastRecentTokens: laneSelection.stats.recentTokens,
+      lastSummaryTokens: laneSelection.stats.summaryTokens,
+      lastRecallTokens: laneSelection.stats.recallTokens,
+      lastRecentChatTokens: laneSelection.stats.recentChatTokens,
+      lastRecentToolTokens: laneSelection.stats.recentToolTokens,
+      lastMemoryRecallTokens: laneSelection.stats.memoryRecallTokens,
+      lastCompactedSummaryTokens: laneSelection.stats.compactedSummaryTokens,
+      lastRecentChatCount: laneSelection.stats.recentChatCount,
+      lastRecentToolCount: laneSelection.stats.recentToolCount,
+      lastMemoryRecallCount: laneSelection.stats.memoryRecallCount,
+      lastCompactedSummaryCount: laneSelection.stats.compactedSummaryCount,
+      activeChatCompactionId: laneSelection.activeChatCompactionId,
+      activeToolSummaryId: laneSelection.activeToolSummaryId,
+      toolContextMode: laneSelection.stats.toolContextMode,
     });
   } catch {
     /* observability writeback must not block prompt assembly */
