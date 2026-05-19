@@ -193,7 +193,14 @@ select:disabled {
 .dir-add button:not([class]),
 .settings-general-panel button:not([class]),
 .btn-primary,
-.btn-secondary {
+.btn-secondary,
+.btn-outline,
+.btn-glass,
+.btn-toolbar,
+.btn-ghost,
+.btn-danger,
+.btn-warning,
+.btn-success {
   position: relative;
   display: inline-flex;
   align-items: center;

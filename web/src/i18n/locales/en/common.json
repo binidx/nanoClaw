@@ -401,6 +401,7 @@
   "hooks.settingsActions.saveChannelFailedCheckConfig": "Save failed. Please check channel configuration.",
   "hooks.settingsActions.saveChannelFailedRetry": "Save failed, please try again later.",
   "mobile.AI 灵魂": "AI Soul",
+  "mobile.酒馆": "Tavern",
   "mobile.Workflow": "Workflow",
   "mobile.代码审查": "Code Reviews",
   "mobile.仓库": "Repos",

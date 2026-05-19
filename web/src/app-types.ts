@@ -44,6 +44,15 @@ export interface TavernPersona {
   updated_at: string;
   prompt_preview: string;
   opener_preview: string;
+  conversation_count?: number;
+  last_conversation_at?: string | null;
+}
+
+export interface TavernGlobalConfig {
+  skillIds: string[];
+  mcpServerIds: string[];
+  providerId?: string | null;
+  model?: string | null;
 }
 
 export interface Message {
@@ -1745,6 +1754,7 @@ export type NavPage =
   | 'users'
   | 'apps'
   | 'soul'
+  | 'tavern'
   | 'knowledge'
   | 'workteam';
 export type ChannelFilter = string;

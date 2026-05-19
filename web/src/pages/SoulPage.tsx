@@ -5,7 +5,6 @@ import { TabBar, type Tab } from '../components/common/TabBar';
 import { Pagination } from '../components/common/Pagination';
 import { NcSelect, NcCheckbox } from '../components/common';
 import { useNavigatedTab } from '../hooks/useNavigatedTab';
-import { TavernPersonasPanel } from '../components/soul/TavernPersonasPanel';
 
 export interface SoulPageProps {
   apiBase: string;
@@ -277,7 +276,6 @@ function isExpired(value: string | null | undefined): boolean {
 
 export function SoulPage({ apiBase }: SoulPageProps) {
   const { t } = useTranslation('soul');
-  const [surfaceMode, setSurfaceMode] = useState<'soul' | 'tavern'>('soul');
 
   const TABS: Array<{ id: TabId; label: string }> = [
     { id: 'persona', label: t('auto.ad0e443e') },
@@ -832,7 +830,7 @@ export function SoulPage({ apiBase }: SoulPageProps) {
             {t('定义你的 AI 助手个性、语调和记忆')}
           </p>
         </div>
-        {surfaceMode === 'soul' && activeTab === 'persona' && (
+        {activeTab === 'persona' && (
           <div className="page-header-actions">
             {hasSoul && (
               <button className="btn btn-danger" onClick={handleDelete}>{t('删除灵魂')}</button>
@@ -840,7 +838,7 @@ export function SoulPage({ apiBase }: SoulPageProps) {
             <button className="btn btn-primary" onClick={handleSave}>{hasSoul ? t('保存修改') : t('保存')}</button>
           </div>
         )}
-        {surfaceMode === 'soul' && activeTab === 'advanced' && (
+        {activeTab === 'advanced' && (
           <div className="page-header-actions">
             <button className="btn btn-primary" onClick={handleSave}>{hasSoul ? t('保存修改') : t('保存')}</button>
           </div>
@@ -855,27 +853,7 @@ export function SoulPage({ apiBase }: SoulPageProps) {
         </div>
       )}
 
-      <div className="soul-surface-switch">
-        <button
-          type="button"
-          className={`soul-surface-switch-btn${surfaceMode === 'soul' ? ' active' : ''}`}
-          onClick={() => setSurfaceMode('soul')}
-        >
-          主灵魂
-        </button>
-        <button
-          type="button"
-          className={`soul-surface-switch-btn${surfaceMode === 'tavern' ? ' active' : ''}`}
-          onClick={() => setSurfaceMode('tavern')}
-        >
-          酒馆人格
-        </button>
-      </div>
-
-      {surfaceMode === 'tavern' ? <TavernPersonasPanel apiBase={apiBase} /> : null}
-
-      {surfaceMode === 'soul' ? (
-        <>
+      <>
       {/* Tab Bar */}
       <div className="soul-tab-bar">
         {TABS.map((tab) => (
@@ -1730,7 +1708,6 @@ export function SoulPage({ apiBase }: SoulPageProps) {
         )}
       </div>
         </>
-      ) : null}
     </div>
   );
 }

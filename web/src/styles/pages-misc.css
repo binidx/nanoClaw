@@ -793,6 +793,24 @@
   font-size: 16px;
 }
 
+.repo-review-backlink {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.repo-review-backlink:hover {
+  color: var(--accent-hover);
+}
+
 .repo-review-inline-detail-content {
   min-width: 0;
 }
@@ -1590,6 +1608,249 @@
   display: grid;
   gap: 12px;
   grid-template-columns: repeat(auto-fit, minmax(min(180px, 100%), 1fr));
+}
+
+.repo-review-framework-shell {
+  display: grid;
+  gap: 18px;
+}
+
+.repo-review-framework-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(360px, 1.4fr);
+  gap: 18px;
+  align-items: center;
+  padding: 24px 26px;
+}
+
+.repo-review-framework-header-copy {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.repo-review-framework-header-copy h3 {
+  margin: 0;
+  font-size: clamp(28px, 3vw, 40px);
+  line-height: 1.04;
+}
+
+.repo-review-framework-header-main {
+  display: grid;
+  gap: 14px;
+  justify-items: end;
+}
+
+.repo-review-framework-repo-pill {
+  min-width: min(100%, 620px);
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 14px;
+  padding: 16px 18px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.82);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(245, 249, 255, 0.9)),
+    var(--surface-card);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.92),
+    0 16px 30px rgba(80, 101, 150, 0.08);
+}
+
+.repo-review-framework-repo-pill-icon,
+.repo-review-framework-card-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: rgba(var(--accent-rgb), 0.1);
+  color: var(--accent);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.78);
+}
+
+.repo-review-framework-repo-pill-icon {
+  width: 42px;
+  height: 42px;
+}
+
+.repo-review-framework-repo-pill-copy {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.repo-review-framework-repo-pill-copy strong,
+.repo-review-framework-repo-pill-copy span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.repo-review-framework-repo-pill-copy strong {
+  font-size: 16px;
+  color: var(--text-primary);
+}
+
+.repo-review-framework-repo-pill-copy span {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.repo-review-framework-header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.repo-review-framework-board {
+  display: grid;
+  grid-template-columns: minmax(0, 1.75fr) minmax(280px, 340px);
+  gap: 18px;
+  align-items: start;
+}
+
+.repo-review-framework-main,
+.repo-review-framework-side {
+  display: grid;
+  gap: 18px;
+  min-width: 0;
+}
+
+.repo-review-overview-hero--framework {
+  gap: 18px;
+}
+
+.repo-review-workspace-grid--framework {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.repo-review-workspace-card--framework {
+  position: relative;
+  gap: 10px;
+  padding: 16px;
+}
+
+.repo-review-framework-card-icon {
+  width: 42px;
+  height: 42px;
+}
+
+.repo-review-framework-content-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.08fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.repo-review-framework-status-card {
+  gap: 18px;
+  align-content: start;
+}
+
+.repo-review-framework-meter {
+  --repo-review-completion: 0%;
+  width: 172px;
+  height: 172px;
+  margin: 4px auto 0;
+  padding: 12px;
+  border-radius: 999px;
+  background:
+    conic-gradient(
+      from 180deg,
+      rgba(37, 99, 235, 0.12) 0%,
+      rgba(52, 211, 153, 0.72) var(--repo-review-completion),
+      rgba(226, 232, 240, 0.9) var(--repo-review-completion),
+      rgba(226, 232, 240, 0.9) 100%
+    );
+  display: grid;
+  place-items: center;
+}
+
+.repo-review-framework-meter-inner {
+  width: 100%;
+  height: 100%;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  gap: 4px;
+  text-align: center;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.92);
+}
+
+.repo-review-framework-meter-inner strong {
+  font-size: 36px;
+  line-height: 1;
+  color: var(--text-primary);
+}
+
+.repo-review-framework-meter-inner span {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.repo-review-framework-checklist,
+.repo-review-framework-facts {
+  display: grid;
+  gap: 10px;
+}
+
+.repo-review-framework-check {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+}
+
+.repo-review-framework-check strong,
+.repo-review-framework-check span,
+.repo-review-framework-fact span,
+.repo-review-framework-fact strong {
+  display: block;
+}
+
+.repo-review-framework-check span,
+.repo-review-framework-fact span {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.repo-review-framework-check strong,
+.repo-review-framework-fact strong {
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.repo-review-framework-check-icon {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.repo-review-framework-check.is-ready .repo-review-framework-check-icon {
+  border-color: rgba(16, 185, 129, 0.24);
+  color: #059669;
+  background: rgba(16, 185, 129, 0.08);
+}
+
+.repo-review-framework-check.is-pending .repo-review-framework-check-icon {
+  color: #64748b;
+}
+
+.repo-review-framework-fact {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(148, 163, 184, 0.18);
 }
 
 .repo-review-overview-grid {
@@ -2420,9 +2681,32 @@
   flex-direction: column;
 }
 
+.modal.repo-review-branch-status-modal {
+  width: min(1560px, calc(100vw - 16px));
+  max-width: calc(100vw - 16px);
+  height: min(94vh, 1280px);
+  max-height: 94vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 18px 20px 20px;
+}
+
+.modal.repo-review-branch-status-modal .modal-header {
+  flex: 0 0 auto;
+  margin-bottom: 16px;
+}
+
+.modal.repo-review-branch-status-modal .repo-review-branch-status-layout {
+  flex: 1 1 auto;
+  height: 100%;
+  min-height: 0;
+}
+
 .repo-review-branch-status-layout {
   display: grid;
   grid-template-columns: minmax(320px, 420px) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   gap: 20px;
   flex: 1;
   min-height: 0;
@@ -2433,13 +2717,18 @@
   grid-template-columns: minmax(0, 1fr);
 }
 
+.repo-review-branch-status-layout.single-branch,
+.repo-review-branch-status-layout.single-branch .repo-review-branch-status-main {
+  height: 100%;
+}
+
 .repo-review-branch-status-sidebar {
   display: flex;
   flex-direction: column;
   gap: 10px;
   min-width: 0;
   min-height: 0;
-  overflow-y: auto;
+  overflow: hidden;
 }
 
 .repo-review-branch-status-sidebar::-webkit-scrollbar,
@@ -2481,6 +2770,12 @@
 .repo-review-branch-status-list {
   display: grid;
   gap: 10px;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding-right: 6px;
 }
 
 .repo-review-branch-status-card {
@@ -2534,6 +2829,9 @@
   gap: 12px;
   min-height: 0;
   overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding-right: 6px;
 }
 
 .repo-review-branch-status-main .repo-review-card {
@@ -8329,6 +8627,9 @@
 }
 
 @media (max-width: 900px) {
+  .repo-review-framework-header,
+  .repo-review-framework-board,
+  .repo-review-framework-content-grid,
   .repo-review-layout,
   .repo-review-workspace-layout {
     grid-template-columns: minmax(0, 1fr);
@@ -8376,6 +8677,22 @@
   .repo-review-branch-status-modal {
     width: min(100vw - 16px, 1540px);
     padding: 16px 14px 18px;
+  }
+
+  .repo-review-workspace-grid--framework {
+    grid-template-columns: 1fr;
+  }
+
+  .repo-review-framework-header {
+    padding: 18px;
+  }
+
+  .repo-review-framework-header-main {
+    justify-items: stretch;
+  }
+
+  .repo-review-framework-repo-pill {
+    min-width: 0;
   }
 
   .repo-review-editor-modal {

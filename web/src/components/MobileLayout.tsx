@@ -26,6 +26,7 @@ const PAGE_TITLE_KEYS: Record<NavPage, string> = {
   users: 'mobile.用户',
   apps: 'mobile.应用',
   soul: 'mobile.AI 灵魂',
+  tavern: 'mobile.酒馆',
   knowledge: 'mobile.知识库',
   workteam: 'mobile.Workflow',
 };
@@ -36,6 +37,7 @@ const OVERFLOW_PAGES: NavPage[] = [
   'workteam',
   'assistants',
   'soul',
+  'tavern',
   'knowledge',
   'stock-analysis',
   'terminal',

@@ -4,7 +4,7 @@ import type { NavPage } from '../app-types';
 const VALID_PAGES: ReadonlySet<string> = new Set<NavPage>([
   'chat', 'companion', 'im', 'tasks', 'stock-analysis', 'repos', 'reviews',
   'channels', 'terminal', 'assistants', 'settings', 'users',
-  'apps', 'soul', 'knowledge', 'workteam',
+  'apps', 'soul', 'tavern', 'knowledge', 'workteam',
 ]);
 
 export function pathToNavPage(pathname: string): NavPage {
@@ -21,4 +21,3 @@ export function navPageToPath(page: NavPage, sub?: string): string {
 export function getUrlSubPath(pathname: string): string {
   return pathname.split('/')[2] || '';
 }
-

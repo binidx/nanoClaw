@@ -401,6 +401,7 @@
   "hooks.settingsActions.saveChannelFailedCheckConfig": "保存失败，请检查渠道配置。",
   "hooks.settingsActions.saveChannelFailedRetry": "保存失败，请稍后重试。",
   "mobile.AI 灵魂": "AI 灵魂",
+  "mobile.酒馆": "酒馆",
   "mobile.Workflow": "Workflow",
   "mobile.代码审查": "代码审查",
   "mobile.仓库": "仓库",

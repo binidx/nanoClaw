@@ -52,7 +52,6 @@ import {
   type SettingsTab,
   type StatusInfo,
   type TestResult,
-  type TavernPersona,
   type ManagedMcpServer,
   type ManagedSkill,
   type SenderTrustConfig,
@@ -427,6 +426,11 @@ const UsersPage = lazy(async () => {
 const SoulPage = lazy(async () => {
   const module = await import('./pages/SoulPage');
   return { default: module.SoulPage };
+});
+
+const TavernPage = lazy(async () => {
+  const module = await import('./pages/TavernPage');
+  return { default: module.TavernPage };
 });
 
 const KnowledgePage = lazy(async () => {
@@ -1371,13 +1375,6 @@ function AppShell() {
   const [createConversationName, setCreateConversationName] = useState('');
   const [createConversationFieldValues, setCreateConversationFieldValues] =
     useState<Record<string, string>>({});
-  const [createConversationMode, setCreateConversationMode] = useState<
-    'normal' | 'tavern'
-  >('normal');
-  const [tavernPersonas, setTavernPersonas] = useState<TavernPersona[]>([]);
-  const [tavernPersonasLoading, setTavernPersonasLoading] = useState(false);
-  const [createConversationTavernPersonaId, setCreateConversationTavernPersonaId] =
-    useState<string | null>(null);
   const [pendingUploadFiles, setPendingUploadFiles] = useState<
     PendingUploadFile[]
   >([]);
@@ -2337,6 +2334,45 @@ function AppShell() {
     [switchConversation, isMobile],
   );
 
+  const startTavernConversation = useCallback(
+    async (tavernPersonaId: string) => {
+      const res = await fetch(`${API}/api/conversations`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: 'New Chat',
+          type: 'web',
+          channelType: 'web',
+          tavernPersonaId,
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(
+          typeof data.error === 'string' ? data.error : t('app.984b1d'),
+        );
+      }
+      const data = await res.json();
+      const createdPolicy = extractPolicyFromPayload(data);
+      if (createdPolicy || Array.isArray(data.allowedDirectories)) {
+        setConversationAccessByJid((prev) => ({
+          ...prev,
+          [data.jid]: buildConversationAccessFromPayload(
+            data,
+            createdPolicy ??
+              extractPolicyFromPayload({
+                allowedDirectories: data.allowedDirectories,
+              }),
+          ),
+        }));
+      }
+      autoScrollRef.current = true;
+      switchConversation(data.jid);
+      await loadConversations();
+    },
+    [API, loadConversations, switchConversation, t],
+  );
+
   const loadOlderForActiveConversation = useCallback(async () => {
     const jid = activeJidRef.current;
     if (!jid) return;
@@ -2754,40 +2790,7 @@ function AppShell() {
     setCreateConversationError('');
     setCreateConversationName('');
     setCreateConversationFieldValues({});
-    setCreateConversationMode('normal');
-    setCreateConversationTavernPersonaId(null);
   }, []);
-
-  const loadTavernPersonas = useCallback(async () => {
-    setTavernPersonasLoading(true);
-    try {
-      const res = await fetch(`${API}/api/tavern/personas`, {
-        credentials: 'include',
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data.ok) {
-        throw new Error(
-          typeof data.error === 'string'
-            ? data.error
-            : t('app.984b1d'),
-        );
-      }
-      const personas = Array.isArray(data.personas)
-        ? (data.personas as TavernPersona[])
-        : [];
-      setTavernPersonas(personas);
-      setCreateConversationTavernPersonaId((current) => {
-        if (current && personas.some((persona) => persona.id === current)) {
-          return current;
-        }
-        return personas[0]?.id || null;
-      });
-    } catch {
-      setTavernPersonas([]);
-    } finally {
-      setTavernPersonasLoading(false);
-    }
-  }, [API, t]);
 
   const showNativeConfirm = useCallback(
     async ({ title, message, confirmLabel }: NativeDialogLike) => {
@@ -3284,18 +3287,6 @@ function AppShell() {
         : null,
     [assistants, createConversationAssistantId],
   );
-  const selectedCreateConversationTavernPersona = useMemo(
-    () =>
-      createConversationTavernPersonaId
-        ? tavernPersonas.find(
-            (persona) => persona.id === createConversationTavernPersonaId,
-          ) || null
-        : null,
-    [createConversationTavernPersonaId, tavernPersonas],
-  );
-  const shouldShowCreateConversationTavernMode =
-    !createConversationAssistantId &&
-    selectedCreateConversationOption?.type === 'web';
 
   useEffect(() => {
     if (createConversationOptions.length === 0) {
@@ -3344,40 +3335,16 @@ function AppShell() {
     }
   }, [createConversationFieldValues, selectedCreateConversationOption]);
 
-  useEffect(() => {
-    const shouldShowTavern =
-      createConversationOpen &&
-      !createConversationAssistantId &&
-      selectedCreateConversationOption?.type === 'web';
-    if (!shouldShowTavern) {
-      setCreateConversationMode('normal');
-      setCreateConversationTavernPersonaId(null);
-      return;
-    }
-    void loadTavernPersonas();
-  }, [
-    createConversationAssistantId,
-    createConversationOpen,
-    loadTavernPersonas,
-    selectedCreateConversationOption?.type,
-  ]);
-
   const closeCreateConversation = useCallback(() => {
     if (creatingConversation) return;
     setCreateConversationOpen(false);
     setCreateConversationError('');
     setCreateConversationAssistantId(null);
-    setCreateConversationMode('normal');
-    setCreateConversationTavernPersonaId(null);
   }, [creatingConversation]);
 
   const submitCreateConversation = useCallback(async () => {
     const option = selectedCreateConversationOption;
     if (!option || !option.supported) return;
-    const shouldUseTavernMode =
-      !createConversationAssistantId &&
-      option.type === 'web' &&
-      createConversationMode === 'tavern';
 
     const missingField = option.fields.find(
       (field) =>
@@ -3386,10 +3353,6 @@ function AppShell() {
     );
     if (missingField) {
       setCreateConversationError(t('app.fillRequired', { field: missingField.label }));
-      return;
-    }
-    if (shouldUseTavernMode && !createConversationTavernPersonaId) {
-      setCreateConversationError('请选择一个酒馆人格');
       return;
     }
 
@@ -3412,9 +3375,6 @@ function AppShell() {
       };
       if (createConversationAssistantId) {
         payload.assistantId = createConversationAssistantId;
-      }
-      if (shouldUseTavernMode && createConversationTavernPersonaId) {
-        payload.tavernPersonaId = createConversationTavernPersonaId;
       }
       for (const [key, value] of Object.entries(target)) {
         payload[key] = value;
@@ -3452,8 +3412,6 @@ function AppShell() {
       setCreateConversationOpen(false);
       setCreateConversationName('');
       setCreateConversationFieldValues({});
-      setCreateConversationMode('normal');
-      setCreateConversationTavernPersonaId(null);
     } catch (error) {
       setCreateConversationError(
         error instanceof Error ? error.message : t('app.984b1d'),
@@ -3464,9 +3422,7 @@ function AppShell() {
   }, [
     createConversationAssistantId,
     createConversationFieldValues,
-    createConversationMode,
     createConversationName,
-    createConversationTavernPersonaId,
     loadConversations,
     selectedCreateConversationOption,
     switchConversation,
@@ -4246,6 +4202,20 @@ function AppShell() {
           </Suspense>
         )}
 
+        {page === 'tavern' && (
+          <Suspense fallback={<div className="settings-hint">{t('app.cde111')}</div>}>
+            <TavernPage
+              apiBase={API}
+              providers={providers}
+              managedMcpServers={managedMcpServers}
+              managedSkills={managedSkills}
+              conversations={conversationsByRecent}
+              onStartChat={startTavernConversation}
+              onOpenConversation={switchConversation}
+            />
+          </Suspense>
+        )}
+
         {page === 'knowledge' && (
           <Suspense fallback={<div className="settings-hint">{t('app.a95bae')}</div>}>
             <KnowledgePage apiBase={API} />
@@ -4324,96 +4294,6 @@ function AppShell() {
                     />
                   </div>
 
-                  {shouldShowCreateConversationTavernMode ? (
-                    <div className="form-group">
-                      <label>会话模式</label>
-                      <div className="create-conversation-mode-toggle">
-                        <button
-                          type="button"
-                          className={`create-conversation-mode-btn${createConversationMode === 'normal' ? ' active' : ''}`}
-                          onClick={() => {
-                            setCreateConversationMode('normal');
-                            setCreateConversationError('');
-                          }}
-                        >
-                          普通
-                        </button>
-                        <button
-                          type="button"
-                          className={`create-conversation-mode-btn${createConversationMode === 'tavern' ? ' active' : ''}`}
-                          onClick={() => {
-                            setCreateConversationMode('tavern');
-                            setCreateConversationError('');
-                          }}
-                        >
-                          酒馆
-                        </button>
-                      </div>
-                      {createConversationMode === 'tavern' ? (
-                        <div className="settings-hint">
-                          酒馆人格只支持新建 Web 会话，创建后不可切换，也不会替代主灵魂和记忆。
-                        </div>
-                      ) : null}
-                    </div>
-                  ) : null}
-
-                  {shouldShowCreateConversationTavernMode &&
-                  createConversationMode === 'tavern' ? (
-                    <div className="form-group">
-                      <label>酒馆人格</label>
-                      {tavernPersonasLoading ? (
-                        <div className="settings-hint">正在加载酒馆人格…</div>
-                      ) : tavernPersonas.length === 0 ? (
-                        <div className="test-result error">
-                          还没有可用的酒馆人格，请先到 Soul 页面创建。
-                        </div>
-                      ) : (
-                        <>
-                          <div className="create-conversation-tavern-grid">
-                            {tavernPersonas.map((persona) => {
-                              const avatarUrl = persona.avatar_path
-                                ? `${API}/api/tavern/avatar-file?path=${encodeURIComponent(persona.avatar_path)}`
-                                : null;
-                              return (
-                                <button
-                                  key={persona.id}
-                                  type="button"
-                                  className={`create-conversation-tavern-card${createConversationTavernPersonaId === persona.id ? ' active' : ''}`}
-                                  onClick={() => {
-                                    setCreateConversationTavernPersonaId(persona.id);
-                                    setCreateConversationError('');
-                                  }}
-                                >
-                                  <div className="create-conversation-tavern-avatar">
-                                    {avatarUrl ? (
-                                      <img src={avatarUrl} alt={persona.name} />
-                                    ) : (
-                                      <span>{persona.name.slice(0, 1).toUpperCase()}</span>
-                                    )}
-                                  </div>
-                                  <div className="create-conversation-tavern-copy">
-                                    <strong>{persona.name}</strong>
-                                    <span>{persona.summary || '未填写简介'}</span>
-                                  </div>
-                                </button>
-                              );
-                            })}
-                          </div>
-                          {selectedCreateConversationTavernPersona ? (
-                            <div className="create-conversation-tavern-preview">
-                              <strong>{selectedCreateConversationTavernPersona.name}</strong>
-                              <p>
-                                {selectedCreateConversationTavernPersona.opener_preview ||
-                                  selectedCreateConversationTavernPersona.summary ||
-                                  '这个人格会在创建后自动发送首条开场白。'}
-                              </p>
-                            </div>
-                          ) : null}
-                        </>
-                      )}
-                    </div>
-                  ) : null}
-
                   {selectedCreateConversationOption.fields.map((field) => (
                     <div key={field.key} className="form-group">
                       <label>
@@ -4485,10 +4365,6 @@ function AppShell() {
                   onClick={() => void submitCreateConversation()}
                   disabled={
                     !selectedCreateConversationOption?.supported ||
-                    (shouldShowCreateConversationTavernMode &&
-                      createConversationMode === 'tavern' &&
-                      (!createConversationTavernPersonaId ||
-                        tavernPersonasLoading)) ||
                     creatingConversation
                   }
                 >

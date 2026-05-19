@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import {
@@ -12,7 +13,17 @@ import {
 } from './common';
 import { Pagination } from './common/Pagination';
 import { AppSelect, type AppSelectOption } from './AppSelect';
-import { IconChevronDown, IconSearch, IconX } from './AppIcons';
+import {
+  IconCalendar,
+  IconChat,
+  IconCheck,
+  IconChevronDown,
+  IconFolder,
+  IconRefresh,
+  IconSearch,
+  IconUsers,
+  IconX,
+} from './AppIcons';
 import { RepoReviewActorMentionEditor } from './repo-review/RepoReviewActorMentionEditor';
 import {
   fetchRepoReviewChatMembers,
@@ -165,6 +176,7 @@ type RepoReviewSettingsPanelProps = {
   pickNativeDirectory: () => Promise<string | null>;
   conversations: Conversation[];
   initialRepositoryId?: string;
+  onRepositoryRouteChange?: (repositoryId: string | null) => void;
   hideRepositoryList?: boolean;
   embedded?: boolean;
 };
@@ -202,6 +214,45 @@ type RepoReviewWorkspaceCardAction =
   | 'repository-delivery'
   | 'repository-autosync'
   | 'profile';
+
+function renderWorkspaceCardIcon(
+  action: RepoReviewWorkspaceCardAction,
+): ReactNode {
+  switch (action) {
+    case 'repository-source':
+      return <IconFolder />;
+    case 'repository-delivery':
+      return <IconChat />;
+    case 'repository-autosync':
+      return <IconRefresh />;
+    case 'profile':
+      return <IconUsers />;
+    default:
+      return <IconCheck />;
+  }
+}
+
+function RepoReviewWorkspaceDetailSurface({
+  embedded,
+  open,
+  onClose,
+  children,
+}: {
+  embedded: boolean;
+  open: boolean;
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  if (embedded) {
+    return <>{children}</>;
+  }
+
+  return (
+    <Drawer open={open} onClose={onClose} width="min(100vw, 960px)">
+      {children}
+    </Drawer>
+  );
+}
 
 type RepositoryEditorSection =
   | 'all'
@@ -1000,6 +1051,7 @@ export function RepoReviewSettingsPanel({
   pickNativeDirectory,
   conversations,
   initialRepositoryId,
+  onRepositoryRouteChange,
   hideRepositoryList = false,
   embedded = false,
 }: RepoReviewSettingsPanelProps) {
@@ -1015,6 +1067,7 @@ export function RepoReviewSettingsPanel({
   const [runs, setRuns] = useState<RepoReviewRun[]>([]);
   const [digestRuns, setDigestRuns] = useState<RepoReviewDigestRun[]>([]);
   const [selectedRepositoryId, setSelectedRepositoryId] = useState('');
+  const previousInitialRepositoryIdRef = useRef(initialRepositoryId || '');
   const [creatingRepository, setCreatingRepository] = useState(false);
   const [repositoryFilter, setRepositoryFilter] = useState('');
   const [runFilterStatus, setRunFilterStatus] = useState('');
@@ -1882,6 +1935,97 @@ export function RepoReviewSettingsPanel({
     selectedRepositoryLatestRun,
   ]);
 
+  const workspaceSetupChecks = useMemo(() => {
+    if (!selectedRepository) return [];
+
+    return [
+      {
+        label: t('repoReview.workspace.source'),
+        ready: Boolean(
+          selectedRepository.localRepoPath || selectedRepository.remoteRepoSlug,
+        ),
+        detail: selectedRepository.localRepoPath
+          ? t('repoReview.workspace.source.connected')
+          : t('repoReview.workspace.source.pending'),
+      },
+      {
+        label: t('repoReview.workspace.delivery'),
+        ready: Boolean(selectedRepository.reviewChatJid),
+        detail: selectedRepository.reviewChatJid
+          ? t('repoReview.workspace.delivery.ready')
+          : t('repoReview.workspace.delivery.default'),
+      },
+      {
+        label: t('repoReview.workspace.profile'),
+        ready: profilesForSelectedRepository.length > 0,
+        detail:
+          profilesForSelectedRepository.length > 0
+            ? t('repoReview.workspace.profile.configured')
+            : t('repoReview.workspace.profile.pending'),
+      },
+      {
+        label: t('repoReview.workspace.autosync'),
+        ready: selectedRepository.autoSyncEnabled,
+        detail: selectedRepository.autoSyncEnabled
+          ? t('repoReview.workspace.autosync.enabled')
+          : t('repoReview.workspace.autosync.manual'),
+      },
+    ];
+  }, [profilesForSelectedRepository.length, selectedRepository, t]);
+
+  const workspaceCompletionPercent = useMemo(() => {
+    if (workspaceSetupChecks.length === 0) return 0;
+    const completedCount = workspaceSetupChecks.filter(
+      (item) => item.ready,
+    ).length;
+    return Math.round((completedCount / workspaceSetupChecks.length) * 100);
+  }, [workspaceSetupChecks]);
+
+  const workspaceStatusFacts = useMemo(() => {
+    if (!selectedRepository) return [];
+
+    return [
+      {
+        label: t('repoReview.overview.latestReview'),
+        value: selectedRepositoryLatestRun
+          ? formatRunOutcomeLabel(
+              selectedRepositoryLatestRun.overall ||
+                selectedRepositoryLatestRun.status,
+            )
+          : t('repoReview.workspace.profile.noRuns'),
+      },
+      {
+        label: t('repoReview.reviewTabs.branches'),
+        value: t('repoReview.branchStatus.branchCount', {
+          count: allRepositoryBranchStates.length,
+        }),
+      },
+      {
+        label: t('repoReview.manualDecision.title'),
+        value:
+          manualPendingRuns.length > 0
+            ? t('repoReview.manualDecision.pendingCount', {
+                count: manualPendingRuns.length,
+              })
+            : t('repoReview.branchStatus.noRuns'),
+      },
+      {
+        label: t('repoReview.workspace.digest'),
+        value:
+          selectedRepository.digestDailyEnabled ||
+          selectedRepository.digestWeeklyEnabled
+            ? t('repoReview.workspace.digest.enabled')
+            : t('repoReview.workspace.digest.disabled'),
+      },
+    ];
+  }, [
+    allRepositoryBranchStates.length,
+    manualPendingRuns.length,
+    selectedRepository,
+    selectedRepositoryLatestRun,
+    t,
+  ]);
+
   const openRepositoryEditor = (
     create = false,
     section: RepositoryEditorSection = 'all',
@@ -2533,8 +2677,17 @@ export function RepoReviewSettingsPanel({
   }, [digestRuns, selectedDigestRunId]);
 
   useEffect(() => {
-    if (!initialRepositoryId) return;
+    const previousInitialRepositoryId = previousInitialRepositoryIdRef.current;
+    previousInitialRepositoryIdRef.current = initialRepositoryId || '';
     if (creatingRepository) return;
+    if (!initialRepositoryId) {
+      if (!previousInitialRepositoryId) return;
+      setSelectedRepositoryId('');
+      setRepositoryEditorOpen(false);
+      setProfileEditorOpen(false);
+      setRepoDetailTab('overview');
+      return;
+    }
     if (selectedRepositoryId === initialRepositoryId) return;
     if (
       !overview.repositories.some(
@@ -3186,6 +3339,24 @@ export function RepoReviewSettingsPanel({
     openRepositoryEditor(false, sectionMap[action]);
   };
 
+  const openWorkspaceDetail = useCallback((repositoryId: string) => {
+    setCreatingRepository(false);
+    setSelectedRepositoryId(repositoryId);
+    setRepositoryEditorOpen(false);
+    setProfileEditorOpen(false);
+    setRepoDetailTab('overview');
+    onRepositoryRouteChange?.(repositoryId);
+  }, [onRepositoryRouteChange]);
+
+  const closeWorkspaceDetail = useCallback(() => {
+    setSelectedRepositoryId('');
+    setCreatingRepository(false);
+    setRepositoryEditorOpen(false);
+    setProfileEditorOpen(false);
+    setRepoDetailTab('overview');
+    onRepositoryRouteChange?.(null);
+  }, [onRepositoryRouteChange]);
+
   const openBranchReviewWorkbench = (branch?: string) => {
     setBranchStatusPanelInitialBranch(branch || '');
     setBranchStatusPanelOpen(true);
@@ -3502,6 +3673,7 @@ export function RepoReviewSettingsPanel({
                 <button
                   className="btn-primary workflow-create-action"
                   onClick={() => {
+                    onRepositoryRouteChange?.(null);
                     openRepositoryEditor(true);
                     setRepoDetailTab('config');
                   }}
@@ -3548,13 +3720,7 @@ export function RepoReviewSettingsPanel({
                     ? 'active'
                     : ''
                 }`}
-                onClick={() => {
-                  setCreatingRepository(false);
-                  setSelectedRepositoryId(repository.id);
-                  setRepositoryEditorOpen(false);
-                  setProfileEditorOpen(false);
-                  setRepoDetailTab('overview');
-                }}
+                onClick={() => openWorkspaceDetail(repository.id)}
                 heading={repository.name}
                 badge={
                   <span
@@ -3627,20 +3793,23 @@ export function RepoReviewSettingsPanel({
       ) : null}
 
       {showWorkspaceDetail ? (
-      <Drawer
+      <RepoReviewWorkspaceDetailSurface
+        embedded={embedded}
         open={showWorkspaceDetail}
-        onClose={() => {
-          setSelectedRepositoryId('');
-          setCreatingRepository(false);
-          setRepositoryEditorOpen(false);
-          setProfileEditorOpen(false);
-        }}
-        title={creatingRepository ? t('repoReview.drawer.newWorkspace') : selectedRepository?.name || t('repoReview.drawer.repoDetail')}
-        width="min(100vw, 960px)"
+        onClose={closeWorkspaceDetail}
       >
       <section className="repo-review-workspace-detail">
         <div className="repo-review-workspace-detail-header">
           <div>
+            {embedded && !creatingRepository ? (
+              <button
+                type="button"
+                className="repo-review-backlink"
+                onClick={closeWorkspaceDetail}
+              >
+                {t('auto.c270fc6f')} / {selectedRepository?.name || t('repoReview.drawer.repoDetail')}
+              </button>
+            ) : null}
             <h3>{creatingRepository ? t('repoReview.drawer.newWorkspace') : selectedRepository?.name || t('repoReview.drawer.repoDetail')}</h3>
             <p className="settings-hint">
               {creatingRepository
@@ -3652,14 +3821,9 @@ export function RepoReviewSettingsPanel({
             <button
               type="button"
               className="btn-outline btn-sm"
-              onClick={() => {
-                setSelectedRepositoryId('');
-                setCreatingRepository(false);
-                setRepositoryEditorOpen(false);
-                setProfileEditorOpen(false);
-              }}
+              onClick={closeWorkspaceDetail}
             >
-              {t('repoReview.button.close')}
+              {embedded ? '返回列表' : t('repoReview.button.close')}
             </button>
           ) : null}
         </div>
@@ -3704,9 +3868,9 @@ export function RepoReviewSettingsPanel({
           {/* Tab: Overview */}
           {!creatingRepository && selectedRepository && !repositoryEditorOpen && repoDetailTab === 'overview' && (
             <>
-                  <div className="repo-review-card repo-review-overview-hero">
-                    <div className="repo-review-overview-hero-top">
-                      <div className="repo-review-overview-copy">
+                  <div className="repo-review-framework-shell">
+                    <div className="repo-review-card repo-review-framework-header">
+                      <div className="repo-review-framework-header-copy">
                         <span className="repo-review-overview-kicker">
                           {t('repoReview.workspace.repositoryWorkspace')}
                         </span>
@@ -3717,225 +3881,326 @@ export function RepoReviewSettingsPanel({
                             selectedRepository.id}
                         </div>
                       </div>
-                      <div className="repo-review-overview-actions">
-                        <button
-                          type="button"
-                          className={`btn-sm ${selectedRepository.enabled ? 'btn-warning' : 'btn-success'}`}
-                          onClick={() =>
-                            void toggleRepositoryEnabled(
-                              selectedRepository.id,
-                              selectedRepository.enabled,
-                            )
-                          }
-                        >
-                          {selectedRepository.enabled ? t('repoReview.button.disable') : t('repoReview.button.enable')}
-                        </button>
-                        <button
-                          type="button"
-                          className="btn-outline btn-sm"
-                          onClick={() => { openRepositoryEditor(false); setRepoDetailTab('config'); }}
-                        >
-                          {t('repoReview.button.editRepo')}
-                        </button>
-                        <button
-                          type="button"
-                          className="btn-primary btn-sm"
-                          onClick={() => { openProfileEditor(true); setRepoDetailTab('profile'); }}
-                          disabled={!selectedRepositoryId}
-                        >
-                          {t('repoReview.button.newProfile')}
-                        </button>
-                      </div>
-                    </div>
-                    <div className="repo-review-source-summary">
-                      <span
-                        className={`repo-review-status-badge ${
-                          selectedRepository.enabled ? 'enabled' : 'disabled'
-                        }`}
-                      >
-                        {selectedRepository.enabled
-                          ? t('repoReview.repoStatus.enabled')
-                          : t('repoReview.repoStatus.disabled')}
-                      </span>
-                      <span className="repo-review-source-pill tone-neutral">
-                        {formatRemoteProviderLabel(
-                          selectedRepository.remoteProvider,
-                        )}
-                      </span>
-                      {selectedRepository.defaultTargetBranch ? (
-                        <span className="repo-review-source-pill tone-neutral">
-                          {t('repoReview.overview.defaultBaseline', { branch: selectedRepository.defaultTargetBranch })}
-                        </span>
-                      ) : null}
-                      <span className="repo-review-source-pill tone-success">
-                        {t('repoReview.overview.profileCount', { count: profilesForSelectedRepository.length })}
-                      </span>
-                      {selectedRepositoryLatestRun ? (
-                        <span
-                          className={`repo-review-status-badge status-${
-                            selectedRepositoryLatestRun.overall ||
-                            selectedRepositoryLatestRun.status
-                          }`}
-                        >
-                          {t('repoReview.overview.latestReview')}{' '}
-                          {formatRunOutcomeLabel(
-                            selectedRepositoryLatestRun.overall ||
-                              selectedRepositoryLatestRun.status,
-                          )}
-                        </span>
-                      ) : null}
-                    </div>
-                    <div className="repo-review-workspace-grid">
-                      {selectedRepositoryWorkspaceCards.map((item) => (
-                        <button
-                          key={item.title}
-                          type="button"
-                          className="repo-review-workspace-card actionable"
-                          onClick={() => openWorkspaceCardAction(item.action)}
-                        >
-                          <div className="repo-review-workspace-card-topline">
-                            <span>{item.title}</span>
-                            <span
-                              className={`repo-review-source-pill tone-${item.tone}`}
-                            >
-                              {item.status}
+                      <div className="repo-review-framework-header-main">
+                        <div className="repo-review-framework-repo-pill">
+                          <span className="repo-review-framework-repo-pill-icon">
+                            <IconFolder />
+                          </span>
+                          <div className="repo-review-framework-repo-pill-copy">
+                            <strong>
+                              {formatRemoteProviderLabel(
+                                selectedRepository.remoteProvider,
+                              )}
+                              {selectedRepository.remoteRepoSlug
+                                ? ` / ${selectedRepository.remoteRepoSlug}`
+                                : ''}
+                            </strong>
+                            <span>
+                              {selectedRepository.defaultTargetBranch ||
+                                t('repoReview.repo.notSet')}
                             </span>
                           </div>
-                          <strong className="repo-review-workspace-card-value">
-                            {item.value}
-                          </strong>
-                          <div className="settings-hint">{item.detail}</div>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="repo-review-overview-grid">
-                    <div className="repo-review-card repo-review-manual-review-card">
-                      <div className="repo-review-card-header">
-                        <div>
-                          <h4>{t('repoReview.manualReview.title')}</h4>
-                          <div className="settings-hint">
-                            {t('repoReview.manualReview.selectBaselineHint')}
-                          </div>
-                          <div className="settings-hint">
-                            {manualReviewFullFileSummary}
-                          </div>
                         </div>
-                        <div className="repo-review-inline-actions">
+                        <div className="repo-review-framework-header-actions">
+                          <button
+                            type="button"
+                            className={`btn-sm ${selectedRepository.enabled ? 'btn-warning' : 'btn-success'}`}
+                            onClick={() =>
+                              void toggleRepositoryEnabled(
+                                selectedRepository.id,
+                                selectedRepository.enabled,
+                              )
+                            }
+                          >
+                            {selectedRepository.enabled
+                              ? t('repoReview.button.disable')
+                              : t('repoReview.button.enable')}
+                          </button>
                           <button
                             type="button"
                             className="btn-outline btn-sm"
-                            onClick={() => openBranchReviewWorkbench()}
+                            onClick={() => {
+                              openRepositoryEditor(false);
+                              setRepoDetailTab('config');
+                            }}
                           >
-                            {t('repoReview.branchStatus.viewAll')}
+                            {t('repoReview.button.editRepo')}
+                          </button>
+                          <button
+                            type="button"
+                            className="btn-primary btn-sm"
+                            onClick={() => {
+                              openProfileEditor(true);
+                              setRepoDetailTab('profile');
+                            }}
+                            disabled={!selectedRepositoryId}
+                          >
+                            {t('repoReview.button.newProfile')}
                           </button>
                         </div>
                       </div>
-                      {branchSpotlightItems.length ? (
-                        <div className="repo-review-spotlight-list">
-                          {branchSpotlightItems.map((item) => (
-                            <div
-                              key={item.name}
-                              className="repo-review-spotlight-item repo-review-manual-branch-item"
-                            >
-                              <div className="repo-review-spotlight-main">
-                                <strong>{item.name}</strong>
-                                <div className="repo-review-spotlight-meta">
-                                  {item.defaultBranch ? (
-                                    <span>{t('repoReview.branchStatus.defaultBaseline')}</span>
-                                  ) : null}
-                                  {item.actor ? <span>{item.actor}</span> : null}
-                                  {item.latestCommitAt ? (
-                                    <span>
-                                      {t('repoReview.branchStatus.recentCommit', { time: formatOptionalDateTime(item.latestCommitAt) })}
-                                    </span>
-                                  ) : null}
-                                </div>
-                                <div
-                                  className="settings-hint repo-review-summary-preview"
-                                  title={
-                                    item.lastRun?.summary ||
-                                    item.title ||
-                                    t('repoReview.branchStatus.noSummary')
-                                  }
-                                >
-                                  {item.lastRun?.summary ||
-                                    item.title ||
-                                    t('repoReview.branchStatus.noRecentSummary')}
-                                </div>
-                              </div>
-                              <div className="repo-review-manual-branch-side">
-                                <div className="repo-review-source-summary">
-                                  {item.isReviewing ? (
-                                    <span className="repo-review-source-pill tone-success">
-                                      {t('repoReview.branchStatus.reviewing')}
-                                    </span>
-                                  ) : null}
-                                  {item.lastRun ? (
-                                    <span
-                                      className={`repo-review-status-badge status-${
-                                        item.lastRun.overall ||
-                                        item.lastRun.status
-                                      }`}
-                                    >
-                                      {formatRunOutcomeLabel(
-                                        item.lastRun.overall ||
-                                          item.lastRun.status,
-                                      )}
-                                    </span>
-                                  ) : (
-                                    <span className="repo-review-source-pill tone-neutral">
-                                      {t('repoReview.branchStatus.noRuns')}
-                                    </span>
-                                  )}
-                                </div>
-                                <div className="repo-review-inline-actions">
-                                  {item.lastRun ? (
-                                    <button
-                                      type="button"
-                                      className="btn-outline btn-sm repo-review-btn-compact"
-                                      onClick={() => {
-                                        if (!item.lastRun) return;
-                                        void openRunDetail(item.lastRun);
-                                      }}
-                                    >
-                                      {t('repoReview.button.viewDetail')}
-                                    </button>
-                                  ) : null}
-                                  <button
-                                    type="button"
-                                    className="btn-primary btn-sm repo-review-btn-compact"
-                                    onClick={() =>
-                                      openBranchReviewWorkbench(item.name)
-                                    }
-                                    disabled={
-                                      !selectedRepository.remoteProvider ||
-                                      item.isReviewing ||
-                                      syncingBranchNames.includes(item.name)
-                                    }
-                                  >
-                                    {item.isReviewing ||
-                                    syncingBranchNames.includes(item.name)
-                                      ? t('repoReview.branchStatus.reviewing')
-                                      : t('repoReview.branchStatus.selectBaseline')}
-                                  </button>
-                                </div>
+                    </div>
+
+                    <div className="repo-review-framework-board">
+                      <div className="repo-review-framework-main">
+                        <div className="repo-review-card repo-review-overview-hero repo-review-overview-hero--framework">
+                          <div className="repo-review-card-header">
+                            <div>
+                              <h4>{t('repoReview.panel.description')}</h4>
+                              <div className="settings-hint">
+                                {manualReviewFullFileSummary}
                               </div>
                             </div>
-                          ))}
+                            <div className="repo-review-source-summary">
+                              <span
+                                className={`repo-review-status-badge ${
+                                  selectedRepository.enabled
+                                    ? 'enabled'
+                                    : 'disabled'
+                                }`}
+                              >
+                                {selectedRepository.enabled
+                                  ? t('repoReview.repoStatus.enabled')
+                                  : t('repoReview.repoStatus.disabled')}
+                              </span>
+                              <span className="repo-review-source-pill tone-neutral">
+                                {formatRemoteProviderLabel(
+                                  selectedRepository.remoteProvider,
+                                )}
+                              </span>
+                              {selectedRepositoryLatestRun ? (
+                                <span
+                                  className={`repo-review-status-badge status-${
+                                    selectedRepositoryLatestRun.overall ||
+                                    selectedRepositoryLatestRun.status
+                                  }`}
+                                >
+                                  {t('repoReview.overview.latestReview')}{' '}
+                                  {formatRunOutcomeLabel(
+                                    selectedRepositoryLatestRun.overall ||
+                                      selectedRepositoryLatestRun.status,
+                                  )}
+                                </span>
+                              ) : null}
+                            </div>
+                          </div>
+                          <div className="repo-review-workspace-grid repo-review-workspace-grid--framework">
+                            {selectedRepositoryWorkspaceCards.map((item) => (
+                              <button
+                                key={item.title}
+                                type="button"
+                                className="repo-review-workspace-card repo-review-workspace-card--framework actionable"
+                                onClick={() => openWorkspaceCardAction(item.action)}
+                              >
+                                <div className="repo-review-framework-card-icon">
+                                  {renderWorkspaceCardIcon(item.action)}
+                                </div>
+                                <div className="repo-review-workspace-card-topline">
+                                  <span>{item.title}</span>
+                                  <span
+                                    className={`repo-review-source-pill tone-${item.tone}`}
+                                  >
+                                    {item.status}
+                                  </span>
+                                </div>
+                                <strong className="repo-review-workspace-card-value">
+                                  {item.value}
+                                </strong>
+                                <div className="settings-hint">{item.detail}</div>
+                              </button>
+                            ))}
+                          </div>
                         </div>
-                      ) : (
-                        <div className="repo-review-empty-hint">
-                          {t('repoReview.branchStatus.noPriorityBranches')}
+
+                        <div className="repo-review-framework-content-grid">
+                          <RepositoryRelationshipsPanel
+                            repositoryId={selectedRepository.id}
+                          />
+                          <div className="repo-review-card repo-review-manual-review-card">
+                            <div className="repo-review-card-header">
+                              <div>
+                                <h4>{t('repoReview.manualReview.title')}</h4>
+                                <div className="settings-hint">
+                                  {t('repoReview.manualReview.selectBaselineHint')}
+                                </div>
+                              </div>
+                              <div className="repo-review-inline-actions">
+                                <button
+                                  type="button"
+                                  className="btn-outline btn-sm"
+                                  onClick={() => openBranchReviewWorkbench()}
+                                >
+                                  {t('repoReview.branchStatus.viewAll')}
+                                </button>
+                              </div>
+                            </div>
+                            {branchSpotlightItems.length ? (
+                              <div className="repo-review-spotlight-list">
+                                {branchSpotlightItems.map((item) => (
+                                  <div
+                                    key={item.name}
+                                    className="repo-review-spotlight-item repo-review-manual-branch-item"
+                                  >
+                                    <div className="repo-review-spotlight-main">
+                                      <strong>{item.name}</strong>
+                                      <div className="repo-review-spotlight-meta">
+                                        {item.defaultBranch ? (
+                                          <span>{t('repoReview.branchStatus.defaultBaseline')}</span>
+                                        ) : null}
+                                        {item.actor ? <span>{item.actor}</span> : null}
+                                        {item.latestCommitAt ? (
+                                          <span>
+                                            {t('repoReview.branchStatus.recentCommit', { time: formatOptionalDateTime(item.latestCommitAt) })}
+                                          </span>
+                                        ) : null}
+                                      </div>
+                                      <div
+                                        className="settings-hint repo-review-summary-preview"
+                                        title={
+                                          item.lastRun?.summary ||
+                                          item.title ||
+                                          t('repoReview.branchStatus.noSummary')
+                                        }
+                                      >
+                                        {item.lastRun?.summary ||
+                                          item.title ||
+                                          t('repoReview.branchStatus.noRecentSummary')}
+                                      </div>
+                                    </div>
+                                    <div className="repo-review-manual-branch-side">
+                                      <div className="repo-review-source-summary">
+                                        {item.isReviewing ? (
+                                          <span className="repo-review-source-pill tone-success">
+                                            {t('repoReview.branchStatus.reviewing')}
+                                          </span>
+                                        ) : null}
+                                        {item.lastRun ? (
+                                          <span
+                                            className={`repo-review-status-badge status-${
+                                              item.lastRun.overall ||
+                                              item.lastRun.status
+                                            }`}
+                                          >
+                                            {formatRunOutcomeLabel(
+                                              item.lastRun.overall ||
+                                                item.lastRun.status,
+                                            )}
+                                          </span>
+                                        ) : (
+                                          <span className="repo-review-source-pill tone-neutral">
+                                            {t('repoReview.branchStatus.noRuns')}
+                                          </span>
+                                        )}
+                                      </div>
+                                      <div className="repo-review-inline-actions">
+                                        {item.lastRun ? (
+                                          <button
+                                            type="button"
+                                            className="btn-outline btn-sm repo-review-btn-compact"
+                                            onClick={() => {
+                                              if (!item.lastRun) return;
+                                              void openRunDetail(item.lastRun);
+                                            }}
+                                          >
+                                            {t('repoReview.button.viewDetail')}
+                                          </button>
+                                        ) : null}
+                                        <button
+                                          type="button"
+                                          className="btn-primary btn-sm repo-review-btn-compact"
+                                          onClick={() =>
+                                            openBranchReviewWorkbench(item.name)
+                                          }
+                                          disabled={
+                                            !selectedRepository.remoteProvider ||
+                                            item.isReviewing ||
+                                            syncingBranchNames.includes(item.name)
+                                          }
+                                        >
+                                          {item.isReviewing ||
+                                          syncingBranchNames.includes(item.name)
+                                            ? t('repoReview.branchStatus.reviewing')
+                                            : t('repoReview.branchStatus.selectBaseline')}
+                                        </button>
+                                      </div>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <div className="repo-review-empty-hint">
+                                {t('repoReview.branchStatus.noPriorityBranches')}
+                              </div>
+                            )}
+                          </div>
                         </div>
-                      )}
+                      </div>
+
+                      <aside className="repo-review-framework-side">
+                        <div className="repo-review-card repo-review-framework-status-card">
+                          <div className="repo-review-card-header">
+                            <div>
+                              <h4>{t('repoReview.workspace.profile')}</h4>
+                              <div className="settings-hint">
+                                {t('repoReview.panel.description')}
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              className="btn-outline btn-sm btn-icon-only"
+                              onClick={() => void refreshCurrentView(true)}
+                              aria-label={t('repoReview.button.refresh')}
+                              title={t('repoReview.button.refresh')}
+                            >
+                              <IconRefresh />
+                            </button>
+                          </div>
+                          <div
+                            className="repo-review-framework-meter"
+                            style={
+                              {
+                                '--repo-review-completion': `${workspaceCompletionPercent}%`,
+                              } as CSSProperties
+                            }
+                          >
+                            <div className="repo-review-framework-meter-inner">
+                              <strong>{workspaceCompletionPercent}%</strong>
+                              <span>{t('repoReview.repo.enabledBadge')}</span>
+                            </div>
+                          </div>
+                          <div className="repo-review-framework-checklist">
+                            {workspaceSetupChecks.map((item) => (
+                              <div
+                                key={item.label}
+                                className={`repo-review-framework-check ${
+                                  item.ready ? 'is-ready' : 'is-pending'
+                                }`}
+                              >
+                                <span className="repo-review-framework-check-icon">
+                                  {item.ready ? <IconCheck /> : <IconCalendar />}
+                                </span>
+                                <div>
+                                  <strong>{item.label}</strong>
+                                  <span>{item.detail}</span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                          <div className="repo-review-framework-facts">
+                            {workspaceStatusFacts.map((item) => (
+                              <div
+                                key={item.label}
+                                className="repo-review-framework-fact"
+                              >
+                                <span>{item.label}</span>
+                                <strong>{item.value}</strong>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </aside>
                     </div>
                   </div>
-
-                  <RepositoryRelationshipsPanel
-                    repositoryId={selectedRepository.id}
-                  />
 
                   {manualPendingRuns.length > 0 ? (
                     <div className="repo-review-card">
@@ -5616,7 +5881,7 @@ export function RepoReviewSettingsPanel({
           </div>
         )}
       </section>
-      </Drawer>
+      </RepoReviewWorkspaceDetailSurface>
       ) : null}
       </div>
 

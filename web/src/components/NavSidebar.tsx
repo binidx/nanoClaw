@@ -213,6 +213,15 @@ export function NavSidebar({
             <IconStar /> <span>{t('page.soul')}</span>
           </NavLink>
         )}
+        {canAccessPage('tavern') && (
+          <NavLink
+            to={navPageToPath('tavern')}
+            className={navItemClass}
+            title={isCollapsed ? t('page.tavern') : undefined}
+          >
+            <IconStar /> <span>{t('page.tavern')}</span>
+          </NavLink>
+        )}
         {canAccessPage('knowledge') && (
           <NavLink
             to={navPageToPath('knowledge')}

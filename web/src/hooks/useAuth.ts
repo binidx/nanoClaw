@@ -24,6 +24,7 @@ export const PAGE_PERMISSION_MAP: Record<NavPage, string | string[] | null> = {
   users: ['system.users', 'system.users.view'],
   apps: ['project.view', 'mcp.view', 'skill.view', 'marketplace.view'],
   soul: ['soul.view'],
+  tavern: ['soul.view'],
   knowledge: ['assistant.manage', 'knowledge.view'],
   'stock-analysis': ['project.view', 'stock.view'],
   workteam: ['project.view', 'workteam.view'],
