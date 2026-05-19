@@ -7,8 +7,11 @@ import {
   createTavernPersona,
   deleteTavernPersona,
   getTavernPersonaById,
+  getTavernGlobalConfig,
+  isProviderVisibleToUser,
   listTavernPersonas,
   setTavernPersonaAvatarPath,
+  upsertTavernGlobalConfig,
   updateTavernPersona,
 } from '../db.js';
 import { DATA_DIR } from '../config.js';
@@ -16,12 +19,25 @@ import { getTenantUserId } from '../tenant/tenant-request.js';
 import {
   buildTavernPersonaView,
 } from '../tavern/tavern-service.js';
+import type { ManagedMcpTemplate } from '../assistant/assistant-mcp.js';
+
+interface ManagedSkillCatalogEntry {
+  id: string;
+  name: string;
+  enabled?: boolean;
+}
 
 const AVATAR_UPLOAD_LIMIT = 5 * 1024 * 1024;
 const TAVERN_AVATAR_ROOT = path.join(DATA_DIR, 'tavern-avatars');
 
 export interface TavernRouteOptions {
   requirePermission: import('../auth/auth-middleware.js').RequirePermissionFn;
+  listAvailableManagedSkills: () =>
+    | ManagedSkillCatalogEntry[]
+    | Promise<ManagedSkillCatalogEntry[]>;
+  listAvailableManagedMcpServers: () =>
+    | ManagedMcpTemplate[]
+    | Promise<ManagedMcpTemplate[]>;
 }
 
 function cleanString(value: unknown): string | null {
@@ -36,6 +52,58 @@ function cleanStringArray(value: unknown): string[] {
     .map((entry) => (typeof entry === 'string' ? entry.trim() : ''))
     .filter(Boolean)
     .slice(0, 64);
+}
+
+async function validateTavernGlobalConfigInput(
+  input: {
+    skillIds: string[];
+    mcpServerIds: string[];
+    providerId: string | null;
+  },
+  opts: Pick<
+    TavernRouteOptions,
+    'listAvailableManagedSkills' | 'listAvailableManagedMcpServers'
+  >,
+  userId: string,
+): Promise<void> {
+  const availableSkillIds = new Set(
+    (await Promise.resolve(opts.listAvailableManagedSkills()))
+      .filter((skill) => skill.enabled !== false)
+      .map((skill) => skill.id),
+  );
+  for (const skillId of input.skillIds) {
+    if (!availableSkillIds.has(skillId)) {
+      throw new Error(`Unknown skill id: ${skillId}`);
+    }
+  }
+
+  const availableMcpServerIds = new Set(
+    (await Promise.resolve(opts.listAvailableManagedMcpServers()))
+      .filter((server) => server.enabled !== false)
+      .map((server) => server.id),
+  );
+  for (const serverId of input.mcpServerIds) {
+    if (!availableMcpServerIds.has(serverId)) {
+      throw new Error(`Unknown MCP server id: ${serverId}`);
+    }
+  }
+
+  if (
+    input.providerId &&
+    !await isProviderVisibleToUser(input.providerId, userId, 'llm')
+  ) {
+    throw new Error(`Unknown provider id: ${input.providerId}`);
+  }
+}
+
+function toTavernPersonaResponse(
+  persona: Awaited<ReturnType<typeof listTavernPersonas>>[number],
+) {
+  return {
+    ...buildTavernPersonaView(persona),
+    conversation_count: Number(persona.conversation_count || 0),
+    last_conversation_at: persona.last_conversation_at || null,
+  };
 }
 
 function extForMime(mimeType: string): string | null {
@@ -100,10 +168,37 @@ export function registerTavernRoutes(
       const personas = await listTavernPersonas(userId);
       res.json({
         ok: true,
-        personas: personas.map((persona) => buildTavernPersonaView(persona)),
+        personas: personas.map((persona) => toTavernPersonaResponse(persona)),
       });
     } catch (err) {
       res.status(500).json({ ok: false, error: String(err) });
+    }
+  });
+
+  app.get('/api/tavern/config', viewGuard, async (req, res) => {
+    try {
+      const userId = getTenantUserId(req);
+      const config = await getTavernGlobalConfig(userId);
+      res.json({ ok: true, config });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: String(err) });
+    }
+  });
+
+  app.put('/api/tavern/config', manageGuard, async (req, res) => {
+    try {
+      const userId = getTenantUserId(req);
+      const configInput = {
+        skillIds: cleanStringArray(req.body?.skillIds),
+        mcpServerIds: cleanStringArray(req.body?.mcpServerIds),
+        providerId: cleanString(req.body?.providerId),
+        model: cleanString(req.body?.model),
+      };
+      await validateTavernGlobalConfigInput(configInput, opts, userId);
+      const config = await upsertTavernGlobalConfig(userId, configInput);
+      res.json({ ok: true, config });
+    } catch (err) {
+      res.status(400).json({ ok: false, error: String(err) });
     }
   });
 

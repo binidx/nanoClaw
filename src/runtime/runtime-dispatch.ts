@@ -48,6 +48,7 @@ import {
   getConversationMessages,
   getConversationTurns,
   getConversationTavernBinding,
+  getTavernGlobalConfig,
   getTavernPersonaById,
   sanitizeStaleTurnsForChat,
   sanitizeStaleTurns,
@@ -1350,9 +1351,31 @@ export async function createWebConversation(
   if (tavernPersona && !tavernPersona.enabled) {
     throw new Error(`Tavern persona "${tavernPersona.name}" is disabled`);
   }
+  const tavernConfig = tavernPersona
+    ? await getTavernGlobalConfig(
+        options.ownerUserId?.trim() || tavernPersona.user_id,
+      )
+    : null;
   const conversationAccessPolicy = options.accessPolicy
     ? serializeAccessPolicy(options.accessPolicy)
     : undefined;
+  const agentConfig =
+    conversationAccessPolicy ||
+    (tavernConfig &&
+      (tavernConfig.skillIds.length > 0 ||
+        tavernConfig.mcpServerIds.length > 0))
+      ? {
+          ...(conversationAccessPolicy
+            ? { accessPolicy: conversationAccessPolicy }
+            : {}),
+          ...(tavernConfig?.skillIds.length
+            ? { managedSkillIds: tavernConfig.skillIds }
+            : {}),
+          ...(tavernConfig?.mcpServerIds.length
+            ? { managedMcpServerIds: tavernConfig.mcpServerIds }
+            : {}),
+        }
+      : undefined;
   registerGroup(jid, {
     name: `Web Chat ${suffix}`,
     folder: deriveWebGroupFolder(jid),
@@ -1361,13 +1384,9 @@ export async function createWebConversation(
     ...(assistantId ? { assistantId } : {}),
     requiresTrigger: false,
     isMain: false,
-    ...(conversationAccessPolicy
-      ? {
-          agentConfig: {
-            accessPolicy: conversationAccessPolicy,
-          },
-        }
-      : {}),
+    ...(agentConfig ? { agentConfig } : {}),
+    ...(tavernConfig?.providerId ? { providerId: tavernConfig.providerId } : {}),
+    ...(tavernConfig?.model ? { model: tavernConfig.model } : {}),
   });
   await storeChatMetadata(
     jid,

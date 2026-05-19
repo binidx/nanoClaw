@@ -12,6 +12,8 @@ export interface AgentConfig {
   workingDirectory?: string;
   timeout?: number; // Default: 300000 (5 minutes)
   customInstructions?: string;
+  managedSkillIds?: string[];
+  managedMcpServerIds?: string[];
   reviewRepositoryIds?: string[];
 }
 

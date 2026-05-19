@@ -137,6 +137,12 @@
 - 扩展 `docs/代码智能图谱优化文档.md` 的后续路线章节，明确下一阶段的统一目标是让 Repo Review 主审查链路和 Workflow / Workteam 节点直接复用 graph retrieval，而不是继续各自拼上下文。
 - 补充 community / hotspot / god node、confidence / path ranking / context filter、持久化 query artifact 与统一 planner 的目标形态和阶段完成标准，作为后续追平 graphify 的设计基线。
 
+## [2026-05-19] update | Tavern 独立页与全局底层能力配置
+
+- `web/src/pages/TavernPage.tsx` 成为酒馆独立入口；`web/src/pages/SoulPage.tsx` 不再承载酒馆人格编辑区。
+- `src/routes/tavern-routes.ts` / `src/db/tavern.ts` 新增 tavern 全局底层能力配置读写，供酒馆会话统一复用 skill / MCP / provider / model。
+- `src/runtime/runtime-dispatch.ts` 与 `src/assistant/assistant-runtime.ts` 现在会把 tavern 全局能力配置注入普通 Web tavern 会话，避免只绑定 persona 文案却没有底层工具能力。
+
 ## [2026-05-18] update | Repo Review / Workflow 接入统一 graph retrieval
 
 - 新增 `src/code-intelligence/project-graph-context.ts`，把 project graph 的问题组装、强制 seed、模式化 query 参数和上下文 block 渲染统一为可复用层。

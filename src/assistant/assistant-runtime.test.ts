@@ -44,6 +44,73 @@ describe('assistant runtime resolution', () => {
     expect(resolved.instructionsMode).toBe('append');
   });
 
+  it('resolves tavern-style global skills, mcp, provider and model for plain conversations', async () => {
+    const group: RegisteredGroup = {
+      name: 'Tavern Chat',
+      folder: 'tavern-chat',
+      trigger: '@Andy',
+      added_at: '2024-01-01T00:00:00.000Z',
+      providerId: 'provider-image',
+      model: 'gpt-image-1',
+      agentConfig: {
+        managedSkillIds: ['imagegen'],
+        managedMcpServerIds: ['filesystem'],
+        customInstructions: 'Keep replies vivid.',
+      },
+    };
+
+    const resolved = await resolveAssistantRuntimeConfig(
+      group,
+      {
+        getProviderById: async () =>
+          ({
+            id: 'provider-image',
+            alias: 'Image GPT',
+            type: 'openai',
+            api_key: null,
+            base_url: null,
+            model: 'gpt-4.1-mini',
+            extra_config: null,
+            is_default: 0,
+            created_at: '2024-01-01T00:00:00.000Z',
+            updated_at: '2024-01-01T00:00:00.000Z',
+          }) as any,
+        listManagedMcpTemplates: async () => [
+          {
+            id: 'filesystem',
+            name: 'Filesystem',
+            command: 'node',
+            args: ['filesystem.js'],
+            env: {},
+            enabled: true,
+          },
+        ],
+      },
+      { soulPrompt: '你是月下馆员。' },
+    );
+
+    expect(resolved.assistantId).toBeNull();
+    expect(resolved.managedSkillIds).toEqual(['imagegen']);
+    expect(resolved.managedMcpServerIds).toEqual(['filesystem']);
+    expect(resolved.resolvedMcpServers).toEqual([
+      {
+        id: 'amb-tavern-chat-filesystem',
+        name: 'Filesystem',
+        command: 'node',
+        args: ['filesystem.js'],
+        env: {},
+        bindingId: 'amb-tavern-chat-filesystem',
+        templateServerId: 'filesystem',
+        source: 'legacy_config',
+      },
+    ]);
+    expect(resolved.providerOverrideId).toBe('provider-image');
+    expect(resolved.modelOverride).toBe('gpt-image-1');
+    expect(resolved.providerAlias).toBe('Image GPT');
+    expect(resolved.instructionsAppend).toBe('Keep replies vivid.');
+    expect(resolved.soulSystemPrompt).toContain('你是月下馆员');
+  });
+
   it('can disable soul injection for expert-style assistant runtimes', async () => {
     const group: RegisteredGroup = {
       name: 'Expert Chat',

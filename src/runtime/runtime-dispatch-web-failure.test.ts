@@ -77,6 +77,7 @@ import {
   storeChatMetadata,
   storeMessage,
   storeMessageDirectWithTurn,
+  upsertTavernGlobalConfig,
 } from '../db.js';
 import {
   _getAgentCursorState,
@@ -98,6 +99,7 @@ import {
   queue,
   ipcAcknowledgedChats,
   pendingUploadedFiles,
+  registeredGroups,
 } from './runtime-state.js';
 import type { Channel, RegisteredGroup } from '../types.js';
 
@@ -306,6 +308,12 @@ describe('runtime dispatch web failure handling', () => {
       firstMessage: '夜色已经落下。你带着什么故事来找我？',
       enabled: true,
     });
+    await upsertTavernGlobalConfig('owner-user-id', {
+      skillIds: ['imagegen'],
+      mcpServerIds: ['jira'],
+      providerId: 'provider-tavern',
+      model: 'gpt-image-1',
+    });
 
     const chatJid = 'web:tavern-1';
     await createWebConversation(chatJid, 'Moon Session', {
@@ -321,6 +329,14 @@ describe('runtime dispatch web failure handling', () => {
     expect(summary?.mode).toBe('tavern');
     expect(summary?.tavern_persona_id).toBe(persona.id);
     expect(summary?.tavern_persona_name).toBe('Moon Archivist');
+    expect(registeredGroups[chatJid]?.agentConfig?.managedSkillIds).toEqual([
+      'imagegen',
+    ]);
+    expect(registeredGroups[chatJid]?.agentConfig?.managedMcpServerIds).toEqual([
+      'jira',
+    ]);
+    expect(registeredGroups[chatJid]?.providerId).toBe('provider-tavern');
+    expect(registeredGroups[chatJid]?.model).toBe('gpt-image-1');
 
     const messages = await getConversationMessages(chatJid, 10, 0);
     expect(messages.some((message) => message.is_bot_message)).toBe(true);

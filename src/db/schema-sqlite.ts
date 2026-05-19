@@ -1057,6 +1057,13 @@ export function createSchema(database: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_tavern_personas_user
       ON tavern_personas(user_id, updated_at DESC);
 
+    CREATE TABLE IF NOT EXISTS tavern_configs (
+      user_id TEXT PRIMARY KEY,
+      config_json TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS conversation_tavern_bindings (
       chat_jid TEXT PRIMARY KEY,
       tavern_persona_id TEXT NOT NULL,
@@ -2421,6 +2428,14 @@ export function createSchema(database: Database.Database): void {
   } catch {
     /* index already exists */
   }
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS tavern_configs (
+      user_id TEXT PRIMARY KEY,
+      config_json TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `);
   database.exec(`
     CREATE TABLE IF NOT EXISTS conversation_tavern_bindings (
       chat_jid TEXT PRIMARY KEY,

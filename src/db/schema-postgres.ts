@@ -1065,6 +1065,13 @@ export function buildPostgresSchema(autoPk: string): string {
     CREATE INDEX IF NOT EXISTS idx_tavern_personas_user
       ON tavern_personas(user_id, updated_at DESC);
 
+    CREATE TABLE IF NOT EXISTS tavern_configs (
+      user_id TEXT PRIMARY KEY,
+      config_json TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS conversation_tavern_bindings (
       chat_jid TEXT PRIMARY KEY,
       tavern_persona_id TEXT NOT NULL,
@@ -1965,6 +1972,14 @@ export async function runPostgresMigrations(engine: DbEngine): Promise<void> {
   await safeMigrate(
     `CREATE INDEX IF NOT EXISTS idx_tavern_personas_user ON tavern_personas(user_id, updated_at DESC)`,
   );
+  await safeMigrate(`
+    CREATE TABLE IF NOT EXISTS tavern_configs (
+      user_id TEXT PRIMARY KEY,
+      config_json TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `);
   await safeMigrate(`
     CREATE TABLE IF NOT EXISTS conversation_tavern_bindings (
       chat_jid TEXT PRIMARY KEY,

@@ -1019,6 +1019,13 @@ export function buildMySQLSchema(autoPk: string): string {
       KEY idx_tavern_personas_user (user_id, updated_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+    CREATE TABLE IF NOT EXISTS tavern_configs (
+      user_id VARCHAR(64) PRIMARY KEY,
+      config_json TEXT NOT NULL,
+      created_at VARCHAR(64) NOT NULL,
+      updated_at VARCHAR(64) NOT NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
     CREATE TABLE IF NOT EXISTS conversation_tavern_bindings (
       chat_jid VARCHAR(128) PRIMARY KEY,
       tavern_persona_id VARCHAR(64) NOT NULL,
@@ -2028,6 +2035,14 @@ export async function runMySQLMigrations(engine: DbEngine): Promise<void> {
       created_at VARCHAR(64) NOT NULL,
       updated_at VARCHAR(64) NOT NULL,
       KEY idx_tavern_personas_user (user_id, updated_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `);
+  await safeMigrate(`
+    CREATE TABLE IF NOT EXISTS tavern_configs (
+      user_id VARCHAR(64) PRIMARY KEY,
+      config_json TEXT NOT NULL,
+      created_at VARCHAR(64) NOT NULL,
+      updated_at VARCHAR(64) NOT NULL
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
   `);
   await safeMigrate(`

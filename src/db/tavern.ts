@@ -2,8 +2,15 @@ import crypto from 'crypto';
 
 import type {
   ConversationTavernBindingRecord,
+  TavernConfigRecord,
   TavernPersonaRecord,
 } from '../types.js';
+import {
+  createDefaultTavernGlobalConfig,
+  type TavernGlobalConfig,
+  normalizeTavernGlobalConfig,
+  serializeTavernGlobalConfig,
+} from '../tavern/tavern-config.js';
 import { dba } from './engine-access.js';
 
 function generateId(): string {
@@ -25,6 +32,11 @@ export interface UpsertTavernPersonaInput {
   enabled?: boolean;
 }
 
+export interface TavernPersonaListItem extends TavernPersonaRecord {
+  conversation_count: number;
+  last_conversation_at: string | null;
+}
+
 function nullableTrimmed(value: string | null | undefined): string | null {
   const text = typeof value === 'string' ? value.trim() : '';
   return text ? text : null;
@@ -32,15 +44,28 @@ function nullableTrimmed(value: string | null | undefined): string | null {
 
 export async function listTavernPersonas(
   userId: string,
-): Promise<TavernPersonaRecord[]> {
+): Promise<TavernPersonaListItem[]> {
   return (await dba
     .prepare(
-      `SELECT *
+      `SELECT
+         tp.*,
+         COALESCE(usage.conversation_count, 0) AS conversation_count,
+         usage.last_conversation_at
        FROM tavern_personas
-       WHERE user_id = ?
-       ORDER BY updated_at DESC, created_at DESC, id ASC`,
+       tp
+       LEFT JOIN (
+         SELECT
+           tb.tavern_persona_id,
+           COUNT(*) AS conversation_count,
+           MAX(c.last_message_time) AS last_conversation_at
+         FROM conversation_tavern_bindings tb
+         JOIN chats c ON c.jid = tb.chat_jid AND c.deleted_at IS NULL
+         GROUP BY tb.tavern_persona_id
+       ) usage ON usage.tavern_persona_id = tp.id
+       WHERE tp.user_id = ?
+       ORDER BY tp.updated_at DESC, tp.created_at DESC, tp.id ASC`,
     )
-    .all(userId)) as TavernPersonaRecord[];
+    .all(userId)) as TavernPersonaListItem[];
 }
 
 export async function getTavernPersonaById(
@@ -283,3 +308,60 @@ export async function deleteConversationTavernBinding(
     .run(chatJid);
 }
 
+export async function getTavernGlobalConfig(
+  userId: string,
+): Promise<TavernGlobalConfig> {
+  const row = (await dba
+    .prepare(
+      `SELECT user_id, config_json, created_at, updated_at
+       FROM tavern_configs
+       WHERE user_id = ?
+       LIMIT 1`,
+    )
+    .get(userId)) as TavernConfigRecord | undefined;
+  if (!row?.config_json) {
+    return createDefaultTavernGlobalConfig();
+  }
+  try {
+    return normalizeTavernGlobalConfig(JSON.parse(row.config_json));
+  } catch {
+    return createDefaultTavernGlobalConfig();
+  }
+}
+
+export async function upsertTavernGlobalConfig(
+  userId: string,
+  input: TavernGlobalConfig,
+): Promise<TavernGlobalConfig> {
+  const now = new Date().toISOString();
+  const existing = (await dba
+    .prepare(
+      `SELECT user_id, config_json, created_at, updated_at
+       FROM tavern_configs
+       WHERE user_id = ?
+       LIMIT 1`,
+    )
+    .get(userId)) as TavernConfigRecord | undefined;
+  const normalized = normalizeTavernGlobalConfig(input);
+  const serialized = serializeTavernGlobalConfig(normalized);
+
+  if (existing) {
+    await dba
+      .prepare(
+        `UPDATE tavern_configs
+         SET config_json = ?, updated_at = ?
+         WHERE user_id = ?`,
+      )
+      .run(serialized, now, userId);
+  } else {
+    await dba
+      .prepare(
+        `INSERT INTO tavern_configs (
+          user_id, config_json, created_at, updated_at
+        ) VALUES (?, ?, ?, ?)`,
+      )
+      .run(userId, serialized, now, now);
+  }
+
+  return normalized;
+}

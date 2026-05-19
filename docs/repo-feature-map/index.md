@@ -43,7 +43,7 @@
 | Workflow Workbench / 图形多智能体编排 | `src/routes/workflow-routes.ts`, `src/workflow/orchestrator.ts`, `src/workflow/event-bus.ts`, `src/workflow/agent-adapter.ts`, `src/workflow/artifacts.ts`, `src/workflow/config.ts`, `src/workflow/metrics.ts`, `src/workflow/evaluation.ts` | `src/workflow/types.ts`, `src/db/workflows.ts`, `src/db/schema-*.ts` | `web/src/pages/WorkteamPage.tsx` | `docs/workflow-workbench.md`, `docs/sdlc-runner-profiles.md`；新建工作流默认进入 `fixed_pipeline_v1` 画布，节点可编辑、可连线、可删除，assistant 绑定在前端为可选，旧 `role/task` workflow 在前端只读兼容 |
 | 股票分析 | `src/routes/stock-analysis-routes.ts`, `src/stock-analysis/stock-analysis-service.ts`, `src/stock-analysis/stock-analysis-config.ts` | `src/stock-analysis/stock-analysis-types.ts`, `src/stock-analysis/stock-analysis-records.ts`, `src/stock-analysis/stock-analysis-market-data.ts`, `src/stock-analysis/stock-analysis-news-source.ts`, `src/stock-analysis/stock-analysis-backtest.ts`, `src/db/stock-analysis.ts` | `web/src/pages/StockAnalysisPage.tsx`, `web/src/pages/stock-analysis/*` | `docs/股票分析.md`, `src/stock-analysis-*.test.ts` |
 | 浏览器自动化与 Web 抓取 | `src/routes/browser-routes.ts`, `src/browser/service.ts`, `src/browser/cdp.ts`, `src/auth/local-capability-policy.ts` | `src/browser/chrome.ts`, `src/browser/cdp-client.ts`, `src/browser/cdp-actions.ts`, `src/browser/cdp-snapshot.ts`, `src/browser/config.ts`, `src/config/web-search-config.ts` | `web/src/components/BrowserControlPanel.tsx`, `web/src/pages/settings/SettingsBrowserTab.tsx`, `web/src/pages/settings/SettingsWebSearchTab.tsx` | `docs/浏览器自动化与Web能力.md`, `src/browser-*.test.ts`, `src/web-search-config.test.ts` |
-| Soul 与 Live2D | `src/routes/soul-routes.ts`, `src/routes/tavern-routes.ts`, `src/routes/live2d-routes.ts`, `src/soul/soul-service.ts`, `src/extension/live2d-service.ts` | `src/soul/soul-consolidation.ts`, `src/soul/soul-presets.ts`, `src/tavern/tavern-service.ts`, `src/db/soul.ts`, `src/db/tavern.ts`, `src/db/live2d.ts` | `web/src/pages/SoulPage.tsx`, `web/src/components/soul/TavernPersonasPanel.tsx`, `web/src/components/live2d/*`, `web/src/pages/settings/SettingsLive2DTab.tsx` | `src/soul-*.test.ts`, `src/runtime/runtime-dispatch-web-failure.test.ts`（如新增逻辑时补齐） |
+| Soul、Tavern 与 Live2D | `src/routes/soul-routes.ts`, `src/routes/tavern-routes.ts`, `src/routes/live2d-routes.ts`, `src/soul/soul-service.ts`, `src/tavern/tavern-config.ts` | `src/soul/soul-consolidation.ts`, `src/soul/soul-presets.ts`, `src/tavern/tavern-service.ts`, `src/db/soul.ts`, `src/db/tavern.ts`, `src/db/live2d.ts` | `web/src/pages/SoulPage.tsx`, `web/src/pages/TavernPage.tsx`, `web/src/components/live2d/*`, `web/src/pages/settings/SettingsLive2DTab.tsx` | `src/soul-*.test.ts`, `src/runtime/runtime-dispatch-web-failure.test.ts`, `src/assistant/assistant-runtime.test.ts` |
 | 分享、终端、系统读接口 | `src/routes/share-routes.ts`, `src/routes/system-read-routes.ts`, `src/web/terminal-shell.ts`, `src/auth/local-capability-policy.ts` | `src/db/shares.ts`, `src/routes/admin-trash-routes.ts`, `src/db/trash.ts` | `web/src/pages/ShareViewPage.tsx`, `web/src/components/ShareHistoryPanel.tsx`, `web/src/pages/TerminalPage.tsx`, `web/src/pages/settings/SettingsTrashTab.tsx`, `web/src/pages/settings/SettingsDiagnosticsTab.tsx` | `src/system-read-routes.test.ts`, `src/terminal-shell.test.ts` |
 
 ## 后端路由速查
@@ -76,7 +76,7 @@
 | `src/routes/channel-instance-routes.ts` | 渠道实例配置 | `src/config-store-channel-instances.ts`, `src/channels/*` |
 | `src/routes/whatsapp-webhook-routes.ts` | WhatsApp webhook | `src/channels/whatsapp.ts` |
 | `src/routes/soul-routes.ts` | Soul 配置、记忆洞察 | `src/soul-*`, `src/db/soul.ts` |
-| `src/routes/tavern-routes.ts` | 酒馆人格模板 CRUD、头像上传与预览文件读取 | `src/tavern/tavern-service.ts`, `src/db/tavern.ts`, `src/db/schema-*.ts` |
+| `src/routes/tavern-routes.ts` | 酒馆人格模板 CRUD、全局底层能力配置、头像上传与预览文件读取 | `src/tavern/tavern-service.ts`, `src/tavern/tavern-config.ts`, `src/db/tavern.ts`, `src/db/schema-*.ts` |
 | `src/routes/live2d-routes.ts` | Live2D 模型与配置 | `src/extension/live2d-service.ts`, `src/db/live2d.ts` |
 | `src/routes/share-routes.ts` | 分享页面与历史 | `src/db/shares.ts` |
 | `src/routes/system-read-routes.ts` | 只读系统信息 | `src/system-read-routes.test.ts` |
@@ -95,7 +95,8 @@
 | `web/src/components/repo-review/*` | Repo Review profile、run 列表、digest、进度 | `web/src/components/repo-review/api.ts`, `src/routes/repo-review-routes.ts` |
 | `web/src/pages/StockAnalysisPage.tsx` | 股票分析工作台 | `web/src/pages/stock-analysis/*`, `src/routes/stock-analysis-routes.ts` |
 | `web/src/pages/WorkteamPage.tsx` | Workflow 列表卡片、可编辑画布、节点/连线属性面板、运行记录、旧 workflow 只读兼容 | `src/routes/workflow-routes.ts` |
-| `web/src/pages/SoulPage.tsx` | Soul 配置、记忆洞察、酒馆人格管理入口 | `src/routes/soul-routes.ts`, `src/routes/tavern-routes.ts` |
+| `web/src/pages/SoulPage.tsx` | Soul 配置、记忆洞察 | `src/routes/soul-routes.ts` |
+| `web/src/pages/TavernPage.tsx` | 酒馆人格卡片库、历史对话入口、全局底层能力配置 | `src/routes/tavern-routes.ts` |
 | `web/src/components/live2d/*` | Live2D 面板、模型、情感配置 | `src/routes/live2d-routes.ts` |
 | `web/src/components/BrowserControlPanel.tsx` | 浏览器控制面板 | `src/routes/browser-routes.ts` |
 | `web/src/pages/settings/SettingsPage.tsx` | 设置页壳 | `web/src/pages/settings/useSettingsPageModel.tsx` |

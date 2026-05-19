@@ -385,6 +385,13 @@ export interface TavernPersonaRecord {
   updated_at: string;
 }
 
+export interface TavernConfigRecord {
+  user_id: string;
+  config_json: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface ConversationTavernBindingRecord {
   chat_jid: string;
   tavern_persona_id: string;

@@ -762,7 +762,11 @@ export function createWebServer(opts: WebServerOptions) {
   });
   startImFileCleanup(imStorage);
   registerSoulRoutes(app, { getAuthenticatedUsername, requirePermission });
-  registerTavernRoutes(app, { requirePermission });
+  registerTavernRoutes(app, {
+    requirePermission,
+    listAvailableManagedSkills: getManagedSkillsForResponseService,
+    listAvailableManagedMcpServers: getManagedMcpServersForResponseService,
+  });
   registerPromptRoutes(app, { requirePermission, auditMutation });
   registerKnowledgeRoutes(app, { requirePermission });
   registerUserProviderRoutes(app, { requirePermission });

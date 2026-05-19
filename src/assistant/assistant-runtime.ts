@@ -61,6 +61,20 @@ export interface ResolveAssistantRuntimeOptions {
   disableSoul?: boolean;
 }
 
+function normalizeConfigStringArray(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const seen = new Set<string>();
+  const normalized: string[] = [];
+  for (const entry of value) {
+    if (typeof entry !== 'string') continue;
+    const trimmed = entry.trim();
+    if (!trimmed || seen.has(trimmed)) continue;
+    seen.add(trimmed);
+    normalized.push(trimmed);
+  }
+  return normalized.length > 0 ? normalized : undefined;
+}
+
 export async function buildAssistantInstructionsAppend(
   assistant: Pick<AssistantSummary, 'name' | 'config'> | null | undefined,
 ): Promise<string> {
@@ -138,21 +152,52 @@ export async function resolveAssistantRuntimeConfig(
   const assistantId = group.assistantId?.trim() || null;
   const convProviderId = group.providerId?.trim() || null;
   const convModel = group.model?.trim() || null;
+  const listManagedMcpTemplates =
+    deps.listManagedMcpTemplates ||
+    (async () => {
+      try {
+        return parseManagedMcpServersConfig(
+          await getConfig(WEB_MCP_SERVERS_CONFIG_KEY),
+        );
+      } catch {
+        return [];
+      }
+    });
 
   if (!assistantId) {
     const soulOnly = options.disableSoul
       ? ''
       : await buildConversationSoulSystemPrompt(options.soulPrompt);
     const customInstructions = group.agentConfig?.customInstructions?.trim();
+    const managedSkillIds = normalizeConfigStringArray(
+      group.agentConfig?.managedSkillIds,
+    );
+    const managedMcpServerIds = normalizeConfigStringArray(
+      group.agentConfig?.managedMcpServerIds,
+    );
 
     const readProvider = deps.getProviderById || getProvider;
     const convProvider = convProviderId
       ? await readProvider(convProviderId)
       : undefined;
+    const templates = managedMcpServerIds
+      ? await listManagedMcpTemplates()
+      : [];
+    const resolvedMcpServers = managedMcpServerIds
+      ? resolveAssistantMcpServers({
+          assistantId: group.folder || 'conversation',
+          legacyTemplateIds: managedMcpServerIds,
+          templates,
+          bindings: [],
+        })
+      : undefined;
 
     return {
       assistantId: null,
       assistantName: null,
+      managedSkillIds,
+      managedMcpServerIds,
+      resolvedMcpServers,
       providerOverrideId: convProvider?.id || convProviderId || undefined,
       modelOverride: convModel || convProvider?.model || undefined,
       providerType: convProvider?.type || null,
@@ -169,17 +214,6 @@ export async function resolveAssistantRuntimeConfig(
     deps.listAssistantMcpBindingsByAssistantId || listAssistantMcpBindings;
   const readAssistantSecret =
     deps.getAssistantMcpBindingSecretById || getAssistantMcpBindingSecret;
-  const listManagedMcpTemplates =
-    deps.listManagedMcpTemplates ||
-    (async () => {
-      try {
-        return parseManagedMcpServersConfig(
-          await getConfig(WEB_MCP_SERVERS_CONFIG_KEY),
-        );
-      } catch {
-        return [];
-      }
-    });
   const assistant = await readAssistant(assistantId);
   if (!assistant) {
     if (options.requireEnabled) {
