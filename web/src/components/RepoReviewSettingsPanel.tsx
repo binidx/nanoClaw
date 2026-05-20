@@ -92,7 +92,12 @@ import { RepositoryRelationshipsPanel } from './repository/RepositoryRelationshi
 import { CodeMapPage } from '../pages/CodeMapPage';
 import '../pages/WorkteamPage.css';
 
-function CodeMapDrawerEntry({ apiBase, repositoryId, defaultBranch, onOpen }: {
+function CodeMapDrawerEntry({
+  apiBase,
+  repositoryId,
+  defaultBranch,
+  onOpen,
+}: {
   apiBase: string;
   repositoryId: string;
   repositoryName: string;
@@ -108,9 +113,13 @@ function CodeMapDrawerEntry({ apiBase, repositoryId, defaultBranch, onOpen }: {
   useEffect(() => {
     let cancelled = false;
     fetchCodeMapStats(apiBase, repositoryId, branch)
-      .then((s) => { if (!cancelled) setStats(s); })
+      .then((s) => {
+        if (!cancelled) setStats(s);
+      })
       .catch(() => {});
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [apiBase, repositoryId, branch]);
 
   const handleBuild = async () => {
@@ -121,7 +130,11 @@ function CodeMapDrawerEntry({ apiBase, repositoryId, defaultBranch, onOpen }: {
       const s = await fetchCodeMapStats(apiBase, repositoryId, branch);
       setStats(s);
     } catch (err) {
-      setError(err instanceof Error ? err.message : i18n.t('repoReview.codemap.buildFailed'));
+      setError(
+        err instanceof Error
+          ? err.message
+          : i18n.t('repoReview.codemap.buildFailed'),
+      );
     } finally {
       setRebuilding(false);
     }
@@ -131,10 +144,24 @@ function CodeMapDrawerEntry({ apiBase, repositoryId, defaultBranch, onOpen }: {
 
   return (
     <div className="repo-review-codemap-empty">
-      <svg className="repo-review-codemap-icon" width="44" height="44" viewBox="0 0 48 48" fill="none">
-        <rect x="6" y="6" width="36" height="36" rx="4" stroke="currentColor" strokeWidth="2"/>
-        <path d="M6 18h36M18 18v24" stroke="currentColor" strokeWidth="2"/>
-        <circle cx="30" cy="30" r="4" stroke="currentColor" strokeWidth="2"/>
+      <svg
+        className="repo-review-codemap-icon"
+        width="44"
+        height="44"
+        viewBox="0 0 48 48"
+        fill="none"
+      >
+        <rect
+          x="6"
+          y="6"
+          width="36"
+          height="36"
+          rx="4"
+          stroke="currentColor"
+          strokeWidth="2"
+        />
+        <path d="M6 18h36M18 18v24" stroke="currentColor" strokeWidth="2" />
+        <circle cx="30" cy="30" r="4" stroke="currentColor" strokeWidth="2" />
       </svg>
       <div className="repo-review-codemap-copy">
         <NcSelect
@@ -146,17 +173,32 @@ function CodeMapDrawerEntry({ apiBase, repositoryId, defaultBranch, onOpen }: {
         </NcSelect>
         {isBuilt && stats ? (
           <div className="repo-review-codemap-stat-line">
-            <span>{t('repoReview.codemap.built', { fileCount: stats.fileCount, symbolCount: stats.symbolCount, edgeCount: stats.edgeCount })}</span>
+            <span>
+              {t('repoReview.codemap.built', {
+                fileCount: stats.fileCount,
+                symbolCount: stats.symbolCount,
+                edgeCount: stats.edgeCount,
+              })}
+            </span>
           </div>
         ) : (
-          <div className="repo-review-codemap-stat-line">{t('repoReview.codemap.notBuilt')}</div>
+          <div className="repo-review-codemap-stat-line">
+            {t('repoReview.codemap.notBuilt')}
+          </div>
         )}
       </div>
       {error ? <div className="repo-review-codemap-error">{error}</div> : null}
       <div className="repo-review-codemap-actions">
         {!isBuilt ? (
-          <button type="button" className="btn btn-primary repo-review-codemap-btn" onClick={handleBuild} disabled={rebuilding}>
-            {rebuilding ? t('repoReview.codemap.building') : t('repoReview.codemap.build')}
+          <button
+            type="button"
+            className="btn btn-primary repo-review-codemap-btn"
+            onClick={handleBuild}
+            disabled={rebuilding}
+          >
+            {rebuilding
+              ? t('repoReview.codemap.building')
+              : t('repoReview.codemap.build')}
           </button>
         ) : null}
         <button
@@ -452,7 +494,9 @@ function parseActorMentionMappingsInput(value: string): {
       issues.push({
         level: 'error',
         line,
-        message: i18n.t('repoReview.parseError.duplicateActor', { actor: actorSource }),
+        message: i18n.t('repoReview.parseError.duplicateActor', {
+          actor: actorSource,
+        }),
       });
       return;
     }
@@ -461,7 +505,10 @@ function parseActorMentionMappingsInput(value: string): {
       issues.push({
         level: 'warning',
         line,
-        message: i18n.t('repoReview.parseError.duplicateId', { id, existing: existingActor }),
+        message: i18n.t('repoReview.parseError.duplicateId', {
+          id,
+          existing: existingActor,
+        }),
       });
     }
     seenActors.add(actor);
@@ -543,18 +590,24 @@ function getWebhookSecretHint(
 function getWebhookSecretLabel(
   provider: RepoReviewRepository['remoteProvider'],
 ): string {
-  if (provider === 'gitlab') return i18n.t('repoReview.webhookSecretLabel.gitlab');
-  if (provider === 'github') return i18n.t('repoReview.webhookSecretLabel.github');
-  if (provider === 'gitea') return i18n.t('repoReview.webhookSecretLabel.gitea');
+  if (provider === 'gitlab')
+    return i18n.t('repoReview.webhookSecretLabel.gitlab');
+  if (provider === 'github')
+    return i18n.t('repoReview.webhookSecretLabel.github');
+  if (provider === 'gitea')
+    return i18n.t('repoReview.webhookSecretLabel.gitea');
   return i18n.t('repoReview.webhookSecretLabel.default');
 }
 
 function getPlatformTokenLabel(
   provider: RepoReviewRepository['remoteProvider'],
 ): string {
-  if (provider === 'gitlab') return i18n.t('repoReview.platformTokenLabel.gitlab');
-  if (provider === 'github') return i18n.t('repoReview.platformTokenLabel.github');
-  if (provider === 'gitea') return i18n.t('repoReview.platformTokenLabel.gitea');
+  if (provider === 'gitlab')
+    return i18n.t('repoReview.platformTokenLabel.gitlab');
+  if (provider === 'github')
+    return i18n.t('repoReview.platformTokenLabel.github');
+  if (provider === 'gitea')
+    return i18n.t('repoReview.platformTokenLabel.gitea');
   return i18n.t('repoReview.platformTokenLabel.default');
 }
 
@@ -693,7 +746,10 @@ function buildActorMentionMappingsState(input: {
       issues.push({
         level: 'warning',
         line: syntheticLine,
-        message: i18n.t('repoReview.parseError.quickDuplicateMember', { name: memberNameById.get(id) || id, existing: existingActor }),
+        message: i18n.t('repoReview.parseError.quickDuplicateMember', {
+          name: memberNameById.get(id) || id,
+          existing: existingActor,
+        }),
       });
     }
     seenActors.add(actor);
@@ -718,7 +774,9 @@ function buildActorMentionMappingsState(input: {
       issues.push({
         level: 'error',
         line: syntheticLine + 1,
-        message: i18n.t('repoReview.parseError.quickDuplicateInManual', { actor: entry.actor }),
+        message: i18n.t('repoReview.parseError.quickDuplicateInManual', {
+          actor: entry.actor,
+        }),
       });
       continue;
     }
@@ -727,7 +785,10 @@ function buildActorMentionMappingsState(input: {
       issues.push({
         level: 'warning',
         line: syntheticLine + 1,
-        message: i18n.t('repoReview.parseError.duplicateId', { id: entry.id, existing: existingActor }),
+        message: i18n.t('repoReview.parseError.duplicateId', {
+          id: entry.id,
+          existing: existingActor,
+        }),
       });
     }
     seenActors.add(entry.actor);
@@ -856,7 +917,10 @@ function resolveProfileDraft(
   const preferredProfile = preferredProfileId
     ? profiles.find((profile) => profile.id === preferredProfileId) || null
     : null;
-  return makeProfileDraft(repositoryId, preferredProfile || profiles[0] || null);
+  return makeProfileDraft(
+    repositoryId,
+    preferredProfile || profiles[0] || null,
+  );
 }
 
 function formatConversationLabel(conversation: Conversation): string {
@@ -891,7 +955,9 @@ function formatRunTitle(run: RepoReviewRun): string {
 }
 
 function formatRunStageLabel(stage: RepoReviewRun['stage']): string {
-  return stage === 'commit' ? i18n.t('repoReview.stage.commit') : i18n.t('repoReview.stage.push');
+  return stage === 'commit'
+    ? i18n.t('repoReview.stage.commit')
+    : i18n.t('repoReview.stage.push');
 }
 
 function formatRunSourceLabel(source: string): string {
@@ -949,10 +1015,13 @@ function formatDurationMs(value: number): string {
 
 function formatBaselineSourceLabel(value?: string): string {
   if (!value) return i18n.t('repoReview.baseline.notReturned');
-  if (value === 'previous_run') return i18n.t('repoReview.baseline.previousRun');
-  if (value === 'default_branch') return i18n.t('repoReview.baseline.defaultBranch');
+  if (value === 'previous_run')
+    return i18n.t('repoReview.baseline.previousRun');
+  if (value === 'default_branch')
+    return i18n.t('repoReview.baseline.defaultBranch');
   if (value === 'merge_base') return 'merge-base';
-  if (value === 'explicit_base_sha') return i18n.t('repoReview.baseline.explicitBaseSha');
+  if (value === 'explicit_base_sha')
+    return i18n.t('repoReview.baseline.explicitBaseSha');
   if (value === 'pr_compare') return i18n.t('repoReview.baseline.prCompare');
   return value;
 }
@@ -967,7 +1036,8 @@ function formatResultStateLabel(run: RepoReviewRun): string {
   }
   if (value === 'needs_human') return i18n.t('repoReview.status.needsHuman');
   if (value === 'delivered') return i18n.t('repoReview.status.delivered');
-  if (value === 'delivery_failed') return i18n.t('repoReview.status.deliveryFailed');
+  if (value === 'delivery_failed')
+    return i18n.t('repoReview.status.deliveryFailed');
   if (value === 'blocked') return i18n.t('repoReview.status.blocked');
   return value;
 }
@@ -1029,12 +1099,15 @@ function resolvePlatformDeliveryStatus(run: RepoReviewRun): string {
 }
 
 function formatDigestRunTypeLabel(type: RepoReviewDigestRun['type']): string {
-  return type === 'weekly' ? i18n.t('repoReview.digest.weekly') : i18n.t('repoReview.digest.daily');
+  return type === 'weekly'
+    ? i18n.t('repoReview.digest.weekly')
+    : i18n.t('repoReview.digest.daily');
 }
 
 function formatDigestRunStatusLabel(status: string): string {
   if (status === 'completed') return i18n.t('repoReview.status.completed');
-  if (status === 'failed' || status === 'error') return i18n.t('repoReview.status.error');
+  if (status === 'failed' || status === 'error')
+    return i18n.t('repoReview.status.error');
   if (status === 'running') return i18n.t('repoReview.status.running');
   if (status === 'queued') return i18n.t('repoReview.status.queued');
   return status || i18n.t('repoReview.status.unknown');
@@ -1042,8 +1115,10 @@ function formatDigestRunStatusLabel(status: string): string {
 
 function formatDigestDeliveryStatusLabel(status: string): string {
   if (status === 'delivered') return i18n.t('repoReview.delivery.delivered');
-  if (status === 'failed' || status === 'error') return i18n.t('repoReview.delivery.failed');
-  if (status === 'not_configured') return i18n.t('repoReview.status.notConfigured');
+  if (status === 'failed' || status === 'error')
+    return i18n.t('repoReview.delivery.failed');
+  if (status === 'not_configured')
+    return i18n.t('repoReview.status.notConfigured');
   if (status === 'pending') return i18n.t('repoReview.status.pending');
   return status || i18n.t('repoReview.status.unknown');
 }
@@ -1075,8 +1150,12 @@ export function RepoReviewSettingsPanel({
   const [runFilterStatus, setRunFilterStatus] = useState('');
   const [runFilterText, setRunFilterText] = useState('');
   const [runsPage, setRunsPage] = useState(1);
-  const [repoDetailTab, setRepoDetailTab] = useState<'overview' | 'profile' | 'runs' | 'config' | 'codemap'>('overview');
-  const [inlineCodeMapBranch, setInlineCodeMapBranch] = useState<string | null>(null);
+  const [repoDetailTab, setRepoDetailTab] = useState<
+    'overview' | 'profile' | 'runs' | 'config' | 'codemap'
+  >('overview');
+  const [inlineCodeMapBranch, setInlineCodeMapBranch] = useState<string | null>(
+    null,
+  );
   const [repoCardPage, setRepoCardPage] = useState(1);
   const [syncingBranchNames, setSyncingBranchNames] = useState<string[]>([]);
   const [remoteBranches, setRemoteBranches] = useState<
@@ -1233,6 +1312,10 @@ export function RepoReviewSettingsPanel({
   }, [overview.repositories, repositoryFilter]);
 
   const showWorkspaceDetail = !!selectedRepositoryId || creatingRepository;
+  const repositoryCatalogVisible =
+    !hideRepositoryList && !(embedded && showWorkspaceDetail);
+  const repositoryWorkspaceFocused =
+    hideRepositoryList || (embedded && showWorkspaceDetail);
 
   const profilesForSelectedRepository = useMemo(
     () =>
@@ -1251,8 +1334,14 @@ export function RepoReviewSettingsPanel({
 
   const conversationOptions = useMemo(
     () => [
-      { value: AUTO_REVIEW_CHAT_VALUE, label: i18n.t('repoReview.chatOption.auto') },
-      { value: CUSTOM_REVIEW_CHAT_VALUE, label: i18n.t('repoReview.chatOption.custom') },
+      {
+        value: AUTO_REVIEW_CHAT_VALUE,
+        label: i18n.t('repoReview.chatOption.auto'),
+      },
+      {
+        value: CUSTOM_REVIEW_CHAT_VALUE,
+        label: i18n.t('repoReview.chatOption.custom'),
+      },
       ...conversations
         .filter((conversation) => !conversation.jid.startsWith('repo-review:'))
         .sort((left, right) => {
@@ -1361,7 +1450,9 @@ export function RepoReviewSettingsPanel({
         value: member.id,
         label:
           member.source === 'saved_mapping'
-            ? i18n.t('repoReview.chatTarget.savedMapping', { name: member.name })
+            ? i18n.t('repoReview.chatTarget.savedMapping', {
+                name: member.name,
+              })
             : member.name,
       })),
     [availableReviewChatMembers],
@@ -1481,7 +1572,9 @@ export function RepoReviewSettingsPanel({
   const selectedRepositoryRuns = useMemo(
     () =>
       sortRepoReviewRunsByLatestActivity(
-        overview.runs.filter((run) => run.repositoryId === selectedRepositoryId),
+        overview.runs.filter(
+          (run) => run.repositoryId === selectedRepositoryId,
+        ),
       ),
     [overview.runs, selectedRepositoryId],
   );
@@ -1538,14 +1631,23 @@ export function RepoReviewSettingsPanel({
     for (const run of selectedRepositoryRuns.slice(0, 30)) {
       pushCandidate(run.actor, i18n.t('repoReview.contributor.pushUser'));
       for (const detail of run.commitDetails.slice(0, 20)) {
-        pushCandidate(detail.author, i18n.t('repoReview.contributor.commitAuthor'));
+        pushCandidate(
+          detail.author,
+          i18n.t('repoReview.contributor.commitAuthor'),
+        );
       }
     }
 
     for (const contributor of discoveredContributors) {
-      pushCandidate(contributor.name, i18n.t('repoReview.contributor.gitCommitter'));
+      pushCandidate(
+        contributor.name,
+        i18n.t('repoReview.contributor.gitCommitter'),
+      );
       if (contributor.email) {
-        pushCandidate(contributor.email, i18n.t('repoReview.contributor.gitCommitter'));
+        pushCandidate(
+          contributor.email,
+          i18n.t('repoReview.contributor.gitCommitter'),
+        );
       }
     }
 
@@ -1564,7 +1666,11 @@ export function RepoReviewSettingsPanel({
         sources: Array.from(entry.sources.values()),
         mappedMemberName: entry.mappedMemberName,
       }));
-  }, [actorMentionMappingsState.entries, selectedRepositoryRuns, discoveredContributors]);
+  }, [
+    actorMentionMappingsState.entries,
+    selectedRepositoryRuns,
+    discoveredContributors,
+  ]);
 
   const selectedRepositoryLatestRun = selectedRepositoryRuns[0] || null;
   const currentWebhookSecretPreview = useMemo(() => {
@@ -1600,11 +1706,14 @@ export function RepoReviewSettingsPanel({
     const targets = new Set<string>();
     for (const run of overview.runs) {
       if (run.status !== 'queued' && run.status !== 'running') continue;
-      targets.add(getRepoReviewRunChatJid(run, repositoryById.get(run.repositoryId)));
+      targets.add(
+        getRepoReviewRunChatJid(run, repositoryById.get(run.repositoryId)),
+      );
     }
     if (
       selectedRunData &&
-      (selectedRunData.status === 'queued' || selectedRunData.status === 'running')
+      (selectedRunData.status === 'queued' ||
+        selectedRunData.status === 'running')
     ) {
       targets.add(
         getRepoReviewRunChatJid(
@@ -1629,7 +1738,6 @@ export function RepoReviewSettingsPanel({
       ) || null,
     [runsForDisplay],
   );
-
 
   const selectedRepositoryAllBranchStates = useMemo<
     Array<RepoReviewBranchStateItem & { visible: boolean }>
@@ -1743,8 +1851,7 @@ export function RepoReviewSettingsPanel({
   );
 
   const allRepositoryBranchStates = useMemo(
-    () =>
-      selectedRepositoryAllBranchStates.map(stripBranchStateVisibility),
+    () => selectedRepositoryAllBranchStates.map(stripBranchStateVisibility),
     [selectedRepositoryAllBranchStates],
   );
 
@@ -1778,7 +1885,10 @@ export function RepoReviewSettingsPanel({
     if (enabledCount === pushProfilesForSelectedRepository.length) {
       return i18n.t('repoReview.manualReview.allFullFile');
     }
-    return i18n.t('repoReview.manualReview.partialFullFile', { enabled: enabledCount, total: pushProfilesForSelectedRepository.length });
+    return i18n.t('repoReview.manualReview.partialFullFile', {
+      enabled: enabledCount,
+      total: pushProfilesForSelectedRepository.length,
+    });
   }, [pushProfilesForSelectedRepository, selectedRepository]);
 
   const reviewViewMode = repositoryEditorOpen ? 'repository' : 'overview';
@@ -1805,7 +1915,9 @@ export function RepoReviewSettingsPanel({
         title: t('repoReview.workspace.source'),
         action: 'repository-source',
         tone: selectedRepository.localRepoPath ? 'success' : 'warning',
-        status: selectedRepository.localRepoPath ? t('repoReview.workspace.source.connected') : t('repoReview.workspace.source.pending'),
+        status: selectedRepository.localRepoPath
+          ? t('repoReview.workspace.source.connected')
+          : t('repoReview.workspace.source.pending'),
         value:
           selectedRepository.localRepoPath ||
           selectedRepository.remoteRepoSlug ||
@@ -1820,19 +1932,28 @@ export function RepoReviewSettingsPanel({
         title: t('repoReview.workspace.delivery'),
         action: 'repository-delivery',
         tone: selectedRepository.reviewChatJid ? 'success' : 'neutral',
-        status: selectedRepository.reviewChatJid ? t('repoReview.workspace.delivery.ready') : t('repoReview.workspace.delivery.default'),
+        status: selectedRepository.reviewChatJid
+          ? t('repoReview.workspace.delivery.ready')
+          : t('repoReview.workspace.delivery.default'),
         value: formatReviewChatTarget(
           selectedRepository.reviewChatJid,
           conversations,
         ),
-        detail: t('repoReview.workspace.delivery.feishuMapping', { count: selectedRepository.actorMentionMappings.length }),
+        detail: t('repoReview.workspace.delivery.feishuMapping', {
+          count: selectedRepository.actorMentionMappings.length,
+        }),
       },
       {
         title: t('repoReview.workspace.profile'),
         action: 'profile',
         tone: profilesForSelectedRepository.length > 0 ? 'success' : 'warning',
-        status: profilesForSelectedRepository.length > 0 ? t('repoReview.workspace.profile.configured') : t('repoReview.workspace.profile.pending'),
-        value: t('repoReview.workspace.profile.count', { count: profilesForSelectedRepository.length }),
+        status:
+          profilesForSelectedRepository.length > 0
+            ? t('repoReview.workspace.profile.configured')
+            : t('repoReview.workspace.profile.pending'),
+        value: t('repoReview.workspace.profile.count', {
+          count: profilesForSelectedRepository.length,
+        }),
         detail: selectedRepositoryLatestRun
           ? t('repoReview.workspace.profile.latestResult', {
               result: formatRunOutcomeLabel(
@@ -1850,9 +1971,13 @@ export function RepoReviewSettingsPanel({
             ? 'warning'
             : 'success'
           : 'neutral',
-        status: selectedRepository.autoSyncEnabled ? t('repoReview.workspace.autosync.enabled') : t('repoReview.workspace.autosync.manual'),
+        status: selectedRepository.autoSyncEnabled
+          ? t('repoReview.workspace.autosync.enabled')
+          : t('repoReview.workspace.autosync.manual'),
         value: selectedRepository.autoSyncEnabled
-          ? t('repoReview.workspace.autosync.interval', { minutes: selectedRepository.autoSyncIntervalMinutes })
+          ? t('repoReview.workspace.autosync.interval', {
+              minutes: selectedRepository.autoSyncIntervalMinutes,
+            })
           : t('repoReview.workspace.autosync.onDemand'),
         detail: selectedRepository.autoSyncEnabled
           ? t('repoReview.workspace.autosync.last', {
@@ -1878,18 +2003,27 @@ export function RepoReviewSettingsPanel({
           selectedRepository.digestWeeklyEnabled
             ? t('repoReview.workspace.digest.enabled')
             : t('repoReview.workspace.digest.disabled'),
-        value: [
-          selectedRepository.digestDailyEnabled
-            ? t('repoReview.workspace.digest.dailyTime', { hour: selectedRepository.digestDailyHour })
-            : '',
-          selectedRepository.digestWeeklyEnabled
-            ? t('repoReview.workspace.digest.weeklyTime', { weekday: '一二三四五六日'[selectedRepository.digestWeeklyDay - 1], hour: selectedRepository.digestWeeklyHour })
-            : '',
-        ]
-          .filter(Boolean)
-          .join(' · ') || t('repoReview.workspace.digest.closed'),
+        value:
+          [
+            selectedRepository.digestDailyEnabled
+              ? t('repoReview.workspace.digest.dailyTime', {
+                  hour: selectedRepository.digestDailyHour,
+                })
+              : '',
+            selectedRepository.digestWeeklyEnabled
+              ? t('repoReview.workspace.digest.weeklyTime', {
+                  weekday: '一二三四五六日'[
+                    selectedRepository.digestWeeklyDay - 1
+                  ],
+                  hour: selectedRepository.digestWeeklyHour,
+                })
+              : '',
+          ]
+            .filter(Boolean)
+            .join(' · ') || t('repoReview.workspace.digest.closed'),
         detail:
-          selectedRepository.lastDigestDailyAt || selectedRepository.lastDigestWeeklyAt
+          selectedRepository.lastDigestDailyAt ||
+          selectedRepository.lastDigestWeeklyAt
             ? [
                 t('repoReview.workspace.digest.last', {
                   time: formatOptionalDateTime(
@@ -2095,16 +2229,17 @@ export function RepoReviewSettingsPanel({
       setRepositories(nextRepositories);
       setSelectedRepositoryId((current) => {
         if (creatingRepository) return current;
-        if (
-          current &&
-          nextRepositories.some((entry) => entry.id === current)
-        ) {
+        if (current && nextRepositories.some((entry) => entry.id === current)) {
           return current;
         }
         return '';
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : i18n.t('repoReview.error.loadConfig'));
+      setError(
+        err instanceof Error
+          ? err.message
+          : i18n.t('repoReview.error.loadConfig'),
+      );
     } finally {
       setLoading(false);
     }
@@ -2207,7 +2342,11 @@ export function RepoReviewSettingsPanel({
         );
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : i18n.t('repoReview.error.loadRuns'));
+      setError(
+        err instanceof Error
+          ? err.message
+          : i18n.t('repoReview.error.loadRuns'),
+      );
     } finally {
       runsRefreshInFlightRef.current = false;
       if (requestId === runsRequestIdRef.current && mountedRef.current) {
@@ -2216,22 +2355,25 @@ export function RepoReviewSettingsPanel({
     }
   };
 
-  const refreshSelectedRunDetail = useCallback(async (runId: string) => {
-    const detailRunId = runId.trim();
-    if (!detailRunId || runDetailRefreshInFlightRef.current) return;
-    runDetailRefreshInFlightRef.current = true;
-    try {
-      const data = await fetchRepoReviewRunDetail(apiBase, detailRunId);
-      if (!mountedRef.current) return;
-      setSelectedRunDetail((current) =>
-        mergeFetchedRepoReviewRunSnapshot(data.run || null, current),
-      );
-    } catch {
-      // Best effort poll refresh.
-    } finally {
-      runDetailRefreshInFlightRef.current = false;
-    }
-  }, [apiBase]);
+  const refreshSelectedRunDetail = useCallback(
+    async (runId: string) => {
+      const detailRunId = runId.trim();
+      if (!detailRunId || runDetailRefreshInFlightRef.current) return;
+      runDetailRefreshInFlightRef.current = true;
+      try {
+        const data = await fetchRepoReviewRunDetail(apiBase, detailRunId);
+        if (!mountedRef.current) return;
+        setSelectedRunDetail((current) =>
+          mergeFetchedRepoReviewRunSnapshot(data.run || null, current),
+        );
+      } catch {
+        // Best effort poll refresh.
+      } finally {
+        runDetailRefreshInFlightRef.current = false;
+      }
+    },
+    [apiBase],
+  );
 
   const refreshDigestRuns = async (preserveFeedback = true) => {
     const repositoryId = selectedRepositoryId;
@@ -2257,12 +2399,13 @@ export function RepoReviewSettingsPanel({
     } catch (err) {
       if (requestId !== digestRunsRequestIdRef.current) return;
       if (!mountedRef.current) return;
-      setError(err instanceof Error ? err.message : i18n.t('repoReview.error.loadDigestRuns'));
+      setError(
+        err instanceof Error
+          ? err.message
+          : i18n.t('repoReview.error.loadDigestRuns'),
+      );
     } finally {
-      if (
-        requestId === digestRunsRequestIdRef.current &&
-        mountedRef.current
-      ) {
+      if (requestId === digestRunsRequestIdRef.current && mountedRef.current) {
         setLoadingDigestRuns(false);
       }
     }
@@ -2312,7 +2455,11 @@ export function RepoReviewSettingsPanel({
       if (!cacheIsFresh) {
         setRemoteBranches([]);
       }
-      setError(err instanceof Error ? err.message : i18n.t('repoReview.error.loadRemoteBranches'));
+      setError(
+        err instanceof Error
+          ? err.message
+          : i18n.t('repoReview.error.loadRemoteBranches'),
+      );
     } finally {
       if (
         requestId === remoteBranchRequestIdRef.current &&
@@ -2347,7 +2494,9 @@ export function RepoReviewSettingsPanel({
     } catch (err) {
       setReviewChatMembers([]);
       setReviewChatMembersError(
-        err instanceof Error ? err.message : i18n.t('repoReview.error.loadFeishuMembers'),
+        err instanceof Error
+          ? err.message
+          : i18n.t('repoReview.error.loadFeishuMembers'),
       );
     } finally {
       setLoadingReviewChatMembers(false);
@@ -2403,7 +2552,12 @@ export function RepoReviewSettingsPanel({
         if (eventsByJid.size === 0) return currentRuns;
         const preferredRunByJid = new Map<
           string,
-          { run: RepoReviewRun; index: number; activityMs: number; selected: boolean }
+          {
+            run: RepoReviewRun;
+            index: number;
+            activityMs: number;
+            selected: boolean;
+          }
         >();
         currentRuns.forEach((run, index) => {
           if (run.status !== 'queued' && run.status !== 'running') return;
@@ -2629,9 +2783,12 @@ export function RepoReviewSettingsPanel({
 
   useEffect(() => {
     if (!selectedRepositoryId || pauseOverviewRefresh) return;
-    const timer = window.setInterval(() => {
-      void refreshRunSummaries(true);
-    }, hasActiveRuns ? 5000 : 30_000);
+    const timer = window.setInterval(
+      () => {
+        void refreshRunSummaries(true);
+      },
+      hasActiveRuns ? 5000 : 30_000,
+    );
     return () => window.clearInterval(timer);
   }, [
     hasActiveRuns,
@@ -2718,12 +2875,12 @@ export function RepoReviewSettingsPanel({
   useEffect(() => {
     if (!repositoryEditorOpen || repositoryEditorSection === 'all') return;
     const timer = window.setTimeout(() => {
-      repositoryEditorSectionRefs.current[repositoryEditorSection]?.scrollIntoView(
-        {
-          behavior: 'smooth',
-          block: 'start',
-        },
-      );
+      repositoryEditorSectionRefs.current[
+        repositoryEditorSection
+      ]?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      });
     }, 40);
     return () => window.clearTimeout(timer);
   }, [repositoryEditorOpen, repositoryEditorSection]);
@@ -2766,7 +2923,9 @@ export function RepoReviewSettingsPanel({
       if (
         current.repositoryId === repositoryId &&
         current.id &&
-        profilesForSelectedRepository.some((profile) => profile.id === current.id)
+        profilesForSelectedRepository.some(
+          (profile) => profile.id === current.id,
+        )
       ) {
         return current;
       }
@@ -2811,17 +2970,12 @@ export function RepoReviewSettingsPanel({
       return;
     }
     void refreshReviewChatMembers(effectiveReviewChatJid);
-  }, [
-    effectiveReviewChatJid,
-    isFeishuReviewChat,
-    repositoryEditorOpen,
-  ]);
+  }, [effectiveReviewChatJid, isFeishuReviewChat, repositoryEditorOpen]);
 
   useEffect(() => {
     if (!repositoryEditorOpen) return;
     void loadSshKeys();
   }, [repositoryEditorOpen]);
-
 
   const applyRepositoryDetection = (
     detection: RepoReviewRepositoryDetection,
@@ -2860,7 +3014,11 @@ export function RepoReviewSettingsPanel({
       );
     } catch (err) {
       setSelectedRunDetail(run);
-      setError(err instanceof Error ? err.message : i18n.t('repoReview.error.loadRunDetail'));
+      setError(
+        err instanceof Error
+          ? err.message
+          : i18n.t('repoReview.error.loadRunDetail'),
+      );
     } finally {
       setLoadingRunDetail(false);
     }
@@ -2892,7 +3050,11 @@ export function RepoReviewSettingsPanel({
       if (existingRun) {
         setSelectedRunDetail(existingRun);
       }
-      setError(err instanceof Error ? err.message : i18n.t('repoReview.error.loadRunDetail'));
+      setError(
+        err instanceof Error
+          ? err.message
+          : i18n.t('repoReview.error.loadRunDetail'),
+      );
     } finally {
       setLoadingRunDetail(false);
     }
@@ -2913,7 +3075,11 @@ export function RepoReviewSettingsPanel({
       setSelectedDigestRunDetail(data.run || run);
     } catch (err) {
       setSelectedDigestRunDetail(run);
-      setError(err instanceof Error ? err.message : i18n.t('repoReview.error.loadDigestRunDetail'));
+      setError(
+        err instanceof Error
+          ? err.message
+          : i18n.t('repoReview.error.loadDigestRunDetail'),
+      );
     } finally {
       setLoadingDigestRunDetail(false);
     }
@@ -2957,7 +3123,8 @@ export function RepoReviewSettingsPanel({
         ).catch(() => ({ detection: undefined as never }));
       if (!response.ok) {
         throw new Error(
-          (data as { error?: string }).error || i18n.t('repoReview.error.discoverRepo'),
+          (data as { error?: string }).error ||
+            i18n.t('repoReview.error.discoverRepo'),
         );
       }
       const detection = data.detection;
@@ -2968,16 +3135,21 @@ export function RepoReviewSettingsPanel({
             ? `本地仓库 remote ${detection.detectedRemoteName}`
             : t('repoReview.form.localRepo')
           : t('repoReview.form.repoLink');
-      setMessage(i18n.t('repoReview.success.discoveredRepo', { source: sourceLabel }));
+      setMessage(
+        i18n.t('repoReview.success.discoveredRepo', { source: sourceLabel }),
+      );
 
       const effectiveCloneUrl = detection.cloneUrl || remoteUrl;
       if (effectiveCloneUrl && detection.source === 'remote_url') {
         setContributorsLoading(true);
-        fetch(`${apiBase}/api/repo-reviews/repositories/discover-contributors`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ cloneUrl: effectiveCloneUrl }),
-        })
+        fetch(
+          `${apiBase}/api/repo-reviews/repositories/discover-contributors`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ cloneUrl: effectiveCloneUrl }),
+          },
+        )
           .then((r) => (r.ok ? r.json() : { contributors: [] }))
           .then((d: { contributors?: { name: string; email: string }[] }) =>
             setDiscoveredContributors(d.contributors || []),
@@ -2986,7 +3158,11 @@ export function RepoReviewSettingsPanel({
           .finally(() => setContributorsLoading(false));
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : i18n.t('repoReview.error.discoverRepo'));
+      setError(
+        err instanceof Error
+          ? err.message
+          : i18n.t('repoReview.error.discoverRepo'),
+      );
     } finally {
       setDiscoveringRepository(false);
     }
@@ -3033,7 +3209,9 @@ export function RepoReviewSettingsPanel({
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
-        throw new Error(data.error || i18n.t('repoReview.error.saveRepository'));
+        throw new Error(
+          data.error || i18n.t('repoReview.error.saveRepository'),
+        );
       }
       invalidateRemoteBranchCache(repositoryDraft.id);
       await refreshRepositoryCatalog(true);
@@ -3063,29 +3241,54 @@ export function RepoReviewSettingsPanel({
       setSelectedDetectedRemoteName('');
       setAutoCreatedProfileNotice(
         autoCreatedProfiles.length > 0
-          ? i18n.t('repoReview.success.defaultTemplate', { names: autoCreatedProfiles.map((profile) => profile.name).join('、') })
+          ? i18n.t('repoReview.success.defaultTemplate', {
+              names: autoCreatedProfiles
+                .map((profile) => profile.name)
+                .join('、'),
+            })
           : '',
       );
-      const webhookHint = nextRepository?.webhookUrl && nextRepository.remoteProvider
-        ? i18n.t('repoReview.success.webhookHint', { provider: nextRepository.remoteProvider === 'github' ? 'GitHub' : nextRepository.remoteProvider === 'gitlab' ? 'GitLab' : 'Gitea' })
-        : '';
+      const webhookHint =
+        nextRepository?.webhookUrl && nextRepository.remoteProvider
+          ? i18n.t('repoReview.success.webhookHint', {
+              provider:
+                nextRepository.remoteProvider === 'github'
+                  ? 'GitHub'
+                  : nextRepository.remoteProvider === 'gitlab'
+                    ? 'GitLab'
+                    : 'Gitea',
+            })
+          : '';
       setMessage(
         (autoCreatedProfiles.length > 0
-          ? i18n.t('repoReview.success.repoSavedWithProfiles', { count: autoCreatedProfiles.length })
+          ? i18n.t('repoReview.success.repoSavedWithProfiles', {
+              count: autoCreatedProfiles.length,
+            })
           : i18n.t('repoReview.success.repoSaved')) + webhookHint,
       );
     } catch (err) {
-      setError(err instanceof Error ? err.message : i18n.t('repoReview.error.saveRepository'));
+      setError(
+        err instanceof Error
+          ? err.message
+          : i18n.t('repoReview.error.saveRepository'),
+      );
     } finally {
       setSavingRepository(false);
     }
   };
 
-  const toggleRepositoryEnabled = async (repoId: string, currentEnabled: boolean) => {
+  const toggleRepositoryEnabled = async (
+    repoId: string,
+    currentEnabled: boolean,
+  ) => {
     const nextEnabled = !currentEnabled;
-    const label = nextEnabled ? i18n.t('repoReview.button.enable') : i18n.t('repoReview.button.disable');
+    const label = nextEnabled
+      ? i18n.t('repoReview.button.enable')
+      : i18n.t('repoReview.button.disable');
     openConfirmDialog({
-      title: nextEnabled ? i18n.t('repoReview.confirm.enableRepo') : i18n.t('repoReview.confirm.disableRepo'),
+      title: nextEnabled
+        ? i18n.t('repoReview.confirm.enableRepo')
+        : i18n.t('repoReview.confirm.disableRepo'),
       message: nextEnabled
         ? i18n.t('repoReview.confirm.enableRepoMessage')
         : i18n.t('repoReview.confirm.disableRepoMessage'),
@@ -3105,7 +3308,9 @@ export function RepoReviewSettingsPanel({
           );
           const data = await response.json().catch(() => ({}));
           if (!response.ok) {
-            throw new Error(data.error || i18n.t('repoReview.error.toggleFailed', { label }));
+            throw new Error(
+              data.error || i18n.t('repoReview.error.toggleFailed', { label }),
+            );
           }
           await refreshRepositoryCatalog(true);
           if (selectedRepositoryId === repoId) {
@@ -3113,7 +3318,11 @@ export function RepoReviewSettingsPanel({
           }
           setMessage(i18n.t('repoReview.success.repoToggled', { label }));
         } catch (err) {
-          setError(err instanceof Error ? err.message : i18n.t('repoReview.error.toggleFailed', { label }));
+          setError(
+            err instanceof Error
+              ? err.message
+              : i18n.t('repoReview.error.toggleFailed', { label }),
+          );
         }
       },
     });
@@ -3123,7 +3332,9 @@ export function RepoReviewSettingsPanel({
     if (!repositoryDraft.id) return;
     openConfirmDialog({
       title: i18n.t('repoReview.confirm.deleteRepo'),
-      message: i18n.t('repoReview.confirm.deleteRepoMessage', { name: repositoryDraft.name || repositoryDraft.id }),
+      message: i18n.t('repoReview.confirm.deleteRepoMessage', {
+        name: repositoryDraft.name || repositoryDraft.id,
+      }),
       confirmLabel: i18n.t('repoReview.button.confirmDelete'),
       tone: 'danger',
       onConfirm: async () => {
@@ -3137,7 +3348,9 @@ export function RepoReviewSettingsPanel({
           );
           const data = await response.json().catch(() => ({}));
           if (!response.ok) {
-            throw new Error(data.error || i18n.t('repoReview.error.deleteRepository'));
+            throw new Error(
+              data.error || i18n.t('repoReview.error.deleteRepository'),
+            );
           }
           invalidateRemoteBranchCache(repositoryDraft.id);
           setCreatingRepository(false);
@@ -3197,7 +3410,11 @@ export function RepoReviewSettingsPanel({
       setProfileEditorOpen(false);
       setMessage(i18n.t('repoReview.success.profileSaved'));
     } catch (err) {
-      setError(err instanceof Error ? err.message : i18n.t('repoReview.error.saveProfile'));
+      setError(
+        err instanceof Error
+          ? err.message
+          : i18n.t('repoReview.error.saveProfile'),
+      );
     } finally {
       setSavingProfile(false);
     }
@@ -3207,7 +3424,9 @@ export function RepoReviewSettingsPanel({
     if (!profileDraft.id) return;
     openConfirmDialog({
       title: i18n.t('repoReview.confirm.deleteProfile'),
-      message: i18n.t('repoReview.confirm.deleteProfileMessage', { name: profileDraft.name || profileDraft.id }),
+      message: i18n.t('repoReview.confirm.deleteProfileMessage', {
+        name: profileDraft.name || profileDraft.id,
+      }),
       confirmLabel: i18n.t('repoReview.button.confirmDelete'),
       tone: 'danger',
       onConfirm: async () => {
@@ -3221,7 +3440,9 @@ export function RepoReviewSettingsPanel({
           );
           const data = await response.json().catch(() => ({}));
           if (!response.ok) {
-            throw new Error(data.error || i18n.t('repoReview.error.deleteProfile'));
+            throw new Error(
+              data.error || i18n.t('repoReview.error.deleteProfile'),
+            );
           }
           invalidateRemoteBranchCache(selectedRepositoryId);
           await refreshRepositoryCatalog(true);
@@ -3241,14 +3462,18 @@ export function RepoReviewSettingsPanel({
   ) => {
     if (!selectedRepositoryId || !branch) return;
     if (syncingBranchNames.includes(branch)) {
-      setLastSyncMessage(i18n.t('repoReview.success.branchProcessing', { branch }));
+      setLastSyncMessage(
+        i18n.t('repoReview.success.branchProcessing', { branch }),
+      );
       return;
     }
     const branchState = allRepositoryBranchStates.find(
       (entry) => entry.name === branch,
     );
     if (branchState?.isReviewing) {
-      setLastSyncMessage(i18n.t('repoReview.success.branchAlreadyReviewing', { branch }));
+      setLastSyncMessage(
+        i18n.t('repoReview.success.branchAlreadyReviewing', { branch }),
+      );
       return;
     }
     setError('');
@@ -3263,16 +3488,16 @@ export function RepoReviewSettingsPanel({
       );
       const latestRun = branchRuns[0] || branchState?.lastRun || null;
       const currentHeadSha = branchState?.headSha || latestRun?.headSha || '';
-      const requestedMode: RepoReviewManualReviewMode =
-        request?.mode || 'auto';
+      const requestedMode: RepoReviewManualReviewMode = request?.mode || 'auto';
       const shouldRepeatLatestScope =
         requestedMode === 'auto' &&
         !!latestRun &&
         !!latestRun.baseSha &&
         !!currentHeadSha &&
         latestRun.headSha === currentHeadSha;
-      const normalizedMode: RepoReviewManualReviewMode =
-        shouldRepeatLatestScope ? 'commit_sha' : requestedMode;
+      const normalizedMode: RepoReviewManualReviewMode = shouldRepeatLatestScope
+        ? 'commit_sha'
+        : requestedMode;
       const payload: RepoReviewManualReviewRequest = {
         branch,
         mode: normalizedMode,
@@ -3310,7 +3535,11 @@ export function RepoReviewSettingsPanel({
         await openRunDetailById(data.runId);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : i18n.t('repoReview.error.triggerBranch'));
+      setError(
+        err instanceof Error
+          ? err.message
+          : i18n.t('repoReview.error.triggerBranch'),
+      );
     } finally {
       setSyncingBranchNames((current) =>
         current.filter((entry) => entry !== branch),
@@ -3318,11 +3547,11 @@ export function RepoReviewSettingsPanel({
     }
   };
 
-  const setRepositoryEditorSectionRef = (
-    section: Exclude<RepositoryEditorSection, 'all'>,
-  ) => (node: HTMLDivElement | null) => {
-    repositoryEditorSectionRefs.current[section] = node;
-  };
+  const setRepositoryEditorSectionRef =
+    (section: Exclude<RepositoryEditorSection, 'all'>) =>
+    (node: HTMLDivElement | null) => {
+      repositoryEditorSectionRefs.current[section] = node;
+    };
 
   const openWorkspaceCardAction = (action: RepoReviewWorkspaceCardAction) => {
     if (action === 'profile') {
@@ -3341,14 +3570,17 @@ export function RepoReviewSettingsPanel({
     openRepositoryEditor(false, sectionMap[action]);
   };
 
-  const openWorkspaceDetail = useCallback((repositoryId: string) => {
-    setCreatingRepository(false);
-    setSelectedRepositoryId(repositoryId);
-    setRepositoryEditorOpen(false);
-    setProfileEditorOpen(false);
-    setRepoDetailTab('overview');
-    onRepositoryRouteChange?.(repositoryId);
-  }, [onRepositoryRouteChange]);
+  const openWorkspaceDetail = useCallback(
+    (repositoryId: string) => {
+      setCreatingRepository(false);
+      setSelectedRepositoryId(repositoryId);
+      setRepositoryEditorOpen(false);
+      setProfileEditorOpen(false);
+      setRepoDetailTab('overview');
+      onRepositoryRouteChange?.(repositoryId);
+    },
+    [onRepositoryRouteChange],
+  );
 
   const closeWorkspaceDetail = useCallback(() => {
     setSelectedRepositoryId('');
@@ -3396,18 +3628,20 @@ export function RepoReviewSettingsPanel({
       setConfirmDialog(EMPTY_CONFIRM_DIALOG);
     } catch (err) {
       setConfirmDialog(EMPTY_CONFIRM_DIALOG);
-      setError(err instanceof Error ? err.message : i18n.t('repoReview.error.operationFailed'));
+      setError(
+        err instanceof Error
+          ? err.message
+          : i18n.t('repoReview.error.operationFailed'),
+      );
     }
   };
 
   const isRunCancellable = (run: RepoReviewRun) =>
     run.status === 'queued' || run.status === 'running';
 
-  const isRunCancelling = (runId: string) =>
-    cancellingRunIds.includes(runId);
+  const isRunCancelling = (runId: string) => cancellingRunIds.includes(runId);
 
-  const isRunRerunning = (runId: string) =>
-    rerunningRunIds.includes(runId);
+  const isRunRerunning = (runId: string) => rerunningRunIds.includes(runId);
 
   const rerunRun = async (run: RepoReviewRun) => {
     if (run.status === 'queued' || run.status === 'running') return;
@@ -3419,7 +3653,9 @@ export function RepoReviewSettingsPanel({
     try {
       const result = await rerunRepoReviewRun(apiBase, run.id);
       if (result.run?.id) {
-        setMessage(result.message || i18n.t('repoReview.success.rerunTriggered'));
+        setMessage(
+          result.message || i18n.t('repoReview.success.rerunTriggered'),
+        );
         await refreshRunSummaries(true);
         if (selectedRepositoryId === run.repositoryId) {
           await refreshRemoteBranches(true);
@@ -3429,7 +3665,11 @@ export function RepoReviewSettingsPanel({
         setError(result.error || i18n.t('repoReview.error.rerunFailed'));
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : i18n.t('repoReview.error.rerunFailed'));
+      setError(
+        err instanceof Error
+          ? err.message
+          : i18n.t('repoReview.error.rerunFailed'),
+      );
     } finally {
       setRerunningRunIds((current) =>
         current.filter((entry) => entry !== run.id),
@@ -3461,7 +3701,11 @@ export function RepoReviewSettingsPanel({
         await refreshRemoteBranches(true);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : i18n.t('repoReview.error.cancelFailed'));
+      setError(
+        err instanceof Error
+          ? err.message
+          : i18n.t('repoReview.error.cancelFailed'),
+      );
     } finally {
       setCancellingRunIds((current) =>
         current.filter((entry) => entry !== run.id),
@@ -3473,10 +3717,16 @@ export function RepoReviewSettingsPanel({
     run: RepoReviewRun,
     decision: 'pass' | 'fail',
   ) => {
-    const label = decision === 'pass' ? i18n.t('repoReview.button.manualPass') : i18n.t('repoReview.button.manualFail');
+    const label =
+      decision === 'pass'
+        ? i18n.t('repoReview.button.manualPass')
+        : i18n.t('repoReview.button.manualFail');
     openConfirmDialog({
       title: i18n.t('repoReview.confirm.humanDecision'),
-      message: i18n.t('repoReview.confirm.humanDecisionMessage', { runId: run.id, label }),
+      message: i18n.t('repoReview.confirm.humanDecisionMessage', {
+        runId: run.id,
+        label,
+      }),
       confirmLabel: i18n.t('repoReview.confirm.confirmAction', { label }),
       tone: decision === 'fail' ? 'danger' : 'primary',
       onConfirm: async () => {
@@ -3494,13 +3744,16 @@ export function RepoReviewSettingsPanel({
           );
           const data = await response.json().catch(() => ({}));
           if (!response.ok) {
-            throw new Error(data.error || i18n.t('repoReview.error.manualDecisionFailed'));
+            throw new Error(
+              data.error || i18n.t('repoReview.error.manualDecisionFailed'),
+            );
           }
           await refreshRunSummaries(true);
           if (selectedRunId === run.id) {
-            const detail = await fetchRepoReviewRunDetail(apiBase, run.id).catch(
-              () => null,
-            );
+            const detail = await fetchRepoReviewRunDetail(
+              apiBase,
+              run.id,
+            ).catch(() => null);
             if (detail?.run) {
               setSelectedRunDetail(detail.run);
             }
@@ -3654,45 +3907,45 @@ export function RepoReviewSettingsPanel({
       className={`${embedded ? 'page-view ' : ''}settings-section repo-review-panel${embedded ? ' repo-review-panel--embedded' : ''}`.trim()}
     >
       {embedded ? (
-        <AppHeroHeader
-          title={t('auto.c270fc6f')}
-          subtitle={t('panel.description')}
-          className="repo-review-topbar"
-          controls={
-            !hideRepositoryList ? (
-              <>
-                <SearchPill
-                  value={repositoryFilter}
-                  onChange={(value) => {
-                    setRepositoryFilter(value);
-                    setRepoCardPage(1);
-                  }}
-                  placeholder={t('repoReview.repo.filterPlaceholder')}
-                  aria-label={t('repoReview.repo.filterPlaceholder')}
-                  leadingIcon={<IconSearch />}
-                  clearLabel={t('清空搜索')}
-                />
-                <button
-                  className="btn-primary workflow-create-action"
-                  onClick={() => {
-                    onRepositoryRouteChange?.(null);
-                    openRepositoryEditor(true);
-                    setRepoDetailTab('config');
-                  }}
-                >
-                  {t('repoReview.button.newRepo')}
-                </button>
-              </>
-            ) : null
-          }
-        />
+        !repositoryWorkspaceFocused ? (
+          <AppHeroHeader
+            title={t('auto.c270fc6f')}
+            subtitle={t('panel.description')}
+            className="repo-review-topbar"
+            controls={
+              repositoryCatalogVisible ? (
+                <>
+                  <SearchPill
+                    value={repositoryFilter}
+                    onChange={(value) => {
+                      setRepositoryFilter(value);
+                      setRepoCardPage(1);
+                    }}
+                    placeholder={t('repoReview.repo.filterPlaceholder')}
+                    aria-label={t('repoReview.repo.filterPlaceholder')}
+                    leadingIcon={<IconSearch />}
+                    clearLabel={t('清空搜索')}
+                  />
+                  <button
+                    className="btn-primary workflow-create-action"
+                    onClick={() => {
+                      onRepositoryRouteChange?.(null);
+                      openRepositoryEditor(true);
+                      setRepoDetailTab('config');
+                    }}
+                  >
+                    {t('repoReview.button.newRepo')}
+                  </button>
+                </>
+              ) : null
+            }
+          />
+        ) : null
       ) : (
         <div className="section-header">
           <div>
             <h3>Repo Review</h3>
-            <p className="settings-hint">
-              {t('repoReview.panel.description')}
-            </p>
+            <p className="settings-hint">{t('repoReview.panel.description')}</p>
           </div>
           <button
             className="btn-outline btn-sm"
@@ -3706,2185 +3959,2747 @@ export function RepoReviewSettingsPanel({
         </div>
       )}
 
-      <div className={`repository-review-page-body repo-review-workspace-layout${hideRepositoryList ? ' repo-review-workspace-layout--focused' : ''}${showWorkspaceDetail ? '' : ' repo-review-workspace-layout--list-only'}`}>
-      {!hideRepositoryList ? (
-      <div className="repo-review-card-list repo-review-workspace-list">
-        {filteredRepositories.length === 0 ? (
-          <div className="repo-review-empty-card-hint">{t('repoReview.repo.noMatch')}</div>
-        ) : (
-          <section className="repo-review-library">
-          <div className="nc-catalog-grid repo-review-cards-grid">
-            {filteredRepositories.slice((repoCardPage - 1) * REPO_CARD_PAGE_SIZE, repoCardPage * REPO_CARD_PAGE_SIZE).map((repository) => (
-              <LibraryCard
-                key={repository.id}
-                className={`repo-review-repo-card ${
-                  !creatingRepository && selectedRepositoryId === repository.id
-                    ? 'active'
-                    : ''
-                }`}
-                onClick={() => openWorkspaceDetail(repository.id)}
-                heading={repository.name}
-                badge={
-                  <span
-                    className={`repo-review-badge ${repository.enabled ? 'enabled' : 'disabled'}`}
-                  >
-                    {repository.enabled ? t('repoReview.repo.enabledBadge') : t('repoReview.repo.disabledBadge')}
-                  </span>
-                }
-                rows={[
-                  {
-                    label: t('repoReview.repo.language'),
-                    value: repository.language || t('repoReview.repo.notSet'),
-                  },
-                  {
-                    label: t('repoReview.repo.platform'),
-                    value: `${formatRemoteProviderLabel(repository.remoteProvider)}${
-                      repository.remoteRepoSlug
-                        ? ` · ${repository.remoteRepoSlug}`
-                        : ''
-                    }`,
-                  },
-                  {
-                    label: t('repoReview.repoCard.profile'),
-                    value: `${t('repoReview.repoCard.profileCount', {
-                      count:
-                        repository.profileCount ??
-                        profileCountByRepo.get(repository.id) ??
-                        0,
-                    })}${
-                      repository.defaultTargetBranch
-                        ? ` · ${t('repoReview.repoCard.baseline', {
-                            branch: repository.defaultTargetBranch,
-                          })}`
-                        : ''
-                    }`,
-                  },
-                  {
-                    label: t('repoReview.repoCard.session'),
-                    value: formatReviewChatTarget(
-                      repository.reviewChatJid,
-                      conversations,
-                    ),
-                  },
-                  {
-                    label: t('repoReview.repoCard.polling'),
-                    value: repository.autoSyncEnabled
-                      ? `${t('repoReview.repoCard.pollInterval', {
-                          minutes: repository.autoSyncIntervalMinutes,
-                        })}${
-                          repository.lastAutoSyncStatus
-                            ? ` · ${formatRepoAutoSyncStatus(
-                                repository.lastAutoSyncStatus,
-                              )}`
-                            : ''
-                        }`
-                      : null,
-                  },
-                ]}
-              />
-            ))}
-          </div>
-          {filteredRepositories.length > REPO_CARD_PAGE_SIZE ? (
-            <div className="repo-review-library-pagination">
-              <Pagination page={repoCardPage} pageSize={REPO_CARD_PAGE_SIZE} total={filteredRepositories.length} onPageChange={setRepoCardPage} />
-            </div>
-          ) : null}
-          </section>
-        )}
-      </div>
-      ) : null}
-
-      {showWorkspaceDetail ? (
-      <RepoReviewWorkspaceDetailSurface
-        embedded={embedded}
-        open={showWorkspaceDetail}
-        onClose={closeWorkspaceDetail}
+      <div
+        className={`repository-review-page-body repo-review-workspace-layout${repositoryWorkspaceFocused ? ' repo-review-workspace-layout--focused' : ''}${showWorkspaceDetail ? '' : ' repo-review-workspace-layout--list-only'}`}
       >
-      <section className="repo-review-workspace-detail">
-        <div className="repo-review-workspace-detail-header">
-          <div>
-            {embedded && !creatingRepository ? (
-              <button
-                type="button"
-                className="repo-review-backlink"
-                onClick={closeWorkspaceDetail}
-              >
-                {t('auto.c270fc6f')} / {selectedRepository?.name || t('repoReview.drawer.repoDetail')}
-              </button>
-            ) : null}
-            <h3>{creatingRepository ? t('repoReview.drawer.newWorkspace') : selectedRepository?.name || t('repoReview.drawer.repoDetail')}</h3>
-            <p className="settings-hint">
-              {creatingRepository
-                ? t('repoReview.hero.newRepoHint')
-                : selectedRepository?.localRepoPath || selectedRepository?.remoteRepoSlug || t('repoReview.repo.noMatch')}
-            </p>
-          </div>
-          {(selectedRepositoryId || creatingRepository) && !hideRepositoryList ? (
-            <button
-              type="button"
-              className="btn-outline btn-sm"
-              onClick={closeWorkspaceDetail}
-            >
-              {embedded ? '返回列表' : t('repoReview.button.close')}
-            </button>
-          ) : null}
-        </div>
-        {(!!selectedRepositoryId || creatingRepository) ? (
-        <div className="repo-review-drawer-content repo-review-inline-detail-content">
-          {!creatingRepository && selectedRepository && !repositoryEditorOpen && (
-            <>
-              <TabBar
-                tabs={[
-                  { key: 'overview', label: t('repoReview.tab.overview') },
-                  { key: 'profile', label: t('repoReview.tab.profile') },
-                  { key: 'runs', label: t('repoReview.tab.runs') },
-                  { key: 'codemap', label: t('repoReview.tab.codemap') },
-                  { key: 'config', label: t('repoReview.tab.config') },
-                ]}
-                activeKey={repoDetailTab}
-                onChange={(key) => setRepoDetailTab(key as typeof repoDetailTab)}
-              />
-            </>
-          )}
-
-          {/* Creating Repository */}
-          {creatingRepository && (
-            <div className="repo-review-card repo-review-overview-hero">
-              <div className="repo-review-overview-hero-top">
-                <div className="repo-review-overview-copy">
-                  <span className="repo-review-overview-kicker">{t('repoReview.workspace.repositoryWorkspace')}</span>
-                  <h3>{t('repoReview.hero.newRepoTitle')}</h3>
-                  <div className="settings-hint">
-                    {t('repoReview.hero.newRepoHint')}
-                  </div>
-                </div>
-                <div className="repo-review-overview-actions">
-                  <button type="button" className="btn-primary btn-sm" onClick={() => { openRepositoryEditor(true); setRepoDetailTab('config'); }}>
-                    {t('repoReview.hero.fillRepoInfo')}
-                  </button>
-                </div>
+        {repositoryCatalogVisible ? (
+          <div className="repo-review-card-list repo-review-workspace-list">
+            {filteredRepositories.length === 0 ? (
+              <div className="repo-review-empty-card-hint">
+                {t('repoReview.repo.noMatch')}
               </div>
-            </div>
-          )}
-
-          {/* Tab: Overview */}
-          {!creatingRepository && selectedRepository && !repositoryEditorOpen && repoDetailTab === 'overview' && (
-            <>
-                  <div className="repo-review-framework-shell">
-                    <div className="repo-review-card repo-review-framework-header">
-                      <div className="repo-review-framework-header-copy">
-                        <span className="repo-review-overview-kicker">
-                          {t('repoReview.workspace.repositoryWorkspace')}
-                        </span>
-                        <h3>{selectedRepository.name}</h3>
-                        <div className="settings-hint repo-review-ellipsis">
-                          {selectedRepository.localRepoPath ||
-                            selectedRepository.remoteRepoSlug ||
-                            selectedRepository.id}
-                        </div>
-                      </div>
-                      <div className="repo-review-framework-header-main">
-                        <div className="repo-review-framework-repo-pill">
-                          <span className="repo-review-framework-repo-pill-icon">
-                            <IconFolder />
+            ) : (
+              <section className="repo-review-library">
+                <div className="nc-catalog-grid repo-review-cards-grid">
+                  {filteredRepositories
+                    .slice(
+                      (repoCardPage - 1) * REPO_CARD_PAGE_SIZE,
+                      repoCardPage * REPO_CARD_PAGE_SIZE,
+                    )
+                    .map((repository) => (
+                      <LibraryCard
+                        key={repository.id}
+                        className={`repo-review-repo-card ${
+                          !creatingRepository &&
+                          selectedRepositoryId === repository.id
+                            ? 'active'
+                            : ''
+                        }`}
+                        onClick={() => openWorkspaceDetail(repository.id)}
+                        heading={repository.name}
+                        badge={
+                          <span
+                            className={`repo-review-badge ${repository.enabled ? 'enabled' : 'disabled'}`}
+                          >
+                            {repository.enabled
+                              ? t('repoReview.repo.enabledBadge')
+                              : t('repoReview.repo.disabledBadge')}
                           </span>
-                          <div className="repo-review-framework-repo-pill-copy">
-                            <strong>
-                              {formatRemoteProviderLabel(
-                                selectedRepository.remoteProvider,
-                              )}
-                              {selectedRepository.remoteRepoSlug
-                                ? ` / ${selectedRepository.remoteRepoSlug}`
-                                : ''}
-                            </strong>
-                            <span>
-                              {selectedRepository.defaultTargetBranch ||
-                                t('repoReview.repo.notSet')}
-                            </span>
+                        }
+                        rows={[
+                          {
+                            label: t('repoReview.repo.language'),
+                            value:
+                              repository.language ||
+                              t('repoReview.repo.notSet'),
+                          },
+                          {
+                            label: t('repoReview.repo.platform'),
+                            value: `${formatRemoteProviderLabel(repository.remoteProvider)}${
+                              repository.remoteRepoSlug
+                                ? ` · ${repository.remoteRepoSlug}`
+                                : ''
+                            }`,
+                          },
+                          {
+                            label: t('repoReview.repoCard.profile'),
+                            value: `${t('repoReview.repoCard.profileCount', {
+                              count:
+                                repository.profileCount ??
+                                profileCountByRepo.get(repository.id) ??
+                                0,
+                            })}${
+                              repository.defaultTargetBranch
+                                ? ` · ${t('repoReview.repoCard.baseline', {
+                                    branch: repository.defaultTargetBranch,
+                                  })}`
+                                : ''
+                            }`,
+                          },
+                          {
+                            label: t('repoReview.repoCard.session'),
+                            value: formatReviewChatTarget(
+                              repository.reviewChatJid,
+                              conversations,
+                            ),
+                          },
+                          {
+                            label: t('repoReview.repoCard.polling'),
+                            value: repository.autoSyncEnabled
+                              ? `${t('repoReview.repoCard.pollInterval', {
+                                  minutes: repository.autoSyncIntervalMinutes,
+                                })}${
+                                  repository.lastAutoSyncStatus
+                                    ? ` · ${formatRepoAutoSyncStatus(
+                                        repository.lastAutoSyncStatus,
+                                      )}`
+                                    : ''
+                                }`
+                              : null,
+                          },
+                        ]}
+                      />
+                    ))}
+                </div>
+                {filteredRepositories.length > REPO_CARD_PAGE_SIZE ? (
+                  <div className="repo-review-library-pagination">
+                    <Pagination
+                      page={repoCardPage}
+                      pageSize={REPO_CARD_PAGE_SIZE}
+                      total={filteredRepositories.length}
+                      onPageChange={setRepoCardPage}
+                    />
+                  </div>
+                ) : null}
+              </section>
+            )}
+          </div>
+        ) : null}
+
+        {showWorkspaceDetail ? (
+          <RepoReviewWorkspaceDetailSurface
+            embedded={embedded}
+            open={showWorkspaceDetail}
+            onClose={closeWorkspaceDetail}
+          >
+            <section className="repo-review-workspace-detail">
+              <div className="repo-review-workspace-detail-header">
+                <div>
+                  {embedded && !creatingRepository ? (
+                    <button
+                      type="button"
+                      className="repo-review-backlink"
+                      onClick={closeWorkspaceDetail}
+                    >
+                      {t('auto.c270fc6f')} /{' '}
+                      {selectedRepository?.name ||
+                        t('repoReview.drawer.repoDetail')}
+                    </button>
+                  ) : null}
+                  <h3>
+                    {creatingRepository
+                      ? t('repoReview.drawer.newWorkspace')
+                      : selectedRepository?.name ||
+                        t('repoReview.drawer.repoDetail')}
+                  </h3>
+                  <p className="settings-hint">
+                    {creatingRepository
+                      ? t('repoReview.hero.newRepoHint')
+                      : selectedRepository?.localRepoPath ||
+                        selectedRepository?.remoteRepoSlug ||
+                        t('repoReview.repo.noMatch')}
+                  </p>
+                </div>
+                {(selectedRepositoryId || creatingRepository) &&
+                !hideRepositoryList ? (
+                  <button
+                    type="button"
+                    className="btn-outline btn-sm"
+                    onClick={closeWorkspaceDetail}
+                  >
+                    {embedded ? '返回列表' : t('repoReview.button.close')}
+                  </button>
+                ) : null}
+              </div>
+              {!!selectedRepositoryId || creatingRepository ? (
+                <div className="repo-review-drawer-content repo-review-inline-detail-content">
+                  {!creatingRepository &&
+                    selectedRepository &&
+                    !repositoryEditorOpen && (
+                      <>
+                        <TabBar
+                          tabs={[
+                            {
+                              key: 'overview',
+                              label: t('repoReview.tab.overview'),
+                            },
+                            {
+                              key: 'profile',
+                              label: t('repoReview.tab.profile'),
+                            },
+                            { key: 'runs', label: t('repoReview.tab.runs') },
+                            {
+                              key: 'codemap',
+                              label: t('repoReview.tab.codemap'),
+                            },
+                            {
+                              key: 'config',
+                              label: t('repoReview.tab.config'),
+                            },
+                          ]}
+                          activeKey={repoDetailTab}
+                          onChange={(key) =>
+                            setRepoDetailTab(key as typeof repoDetailTab)
+                          }
+                        />
+                      </>
+                    )}
+
+                  {/* Creating Repository */}
+                  {creatingRepository && (
+                    <div className="repo-review-card repo-review-overview-hero">
+                      <div className="repo-review-overview-hero-top">
+                        <div className="repo-review-overview-copy">
+                          <span className="repo-review-overview-kicker">
+                            {t('repoReview.workspace.repositoryWorkspace')}
+                          </span>
+                          <h3>{t('repoReview.hero.newRepoTitle')}</h3>
+                          <div className="settings-hint">
+                            {t('repoReview.hero.newRepoHint')}
                           </div>
                         </div>
-                        <div className="repo-review-framework-header-actions">
-                          <button
-                            type="button"
-                            className={`btn-sm ${selectedRepository.enabled ? 'btn-warning' : 'btn-success'}`}
-                            onClick={() =>
-                              void toggleRepositoryEnabled(
-                                selectedRepository.id,
-                                selectedRepository.enabled,
-                              )
-                            }
-                          >
-                            {selectedRepository.enabled
-                              ? t('repoReview.button.disable')
-                              : t('repoReview.button.enable')}
-                          </button>
-                          <button
-                            type="button"
-                            className="btn-outline btn-sm"
-                            onClick={() => {
-                              openRepositoryEditor(false);
-                              setRepoDetailTab('config');
-                            }}
-                          >
-                            {t('repoReview.button.editRepo')}
-                          </button>
+                        <div className="repo-review-overview-actions">
                           <button
                             type="button"
                             className="btn-primary btn-sm"
                             onClick={() => {
-                              openProfileEditor(true);
-                              setRepoDetailTab('profile');
+                              openRepositoryEditor(true);
+                              setRepoDetailTab('config');
                             }}
-                            disabled={!selectedRepositoryId}
                           >
-                            {t('repoReview.button.newProfile')}
+                            {t('repoReview.hero.fillRepoInfo')}
                           </button>
                         </div>
                       </div>
                     </div>
+                  )}
 
-                    <div className="repo-review-framework-board">
-                      <div className="repo-review-framework-main">
-                        <div className="repo-review-card repo-review-overview-hero repo-review-overview-hero--framework">
-                          <div className="repo-review-card-header">
-                            <div>
-                              <h4>{t('repoReview.panel.description')}</h4>
-                              <div className="settings-hint">
-                                {manualReviewFullFileSummary}
+                  {/* Tab: Overview */}
+                  {!creatingRepository &&
+                    selectedRepository &&
+                    !repositoryEditorOpen &&
+                    repoDetailTab === 'overview' && (
+                      <>
+                        <div className="repo-review-framework-shell">
+                          <div className="repo-review-card repo-review-framework-header">
+                            <div className="repo-review-framework-header-copy">
+                              <span className="repo-review-overview-kicker">
+                                {t('repoReview.workspace.repositoryWorkspace')}
+                              </span>
+                              <h3>{selectedRepository.name}</h3>
+                              <div className="settings-hint repo-review-ellipsis">
+                                {selectedRepository.localRepoPath ||
+                                  selectedRepository.remoteRepoSlug ||
+                                  selectedRepository.id}
                               </div>
                             </div>
-                            <div className="repo-review-source-summary">
-                              <span
-                                className={`repo-review-status-badge ${
-                                  selectedRepository.enabled
-                                    ? 'enabled'
-                                    : 'disabled'
-                                }`}
-                              >
-                                {selectedRepository.enabled
-                                  ? t('repoReview.repoStatus.enabled')
-                                  : t('repoReview.repoStatus.disabled')}
-                              </span>
-                              <span className="repo-review-source-pill tone-neutral">
-                                {formatRemoteProviderLabel(
-                                  selectedRepository.remoteProvider,
-                                )}
-                              </span>
-                              {selectedRepositoryLatestRun ? (
-                                <span
-                                  className={`repo-review-status-badge status-${
-                                    selectedRepositoryLatestRun.overall ||
-                                    selectedRepositoryLatestRun.status
-                                  }`}
-                                >
-                                  {t('repoReview.overview.latestReview')}{' '}
-                                  {formatRunOutcomeLabel(
-                                    selectedRepositoryLatestRun.overall ||
-                                      selectedRepositoryLatestRun.status,
-                                  )}
+                            <div className="repo-review-framework-header-main">
+                              <div className="repo-review-framework-repo-pill">
+                                <span className="repo-review-framework-repo-pill-icon">
+                                  <IconFolder />
                                 </span>
-                              ) : null}
-                            </div>
-                          </div>
-                          <div className="repo-review-workspace-grid repo-review-workspace-grid--framework">
-                            {selectedRepositoryWorkspaceCards.map((item) => (
-                              <button
-                                key={item.title}
-                                type="button"
-                                className="repo-review-workspace-card repo-review-workspace-card--framework actionable"
-                                onClick={() => openWorkspaceCardAction(item.action)}
-                              >
-                                <div className="repo-review-framework-card-icon">
-                                  {renderWorkspaceCardIcon(item.action)}
-                                </div>
-                                <div className="repo-review-workspace-card-topline">
-                                  <span>{item.title}</span>
-                                  <span
-                                    className={`repo-review-source-pill tone-${item.tone}`}
-                                  >
-                                    {item.status}
+                                <div className="repo-review-framework-repo-pill-copy">
+                                  <strong>
+                                    {formatRemoteProviderLabel(
+                                      selectedRepository.remoteProvider,
+                                    )}
+                                    {selectedRepository.remoteRepoSlug
+                                      ? ` / ${selectedRepository.remoteRepoSlug}`
+                                      : ''}
+                                  </strong>
+                                  <span>
+                                    {selectedRepository.defaultTargetBranch ||
+                                      t('repoReview.repo.notSet')}
                                   </span>
                                 </div>
-                                <strong className="repo-review-workspace-card-value">
-                                  {item.value}
-                                </strong>
-                                <div className="settings-hint">{item.detail}</div>
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-
-                        <div className="repo-review-framework-content-grid">
-                          <RepositoryRelationshipsPanel
-                            repositoryId={selectedRepository.id}
-                          />
-                          <div className="repo-review-card repo-review-manual-review-card">
-                            <div className="repo-review-card-header">
-                              <div>
-                                <h4>{t('repoReview.manualReview.title')}</h4>
-                                <div className="settings-hint">
-                                  {t('repoReview.manualReview.selectBaselineHint')}
-                                </div>
                               </div>
-                              <div className="repo-review-inline-actions">
+                              <div className="repo-review-framework-header-actions">
+                                <button
+                                  type="button"
+                                  className={`btn-sm ${selectedRepository.enabled ? 'btn-warning' : 'btn-success'}`}
+                                  onClick={() =>
+                                    void toggleRepositoryEnabled(
+                                      selectedRepository.id,
+                                      selectedRepository.enabled,
+                                    )
+                                  }
+                                >
+                                  {selectedRepository.enabled
+                                    ? t('repoReview.button.disable')
+                                    : t('repoReview.button.enable')}
+                                </button>
                                 <button
                                   type="button"
                                   className="btn-outline btn-sm"
-                                  onClick={() => openBranchReviewWorkbench()}
+                                  onClick={() => {
+                                    openRepositoryEditor(false);
+                                    setRepoDetailTab('config');
+                                  }}
                                 >
-                                  {t('repoReview.branchStatus.viewAll')}
+                                  {t('repoReview.button.editRepo')}
+                                </button>
+                                <button
+                                  type="button"
+                                  className="btn-primary btn-sm"
+                                  onClick={() => {
+                                    openProfileEditor(true);
+                                    setRepoDetailTab('profile');
+                                  }}
+                                  disabled={!selectedRepositoryId}
+                                >
+                                  {t('repoReview.button.newProfile')}
                                 </button>
                               </div>
                             </div>
-                            {branchSpotlightItems.length ? (
-                              <div className="repo-review-spotlight-list">
-                                {branchSpotlightItems.map((item) => (
-                                  <div
-                                    key={item.name}
-                                    className="repo-review-spotlight-item repo-review-manual-branch-item"
-                                  >
-                                    <div className="repo-review-spotlight-main">
-                                      <strong>{item.name}</strong>
-                                      <div className="repo-review-spotlight-meta">
-                                        {item.defaultBranch ? (
-                                          <span>{t('repoReview.branchStatus.defaultBaseline')}</span>
-                                        ) : null}
-                                        {item.actor ? <span>{item.actor}</span> : null}
-                                        {item.latestCommitAt ? (
-                                          <span>
-                                            {t('repoReview.branchStatus.recentCommit', { time: formatOptionalDateTime(item.latestCommitAt) })}
-                                          </span>
-                                        ) : null}
-                                      </div>
-                                      <div
-                                        className="settings-hint repo-review-summary-preview"
-                                        title={
-                                          item.lastRun?.summary ||
-                                          item.title ||
-                                          t('repoReview.branchStatus.noSummary')
-                                        }
-                                      >
-                                        {item.lastRun?.summary ||
-                                          item.title ||
-                                          t('repoReview.branchStatus.noRecentSummary')}
-                                      </div>
-                                    </div>
-                                    <div className="repo-review-manual-branch-side">
-                                      <div className="repo-review-source-summary">
-                                        {item.isReviewing ? (
-                                          <span className="repo-review-source-pill tone-success">
-                                            {t('repoReview.branchStatus.reviewing')}
-                                          </span>
-                                        ) : null}
-                                        {item.lastRun ? (
-                                          <span
-                                            className={`repo-review-status-badge status-${
-                                              item.lastRun.overall ||
-                                              item.lastRun.status
-                                            }`}
-                                          >
-                                            {formatRunOutcomeLabel(
-                                              item.lastRun.overall ||
-                                                item.lastRun.status,
-                                            )}
-                                          </span>
-                                        ) : (
-                                          <span className="repo-review-source-pill tone-neutral">
-                                            {t('repoReview.branchStatus.noRuns')}
-                                          </span>
-                                        )}
-                                      </div>
-                                      <div className="repo-review-inline-actions">
-                                        {item.lastRun ? (
-                                          <button
-                                            type="button"
-                                            className="btn-outline btn-sm repo-review-btn-compact"
-                                            onClick={() => {
-                                              if (!item.lastRun) return;
-                                              void openRunDetail(item.lastRun);
-                                            }}
-                                          >
-                                            {t('repoReview.button.viewDetail')}
-                                          </button>
-                                        ) : null}
-                                        <button
-                                          type="button"
-                                          className="btn-primary btn-sm repo-review-btn-compact"
-                                          onClick={() =>
-                                            openBranchReviewWorkbench(item.name)
-                                          }
-                                          disabled={
-                                            !selectedRepository.remoteProvider ||
-                                            item.isReviewing ||
-                                            syncingBranchNames.includes(item.name)
-                                          }
-                                        >
-                                          {item.isReviewing ||
-                                          syncingBranchNames.includes(item.name)
-                                            ? t('repoReview.branchStatus.reviewing')
-                                            : t('repoReview.branchStatus.selectBaseline')}
-                                        </button>
-                                      </div>
+                          </div>
+
+                          <div className="repo-review-framework-board">
+                            <div className="repo-review-framework-main">
+                              <div className="repo-review-card repo-review-overview-hero repo-review-overview-hero--framework">
+                                <div className="repo-review-card-header">
+                                  <div>
+                                    <h4>{t('repoReview.panel.description')}</h4>
+                                    <div className="settings-hint">
+                                      {manualReviewFullFileSummary}
                                     </div>
                                   </div>
-                                ))}
-                              </div>
-                            ) : (
-                              <div className="repo-review-empty-hint">
-                                {t('repoReview.branchStatus.noPriorityBranches')}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-
-                      <aside className="repo-review-framework-side">
-                        <div className="repo-review-card repo-review-framework-status-card">
-                          <div className="repo-review-card-header">
-                            <div>
-                              <h4>{t('repoReview.workspace.profile')}</h4>
-                              <div className="settings-hint">
-                                {t('repoReview.panel.description')}
-                              </div>
-                            </div>
-                            <button
-                              type="button"
-                              className="btn-outline btn-sm btn-icon-only"
-                              onClick={() => void refreshCurrentView(true)}
-                              aria-label={t('repoReview.button.refresh')}
-                              title={t('repoReview.button.refresh')}
-                            >
-                              <IconRefresh />
-                            </button>
-                          </div>
-                          <div
-                            className="repo-review-framework-meter"
-                            style={
-                              {
-                                '--repo-review-completion': `${workspaceCompletionPercent}%`,
-                              } as CSSProperties
-                            }
-                          >
-                            <div className="repo-review-framework-meter-inner">
-                              <strong>{workspaceCompletionPercent}%</strong>
-                              <span>{t('repoReview.repo.enabledBadge')}</span>
-                            </div>
-                          </div>
-                          <div className="repo-review-framework-checklist">
-                            {workspaceSetupChecks.map((item) => (
-                              <div
-                                key={item.label}
-                                className={`repo-review-framework-check ${
-                                  item.ready ? 'is-ready' : 'is-pending'
-                                }`}
-                              >
-                                <span className="repo-review-framework-check-icon">
-                                  {item.ready ? <IconCheck /> : <IconCalendar />}
-                                </span>
-                                <div>
-                                  <strong>{item.label}</strong>
-                                  <span>{item.detail}</span>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                          <div className="repo-review-framework-facts">
-                            {workspaceStatusFacts.map((item) => (
-                              <div
-                                key={item.label}
-                                className="repo-review-framework-fact"
-                              >
-                                <span>{item.label}</span>
-                                <strong>{item.value}</strong>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      </aside>
-                    </div>
-                  </div>
-
-                  {manualPendingRuns.length > 0 ? (
-                    <div className="repo-review-card">
-                      <div className="repo-review-card-header">
-                        <div>
-                          <h4>{t('repoReview.manualDecision.title')}</h4>
-                          <div className="settings-hint">
-                            {t('repoReview.manualDecision.pendingHint')}
-                          </div>
-                        </div>
-                        <span className="repo-review-status-badge status-warn">
-                          {t('repoReview.manualDecision.pendingCount', { count: manualPendingRuns.length })}
-                        </span>
-                      </div>
-                      <div className="repo-review-spotlight-list">
-                        {manualPendingRuns.slice(0, 4).map((run) => (
-                          <div
-                            key={run.id}
-                            className="repo-review-spotlight-item"
-                          >
-                            <div className="repo-review-spotlight-main">
-                              <strong>{formatRunTitle(run)}</strong>
-                              <div className="repo-review-spotlight-meta">
-                                <span>
-                                  {new Date(run.createdAt).toLocaleString()}
-                                </span>
-                                {run.branch ? <span>{run.branch}</span> : null}
-                                {run.actor ? <span>{run.actor}</span> : null}
-                              </div>
-                            </div>
-                            <div className="repo-review-inline-actions">
-                              <button
-                                type="button"
-                                className="btn-outline btn-sm repo-review-btn-compact"
-                                onClick={() => void openRunDetail(run)}
-                              >
-                                查看详情
-                              </button>
-                              <button
-                                className="btn-danger btn-sm repo-review-btn-compact"
-                                onClick={() =>
-                                  void decideRunByHuman(run, 'fail')
-                                }
-                                disabled={manualDecisionRunId === run.id}
-                              >
-                                {manualDecisionRunId === run.id
-                                  ? '处理中...'
-                                  : '人工不通过'}
-                              </button>
-                              <button
-                                className="btn-primary btn-sm repo-review-btn-compact"
-                                onClick={() =>
-                                  void decideRunByHuman(run, 'pass')
-                                }
-                                disabled={manualDecisionRunId === run.id}
-                              >
-                                {manualDecisionRunId === run.id
-                                  ? '处理中...'
-                                  : '人工通过'}
-                              </button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ) : null}
-            </>
-          )}
-
-          {/* Tab: Profile */}
-          {!creatingRepository && selectedRepository && !repositoryEditorOpen && repoDetailTab === 'profile' && (
-                  <RepoReviewProfileSection
-                    selectedRepositoryId={selectedRepositoryId}
-                    sectionOpen={profileSectionOpen || profileEditorOpen}
-                    editorOpen={profileEditorOpen}
-                    profileDraft={profileDraft}
-                    setProfileDraft={setProfileDraft}
-                    profiles={profilesForSelectedRepository}
-                    autoCreatedProfileNotice={autoCreatedProfileNotice}
-                    availableProfileBranches={availableProfileBranches}
-                    filteredProfileBranches={filteredProfileBranches}
-                    loadingRemoteBranches={loadingRemoteBranches}
-                    savingProfile={savingProfile}
-                    deletingProfile={deletingProfile}
-                    activeBranchWindowDays={REPO_REVIEW_ACTIVE_BRANCH_WINDOW_DAYS}
-                    onToggleSection={() =>
-                      setProfileSectionOpen((current) => !current)
-                    }
-                    onOpenEditor={openProfileEditor}
-                    onCloseEditor={closeProfileEditor}
-                    onSelectProfile={(profile) =>
-                      setProfileDraft(
-                        makeProfileDraft(selectedRepositoryId, profile),
-                      )
-                    }
-                    onRefreshBranches={() =>
-                      void refreshRemoteBranches(true, false)
-                    }
-                    onToggleTargetBranch={toggleTargetBranch}
-                    onSave={() => void saveProfile()}
-                    onDelete={() => void deleteProfile()}
-                  />
-          )}
-
-          {/* Tab: Runs */}
-          {!creatingRepository && !repositoryEditorOpen && repoDetailTab === 'runs' && (
-            <>
-              <div className="repo-review-card repo-review-runs-card repo-review-fold">
-                <button
-                  type="button"
-                  className="repo-review-fold-summary"
-                  onClick={() => setRunsSectionOpen((current) => !current)}
-                  aria-expanded={runsSectionOpen}
-                >
-                  <div className="repo-review-fold-copy">
-                    <h4>{t('repoReview.runs.title')}</h4>
-                    <div className="settings-hint">
-                      {selectedRepository
-                        ? `当前仓库: ${selectedRepository.name}`
-                        : '全部仓库'}
-                      {` · ${runsForDisplay.length} 条 · 已按最近活动时间倒序`}
-                    </div>
-                  </div>
-                  <span
-                    className={`repo-review-fold-icon ${runsSectionOpen ? 'open' : ''}`}
-                  >
-                    <IconChevronDown />
-                  </span>
-                </button>
-                {runsSectionOpen ? (
-                  <div className="repo-review-fold-body">
-                    {lastSyncMessage ? (
-                      <div className="settings-hint">{lastSyncMessage}</div>
-                    ) : null}
-                    <div className="repo-review-runs-toolbar">
-                      <div className="form-group">
-                        <label>{t('repoReview.runs.status')}</label>
-                        <AppSelect
-                          value={runFilterStatus}
-                          onChange={setRunFilterStatus}
-                          ariaLabel={t('repoReview.runs.filterByStatus')}
-                          options={[
-                            { value: '', label: t('repoReview.status.all') },
-                            { value: 'pass', label: '通过' },
-                            { value: 'warn', label: '需关注' },
-                            { value: 'fail', label: '不通过' },
-                            { value: 'error', label: '执行失败' },
-                            { value: 'skipped', label: '已跳过' },
-                            { value: 'queued', label: '排队中' },
-                            { value: 'running', label: t('repoReview.status.running') },
-                          ]}
-                        />
-                      </div>
-                      <div className="form-group repo-review-run-search">
-                        <label>{t('repoReview.runs.keyword')}</label>
-                        <div className="repo-review-search-shell">
-                          <input
-                            className="repo-review-search-input"
-                            value={runFilterText}
-                            onChange={(event) =>
-                              setRunFilterText(event.target.value)
-                            }
-                            placeholder={t('repoReview.runs.searchPlaceholder')}
-                          />
-                          {!runFilterText && (
-                            <span
-                              className="repo-review-search-icon"
-                              aria-hidden="true"
-                            >
-                              <IconSearch />
-                            </span>
-                          )}
-                          {runFilterText ? (
-                            <button
-                              type="button"
-                              className="repo-review-search-clear"
-                              onClick={() => setRunFilterText('')}
-                              aria-label={t('repoReview.runs.clearSearch')}
-                            >
-                              <IconX />
-                            </button>
-                          ) : null}
-                        </div>
-                      </div>
-                    </div>
-                    {runsForDisplay.length === 0 ? (
-                      <div className="settings-hint">
-                        还没有匹配的审查运行记录。
-                      </div>
-                    ) : (
-                      <>
-                        <Pagination
-                          page={runsPage}
-                          pageSize={RUNS_PAGE_SIZE}
-                          total={runsForDisplay.length}
-                          onPageChange={setRunsPage}
-                        />
-                        <div className="repo-review-run-list">
-                        {pagedRunsForDisplay.map((run) => {
-                        const repositoryName =
-                          repositoryById.get(run.repositoryId)?.name ||
-                          run.repositoryId;
-                        const profileName =
-                          profileById.get(run.profileId)?.name ||
-                          t('repoReview.runs.unmatchedProfile');
-                        const canDecideByHuman =
-                          run.stage === 'push' &&
-                          run.passDecisionMode === 'human' &&
-                          !run.manualDecision &&
-                          run.status === 'completed' &&
-                          run.overall !== 'error' &&
-                          run.overall !== 'skipped';
-                        const isManualDecisionPending =
-                          manualDecisionRunId === run.id;
-                        const allProgressEntries =
-                          buildReviewProgressEntries(run);
-                        const progressEntries =
-                          filterReviewProgressEntriesForList(
-                            allProgressEntries,
-                          );
-                        const hasSummaryOnlyProgress =
-                          allProgressEntries.length > 0 &&
-                          progressEntries.length === 0;
-                        const diffWorkerStepCount =
-                          run.reviewProgress?.steps?.filter((step) =>
-                            step.id.startsWith('split_diff_worker_') ||
-                            step.id.startsWith('agentic_subagent_'),
-                          ).length || 0;
-                        const progressExpanded =
-                          expandedRunProgressIds.includes(run.id) ||
-                          run.status === 'running';
-                        const durationMs = getRunDurationMs(run);
-                        const chatDeliveryStatus =
-                          resolveChatDeliveryStatus(run);
-                        const platformDeliveryStatus =
-                          resolvePlatformDeliveryStatus(run);
-                        const manualDecisionLabel =
-                          run.manualDecision === 'pass'
-                            ? '已人工通过'
-                            : run.manualDecision === 'fail'
-                              ? '已人工不通过'
-                              : run.stage === 'push' &&
-                                  run.passDecisionMode === 'human' &&
-                                  run.status === 'completed' &&
-                                  run.overall !== 'error' &&
-                                  run.overall !== 'skipped'
-                                ? '待人工最终判定'
-                                : '';
-                        return (
-                          <div
-                            key={run.id}
-                            className={`repo-review-run-card status-${run.overall || run.status}`}
-                          >
-                            <div className="repo-review-run-header">
-                              <div className="repo-review-run-title-block">
-                                <strong>{formatRunTitle(run)}</strong>
-                                <div className="repo-review-run-meta">
-                                  <span>
-                                    {new Date(run.createdAt).toLocaleString()}
-                                  </span>
-                                  <span>{formatRunStageLabel(run.stage)}</span>
-                                  <span>
-                                    {formatRunSourceLabel(run.source)}
-                                  </span>
-                                  <span>{formatDurationMs(durationMs)}</span>
-                                </div>
-                              </div>
-                              <div className="repo-review-run-actions">
-                                <button
-                                  type="button"
-                                  className="btn-outline btn-sm repo-review-btn-compact"
-                                  onClick={() => void openRunDetail(run)}
-                                >
-                                  查看详情
-                                </button>
-                                {!isRunCancellable(run) ? (
-                                  <button
-                                    type="button"
-                                    className="btn-outline btn-sm repo-review-btn-compact"
-                                    onClick={() => void rerunRun(run)}
-                                    disabled={isRunRerunning(run.id)}
-                                  >
-                                    {isRunRerunning(run.id)
-                                      ? '再次运行中...'
-                                      : '再次运行'}
-                                  </button>
-                                ) : null}
-                                {isRunCancellable(run) ? (
-                                  <button
-                                    type="button"
-                                    className="btn-outline btn-sm repo-review-btn-compact"
-                                    onClick={() => void cancelRun(run)}
-                                    disabled={isRunCancelling(run.id)}
-                                  >
-                                    {isRunCancelling(run.id)
-                                      ? '中止中...'
-                                      : '中止'}
-                                  </button>
-                                ) : null}
-                              </div>
-                            </div>
-                            <div className="repo-review-run-meta">
-                              <span>{repositoryName}</span>
-                              <span>{profileName}</span>
-                              {run.branch ? <span>{run.branch}</span> : null}
-                              {run.actor ? <span>{run.actor}</span> : null}
-                            </div>
-                            <div className="repo-review-run-badges">
-                              <span
-                                className={`repo-review-status-badge status-${
-                                  run.overall || run.status
-                                }`}
-                              >
-                                {formatResultStateLabel(run)}
-                              </span>
-                              <span
-                                className={`repo-review-source-pill tone-${getDeliveryTone(chatDeliveryStatus)}`}
-                              >
-                                通知{' '}
-                                {formatDeliveryStatusLabel(chatDeliveryStatus)}
-                              </span>
-                              <span
-                                className={`repo-review-source-pill tone-${getDeliveryTone(platformDeliveryStatus)}`}
-                              >
-                                平台{' '}
-                                {formatDeliveryStatusLabel(
-                                  platformDeliveryStatus,
-                                )}
-                              </span>
-                              {run.baselineSource ? (
-                                <span className="repo-review-source-pill tone-neutral">
-                                  基线{' '}
-                                  {formatBaselineSourceLabel(
-                                    run.baselineSource,
-                                  )}
-                                </span>
-                              ) : null}
-                            </div>
-                            <div
-                              className="repo-review-run-summary"
-                              title={buildRepoReviewCompactSummary(
-                                run.summary,
-                                run.error || '无摘要',
-                              )}
-                            >
-                              {run.summary || run.error || t('repoReview.runs.noSummary')}
-                            </div>
-                            <div className="repo-review-run-meta">
-                              <span>
-                                {formatShortSha(run.baseSha)} {'->'}{' '}
-                                {formatShortSha(run.headSha)}
-                              </span>
-                              <span>{run.changedFiles.length} 个文件</span>
-                              <span>{run.commitReviews.length} 个提交明细</span>
-                              <span>{run.findings.length} 个问题</span>
-                              {progressEntries.length > 0 ? (
-                                <span>{progressEntries.length} 个分析步骤</span>
-                              ) : null}
-                              {run.recommendedBlock ? (
-                                <span>{t('repoReview.runs.aiRecommendBlock')}</span>
-                              ) : null}
-                              {run.blockingEnforced ? (
-                                <span>{t('repoReview.status.blocked')}</span>
-                              ) : null}
-                            </div>
-                            {progressEntries.length > 0 ? (
-                              <div className="repo-review-run-progress">
-                                <button
-                                  type="button"
-                                  className="btn-outline btn-sm repo-review-btn-compact"
-                                  onClick={() => toggleRunProgress(run.id)}
-                                >
-                                  {progressExpanded
-                                    ? '收起分析过程'
-                                    : '查看分析过程'}
-                                </button>
-                                <span className="settings-hint">
-                                  {run.status === 'running'
-                                    ? diffWorkerStepCount > 0
-                                      ? `AI 正在分析中，已分配 ${diffWorkerStepCount} 个子代理任务，面板会自动刷新。`
-                                      : hasSummaryOnlyProgress
-                                        ? 'AI 正在分析中，列表仅显示摘要视图，完整思考和工具调用请点“查看详情”。'
-                                        : 'AI 正在分析中，面板会自动刷新。'
-                                    : hasSummaryOnlyProgress
-                                      ? '列表仅显示摘要视图，完整思考和工具调用请点“查看详情”。'
-                                      : '这里会展示 AI 的思考摘要、工具调用链和完成状态。'}
-                                </span>
-                              </div>
-                            ) : hasSummaryOnlyProgress ? (
-                              <div className="repo-review-run-progress">
-                                <span className="settings-hint">
-                                  列表仅显示摘要视图，完整思考和工具调用请点“查看详情”。
-                                </span>
-                              </div>
-                            ) : run.status === 'running' ? (
-                              <div className="repo-review-run-progress">
-                                <span className="settings-hint">
-                                  AI 已开始执行，等待首批分析事件...
-                                </span>
-                              </div>
-                            ) : null}
-                            {progressExpanded && progressEntries.length > 0 ? (
-                              <ReviewProgressTimeline
-                                entries={progressEntries}
-                              />
-                            ) : null}
-                            {manualDecisionLabel ? (
-                              <div className="repo-review-run-meta">
-                                <span>{manualDecisionLabel}</span>
-                                {run.manualDecisionBy ? (
-                                  <span>判定人: {run.manualDecisionBy}</span>
-                                ) : null}
-                                {run.manualDecisionAt ? (
-                                  <span>
-                                    判定时间:{' '}
-                                    {new Date(
-                                      run.manualDecisionAt,
-                                    ).toLocaleString()}
-                                  </span>
-                                ) : null}
-                              </div>
-                            ) : null}
-                            {run.lastDeliveryError ? (
-                              <div className="repo-review-progress-error">
-                                投递异常: {run.lastDeliveryError}
-                              </div>
-                            ) : null}
-                            {run.findings.length > 0 ? (
-                              <div className="repo-review-run-findings">
-                                {run.findings
-                                  .slice(0, 3)
-                                  .map((finding, index) => (
-                                    <div
-                                      key={`${run.id}-${index}`}
-                                      className="settings-hint repo-review-preview-line"
+                                  <div className="repo-review-source-summary">
+                                    <span
+                                      className={`repo-review-status-badge ${
+                                        selectedRepository.enabled
+                                          ? 'enabled'
+                                          : 'disabled'
+                                      }`}
                                     >
-                                      [{finding.severity}]{' '}
-                                      {finding.file ? `${finding.file}: ` : ''}
-                                      {finding.title}
-                                    </div>
-                                  ))}
-                              </div>
-                            ) : null}
-                            {run.commitReviews.length > 0 ? (
-                              <div className="repo-review-run-findings">
-                                {run.commitReviews.slice(0, 3).map((review) => (
-                                  <div
-                                    key={`${run.id}-${review.commit}-${review.title}`}
-                                    className="settings-hint repo-review-preview-line"
-                                  >
-                                    {review.commit || '(unknown)'}{' '}
-                                    {review.title}
-                                    {review.author ? ` · ${review.author}` : ''}
-                                    {review.issues[0]
-                                      ? ` · 问题: ${review.issues[0]}`
-                                      : review.positives[0]
-                                        ? ` · 优点: ${review.positives[0]}`
-                                        : ''}
-                                  </div>
-                                ))}
-                              </div>
-                            ) : run.commitDetails.length > 0 ? (
-                              <div className="repo-review-run-findings">
-                                {run.commitDetails.slice(0, 3).map((commit) => (
-                                  <div
-                                    key={`${run.id}-${commit.commit}-${commit.title}`}
-                                    className="settings-hint repo-review-preview-line"
-                                  >
-                                    {commit.commit || '(unknown)'}{' '}
-                                    {commit.title}
-                                    {commit.author ? ` · ${commit.author}` : ''}
-                                  </div>
-                                ))}
-                              </div>
-                            ) : null}
-                            {canDecideByHuman ? (
-                              <div className="modal-actions">
-                                <button
-                                  className="btn-danger btn-sm repo-review-btn-compact"
-                                  onClick={() =>
-                                    void decideRunByHuman(run, 'fail')
-                                  }
-                                  disabled={isManualDecisionPending}
-                                >
-                                  {isManualDecisionPending
-                                    ? '处理中...'
-                                    : '人工不通过'}
-                                </button>
-                                <button
-                                  className="btn-primary btn-sm repo-review-btn-compact"
-                                  onClick={() =>
-                                    void decideRunByHuman(run, 'pass')
-                                  }
-                                  disabled={isManualDecisionPending}
-                                >
-                                  {isManualDecisionPending
-                                    ? '处理中...'
-                                    : '人工通过'}
-                                </button>
-                              </div>
-                            ) : null}
-                          </div>
-                          );
-                        })}
-                        </div>
-                      </>
-                    )}
-                  </div>
-                ) : null}
-              </div>
-
-              {selectedRepository ? (
-                <div className="repo-review-card repo-review-runs-card repo-review-fold">
-                  <button
-                    type="button"
-                    className="repo-review-fold-summary"
-                    onClick={() =>
-                      setDigestRunsSectionOpen((current) => !current)
-                    }
-                    aria-expanded={digestRunsSectionOpen}
-                  >
-                    <div className="repo-review-fold-copy">
-                      <h4>{t('repoReview.digestRuns.title')}</h4>
-                      <div className="settings-hint">
-                        {selectedRepository.name}
-                        {` · ${digestRuns.length} 条 · 计划槽位与实际执行时间都可追踪`}
-                      </div>
-                    </div>
-                    <span
-                      className={`repo-review-fold-icon ${digestRunsSectionOpen ? 'open' : ''}`}
-                    >
-                      <IconChevronDown />
-                    </span>
-                  </button>
-                  {digestRunsSectionOpen ? (
-                    <div className="repo-review-fold-body">
-                      <div className="repo-review-inline-actions">
-                        <button
-                          type="button"
-                          className="btn-outline btn-sm repo-review-btn-compact"
-                          onClick={() => void refreshDigestRuns(false)}
-                          disabled={loadingDigestRuns}
-                        >
-                          {loadingDigestRuns ? t('repoReview.common.loading') : t('repoReview.button.refresh')}
-                        </button>
-                        <span className="settings-hint">
-                          digest 运行记录独立于普通审查 run，包含计划执行时间、统计窗口和投递结果。
-                        </span>
-                      </div>
-                      {digestRuns.length === 0 ? (
-                        <div className="settings-hint">
-                          还没有日报或周报运行记录。
-                        </div>
-                      ) : (
-                        <div className="repo-review-run-list">
-                          {digestRuns.map((run) => (
-                            <div
-                              key={run.id}
-                              className={`repo-review-run-card status-${run.status || 'completed'}`}
-                            >
-                              <div className="repo-review-run-header">
-                                <div className="repo-review-run-title-block">
-                                  <strong>
-                                    {formatDigestRunTypeLabel(run.type)}
-                                  </strong>
-                                  <div className="repo-review-run-meta">
-                                    <span>
-                                      计划 {new Date(run.scheduledFor || run.createdAt).toLocaleString()}
+                                      {selectedRepository.enabled
+                                        ? t('repoReview.repoStatus.enabled')
+                                        : t('repoReview.repoStatus.disabled')}
                                     </span>
-                                    <span>
-                                      {formatDurationMs(run.durationMs)}
+                                    <span className="repo-review-source-pill tone-neutral">
+                                      {formatRemoteProviderLabel(
+                                        selectedRepository.remoteProvider,
+                                      )}
                                     </span>
-                                    {run.timezone ? (
-                                      <span>{run.timezone}</span>
+                                    {selectedRepositoryLatestRun ? (
+                                      <span
+                                        className={`repo-review-status-badge status-${
+                                          selectedRepositoryLatestRun.overall ||
+                                          selectedRepositoryLatestRun.status
+                                        }`}
+                                      >
+                                        {t('repoReview.overview.latestReview')}{' '}
+                                        {formatRunOutcomeLabel(
+                                          selectedRepositoryLatestRun.overall ||
+                                            selectedRepositoryLatestRun.status,
+                                        )}
+                                      </span>
                                     ) : null}
                                   </div>
                                 </div>
-                                <div className="repo-review-run-actions">
+                                <div className="repo-review-workspace-grid repo-review-workspace-grid--framework">
+                                  {selectedRepositoryWorkspaceCards.map(
+                                    (item) => (
+                                      <button
+                                        key={item.title}
+                                        type="button"
+                                        className="repo-review-workspace-card repo-review-workspace-card--framework actionable"
+                                        onClick={() =>
+                                          openWorkspaceCardAction(item.action)
+                                        }
+                                      >
+                                        <div className="repo-review-framework-card-icon">
+                                          {renderWorkspaceCardIcon(item.action)}
+                                        </div>
+                                        <div className="repo-review-workspace-card-topline">
+                                          <span>{item.title}</span>
+                                          <span
+                                            className={`repo-review-source-pill tone-${item.tone}`}
+                                          >
+                                            {item.status}
+                                          </span>
+                                        </div>
+                                        <strong className="repo-review-workspace-card-value">
+                                          {item.value}
+                                        </strong>
+                                        <div className="settings-hint">
+                                          {item.detail}
+                                        </div>
+                                      </button>
+                                    ),
+                                  )}
+                                </div>
+                              </div>
+
+                              <div className="repo-review-framework-content-grid">
+                                <RepositoryRelationshipsPanel
+                                  repositoryId={selectedRepository.id}
+                                />
+                                <div className="repo-review-card repo-review-manual-review-card">
+                                  <div className="repo-review-card-header">
+                                    <div>
+                                      <h4>
+                                        {t('repoReview.manualReview.title')}
+                                      </h4>
+                                      <div className="settings-hint">
+                                        {t(
+                                          'repoReview.manualReview.selectBaselineHint',
+                                        )}
+                                      </div>
+                                    </div>
+                                    <div className="repo-review-inline-actions">
+                                      <button
+                                        type="button"
+                                        className="btn-outline btn-sm"
+                                        onClick={() =>
+                                          openBranchReviewWorkbench()
+                                        }
+                                      >
+                                        {t('repoReview.branchStatus.viewAll')}
+                                      </button>
+                                    </div>
+                                  </div>
+                                  {branchSpotlightItems.length ? (
+                                    <div className="repo-review-spotlight-list">
+                                      {branchSpotlightItems.map((item) => (
+                                        <div
+                                          key={item.name}
+                                          className="repo-review-spotlight-item repo-review-manual-branch-item"
+                                        >
+                                          <div className="repo-review-spotlight-main">
+                                            <strong>{item.name}</strong>
+                                            <div className="repo-review-spotlight-meta">
+                                              {item.defaultBranch ? (
+                                                <span>
+                                                  {t(
+                                                    'repoReview.branchStatus.defaultBaseline',
+                                                  )}
+                                                </span>
+                                              ) : null}
+                                              {item.actor ? (
+                                                <span>{item.actor}</span>
+                                              ) : null}
+                                              {item.latestCommitAt ? (
+                                                <span>
+                                                  {t(
+                                                    'repoReview.branchStatus.recentCommit',
+                                                    {
+                                                      time: formatOptionalDateTime(
+                                                        item.latestCommitAt,
+                                                      ),
+                                                    },
+                                                  )}
+                                                </span>
+                                              ) : null}
+                                            </div>
+                                            <div
+                                              className="settings-hint repo-review-summary-preview"
+                                              title={
+                                                item.lastRun?.summary ||
+                                                item.title ||
+                                                t(
+                                                  'repoReview.branchStatus.noSummary',
+                                                )
+                                              }
+                                            >
+                                              {item.lastRun?.summary ||
+                                                item.title ||
+                                                t(
+                                                  'repoReview.branchStatus.noRecentSummary',
+                                                )}
+                                            </div>
+                                          </div>
+                                          <div className="repo-review-manual-branch-side">
+                                            <div className="repo-review-source-summary">
+                                              {item.isReviewing ? (
+                                                <span className="repo-review-source-pill tone-success">
+                                                  {t(
+                                                    'repoReview.branchStatus.reviewing',
+                                                  )}
+                                                </span>
+                                              ) : null}
+                                              {item.lastRun ? (
+                                                <span
+                                                  className={`repo-review-status-badge status-${
+                                                    item.lastRun.overall ||
+                                                    item.lastRun.status
+                                                  }`}
+                                                >
+                                                  {formatRunOutcomeLabel(
+                                                    item.lastRun.overall ||
+                                                      item.lastRun.status,
+                                                  )}
+                                                </span>
+                                              ) : (
+                                                <span className="repo-review-source-pill tone-neutral">
+                                                  {t(
+                                                    'repoReview.branchStatus.noRuns',
+                                                  )}
+                                                </span>
+                                              )}
+                                            </div>
+                                            <div className="repo-review-inline-actions">
+                                              {item.lastRun ? (
+                                                <button
+                                                  type="button"
+                                                  className="btn-outline btn-sm repo-review-btn-compact"
+                                                  onClick={() => {
+                                                    if (!item.lastRun) return;
+                                                    void openRunDetail(
+                                                      item.lastRun,
+                                                    );
+                                                  }}
+                                                >
+                                                  {t(
+                                                    'repoReview.button.viewDetail',
+                                                  )}
+                                                </button>
+                                              ) : null}
+                                              <button
+                                                type="button"
+                                                className="btn-primary btn-sm repo-review-btn-compact"
+                                                onClick={() =>
+                                                  openBranchReviewWorkbench(
+                                                    item.name,
+                                                  )
+                                                }
+                                                disabled={
+                                                  !selectedRepository.remoteProvider ||
+                                                  item.isReviewing ||
+                                                  syncingBranchNames.includes(
+                                                    item.name,
+                                                  )
+                                                }
+                                              >
+                                                {item.isReviewing ||
+                                                syncingBranchNames.includes(
+                                                  item.name,
+                                                )
+                                                  ? t(
+                                                      'repoReview.branchStatus.reviewing',
+                                                    )
+                                                  : t(
+                                                      'repoReview.branchStatus.selectBaseline',
+                                                    )}
+                                              </button>
+                                            </div>
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  ) : (
+                                    <div className="repo-review-empty-hint">
+                                      {t(
+                                        'repoReview.branchStatus.noPriorityBranches',
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+
+                            <aside className="repo-review-framework-side">
+                              <div className="repo-review-card repo-review-framework-status-card">
+                                <div className="repo-review-card-header">
+                                  <div>
+                                    <h4>{t('repoReview.workspace.profile')}</h4>
+                                    <div className="settings-hint">
+                                      {t('repoReview.panel.description')}
+                                    </div>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    className="btn-outline btn-sm btn-icon-only"
+                                    onClick={() =>
+                                      void refreshCurrentView(true)
+                                    }
+                                    aria-label={t('repoReview.button.refresh')}
+                                    title={t('repoReview.button.refresh')}
+                                  >
+                                    <IconRefresh />
+                                  </button>
+                                </div>
+                                <div
+                                  className="repo-review-framework-meter"
+                                  style={
+                                    {
+                                      '--repo-review-completion': `${workspaceCompletionPercent}%`,
+                                    } as CSSProperties
+                                  }
+                                >
+                                  <div className="repo-review-framework-meter-inner">
+                                    <strong>
+                                      {workspaceCompletionPercent}%
+                                    </strong>
+                                    <span>
+                                      {t('repoReview.repo.enabledBadge')}
+                                    </span>
+                                  </div>
+                                </div>
+                                <div className="repo-review-framework-checklist">
+                                  {workspaceSetupChecks.map((item) => (
+                                    <div
+                                      key={item.label}
+                                      className={`repo-review-framework-check ${
+                                        item.ready ? 'is-ready' : 'is-pending'
+                                      }`}
+                                    >
+                                      <span className="repo-review-framework-check-icon">
+                                        {item.ready ? (
+                                          <IconCheck />
+                                        ) : (
+                                          <IconCalendar />
+                                        )}
+                                      </span>
+                                      <div>
+                                        <strong>{item.label}</strong>
+                                        <span>{item.detail}</span>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                                <div className="repo-review-framework-facts">
+                                  {workspaceStatusFacts.map((item) => (
+                                    <div
+                                      key={item.label}
+                                      className="repo-review-framework-fact"
+                                    >
+                                      <span>{item.label}</span>
+                                      <strong>{item.value}</strong>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            </aside>
+                          </div>
+                        </div>
+
+                        {manualPendingRuns.length > 0 ? (
+                          <div className="repo-review-card">
+                            <div className="repo-review-card-header">
+                              <div>
+                                <h4>{t('repoReview.manualDecision.title')}</h4>
+                                <div className="settings-hint">
+                                  {t('repoReview.manualDecision.pendingHint')}
+                                </div>
+                              </div>
+                              <span className="repo-review-status-badge status-warn">
+                                {t('repoReview.manualDecision.pendingCount', {
+                                  count: manualPendingRuns.length,
+                                })}
+                              </span>
+                            </div>
+                            <div className="repo-review-spotlight-list">
+                              {manualPendingRuns.slice(0, 4).map((run) => (
+                                <div
+                                  key={run.id}
+                                  className="repo-review-spotlight-item"
+                                >
+                                  <div className="repo-review-spotlight-main">
+                                    <strong>{formatRunTitle(run)}</strong>
+                                    <div className="repo-review-spotlight-meta">
+                                      <span>
+                                        {new Date(
+                                          run.createdAt,
+                                        ).toLocaleString()}
+                                      </span>
+                                      {run.branch ? (
+                                        <span>{run.branch}</span>
+                                      ) : null}
+                                      {run.actor ? (
+                                        <span>{run.actor}</span>
+                                      ) : null}
+                                    </div>
+                                  </div>
+                                  <div className="repo-review-inline-actions">
+                                    <button
+                                      type="button"
+                                      className="btn-outline btn-sm repo-review-btn-compact"
+                                      onClick={() => void openRunDetail(run)}
+                                    >
+                                      查看详情
+                                    </button>
+                                    <button
+                                      className="btn-danger btn-sm repo-review-btn-compact"
+                                      onClick={() =>
+                                        void decideRunByHuman(run, 'fail')
+                                      }
+                                      disabled={manualDecisionRunId === run.id}
+                                    >
+                                      {manualDecisionRunId === run.id
+                                        ? '处理中...'
+                                        : '人工不通过'}
+                                    </button>
+                                    <button
+                                      className="btn-primary btn-sm repo-review-btn-compact"
+                                      onClick={() =>
+                                        void decideRunByHuman(run, 'pass')
+                                      }
+                                      disabled={manualDecisionRunId === run.id}
+                                    >
+                                      {manualDecisionRunId === run.id
+                                        ? '处理中...'
+                                        : '人工通过'}
+                                    </button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ) : null}
+                      </>
+                    )}
+
+                  {/* Tab: Profile */}
+                  {!creatingRepository &&
+                    selectedRepository &&
+                    !repositoryEditorOpen &&
+                    repoDetailTab === 'profile' && (
+                      <RepoReviewProfileSection
+                        selectedRepositoryId={selectedRepositoryId}
+                        sectionOpen={profileSectionOpen || profileEditorOpen}
+                        editorOpen={profileEditorOpen}
+                        profileDraft={profileDraft}
+                        setProfileDraft={setProfileDraft}
+                        profiles={profilesForSelectedRepository}
+                        autoCreatedProfileNotice={autoCreatedProfileNotice}
+                        availableProfileBranches={availableProfileBranches}
+                        filteredProfileBranches={filteredProfileBranches}
+                        loadingRemoteBranches={loadingRemoteBranches}
+                        savingProfile={savingProfile}
+                        deletingProfile={deletingProfile}
+                        activeBranchWindowDays={
+                          REPO_REVIEW_ACTIVE_BRANCH_WINDOW_DAYS
+                        }
+                        onToggleSection={() =>
+                          setProfileSectionOpen((current) => !current)
+                        }
+                        onOpenEditor={openProfileEditor}
+                        onCloseEditor={closeProfileEditor}
+                        onSelectProfile={(profile) =>
+                          setProfileDraft(
+                            makeProfileDraft(selectedRepositoryId, profile),
+                          )
+                        }
+                        onRefreshBranches={() =>
+                          void refreshRemoteBranches(true, false)
+                        }
+                        onToggleTargetBranch={toggleTargetBranch}
+                        onSave={() => void saveProfile()}
+                        onDelete={() => void deleteProfile()}
+                      />
+                    )}
+
+                  {/* Tab: Runs */}
+                  {!creatingRepository &&
+                    !repositoryEditorOpen &&
+                    repoDetailTab === 'runs' && (
+                      <>
+                        <div className="repo-review-card repo-review-runs-card repo-review-fold">
+                          <button
+                            type="button"
+                            className="repo-review-fold-summary"
+                            onClick={() =>
+                              setRunsSectionOpen((current) => !current)
+                            }
+                            aria-expanded={runsSectionOpen}
+                          >
+                            <div className="repo-review-fold-copy">
+                              <h4>{t('repoReview.runs.title')}</h4>
+                              <div className="settings-hint">
+                                {selectedRepository
+                                  ? `当前仓库: ${selectedRepository.name}`
+                                  : '全部仓库'}
+                                {` · ${runsForDisplay.length} 条 · 已按最近活动时间倒序`}
+                              </div>
+                            </div>
+                            <span
+                              className={`repo-review-fold-icon ${runsSectionOpen ? 'open' : ''}`}
+                            >
+                              <IconChevronDown />
+                            </span>
+                          </button>
+                          {runsSectionOpen ? (
+                            <div className="repo-review-fold-body">
+                              {lastSyncMessage ? (
+                                <div className="settings-hint">
+                                  {lastSyncMessage}
+                                </div>
+                              ) : null}
+                              <div className="repo-review-runs-toolbar">
+                                <div className="form-group">
+                                  <label>{t('repoReview.runs.status')}</label>
+                                  <AppSelect
+                                    value={runFilterStatus}
+                                    onChange={setRunFilterStatus}
+                                    ariaLabel={t(
+                                      'repoReview.runs.filterByStatus',
+                                    )}
+                                    options={[
+                                      {
+                                        value: '',
+                                        label: t('repoReview.status.all'),
+                                      },
+                                      { value: 'pass', label: '通过' },
+                                      { value: 'warn', label: '需关注' },
+                                      { value: 'fail', label: '不通过' },
+                                      { value: 'error', label: '执行失败' },
+                                      { value: 'skipped', label: '已跳过' },
+                                      { value: 'queued', label: '排队中' },
+                                      {
+                                        value: 'running',
+                                        label: t('repoReview.status.running'),
+                                      },
+                                    ]}
+                                  />
+                                </div>
+                                <div className="form-group repo-review-run-search">
+                                  <label>{t('repoReview.runs.keyword')}</label>
+                                  <div className="repo-review-search-shell">
+                                    <input
+                                      className="repo-review-search-input"
+                                      value={runFilterText}
+                                      onChange={(event) =>
+                                        setRunFilterText(event.target.value)
+                                      }
+                                      placeholder={t(
+                                        'repoReview.runs.searchPlaceholder',
+                                      )}
+                                    />
+                                    {!runFilterText && (
+                                      <span
+                                        className="repo-review-search-icon"
+                                        aria-hidden="true"
+                                      >
+                                        <IconSearch />
+                                      </span>
+                                    )}
+                                    {runFilterText ? (
+                                      <button
+                                        type="button"
+                                        className="repo-review-search-clear"
+                                        onClick={() => setRunFilterText('')}
+                                        aria-label={t(
+                                          'repoReview.runs.clearSearch',
+                                        )}
+                                      >
+                                        <IconX />
+                                      </button>
+                                    ) : null}
+                                  </div>
+                                </div>
+                              </div>
+                              {runsForDisplay.length === 0 ? (
+                                <div className="settings-hint">
+                                  还没有匹配的审查运行记录。
+                                </div>
+                              ) : (
+                                <>
+                                  <Pagination
+                                    page={runsPage}
+                                    pageSize={RUNS_PAGE_SIZE}
+                                    total={runsForDisplay.length}
+                                    onPageChange={setRunsPage}
+                                  />
+                                  <div className="repo-review-run-list">
+                                    {pagedRunsForDisplay.map((run) => {
+                                      const repositoryName =
+                                        repositoryById.get(run.repositoryId)
+                                          ?.name || run.repositoryId;
+                                      const profileName =
+                                        profileById.get(run.profileId)?.name ||
+                                        t('repoReview.runs.unmatchedProfile');
+                                      const canDecideByHuman =
+                                        run.stage === 'push' &&
+                                        run.passDecisionMode === 'human' &&
+                                        !run.manualDecision &&
+                                        run.status === 'completed' &&
+                                        run.overall !== 'error' &&
+                                        run.overall !== 'skipped';
+                                      const isManualDecisionPending =
+                                        manualDecisionRunId === run.id;
+                                      const allProgressEntries =
+                                        buildReviewProgressEntries(run);
+                                      const progressEntries =
+                                        filterReviewProgressEntriesForList(
+                                          allProgressEntries,
+                                        );
+                                      const hasSummaryOnlyProgress =
+                                        allProgressEntries.length > 0 &&
+                                        progressEntries.length === 0;
+                                      const diffWorkerStepCount =
+                                        run.reviewProgress?.steps?.filter(
+                                          (step) =>
+                                            step.id.startsWith(
+                                              'split_diff_worker_',
+                                            ) ||
+                                            step.id.startsWith(
+                                              'agentic_subagent_',
+                                            ),
+                                        ).length || 0;
+                                      const progressExpanded =
+                                        expandedRunProgressIds.includes(
+                                          run.id,
+                                        ) || run.status === 'running';
+                                      const durationMs = getRunDurationMs(run);
+                                      const chatDeliveryStatus =
+                                        resolveChatDeliveryStatus(run);
+                                      const platformDeliveryStatus =
+                                        resolvePlatformDeliveryStatus(run);
+                                      const manualDecisionLabel =
+                                        run.manualDecision === 'pass'
+                                          ? '已人工通过'
+                                          : run.manualDecision === 'fail'
+                                            ? '已人工不通过'
+                                            : run.stage === 'push' &&
+                                                run.passDecisionMode ===
+                                                  'human' &&
+                                                run.status === 'completed' &&
+                                                run.overall !== 'error' &&
+                                                run.overall !== 'skipped'
+                                              ? '待人工最终判定'
+                                              : '';
+                                      return (
+                                        <div
+                                          key={run.id}
+                                          className={`repo-review-run-card status-${run.overall || run.status}`}
+                                        >
+                                          <div className="repo-review-run-header">
+                                            <div className="repo-review-run-title-block">
+                                              <strong>
+                                                {formatRunTitle(run)}
+                                              </strong>
+                                              <div className="repo-review-run-meta">
+                                                <span>
+                                                  {new Date(
+                                                    run.createdAt,
+                                                  ).toLocaleString()}
+                                                </span>
+                                                <span>
+                                                  {formatRunStageLabel(
+                                                    run.stage,
+                                                  )}
+                                                </span>
+                                                <span>
+                                                  {formatRunSourceLabel(
+                                                    run.source,
+                                                  )}
+                                                </span>
+                                                <span>
+                                                  {formatDurationMs(durationMs)}
+                                                </span>
+                                              </div>
+                                            </div>
+                                            <div className="repo-review-run-actions">
+                                              <button
+                                                type="button"
+                                                className="btn-outline btn-sm repo-review-btn-compact"
+                                                onClick={() =>
+                                                  void openRunDetail(run)
+                                                }
+                                              >
+                                                查看详情
+                                              </button>
+                                              {!isRunCancellable(run) ? (
+                                                <button
+                                                  type="button"
+                                                  className="btn-outline btn-sm repo-review-btn-compact"
+                                                  onClick={() =>
+                                                    void rerunRun(run)
+                                                  }
+                                                  disabled={isRunRerunning(
+                                                    run.id,
+                                                  )}
+                                                >
+                                                  {isRunRerunning(run.id)
+                                                    ? '再次运行中...'
+                                                    : '再次运行'}
+                                                </button>
+                                              ) : null}
+                                              {isRunCancellable(run) ? (
+                                                <button
+                                                  type="button"
+                                                  className="btn-outline btn-sm repo-review-btn-compact"
+                                                  onClick={() =>
+                                                    void cancelRun(run)
+                                                  }
+                                                  disabled={isRunCancelling(
+                                                    run.id,
+                                                  )}
+                                                >
+                                                  {isRunCancelling(run.id)
+                                                    ? '中止中...'
+                                                    : '中止'}
+                                                </button>
+                                              ) : null}
+                                            </div>
+                                          </div>
+                                          <div className="repo-review-run-meta">
+                                            <span>{repositoryName}</span>
+                                            <span>{profileName}</span>
+                                            {run.branch ? (
+                                              <span>{run.branch}</span>
+                                            ) : null}
+                                            {run.actor ? (
+                                              <span>{run.actor}</span>
+                                            ) : null}
+                                          </div>
+                                          <div className="repo-review-run-badges">
+                                            <span
+                                              className={`repo-review-status-badge status-${
+                                                run.overall || run.status
+                                              }`}
+                                            >
+                                              {formatResultStateLabel(run)}
+                                            </span>
+                                            <span
+                                              className={`repo-review-source-pill tone-${getDeliveryTone(chatDeliveryStatus)}`}
+                                            >
+                                              通知{' '}
+                                              {formatDeliveryStatusLabel(
+                                                chatDeliveryStatus,
+                                              )}
+                                            </span>
+                                            <span
+                                              className={`repo-review-source-pill tone-${getDeliveryTone(platformDeliveryStatus)}`}
+                                            >
+                                              平台{' '}
+                                              {formatDeliveryStatusLabel(
+                                                platformDeliveryStatus,
+                                              )}
+                                            </span>
+                                            {run.baselineSource ? (
+                                              <span className="repo-review-source-pill tone-neutral">
+                                                基线{' '}
+                                                {formatBaselineSourceLabel(
+                                                  run.baselineSource,
+                                                )}
+                                              </span>
+                                            ) : null}
+                                          </div>
+                                          <div
+                                            className="repo-review-run-summary"
+                                            title={buildRepoReviewCompactSummary(
+                                              run.summary,
+                                              run.error || '无摘要',
+                                            )}
+                                          >
+                                            {run.summary ||
+                                              run.error ||
+                                              t('repoReview.runs.noSummary')}
+                                          </div>
+                                          <div className="repo-review-run-meta">
+                                            <span>
+                                              {formatShortSha(run.baseSha)}{' '}
+                                              {'->'}{' '}
+                                              {formatShortSha(run.headSha)}
+                                            </span>
+                                            <span>
+                                              {run.changedFiles.length} 个文件
+                                            </span>
+                                            <span>
+                                              {run.commitReviews.length}{' '}
+                                              个提交明细
+                                            </span>
+                                            <span>
+                                              {run.findings.length} 个问题
+                                            </span>
+                                            {progressEntries.length > 0 ? (
+                                              <span>
+                                                {progressEntries.length}{' '}
+                                                个分析步骤
+                                              </span>
+                                            ) : null}
+                                            {run.recommendedBlock ? (
+                                              <span>
+                                                {t(
+                                                  'repoReview.runs.aiRecommendBlock',
+                                                )}
+                                              </span>
+                                            ) : null}
+                                            {run.blockingEnforced ? (
+                                              <span>
+                                                {t('repoReview.status.blocked')}
+                                              </span>
+                                            ) : null}
+                                          </div>
+                                          {progressEntries.length > 0 ? (
+                                            <div className="repo-review-run-progress">
+                                              <button
+                                                type="button"
+                                                className="btn-outline btn-sm repo-review-btn-compact"
+                                                onClick={() =>
+                                                  toggleRunProgress(run.id)
+                                                }
+                                              >
+                                                {progressExpanded
+                                                  ? '收起分析过程'
+                                                  : '查看分析过程'}
+                                              </button>
+                                              <span className="settings-hint">
+                                                {run.status === 'running'
+                                                  ? diffWorkerStepCount > 0
+                                                    ? `AI 正在分析中，已分配 ${diffWorkerStepCount} 个子代理任务，面板会自动刷新。`
+                                                    : hasSummaryOnlyProgress
+                                                      ? 'AI 正在分析中，列表仅显示摘要视图，完整思考和工具调用请点“查看详情”。'
+                                                      : 'AI 正在分析中，面板会自动刷新。'
+                                                  : hasSummaryOnlyProgress
+                                                    ? '列表仅显示摘要视图，完整思考和工具调用请点“查看详情”。'
+                                                    : '这里会展示 AI 的思考摘要、工具调用链和完成状态。'}
+                                              </span>
+                                            </div>
+                                          ) : hasSummaryOnlyProgress ? (
+                                            <div className="repo-review-run-progress">
+                                              <span className="settings-hint">
+                                                列表仅显示摘要视图，完整思考和工具调用请点“查看详情”。
+                                              </span>
+                                            </div>
+                                          ) : run.status === 'running' ? (
+                                            <div className="repo-review-run-progress">
+                                              <span className="settings-hint">
+                                                AI
+                                                已开始执行，等待首批分析事件...
+                                              </span>
+                                            </div>
+                                          ) : null}
+                                          {progressExpanded &&
+                                          progressEntries.length > 0 ? (
+                                            <ReviewProgressTimeline
+                                              entries={progressEntries}
+                                            />
+                                          ) : null}
+                                          {manualDecisionLabel ? (
+                                            <div className="repo-review-run-meta">
+                                              <span>{manualDecisionLabel}</span>
+                                              {run.manualDecisionBy ? (
+                                                <span>
+                                                  判定人: {run.manualDecisionBy}
+                                                </span>
+                                              ) : null}
+                                              {run.manualDecisionAt ? (
+                                                <span>
+                                                  判定时间:{' '}
+                                                  {new Date(
+                                                    run.manualDecisionAt,
+                                                  ).toLocaleString()}
+                                                </span>
+                                              ) : null}
+                                            </div>
+                                          ) : null}
+                                          {run.lastDeliveryError ? (
+                                            <div className="repo-review-progress-error">
+                                              投递异常: {run.lastDeliveryError}
+                                            </div>
+                                          ) : null}
+                                          {run.findings.length > 0 ? (
+                                            <div className="repo-review-run-findings">
+                                              {run.findings
+                                                .slice(0, 3)
+                                                .map((finding, index) => (
+                                                  <div
+                                                    key={`${run.id}-${index}`}
+                                                    className="settings-hint repo-review-preview-line"
+                                                  >
+                                                    [{finding.severity}]{' '}
+                                                    {finding.file
+                                                      ? `${finding.file}: `
+                                                      : ''}
+                                                    {finding.title}
+                                                  </div>
+                                                ))}
+                                            </div>
+                                          ) : null}
+                                          {run.commitReviews.length > 0 ? (
+                                            <div className="repo-review-run-findings">
+                                              {run.commitReviews
+                                                .slice(0, 3)
+                                                .map((review) => (
+                                                  <div
+                                                    key={`${run.id}-${review.commit}-${review.title}`}
+                                                    className="settings-hint repo-review-preview-line"
+                                                  >
+                                                    {review.commit ||
+                                                      '(unknown)'}{' '}
+                                                    {review.title}
+                                                    {review.author
+                                                      ? ` · ${review.author}`
+                                                      : ''}
+                                                    {review.issues[0]
+                                                      ? ` · 问题: ${review.issues[0]}`
+                                                      : review.positives[0]
+                                                        ? ` · 优点: ${review.positives[0]}`
+                                                        : ''}
+                                                  </div>
+                                                ))}
+                                            </div>
+                                          ) : run.commitDetails.length > 0 ? (
+                                            <div className="repo-review-run-findings">
+                                              {run.commitDetails
+                                                .slice(0, 3)
+                                                .map((commit) => (
+                                                  <div
+                                                    key={`${run.id}-${commit.commit}-${commit.title}`}
+                                                    className="settings-hint repo-review-preview-line"
+                                                  >
+                                                    {commit.commit ||
+                                                      '(unknown)'}{' '}
+                                                    {commit.title}
+                                                    {commit.author
+                                                      ? ` · ${commit.author}`
+                                                      : ''}
+                                                  </div>
+                                                ))}
+                                            </div>
+                                          ) : null}
+                                          {canDecideByHuman ? (
+                                            <div className="modal-actions">
+                                              <button
+                                                className="btn-danger btn-sm repo-review-btn-compact"
+                                                onClick={() =>
+                                                  void decideRunByHuman(
+                                                    run,
+                                                    'fail',
+                                                  )
+                                                }
+                                                disabled={
+                                                  isManualDecisionPending
+                                                }
+                                              >
+                                                {isManualDecisionPending
+                                                  ? '处理中...'
+                                                  : '人工不通过'}
+                                              </button>
+                                              <button
+                                                className="btn-primary btn-sm repo-review-btn-compact"
+                                                onClick={() =>
+                                                  void decideRunByHuman(
+                                                    run,
+                                                    'pass',
+                                                  )
+                                                }
+                                                disabled={
+                                                  isManualDecisionPending
+                                                }
+                                              >
+                                                {isManualDecisionPending
+                                                  ? '处理中...'
+                                                  : '人工通过'}
+                                              </button>
+                                            </div>
+                                          ) : null}
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                </>
+                              )}
+                            </div>
+                          ) : null}
+                        </div>
+
+                        {selectedRepository ? (
+                          <div className="repo-review-card repo-review-runs-card repo-review-fold">
+                            <button
+                              type="button"
+                              className="repo-review-fold-summary"
+                              onClick={() =>
+                                setDigestRunsSectionOpen((current) => !current)
+                              }
+                              aria-expanded={digestRunsSectionOpen}
+                            >
+                              <div className="repo-review-fold-copy">
+                                <h4>{t('repoReview.digestRuns.title')}</h4>
+                                <div className="settings-hint">
+                                  {selectedRepository.name}
+                                  {` · ${digestRuns.length} 条 · 计划槽位与实际执行时间都可追踪`}
+                                </div>
+                              </div>
+                              <span
+                                className={`repo-review-fold-icon ${digestRunsSectionOpen ? 'open' : ''}`}
+                              >
+                                <IconChevronDown />
+                              </span>
+                            </button>
+                            {digestRunsSectionOpen ? (
+                              <div className="repo-review-fold-body">
+                                <div className="repo-review-inline-actions">
                                   <button
                                     type="button"
                                     className="btn-outline btn-sm repo-review-btn-compact"
-                                    onClick={() => void openDigestRunDetail(run)}
+                                    onClick={() =>
+                                      void refreshDigestRuns(false)
+                                    }
+                                    disabled={loadingDigestRuns}
                                   >
-                                    查看详情
+                                    {loadingDigestRuns
+                                      ? t('repoReview.common.loading')
+                                      : t('repoReview.button.refresh')}
                                   </button>
+                                  <span className="settings-hint">
+                                    digest 运行记录独立于普通审查
+                                    run，包含计划执行时间、统计窗口和投递结果。
+                                  </span>
                                 </div>
-                              </div>
-                              <div className="repo-review-run-badges">
-                                <span
-                                  className={`repo-review-status-badge status-${run.status || 'completed'}`}
-                                >
-                                  {formatDigestRunStatusLabel(run.status)}
-                                </span>
-                                <span
-                                  className={`repo-review-source-pill tone-${getDeliveryTone(run.deliveryStatus)}`}
-                                >
-                                  投递{' '}
-                                  {formatDigestDeliveryStatusLabel(
-                                    run.deliveryStatus,
-                                  )}
-                                </span>
-                                <span className="repo-review-source-pill tone-neutral">
-                                  窗口{' '}
-                                  {new Date(run.periodStart).toLocaleString()}
-                                  {' -> '}
-                                  {new Date(run.periodEnd).toLocaleString()}
-                                </span>
-                              </div>
-                              <div
-                                className="repo-review-run-summary"
-                                title={buildRepoReviewCompactSummary(
-                                  run.summary,
-                                  run.deliveryError || run.errorMessage || '无摘要',
+                                {digestRuns.length === 0 ? (
+                                  <div className="settings-hint">
+                                    还没有日报或周报运行记录。
+                                  </div>
+                                ) : (
+                                  <div className="repo-review-run-list">
+                                    {digestRuns.map((run) => (
+                                      <div
+                                        key={run.id}
+                                        className={`repo-review-run-card status-${run.status || 'completed'}`}
+                                      >
+                                        <div className="repo-review-run-header">
+                                          <div className="repo-review-run-title-block">
+                                            <strong>
+                                              {formatDigestRunTypeLabel(
+                                                run.type,
+                                              )}
+                                            </strong>
+                                            <div className="repo-review-run-meta">
+                                              <span>
+                                                计划{' '}
+                                                {new Date(
+                                                  run.scheduledFor ||
+                                                    run.createdAt,
+                                                ).toLocaleString()}
+                                              </span>
+                                              <span>
+                                                {formatDurationMs(
+                                                  run.durationMs,
+                                                )}
+                                              </span>
+                                              {run.timezone ? (
+                                                <span>{run.timezone}</span>
+                                              ) : null}
+                                            </div>
+                                          </div>
+                                          <div className="repo-review-run-actions">
+                                            <button
+                                              type="button"
+                                              className="btn-outline btn-sm repo-review-btn-compact"
+                                              onClick={() =>
+                                                void openDigestRunDetail(run)
+                                              }
+                                            >
+                                              查看详情
+                                            </button>
+                                          </div>
+                                        </div>
+                                        <div className="repo-review-run-badges">
+                                          <span
+                                            className={`repo-review-status-badge status-${run.status || 'completed'}`}
+                                          >
+                                            {formatDigestRunStatusLabel(
+                                              run.status,
+                                            )}
+                                          </span>
+                                          <span
+                                            className={`repo-review-source-pill tone-${getDeliveryTone(run.deliveryStatus)}`}
+                                          >
+                                            投递{' '}
+                                            {formatDigestDeliveryStatusLabel(
+                                              run.deliveryStatus,
+                                            )}
+                                          </span>
+                                          <span className="repo-review-source-pill tone-neutral">
+                                            窗口{' '}
+                                            {new Date(
+                                              run.periodStart,
+                                            ).toLocaleString()}
+                                            {' -> '}
+                                            {new Date(
+                                              run.periodEnd,
+                                            ).toLocaleString()}
+                                          </span>
+                                        </div>
+                                        <div
+                                          className="repo-review-run-summary"
+                                          title={buildRepoReviewCompactSummary(
+                                            run.summary,
+                                            run.deliveryError ||
+                                              run.errorMessage ||
+                                              '无摘要',
+                                          )}
+                                        >
+                                          {run.summary ||
+                                            run.deliveryError ||
+                                            run.errorMessage ||
+                                            '无摘要'}
+                                        </div>
+                                        <div className="repo-review-run-meta">
+                                          <span>{run.branchCount} 个分支</span>
+                                          <span>{run.commitCount} 个提交</span>
+                                          <span>
+                                            {run.contributorCount} 位贡献者
+                                          </span>
+                                          {run.startedAt ? (
+                                            <span>
+                                              开始{' '}
+                                              {new Date(
+                                                run.startedAt,
+                                              ).toLocaleString()}
+                                            </span>
+                                          ) : null}
+                                          {run.completedAt ? (
+                                            <span>
+                                              完成{' '}
+                                              {new Date(
+                                                run.completedAt,
+                                              ).toLocaleString()}
+                                            </span>
+                                          ) : null}
+                                        </div>
+                                        {run.deliveryError ||
+                                        run.errorMessage ? (
+                                          <div className="repo-review-progress-error">
+                                            {run.deliveryError ||
+                                              run.errorMessage}
+                                          </div>
+                                        ) : null}
+                                      </div>
+                                    ))}
+                                  </div>
                                 )}
-                              >
-                                {run.summary ||
-                                  run.deliveryError ||
-                                  run.errorMessage ||
-                                  '无摘要'}
                               </div>
-                              <div className="repo-review-run-meta">
-                                <span>{run.branchCount} 个分支</span>
-                                <span>{run.commitCount} 个提交</span>
-                                <span>{run.contributorCount} 位贡献者</span>
-                                {run.startedAt ? (
-                                  <span>
-                                    开始 {new Date(run.startedAt).toLocaleString()}
-                                  </span>
-                                ) : null}
-                                {run.completedAt ? (
-                                  <span>
-                                    完成 {new Date(run.completedAt).toLocaleString()}
-                                  </span>
-                                ) : null}
+                            ) : null}
+                          </div>
+                        ) : null}
+                      </>
+                    )}
+
+                  {/* Tab: CodeMap */}
+                  {!creatingRepository &&
+                    selectedRepository &&
+                    !repositoryEditorOpen &&
+                    repoDetailTab === 'codemap' && (
+                      <div className="repo-review-card">
+                        <CodeMapDrawerEntry
+                          apiBase={apiBase}
+                          repositoryId={selectedRepository.id}
+                          repositoryName={selectedRepository.name}
+                          defaultBranch={
+                            selectedRepository.defaultTargetBranch || 'main'
+                          }
+                          onOpen={(branch) => setInlineCodeMapBranch(branch)}
+                        />
+                      </div>
+                    )}
+
+                  {/* CodeMap fullscreen overlay — uses full CodeMapPage */}
+                  {inlineCodeMapBranch && selectedRepository && (
+                    <div className="codemap-fullscreen-overlay">
+                      <CodeMapPage
+                        apiBase={apiBase}
+                        repositoryIdProp={selectedRepository.id}
+                        branchProp={inlineCodeMapBranch}
+                        repoNameProp={selectedRepository.name}
+                        onClose={() => setInlineCodeMapBranch(null)}
+                      />
+                    </div>
+                  )}
+
+                  {/* Tab: Config / Repository Editor */}
+                  {(repositoryEditorOpen ||
+                    (!creatingRepository &&
+                      selectedRepository &&
+                      repoDetailTab === 'config')) && (
+                    <>
+                      {repositoryEditorOpen && (
+                        <div className="repo-review-card repo-review-editor-stage">
+                          <div className="repo-review-editor-stage-top">
+                            <div className="repo-review-overview-copy">
+                              <span className="repo-review-overview-kicker">
+                                {reviewViewMode === 'repository'
+                                  ? t('repoReview.editor.repositoryEditor')
+                                  : t('repoReview.editor.profileEditor')}
+                              </span>
+                              <h3>
+                                {reviewViewMode === 'repository'
+                                  ? creatingRepository
+                                    ? t(
+                                        'repoReview.editor.createRepositoryConfig',
+                                      )
+                                    : t(
+                                        'repoReview.editor.editRepositoryConfig',
+                                      )
+                                  : profileDraft.id
+                                    ? t('repoReview.editor.editReviewProfile')
+                                    : t(
+                                        'repoReview.editor.createReviewProfile',
+                                      )}
+                              </h3>
+                              <div className="settings-hint">
+                                {reviewViewMode === 'repository'
+                                  ? t('repoReview.editor.repoHint')
+                                  : t('repoReview.editor.profileHint')}
                               </div>
-                              {run.deliveryError || run.errorMessage ? (
-                                <div className="repo-review-progress-error">
-                                  {run.deliveryError || run.errorMessage}
-                                </div>
-                              ) : null}
                             </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  ) : null}
-                </div>
-              ) : null}
-            </>
-          )}
-
-          {/* Tab: CodeMap */}
-          {!creatingRepository && selectedRepository && !repositoryEditorOpen && repoDetailTab === 'codemap' && (
-            <div className="repo-review-card">
-              <CodeMapDrawerEntry
-                apiBase={apiBase}
-                repositoryId={selectedRepository.id}
-                repositoryName={selectedRepository.name}
-                defaultBranch={selectedRepository.defaultTargetBranch || 'main'}
-                onOpen={(branch) => setInlineCodeMapBranch(branch)}
-              />
-            </div>
-          )}
-
-          {/* CodeMap fullscreen overlay — uses full CodeMapPage */}
-          {inlineCodeMapBranch && selectedRepository && (
-            <div className="codemap-fullscreen-overlay">
-              <CodeMapPage
-                apiBase={apiBase}
-                repositoryIdProp={selectedRepository.id}
-                branchProp={inlineCodeMapBranch}
-                repoNameProp={selectedRepository.name}
-                onClose={() => setInlineCodeMapBranch(null)}
-              />
-            </div>
-          )}
-
-          {/* Tab: Config / Repository Editor */}
-          {(repositoryEditorOpen || (!creatingRepository && selectedRepository && repoDetailTab === 'config')) && (
-            <>
-              {repositoryEditorOpen && (
-                <div className="repo-review-card repo-review-editor-stage">
-                  <div className="repo-review-editor-stage-top">
-                    <div className="repo-review-overview-copy">
-                      <span className="repo-review-overview-kicker">
-                        {reviewViewMode === 'repository'
-                          ? t('repoReview.editor.repositoryEditor')
-                          : t('repoReview.editor.profileEditor')}
-                      </span>
-                      <h3>
-                        {reviewViewMode === 'repository'
-                          ? creatingRepository
-                            ? t('repoReview.editor.createRepositoryConfig')
-                            : t('repoReview.editor.editRepositoryConfig')
-                          : profileDraft.id
-                            ? t('repoReview.editor.editReviewProfile')
-                            : t('repoReview.editor.createReviewProfile')}
-                      </h3>
-                      <div className="settings-hint">
-                        {reviewViewMode === 'repository'
-                          ? t('repoReview.editor.repoHint')
-                          : t('repoReview.editor.profileHint')}
-                      </div>
-                    </div>
-                    <div className="repo-review-overview-actions">
-                      <button
-                        type="button"
-                        className="btn-outline btn-sm"
-                        onClick={() => {
-                          closeRepositoryEditor();
-                          closeProfileEditor();
-                          setRepoDetailTab('overview');
-                        }}
-                      >
-                        {t('repoReview.editor.backToOverview')}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
-            <div className="repo-review-card repo-review-fold">
-              <button
-                type="button"
-                className="repo-review-fold-summary"
-                onClick={() => setRepositorySectionOpen((current) => !current)}
-                aria-expanded={
-                  reviewViewMode === 'repository' || repositorySectionOpen
-                }
-              >
-                <div className="repo-review-fold-copy">
-	                  <h4>{creatingRepository ? t('repoReview.editor.newRepoConfig') : t('repoReview.editor.repoConfig')}</h4>
-	                  <div className="settings-hint">
-	                    {!creatingRepository && selectedRepository
-	                      ? t('repoReview.editor.repoSummary', {
-                          provider: formatRemoteProviderLabel(selectedRepository.remoteProvider),
-                          count: profilesForSelectedRepository.length,
-                          status: selectedRepository.enabled ? t('repoReview.repoStatus.enabled') : t('repoReview.repoStatus.disabled'),
-                        })
-	                      : t('repoReview.editor.repoCreateHint')}
-	                  </div>
-                </div>
-                <span
-                  className={`repo-review-fold-icon ${
-                    reviewViewMode === 'repository' || repositorySectionOpen
-                      ? 'open'
-                      : ''
-                  }`}
-                >
-                  <IconChevronDown />
-                </span>
-              </button>
-              <div className="repo-review-fold-card-actions">
-                <button
-                  type="button"
-                  className="btn-primary btn-sm"
-                  onClick={() =>
-                    openRepositoryEditor(
-                      creatingRepository || !selectedRepository,
-                    )
-                  }
-                >
-	                  {creatingRepository || !selectedRepository
-	                    ? t('repoReview.button.createRepo')
-	                    : t('repoReview.button.editRepo')}
-                </button>
-              </div>
-              {reviewViewMode === 'repository' ||
-              repositorySectionOpen ||
-              repositoryEditorOpen ? (
-                <>
-                  <div className="repo-review-fold-body">
-                    {creatingRepository && selectedRepository ? (
-                      <div className="modal-actions">
-                        <button
-                          className="btn-outline btn-sm"
-                          onClick={() => setCreatingRepository(false)}
-	                        >
-	                          {t('repoReview.editor.backToCurrentRepository')}
-	                        </button>
-                      </div>
-                    ) : null}
-
-                    {!creatingRepository && selectedRepository ? (
-                      <div className="repo-review-summary-grid">
-                        <div className="repo-review-summary-item">
-	                          <span className="repo-review-summary-label">
-	                            {t('repoReview.summary.remoteRepository')}
-	                          </span>
-                          <strong className="repo-review-summary-value">
-                            {formatRemoteProviderLabel(
-                              selectedRepository.remoteProvider,
-                            )}
-                            {selectedRepository.remoteRepoSlug
-                              ? ` · ${selectedRepository.remoteRepoSlug}`
-                              : ''}
-                          </strong>
-                        </div>
-                        <div className="repo-review-summary-item">
-	                          <span className="repo-review-summary-label">
-	                            {t('repoReview.summary.reviewChat')}
-	                          </span>
-                          <strong className="repo-review-summary-value">
-                            {formatReviewChatTarget(
-                              selectedRepository.reviewChatJid,
-                              conversations,
-                            )}
-                          </strong>
-                        </div>
-                        <div className="repo-review-summary-item">
-	                          <span className="repo-review-summary-label">
-	                            {t('repoReview.summary.feishuMappings')}
-	                          </span>
-	                          <strong className="repo-review-summary-value">
-	                            {t('repoReview.summary.entryCount', { count: selectedRepository.actorMentionMappings.length })}
-	                          </strong>
-                        </div>
-                        <div className="repo-review-summary-item">
-	                          <span className="repo-review-summary-label">
-	                            {t('repoReview.summary.reviewProfile')}
-	                          </span>
-	                          <strong className="repo-review-summary-value">
-	                            {t('repoReview.summary.configuredCount', { count: profilesForSelectedRepository.length })}
-	                          </strong>
-                        </div>
-                        <div className="repo-review-summary-item">
-	                          <span className="repo-review-summary-label">
-	                            {t('repoReview.summary.credentialStatus')}
-	                          </span>
-                          <strong className="repo-review-summary-value">
-                            {selectedRepository.hasWebhookSecret
-                              ? t('repoReview.summary.webhookConfigured')
-                              : t('repoReview.summary.webhookNotConfigured')}
-                            {selectedRepository.webhookSecretPreview
-                              ? ` (${selectedRepository.webhookSecretPreview})`
-                              : ''}
-                            {' · '}
-                            {selectedRepository.hasPlatformToken
-                              ? t('repoReview.summary.tokenConfigured')
-                              : t('repoReview.summary.tokenNotConfigured')}
-                            {selectedRepository.platformTokenPreview
-                              ? ` (${selectedRepository.platformTokenPreview})`
-                              : ''}
-                          </strong>
-                        </div>
-                        <div className="repo-review-summary-item">
-	                          <span className="repo-review-summary-label">
-	                            {t('repoReview.summary.autoSync')}
-	                          </span>
-	                          <strong className="repo-review-summary-value">
-	                            {selectedRepository.autoSyncEnabled
-	                              ? t('repoReview.summary.autoSyncEnabled', { minutes: selectedRepository.autoSyncIntervalMinutes })
-	                              : t('repoReview.repoStatus.disabled')}
-	                          </strong>
-                        </div>
-                        {selectedRepository.webhookUrl && selectedRepository.remoteProvider ? (
-                          <div className="repo-review-summary-item">
-	                            <span className="repo-review-summary-label">
-	                              {t('repoReview.summary.webhookCallbackUrl')}
-	                            </span>
-                            <strong className="repo-review-summary-value repo-review-webhook-url-row">
-                              <code className="repo-review-webhook-url">
-                                {selectedRepository.webhookUrl}
-                              </code>
+                            <div className="repo-review-overview-actions">
                               <button
                                 type="button"
                                 className="btn-outline btn-sm"
                                 onClick={() => {
-                                  const text = selectedRepository.webhookUrl!;
-                                  if (navigator.clipboard && window.isSecureContext) {
-                                    void navigator.clipboard.writeText(text);
-                                  } else {
-                                    const ta = document.createElement('textarea');
-                                    ta.value = text;
-                                    ta.style.position = 'fixed';
-                                    ta.style.left = '-9999px';
-                                    document.body.appendChild(ta);
-                                    ta.select();
-                                    document.execCommand('copy');
-                                    document.body.removeChild(ta);
-                                  }
-                                  setMessage(i18n.t('repoReview.success.webhookCopied'));
+                                  closeRepositoryEditor();
+                                  closeProfileEditor();
+                                  setRepoDetailTab('overview');
                                 }}
                               >
-	                                Copy
-	                              </button>
-                            </strong>
-                          </div>
-                        ) : null}
-                      </div>
-                    ) : null}
-
-                    <div className="repo-review-form-grid">
-                      <div className="form-group">
-                        <label>{t('repoReview.form.name')}</label>
-                        <input
-                          value={repositoryDraft.name}
-                          onChange={(event) =>
-                            setRepositoryDraft((current) => ({
-                              ...current,
-                              name: event.target.value,
-                            }))
-                          }
-	                          placeholder="e.g. miniRpc"
-                        />
-                      </div>
-                      <div className="form-group">
-                        <label>{t('repoReview.form.language')}</label>
-                        <AppSelect
-                          value={repositoryDraft.language}
-                          onChange={(value) =>
-                            setRepositoryDraft((current) => ({
-                              ...current,
-                              language: value,
-                            }))
-                          }
-                          ariaLabel={t('repoReview.form.selectLanguage')}
-                          options={COMMON_LANGUAGES.map((language) => ({
-                            value: language,
-                            label: language,
-                          }))}
-                        />
-                      </div>
-                      <div
-                        ref={setRepositoryEditorSectionRef('delivery')}
-                        className={`form-group repo-review-chat-target-field ${
-                          repositoryEditorSection === 'delivery'
-                            ? 'repo-review-focus-target'
-                            : ''
-                        }`}
-                      >
-                        <label>{t('repoReview.form.reviewChat')}</label>
-                        <div className="repo-review-chat-target-summary">
-                          <strong>
-                            {formatReviewChatTarget(
-                              effectiveReviewChatJid,
-                              conversations,
-                            )}
-                          </strong>
-                          <span>
-                            {reviewChatValue === AUTO_REVIEW_CHAT_VALUE
-                              ? t('repoReview.form.autoChatSession')
-                              : isFeishuReviewChat
-                                ? t('repoReview.form.feishuChatSession')
-                                : t('repoReview.form.nonFeishuChatSession')}
-                          </span>
-                        </div>
-                        <AppSelect
-                          value={reviewChatValue}
-                          onChange={(value) =>
-                            setRepositoryDraft((current) => ({
-                              ...current,
-                              reviewChatJid:
-                                value === AUTO_REVIEW_CHAT_VALUE ||
-                                value === CUSTOM_REVIEW_CHAT_VALUE
-                                  ? ''
-                                  : value,
-                            }))
-                          }
-                          ariaLabel={t('repoReview.form.selectChatSession')}
-                          options={conversationOptions}
-                        />
-	                        <div className="settings-hint">
-	                          Choose the session that should actually receive review results. Feishu member binding and @ mappings only appear when a Feishu chat is selected.
-	                        </div>
-                        {reviewChatValue === CUSTOM_REVIEW_CHAT_VALUE ? (
-                          <>
-                            <input
-                              type="text"
-                              value={customReviewChatJidInput}
-                              onChange={(event) =>
-                                setCustomReviewChatJidInput(event.target.value)
-                              }
-                              placeholder="feishu:oc_xxx / feishu:instanceId:oc_xxx / web:chat_xxx"
-                            />
-	                            <div className="settings-hint">
-	                              If the target chat is not listed yet, enter the full JID manually. For Feishu with only the default or a single instance, `oc_xxx` also works directly.
-	                            </div>
-                          </>
-                        ) : null}
-                      </div>
-                      <div
-                        ref={setRepositoryEditorSectionRef('source')}
-                        className={`form-group repo-review-path-field ${
-                          repositoryEditorSection === 'source'
-                            ? 'repo-review-focus-target'
-                            : ''
-                        }`}
-                      >
-                        <label>{t('repoReview.form.cloneUrl')}</label>
-                        <div className="repo-review-inline-actions">
-                          <input
-                            value={repositoryDraft.cloneUrl}
-                            onChange={(event) => {
-                              setRepositoryDraft((current) => ({
-                                ...current,
-                                cloneUrl: event.target.value,
-                              }));
-                              setSelectedDetectedRemoteName('');
-                            }}
-                            onBlur={() => {
-                              const url = repositoryDraft.cloneUrl.trim();
-                              if (url && /^(https?:\/\/|git@|ssh:\/\/)/.test(url)) {
-                                void discoverRepositoryConfig();
-                              }
-                            }}
-                            placeholder={t('repoReview.form.cloneUrlPlaceholder')}
-                          />
-                          <button
-                            className="btn-outline btn-sm"
-                            onClick={() => void discoverRepositoryConfig()}
-                            disabled={discoveringRepository}
-                          >
-                            {discoveringRepository ? t('repoReview.button.discovering') : t('repoReview.button.importFromLink')}
-                          </button>
-                        </div>
-	                        <div className="settings-hint">
-	                          Supports SSH clone URLs, HTTPS clone URLs, or direct repository page links. The provider, slug, and base URL are auto-detected after paste.
-	                        </div>
-                      </div>
-
-                      <div
-                        ref={setRepositoryEditorSectionRef('autosync')}
-                        className={`form-group ${
-                          repositoryEditorSection === 'autosync'
-                            ? 'repo-review-focus-target'
-                            : ''
-                        }`}
-                      >
-                        <label>{t('repoReview.form.remotePlatform')}</label>
-                        <AppSelect
-                          value={repositoryDraft.remoteProvider}
-                          onChange={(value) =>
-                            setRepositoryDraft((current) => ({
-                              ...current,
-                              remoteProvider:
-                                value as RepositoryDraft['remoteProvider'],
-                            }))
-                          }
-                          ariaLabel={t('repoReview.form.selectPlatform')}
-                          options={[
-                            { value: '', label: t('repoReview.remoteProvider.local') },
-                            { value: 'github', label: 'GitHub' },
-                            { value: 'gitlab', label: 'GitLab' },
-                            { value: 'gitea', label: 'Gitea' },
-                          ]}
-                        />
-                        <div className="settings-hint">
-	                          Auto-filled after pasting a repository link, or choose manually.
-                        </div>
-                      </div>
-
-                      <div
-                        ref={setRepositoryEditorSectionRef('credentials')}
-                        className={`form-group ${
-                          repositoryEditorSection === 'credentials'
-                            ? 'repo-review-focus-target'
-                            : ''
-                        }`}
-                      >
-                        <label>
-                          {getRemoteRepoSlugLabel(
-                            repositoryDraft.remoteProvider,
-                          )}
-                        </label>
-                        <input
-                          value={repositoryDraft.remoteRepoSlug}
-                          onChange={(event) =>
-                            setRepositoryDraft((current) => ({
-                              ...current,
-                              remoteRepoSlug: event.target.value,
-                            }))
-                          }
-                          placeholder={getRemoteRepoSlugPlaceholder(
-                            repositoryDraft.remoteProvider,
-                          )}
-                        />
-                        <div className="settings-hint">
-	                          This is the repository identifier used by the platform API, not the full URL.
-                        </div>
-                      </div>
-
-                      <div className="form-group">
-                        <label>{t('repoReview.form.remoteBaseUrl')}</label>
-                        <input
-                          value={repositoryDraft.remoteBaseUrl}
-                          onChange={(event) =>
-                            setRepositoryDraft((current) => ({
-                              ...current,
-                              remoteBaseUrl: event.target.value,
-                            }))
-                          }
-                          placeholder={t('repoReview.form.remoteBaseUrlPlaceholder')}
-                        />
-                        <div className="settings-hint">
-                          {getRemoteBaseUrlHint(repositoryDraft.remoteProvider)}
-                        </div>
-                      </div>
-
-                      <details className="repo-review-advanced-section">
-                        <summary className="repo-review-advanced-summary">
-	                          Advanced: Local Repository (Optional)
-                        </summary>
-                        <div className="form-group repo-review-path-field repo-review-path-field--stack">
-                          <div className="repo-review-inline-actions">
-                            <input
-                              value={repositoryDraft.localRepoPath}
-                              onChange={(event) => {
-                                setRepositoryDraft((current) => ({
-                                  ...current,
-                                  localRepoPath: event.target.value,
-                                }));
-                                setSelectedDetectedRemoteName('');
-                              }}
-                              placeholder="/Users/you/projects/repo"
-                            />
-                            <button
-                              className="btn-outline btn-sm"
-                              onClick={async () => {
-                                const picked = await pickNativeDirectory();
-                                if (!picked) return;
-                                setRepositoryDraft((current) => ({
-                                  ...current,
-                                  localRepoPath: picked,
-                                }));
-                                setSelectedDetectedRemoteName('');
-                                setRepositoryDetectionWarnings([]);
-                              }}
-                            >
-	                              Choose
-                            </button>
-                            <button
-                              className="btn-outline btn-sm"
-                              onClick={() => void discoverRepositoryConfig()}
-                              disabled={discoveringRepository}
-                            >
-                              {discoveringRepository
-	                                ? 'Detecting...'
-	                                : 'Import from Local Repository'}
-                            </button>
-                          </div>
-                          <div className="settings-hint">
-	                            Optional. After binding a local git repository, NanoClaw can autofill remote settings from `git remote` and support local diff reviews.
-                          </div>
-                          {lastRepositoryDetection?.source === 'local_repo' &&
-                          lastRepositoryDetection.availableRemotes.length > 1 ? (
-                            <>
-                              <div className="repo-review-remote-picker-block">
-                                <label>{t('repoReview.form.multipleRemotes')}</label>
-                                <AppSelect
-                                  value={
-                                    selectedDetectedRemoteName ||
-                                    lastRepositoryDetection.detectedRemoteName
-                                  }
-                                  onChange={(value) => {
-                                    setSelectedDetectedRemoteName(value);
-                                    void discoverRepositoryConfig(value);
-                                  }}
-                                  ariaLabel={t('repoReview.form.selectGitRemote')}
-                                  options={lastRepositoryDetection.availableRemotes.map(
-                                    (option) => ({
-                                      value: option.remoteName,
-                                      label: formatRemoteOptionLabel(option),
-                                    }),
-                                  )}
-                                />
-                              </div>
-                              <div className="settings-hint">
-	                                Multiple remotes were detected. Choose the one used for webhook and remote polling to avoid guessing the wrong default.
-                              </div>
-                            </>
-                          ) : null}
-                        </div>
-                      </details>
-                      {lastRepositoryDetection ? (
-                        <div className="form-group repo-review-textarea">
-                          <label>{t('repoReview.form.detectedConfig')}</label>
-                          <div className="repo-review-detection-summary">
-                            <div>
-                              <strong>{t('repoReview.form.source')}</strong>
-                              <span>
-                                {lastRepositoryDetection.source === 'local_repo'
-                                  ? lastRepositoryDetection.detectedRemoteName
-	                                    ? `Local remote ${lastRepositoryDetection.detectedRemoteName}`
-	                                    : 'Local repository'
-	                                  : 'Repository link'}
-                              </span>
+                                {t('repoReview.editor.backToOverview')}
+                              </button>
                             </div>
-                            <div>
-                              <strong>{t('repoReview.runDetail.platform')}</strong>
-                              <span>
-                                {lastRepositoryDetection.provider || t('repoReview.form.unrecognized')}
-                              </span>
-                            </div>
-                            <div>
-                              <strong>Repo</strong>
-                              <span>
-                                {lastRepositoryDetection.remoteRepoSlug ||
-	                                  'Not detected'}
-                              </span>
-                            </div>
-                            <div>
-                              <strong>Base URL</strong>
-                              <span>
-                                {lastRepositoryDetection.remoteBaseUrl ||
-                                  t('repoReview.form.useDefault')}
-                              </span>
-                            </div>
-                            <div>
-                              <strong>Clone URL</strong>
-                              <span>
-	                                {lastRepositoryDetection.cloneUrl || 'Not detected'}
-                              </span>
-                            </div>
-                            <div>
-                              <strong>{t('repoReview.form.defaultBranch')}</strong>
-                              <span>
-                                {lastRepositoryDetection.defaultTargetBranch ||
-	                                  'Not detected'}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                      ) : null}
-                      <div className="form-group">
-                        <label>{t('repoReview.form.defaultTargetBranch')}</label>
-                        <input
-                          value={repositoryDraft.defaultTargetBranch}
-                          onChange={(event) =>
-                            setRepositoryDraft((current) => ({
-                              ...current,
-                              defaultTargetBranch: event.target.value,
-                            }))
-                          }
-                          placeholder="main"
-                        />
-                        <div className="settings-hint">
-                          {t('repoReview.form.defaultBaselineHint')}
-                        </div>
-                      </div>
-                      <div className="form-group">
-                        <label>{t('repoReview.form.autoSyncRemoteBranches')}</label>
-                        <div className="settings-boolean-row">
-                          <div className="settings-boolean-copy">
-                            <span>{t('repoReview.form.enableAutoSync')}</span>
-                          </div>
-                          <div className="channel-boolean-control">
-                            <NcToggle
-                              checked={repositoryDraft.autoSyncEnabled}
-                              onChange={(checked) =>
-                                setRepositoryDraft((current) => ({
-                                  ...current,
-                                  autoSyncEnabled: checked,
-                                }))
-                              }
-                            />
-                          </div>
-                        </div>
-                        <div className="settings-hint">
-                          {t('repoReview.form.autoSyncHint')}
-                        </div>
-                      </div>
-                      <div className="form-group">
-                        <label>{t('repoReview.form.autoSyncInterval')}</label>
-                        <input
-                          className="nc-input"
-                          type="number"
-                          min={5}
-                          max={1440}
-                          value={repositoryDraft.autoSyncIntervalMinutes}
-                          onChange={(event) =>
-                            setRepositoryDraft((current) => ({
-                              ...current,
-                              autoSyncIntervalMinutes: Number(
-                                event.target.value || 30,
-                              ),
-                            }))
-                          }
-                          disabled={!repositoryDraft.autoSyncEnabled}
-                        />
-                        <div className="settings-hint">
-                          {t('repoReview.form.autoSyncIntervalHint')}
-                        </div>
-                      </div>
-
-                      <div className="form-group">
-                        <label>{t('repoReview.form.digest')}</label>
-                        <div className="settings-boolean-row">
-                          <div className="settings-boolean-copy">
-                            <span>{t('repoReview.form.enableDailyDigest')}</span>
-                          </div>
-                          <div className="channel-boolean-control">
-                            <NcToggle
-                              checked={repositoryDraft.digestDailyEnabled}
-                              onChange={(checked) =>
-                                setRepositoryDraft((current) => ({
-                                  ...current,
-                                  digestDailyEnabled: checked,
-                                }))
-                              }
-                            />
-                          </div>
-                        </div>
-                        {repositoryDraft.digestDailyEnabled ? (
-                          <div className="settings-sub-row">
-                            <label className="settings-inline-label">
-                              {t('repoReview.form.deliveryHour')}
-                            </label>
-                            <input
-                              className="nc-input nc-input-sm"
-                              type="number"
-                              min={0}
-                              max={23}
-                              value={repositoryDraft.digestDailyHour}
-                              onChange={(event) =>
-                                setRepositoryDraft((current) => ({
-                                  ...current,
-                                  digestDailyHour: Number(
-                                    event.target.value || 18,
-                                  ),
-                                }))
-                              }
-                            />
-                          </div>
-                        ) : null}
-                        <div className="settings-boolean-row">
-                          <div className="settings-boolean-copy">
-                            <span>{t('repoReview.form.enableWeeklyDigest')}</span>
-                          </div>
-                          <div className="channel-boolean-control">
-                            <NcToggle
-                              checked={repositoryDraft.digestWeeklyEnabled}
-                              onChange={(checked) =>
-                                setRepositoryDraft((current) => ({
-                                  ...current,
-                                  digestWeeklyEnabled: checked,
-                                }))
-                              }
-                            />
-                          </div>
-                        </div>
-                        {repositoryDraft.digestWeeklyEnabled ? (
-                          <>
-                            <div className="settings-sub-row">
-                              <label className="settings-inline-label">
-                                {t('repoReview.form.weekday')}
-                              </label>
-                              <NcSelect
-                                className="repo-review-digest-weekday-select"
-                                value={repositoryDraft.digestWeeklyDay}
-                                onChange={(event) =>
-                                  setRepositoryDraft((current) => ({
-                                    ...current,
-                                    digestWeeklyDay: Number(
-                                      event.target.value || 5,
-                                    ),
-                                  }))
-                                }
-                              >
-                                <option value={1}>{t('repoReview.weekday.mon')}</option>
-                                <option value={2}>{t('repoReview.weekday.tue')}</option>
-                                <option value={3}>{t('repoReview.weekday.wed')}</option>
-                                <option value={4}>{t('repoReview.weekday.thu')}</option>
-                                <option value={5}>{t('repoReview.weekday.fri')}</option>
-                                <option value={6}>{t('repoReview.weekday.sat')}</option>
-                                <option value={7}>{t('repoReview.weekday.sun')}</option>
-                              </NcSelect>
-                            </div>
-                            <div className="settings-sub-row">
-                              <label className="settings-inline-label">
-                                {t('repoReview.form.deliveryHour')}
-                              </label>
-                              <input
-                                className="nc-input nc-input-sm"
-                                type="number"
-                                min={0}
-                                max={23}
-                                value={repositoryDraft.digestWeeklyHour}
-                                onChange={(event) =>
-                                  setRepositoryDraft((current) => ({
-                                    ...current,
-                                    digestWeeklyHour: Number(
-                                      event.target.value || 18,
-                                    ),
-                                  }))
-                                }
-                              />
-                            </div>
-                          </>
-                        ) : null}
-                        <div className="settings-hint">
-                          {t('repoReview.form.digestHint')}
-                        </div>
-                      </div>
-                      {repositoryDetectionWarnings.length > 0 ? (
-                        <div className="form-group repo-review-textarea">
-                          <label>{t('repoReview.form.detectionWarnings')}</label>
-                          <div className="repo-review-issues">
-                            {repositoryDetectionWarnings.map(
-                              (warning, index) => (
-                                <div
-                                  key={`${index}-${warning}`}
-                                  className="repo-review-issue repo-review-issue-warning"
-                                >
-                                  {warning}
-                                </div>
-                              ),
-                            )}
-                          </div>
-                        </div>
-                      ) : null}
-                      {contributorsLoading ? (
-                        <div className="settings-hint repo-review-hint-muted">
-                          {t('repoReview.form.contributorsLoading')}
-                        </div>
-                      ) : discoveredContributors.length > 0 ? (
-                        <div className="settings-hint">
-                          {t('repoReview.form.contributorsDiscovered', {
-                            count: discoveredContributors.length,
-                          })}
-                        </div>
-                      ) : null}
-                      <RepoReviewActorMentionEditor
-                        isFeishuReviewChat={isFeishuReviewChat}
-                        pauseOverviewRefresh={pauseOverviewRefresh}
-                        selectedMentionMemberId={selectedMentionMemberId}
-                        setSelectedMentionMemberId={setSelectedMentionMemberId}
-                        reviewChatMemberOptions={reviewChatMemberOptions}
-                        loadingReviewChatMembers={loadingReviewChatMembers}
-                        availableReviewChatMembers={availableReviewChatMembers}
-                        selectedMentionMember={selectedMentionMember}
-                        reviewIdentityCandidates={reviewIdentityCandidates}
-                        reviewChatMemberSourceStats={
-                          reviewChatMemberSourceStats
-                        }
-                        reviewChatMembersError={reviewChatMembersError}
-                        actorMentionDraftRows={
-                          repositoryDraft.actorMentionDraftRows
-                        }
-                        actorMentionMappingsText={
-                          repositoryDraft.actorMentionMappingsText
-                        }
-                        actorMentionIssues={actorMentionMappingsState.issues}
-                        actorMentionEntryCount={
-                          actorMentionMappingsState.entries.length
-                        }
-                        advancedMappingsOpen={advancedMappingsOpen}
-                        setAdvancedMappingsOpen={setAdvancedMappingsOpen}
-                        onRefreshMembers={() =>
-                          void refreshReviewChatMembers(
-                            effectiveReviewChatJid,
-                            false,
-                          )
-                        }
-                        onAppendMentionDraftRow={() => appendMentionDraftRow()}
-                        onApplyIdentityCandidate={applyIdentityCandidate}
-                        onUpdateMentionDraftRow={updateMentionDraftRow}
-                        onRemoveMentionDraftRow={removeMentionDraftRow}
-                        onActorMentionMappingsTextChange={(value) =>
-                          setRepositoryDraft((current) => ({
-                            ...current,
-                            actorMentionMappingsText: value,
-                          }))
-                        }
-                      />
-                      <div className="form-group">
-                        <label>
-                          {getWebhookSecretLabel(
-                            repositoryDraft.remoteProvider,
-                          )}
-                        </label>
-                        <input
-                          type="password"
-                          value={repositoryDraft.webhookSecret}
-                          onChange={(event) =>
-                            setRepositoryDraft((current) => ({
-                              ...current,
-                              webhookSecret: event.target.value,
-                            }))
-                          }
-                          placeholder={
-                            selectedRepository?.hasWebhookSecret
-                              ? t('repoReview.form.webhookSecretKeepPlaceholder')
-                              : t('repoReview.form.webhookSecretPlaceholder')
-                          }
-                        />
-                        <div className="settings-hint">
-                          {selectedRepository?.hasWebhookSecret
-                            ? t('repoReview.form.secretKeepHint')
-                            : t('repoReview.form.secretNotConfigured')}
-                        </div>
-                        {currentWebhookSecretPreview ? (
-                          <div className="settings-hint">
-                            {t('repoReview.form.currentPreview', {
-                              value: currentWebhookSecretPreview,
-                            })}
-                          </div>
-                        ) : null}
-                        <div className="settings-hint">
-                          {getWebhookSecretHint(repositoryDraft.remoteProvider)}
-                        </div>
-                      </div>
-                      {sshKeys.length > 0 && (
-                        <div className="form-group">
-                          <label>{t('repoReview.form.sshKey')}</label>
-                          <select
-                            value={repositoryDraft.sshKeyId}
-                            onChange={(e) =>
-                              setRepositoryDraft((c) => ({
-                                ...c,
-                                sshKeyId: e.target.value,
-                              }))
-                            }
-                          >
-                            <option value="">{t('repoReview.form.defaultSshKey')}</option>
-                            {sshKeys.map((k) => (
-                              <option key={k.id} value={k.id}>
-                                {k.name}
-                                {k.fingerprint ? ` (${k.fingerprint.slice(0, 20)}…)` : ''}
-                                {k.isDefault ? ' ★' : ''}
-                              </option>
-                            ))}
-                          </select>
-                          <div className="settings-hint">
-                            {t('repoReview.form.sshKeyHint')}
                           </div>
                         </div>
                       )}
-                      <div className="form-group">
-                        <label>
-                          {getPlatformTokenLabel(
-                            repositoryDraft.remoteProvider,
-                          )}
-                        </label>
-                        <input
-                          type="password"
-                          value={repositoryDraft.platformToken}
-                          onChange={(event) =>
-                            setRepositoryDraft((current) => ({
-                              ...current,
-                              platformToken: event.target.value,
-                            }))
-                          }
-                          placeholder={
-                            selectedRepository?.hasPlatformToken
-                              ? t('repoReview.form.platformTokenKeepPlaceholder')
-                              : t('repoReview.form.platformTokenPlaceholder')
-                          }
-                        />
-                        <div className="settings-hint">
-                          {selectedRepository?.hasPlatformToken
-                            ? t('repoReview.form.platformTokenKeepHint')
-                            : t('repoReview.form.platformTokenNotConfigured')}
-                        </div>
-                        {currentPlatformTokenPreview ? (
-                          <div className="settings-hint">
-                            {t('repoReview.form.currentPreview', {
-                              value: currentPlatformTokenPreview,
-                            })}
-                          </div>
-                        ) : null}
-                        <div className="settings-hint">
-                          {getPlatformTokenHint(repositoryDraft.remoteProvider)}
-                        </div>
-                      </div>
-                      {repositoryDraft.remoteProvider === 'gitlab' ? (
-                        <div className="form-group repo-review-textarea">
-                          <label>{t('repoReview.form.gitlabTokenGuide')}</label>
-                          <div className="repo-review-token-guide">
-                            <div>
-                              <strong>{t('repoReview.form.gitlabWebhookTokenTitle')}</strong>
-                              <span>{t('repoReview.form.gitlabWebhookTokenHint')}</span>
-                            </div>
-                            <div>
-                              <strong>{t('repoReview.form.gitlabAccessTokenTitle')}</strong>
-                              <span>{t('repoReview.form.gitlabAccessTokenHint')}</span>
-                            </div>
-                            <div>
-                              <strong>{t('repoReview.form.gitlabPipelineTriggerTitle')}</strong>
-                              <span>{t('repoReview.form.gitlabPipelineTriggerHint')}</span>
-                            </div>
-                          </div>
-                        </div>
-                      ) : null}
-                    </div>
-
-                    <div className="form-group">
-                      <label>{t('repoReview.form.allowAiFix')}</label>
-                      <div className="settings-boolean-row">
-                        <div className="settings-boolean-copy">
-                          <span>{t('repoReview.form.allowAiFixHint')}</span>
-                        </div>
-                        <div className="channel-boolean-control">
-                          <NcToggle
-                            checked={repositoryDraft.allowAiFix}
-                            onChange={(checked) =>
-                              setRepositoryDraft((current) => ({
-                                ...current,
-                                allowAiFix: checked,
-                              }))
-                            }
-                          />
-                        </div>
-                      </div>
-                    </div>
-
-                    <label className="settings-toggle-row">
-                      <input
-                        type="checkbox"
-                        checked={repositoryDraft.enabled}
-                        onChange={(event) =>
-                          setRepositoryDraft((current) => ({
-                            ...current,
-                            enabled: event.target.checked,
-                          }))
-                        }
-                      />
-                      <span>{t('repoReview.form.enableRepoConfig')}</span>
-                    </label>
-
-                    <div className="modal-actions">
-                      <button
-                        className="btn-primary"
-                        onClick={() => void saveRepository()}
-                        disabled={
-                          repositoryHasMappingErrors || savingRepository
-                        }
-                      >
-                        {savingRepository ? t('repoReview.button.saving') : t('repoReview.button.save')}
-                      </button>
-                      {repositoryDraft.id ? (
+                      <div className="repo-review-card repo-review-fold">
                         <button
-                          className={repositoryDraft.enabled ? 'btn-warning' : 'btn-success'}
+                          type="button"
+                          className="repo-review-fold-summary"
                           onClick={() =>
-                            void toggleRepositoryEnabled(
-                              repositoryDraft.id!,
-                              repositoryDraft.enabled,
-                            )
+                            setRepositorySectionOpen((current) => !current)
+                          }
+                          aria-expanded={
+                            reviewViewMode === 'repository' ||
+                            repositorySectionOpen
                           }
                         >
-                          {repositoryDraft.enabled ? t('repoReview.button.disableRepo') : t('repoReview.button.enableRepo')}
+                          <div className="repo-review-fold-copy">
+                            <h4>
+                              {creatingRepository
+                                ? t('repoReview.editor.newRepoConfig')
+                                : t('repoReview.editor.repoConfig')}
+                            </h4>
+                            <div className="settings-hint">
+                              {!creatingRepository && selectedRepository
+                                ? t('repoReview.editor.repoSummary', {
+                                    provider: formatRemoteProviderLabel(
+                                      selectedRepository.remoteProvider,
+                                    ),
+                                    count: profilesForSelectedRepository.length,
+                                    status: selectedRepository.enabled
+                                      ? t('repoReview.repoStatus.enabled')
+                                      : t('repoReview.repoStatus.disabled'),
+                                  })
+                                : t('repoReview.editor.repoCreateHint')}
+                            </div>
+                          </div>
+                          <span
+                            className={`repo-review-fold-icon ${
+                              reviewViewMode === 'repository' ||
+                              repositorySectionOpen
+                                ? 'open'
+                                : ''
+                            }`}
+                          >
+                            <IconChevronDown />
+                          </span>
                         </button>
-                      ) : null}
-                      <button
-                        className="btn-danger"
-                        onClick={() => void deleteRepository()}
-                        disabled={!repositoryDraft.id || deletingRepository}
-                      >
-                        {deletingRepository ? t('repoReview.button.deleting') : t('repoReview.button.deleteRepo')}
-                      </button>
-                    </div>
-	                    <div className="settings-hint">
-	                      Local hook-based review remains supported, but team workflows should generally prefer remote webhooks or manual remote branch sync.
-	                    </div>
-	                    {selectedRepository?.autoSyncEnabled ? (
-	                      <div className="settings-hint">
-	                        Auto sync:
-	                        {` every ${selectedRepository.autoSyncIntervalMinutes} min; last ${formatRepoAutoSyncStatus(selectedRepository.lastAutoSyncStatus)} ${formatOptionalDateTime(selectedRepository.lastAutoSyncAt)}; next ${formatOptionalDateTime(selectedRepository.nextAutoSyncAt)}`}
-	                        {selectedRepository.lastAutoSyncMessage
-	                          ? `; ${selectedRepository.lastAutoSyncMessage}`
-	                          : ''}
-	                      </div>
-                    ) : null}
-                    {lastSyncMessage ? (
-                      <div className="test-result success">
-                        {lastSyncMessage}
+                        <div className="repo-review-fold-card-actions">
+                          <button
+                            type="button"
+                            className="btn-primary btn-sm"
+                            onClick={() =>
+                              openRepositoryEditor(
+                                creatingRepository || !selectedRepository,
+                              )
+                            }
+                          >
+                            {creatingRepository || !selectedRepository
+                              ? t('repoReview.button.createRepo')
+                              : t('repoReview.button.editRepo')}
+                          </button>
+                        </div>
+                        {reviewViewMode === 'repository' ||
+                        repositorySectionOpen ||
+                        repositoryEditorOpen ? (
+                          <>
+                            <div className="repo-review-fold-body">
+                              {creatingRepository && selectedRepository ? (
+                                <div className="modal-actions">
+                                  <button
+                                    className="btn-outline btn-sm"
+                                    onClick={() => setCreatingRepository(false)}
+                                  >
+                                    {t(
+                                      'repoReview.editor.backToCurrentRepository',
+                                    )}
+                                  </button>
+                                </div>
+                              ) : null}
+
+                              {!creatingRepository && selectedRepository ? (
+                                <div className="repo-review-summary-grid">
+                                  <div className="repo-review-summary-item">
+                                    <span className="repo-review-summary-label">
+                                      {t('repoReview.summary.remoteRepository')}
+                                    </span>
+                                    <strong className="repo-review-summary-value">
+                                      {formatRemoteProviderLabel(
+                                        selectedRepository.remoteProvider,
+                                      )}
+                                      {selectedRepository.remoteRepoSlug
+                                        ? ` · ${selectedRepository.remoteRepoSlug}`
+                                        : ''}
+                                    </strong>
+                                  </div>
+                                  <div className="repo-review-summary-item">
+                                    <span className="repo-review-summary-label">
+                                      {t('repoReview.summary.reviewChat')}
+                                    </span>
+                                    <strong className="repo-review-summary-value">
+                                      {formatReviewChatTarget(
+                                        selectedRepository.reviewChatJid,
+                                        conversations,
+                                      )}
+                                    </strong>
+                                  </div>
+                                  <div className="repo-review-summary-item">
+                                    <span className="repo-review-summary-label">
+                                      {t('repoReview.summary.feishuMappings')}
+                                    </span>
+                                    <strong className="repo-review-summary-value">
+                                      {t('repoReview.summary.entryCount', {
+                                        count:
+                                          selectedRepository
+                                            .actorMentionMappings.length,
+                                      })}
+                                    </strong>
+                                  </div>
+                                  <div className="repo-review-summary-item">
+                                    <span className="repo-review-summary-label">
+                                      {t('repoReview.summary.reviewProfile')}
+                                    </span>
+                                    <strong className="repo-review-summary-value">
+                                      {t('repoReview.summary.configuredCount', {
+                                        count:
+                                          profilesForSelectedRepository.length,
+                                      })}
+                                    </strong>
+                                  </div>
+                                  <div className="repo-review-summary-item">
+                                    <span className="repo-review-summary-label">
+                                      {t('repoReview.summary.credentialStatus')}
+                                    </span>
+                                    <strong className="repo-review-summary-value">
+                                      {selectedRepository.hasWebhookSecret
+                                        ? t(
+                                            'repoReview.summary.webhookConfigured',
+                                          )
+                                        : t(
+                                            'repoReview.summary.webhookNotConfigured',
+                                          )}
+                                      {selectedRepository.webhookSecretPreview
+                                        ? ` (${selectedRepository.webhookSecretPreview})`
+                                        : ''}
+                                      {' · '}
+                                      {selectedRepository.hasPlatformToken
+                                        ? t(
+                                            'repoReview.summary.tokenConfigured',
+                                          )
+                                        : t(
+                                            'repoReview.summary.tokenNotConfigured',
+                                          )}
+                                      {selectedRepository.platformTokenPreview
+                                        ? ` (${selectedRepository.platformTokenPreview})`
+                                        : ''}
+                                    </strong>
+                                  </div>
+                                  <div className="repo-review-summary-item">
+                                    <span className="repo-review-summary-label">
+                                      {t('repoReview.summary.autoSync')}
+                                    </span>
+                                    <strong className="repo-review-summary-value">
+                                      {selectedRepository.autoSyncEnabled
+                                        ? t(
+                                            'repoReview.summary.autoSyncEnabled',
+                                            {
+                                              minutes:
+                                                selectedRepository.autoSyncIntervalMinutes,
+                                            },
+                                          )
+                                        : t('repoReview.repoStatus.disabled')}
+                                    </strong>
+                                  </div>
+                                  {selectedRepository.webhookUrl &&
+                                  selectedRepository.remoteProvider ? (
+                                    <div className="repo-review-summary-item">
+                                      <span className="repo-review-summary-label">
+                                        {t(
+                                          'repoReview.summary.webhookCallbackUrl',
+                                        )}
+                                      </span>
+                                      <strong className="repo-review-summary-value repo-review-webhook-url-row">
+                                        <code className="repo-review-webhook-url">
+                                          {selectedRepository.webhookUrl}
+                                        </code>
+                                        <button
+                                          type="button"
+                                          className="btn-outline btn-sm"
+                                          onClick={() => {
+                                            const text =
+                                              selectedRepository.webhookUrl!;
+                                            if (
+                                              navigator.clipboard &&
+                                              window.isSecureContext
+                                            ) {
+                                              void navigator.clipboard.writeText(
+                                                text,
+                                              );
+                                            } else {
+                                              const ta =
+                                                document.createElement(
+                                                  'textarea',
+                                                );
+                                              ta.value = text;
+                                              ta.style.position = 'fixed';
+                                              ta.style.left = '-9999px';
+                                              document.body.appendChild(ta);
+                                              ta.select();
+                                              document.execCommand('copy');
+                                              document.body.removeChild(ta);
+                                            }
+                                            setMessage(
+                                              i18n.t(
+                                                'repoReview.success.webhookCopied',
+                                              ),
+                                            );
+                                          }}
+                                        >
+                                          Copy
+                                        </button>
+                                      </strong>
+                                    </div>
+                                  ) : null}
+                                </div>
+                              ) : null}
+
+                              <div className="repo-review-form-grid">
+                                <div className="form-group">
+                                  <label>{t('repoReview.form.name')}</label>
+                                  <input
+                                    value={repositoryDraft.name}
+                                    onChange={(event) =>
+                                      setRepositoryDraft((current) => ({
+                                        ...current,
+                                        name: event.target.value,
+                                      }))
+                                    }
+                                    placeholder="e.g. miniRpc"
+                                  />
+                                </div>
+                                <div className="form-group">
+                                  <label>{t('repoReview.form.language')}</label>
+                                  <AppSelect
+                                    value={repositoryDraft.language}
+                                    onChange={(value) =>
+                                      setRepositoryDraft((current) => ({
+                                        ...current,
+                                        language: value,
+                                      }))
+                                    }
+                                    ariaLabel={t(
+                                      'repoReview.form.selectLanguage',
+                                    )}
+                                    options={COMMON_LANGUAGES.map(
+                                      (language) => ({
+                                        value: language,
+                                        label: language,
+                                      }),
+                                    )}
+                                  />
+                                </div>
+                                <div
+                                  ref={setRepositoryEditorSectionRef(
+                                    'delivery',
+                                  )}
+                                  className={`form-group repo-review-chat-target-field ${
+                                    repositoryEditorSection === 'delivery'
+                                      ? 'repo-review-focus-target'
+                                      : ''
+                                  }`}
+                                >
+                                  <label>
+                                    {t('repoReview.form.reviewChat')}
+                                  </label>
+                                  <div className="repo-review-chat-target-summary">
+                                    <strong>
+                                      {formatReviewChatTarget(
+                                        effectiveReviewChatJid,
+                                        conversations,
+                                      )}
+                                    </strong>
+                                    <span>
+                                      {reviewChatValue ===
+                                      AUTO_REVIEW_CHAT_VALUE
+                                        ? t('repoReview.form.autoChatSession')
+                                        : isFeishuReviewChat
+                                          ? t(
+                                              'repoReview.form.feishuChatSession',
+                                            )
+                                          : t(
+                                              'repoReview.form.nonFeishuChatSession',
+                                            )}
+                                    </span>
+                                  </div>
+                                  <AppSelect
+                                    value={reviewChatValue}
+                                    onChange={(value) =>
+                                      setRepositoryDraft((current) => ({
+                                        ...current,
+                                        reviewChatJid:
+                                          value === AUTO_REVIEW_CHAT_VALUE ||
+                                          value === CUSTOM_REVIEW_CHAT_VALUE
+                                            ? ''
+                                            : value,
+                                      }))
+                                    }
+                                    ariaLabel={t(
+                                      'repoReview.form.selectChatSession',
+                                    )}
+                                    options={conversationOptions}
+                                  />
+                                  <div className="settings-hint">
+                                    Choose the session that should actually
+                                    receive review results. Feishu member
+                                    binding and @ mappings only appear when a
+                                    Feishu chat is selected.
+                                  </div>
+                                  {reviewChatValue ===
+                                  CUSTOM_REVIEW_CHAT_VALUE ? (
+                                    <>
+                                      <input
+                                        type="text"
+                                        value={customReviewChatJidInput}
+                                        onChange={(event) =>
+                                          setCustomReviewChatJidInput(
+                                            event.target.value,
+                                          )
+                                        }
+                                        placeholder="feishu:oc_xxx / feishu:instanceId:oc_xxx / web:chat_xxx"
+                                      />
+                                      <div className="settings-hint">
+                                        If the target chat is not listed yet,
+                                        enter the full JID manually. For Feishu
+                                        with only the default or a single
+                                        instance, `oc_xxx` also works directly.
+                                      </div>
+                                    </>
+                                  ) : null}
+                                </div>
+                                <div
+                                  ref={setRepositoryEditorSectionRef('source')}
+                                  className={`form-group repo-review-path-field ${
+                                    repositoryEditorSection === 'source'
+                                      ? 'repo-review-focus-target'
+                                      : ''
+                                  }`}
+                                >
+                                  <label>{t('repoReview.form.cloneUrl')}</label>
+                                  <div className="repo-review-inline-actions">
+                                    <input
+                                      value={repositoryDraft.cloneUrl}
+                                      onChange={(event) => {
+                                        setRepositoryDraft((current) => ({
+                                          ...current,
+                                          cloneUrl: event.target.value,
+                                        }));
+                                        setSelectedDetectedRemoteName('');
+                                      }}
+                                      onBlur={() => {
+                                        const url =
+                                          repositoryDraft.cloneUrl.trim();
+                                        if (
+                                          url &&
+                                          /^(https?:\/\/|git@|ssh:\/\/)/.test(
+                                            url,
+                                          )
+                                        ) {
+                                          void discoverRepositoryConfig();
+                                        }
+                                      }}
+                                      placeholder={t(
+                                        'repoReview.form.cloneUrlPlaceholder',
+                                      )}
+                                    />
+                                    <button
+                                      className="btn-outline btn-sm"
+                                      onClick={() =>
+                                        void discoverRepositoryConfig()
+                                      }
+                                      disabled={discoveringRepository}
+                                    >
+                                      {discoveringRepository
+                                        ? t('repoReview.button.discovering')
+                                        : t('repoReview.button.importFromLink')}
+                                    </button>
+                                  </div>
+                                  <div className="settings-hint">
+                                    Supports SSH clone URLs, HTTPS clone URLs,
+                                    or direct repository page links. The
+                                    provider, slug, and base URL are
+                                    auto-detected after paste.
+                                  </div>
+                                </div>
+
+                                <div
+                                  ref={setRepositoryEditorSectionRef(
+                                    'autosync',
+                                  )}
+                                  className={`form-group ${
+                                    repositoryEditorSection === 'autosync'
+                                      ? 'repo-review-focus-target'
+                                      : ''
+                                  }`}
+                                >
+                                  <label>
+                                    {t('repoReview.form.remotePlatform')}
+                                  </label>
+                                  <AppSelect
+                                    value={repositoryDraft.remoteProvider}
+                                    onChange={(value) =>
+                                      setRepositoryDraft((current) => ({
+                                        ...current,
+                                        remoteProvider:
+                                          value as RepositoryDraft['remoteProvider'],
+                                      }))
+                                    }
+                                    ariaLabel={t(
+                                      'repoReview.form.selectPlatform',
+                                    )}
+                                    options={[
+                                      {
+                                        value: '',
+                                        label: t(
+                                          'repoReview.remoteProvider.local',
+                                        ),
+                                      },
+                                      { value: 'github', label: 'GitHub' },
+                                      { value: 'gitlab', label: 'GitLab' },
+                                      { value: 'gitea', label: 'Gitea' },
+                                    ]}
+                                  />
+                                  <div className="settings-hint">
+                                    Auto-filled after pasting a repository link,
+                                    or choose manually.
+                                  </div>
+                                </div>
+
+                                <div
+                                  ref={setRepositoryEditorSectionRef(
+                                    'credentials',
+                                  )}
+                                  className={`form-group ${
+                                    repositoryEditorSection === 'credentials'
+                                      ? 'repo-review-focus-target'
+                                      : ''
+                                  }`}
+                                >
+                                  <label>
+                                    {getRemoteRepoSlugLabel(
+                                      repositoryDraft.remoteProvider,
+                                    )}
+                                  </label>
+                                  <input
+                                    value={repositoryDraft.remoteRepoSlug}
+                                    onChange={(event) =>
+                                      setRepositoryDraft((current) => ({
+                                        ...current,
+                                        remoteRepoSlug: event.target.value,
+                                      }))
+                                    }
+                                    placeholder={getRemoteRepoSlugPlaceholder(
+                                      repositoryDraft.remoteProvider,
+                                    )}
+                                  />
+                                  <div className="settings-hint">
+                                    This is the repository identifier used by
+                                    the platform API, not the full URL.
+                                  </div>
+                                </div>
+
+                                <div className="form-group">
+                                  <label>
+                                    {t('repoReview.form.remoteBaseUrl')}
+                                  </label>
+                                  <input
+                                    value={repositoryDraft.remoteBaseUrl}
+                                    onChange={(event) =>
+                                      setRepositoryDraft((current) => ({
+                                        ...current,
+                                        remoteBaseUrl: event.target.value,
+                                      }))
+                                    }
+                                    placeholder={t(
+                                      'repoReview.form.remoteBaseUrlPlaceholder',
+                                    )}
+                                  />
+                                  <div className="settings-hint">
+                                    {getRemoteBaseUrlHint(
+                                      repositoryDraft.remoteProvider,
+                                    )}
+                                  </div>
+                                </div>
+
+                                <details className="repo-review-advanced-section">
+                                  <summary className="repo-review-advanced-summary">
+                                    Advanced: Local Repository (Optional)
+                                  </summary>
+                                  <div className="form-group repo-review-path-field repo-review-path-field--stack">
+                                    <div className="repo-review-inline-actions">
+                                      <input
+                                        value={repositoryDraft.localRepoPath}
+                                        onChange={(event) => {
+                                          setRepositoryDraft((current) => ({
+                                            ...current,
+                                            localRepoPath: event.target.value,
+                                          }));
+                                          setSelectedDetectedRemoteName('');
+                                        }}
+                                        placeholder="/Users/you/projects/repo"
+                                      />
+                                      <button
+                                        className="btn-outline btn-sm"
+                                        onClick={async () => {
+                                          const picked =
+                                            await pickNativeDirectory();
+                                          if (!picked) return;
+                                          setRepositoryDraft((current) => ({
+                                            ...current,
+                                            localRepoPath: picked,
+                                          }));
+                                          setSelectedDetectedRemoteName('');
+                                          setRepositoryDetectionWarnings([]);
+                                        }}
+                                      >
+                                        Choose
+                                      </button>
+                                      <button
+                                        className="btn-outline btn-sm"
+                                        onClick={() =>
+                                          void discoverRepositoryConfig()
+                                        }
+                                        disabled={discoveringRepository}
+                                      >
+                                        {discoveringRepository
+                                          ? 'Detecting...'
+                                          : 'Import from Local Repository'}
+                                      </button>
+                                    </div>
+                                    <div className="settings-hint">
+                                      Optional. After binding a local git
+                                      repository, NanoClaw can autofill remote
+                                      settings from `git remote` and support
+                                      local diff reviews.
+                                    </div>
+                                    {lastRepositoryDetection?.source ===
+                                      'local_repo' &&
+                                    lastRepositoryDetection.availableRemotes
+                                      .length > 1 ? (
+                                      <>
+                                        <div className="repo-review-remote-picker-block">
+                                          <label>
+                                            {t(
+                                              'repoReview.form.multipleRemotes',
+                                            )}
+                                          </label>
+                                          <AppSelect
+                                            value={
+                                              selectedDetectedRemoteName ||
+                                              lastRepositoryDetection.detectedRemoteName
+                                            }
+                                            onChange={(value) => {
+                                              setSelectedDetectedRemoteName(
+                                                value,
+                                              );
+                                              void discoverRepositoryConfig(
+                                                value,
+                                              );
+                                            }}
+                                            ariaLabel={t(
+                                              'repoReview.form.selectGitRemote',
+                                            )}
+                                            options={lastRepositoryDetection.availableRemotes.map(
+                                              (option) => ({
+                                                value: option.remoteName,
+                                                label:
+                                                  formatRemoteOptionLabel(
+                                                    option,
+                                                  ),
+                                              }),
+                                            )}
+                                          />
+                                        </div>
+                                        <div className="settings-hint">
+                                          Multiple remotes were detected. Choose
+                                          the one used for webhook and remote
+                                          polling to avoid guessing the wrong
+                                          default.
+                                        </div>
+                                      </>
+                                    ) : null}
+                                  </div>
+                                </details>
+                                {lastRepositoryDetection ? (
+                                  <div className="form-group repo-review-textarea">
+                                    <label>
+                                      {t('repoReview.form.detectedConfig')}
+                                    </label>
+                                    <div className="repo-review-detection-summary">
+                                      <div>
+                                        <strong>
+                                          {t('repoReview.form.source')}
+                                        </strong>
+                                        <span>
+                                          {lastRepositoryDetection.source ===
+                                          'local_repo'
+                                            ? lastRepositoryDetection.detectedRemoteName
+                                              ? `Local remote ${lastRepositoryDetection.detectedRemoteName}`
+                                              : 'Local repository'
+                                            : 'Repository link'}
+                                        </span>
+                                      </div>
+                                      <div>
+                                        <strong>
+                                          {t('repoReview.runDetail.platform')}
+                                        </strong>
+                                        <span>
+                                          {lastRepositoryDetection.provider ||
+                                            t('repoReview.form.unrecognized')}
+                                        </span>
+                                      </div>
+                                      <div>
+                                        <strong>Repo</strong>
+                                        <span>
+                                          {lastRepositoryDetection.remoteRepoSlug ||
+                                            'Not detected'}
+                                        </span>
+                                      </div>
+                                      <div>
+                                        <strong>Base URL</strong>
+                                        <span>
+                                          {lastRepositoryDetection.remoteBaseUrl ||
+                                            t('repoReview.form.useDefault')}
+                                        </span>
+                                      </div>
+                                      <div>
+                                        <strong>Clone URL</strong>
+                                        <span>
+                                          {lastRepositoryDetection.cloneUrl ||
+                                            'Not detected'}
+                                        </span>
+                                      </div>
+                                      <div>
+                                        <strong>
+                                          {t('repoReview.form.defaultBranch')}
+                                        </strong>
+                                        <span>
+                                          {lastRepositoryDetection.defaultTargetBranch ||
+                                            'Not detected'}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  </div>
+                                ) : null}
+                                <div className="form-group">
+                                  <label>
+                                    {t('repoReview.form.defaultTargetBranch')}
+                                  </label>
+                                  <input
+                                    value={repositoryDraft.defaultTargetBranch}
+                                    onChange={(event) =>
+                                      setRepositoryDraft((current) => ({
+                                        ...current,
+                                        defaultTargetBranch: event.target.value,
+                                      }))
+                                    }
+                                    placeholder="main"
+                                  />
+                                  <div className="settings-hint">
+                                    {t('repoReview.form.defaultBaselineHint')}
+                                  </div>
+                                </div>
+                                <div className="form-group">
+                                  <label>
+                                    {t(
+                                      'repoReview.form.autoSyncRemoteBranches',
+                                    )}
+                                  </label>
+                                  <div className="settings-boolean-row">
+                                    <div className="settings-boolean-copy">
+                                      <span>
+                                        {t('repoReview.form.enableAutoSync')}
+                                      </span>
+                                    </div>
+                                    <div className="channel-boolean-control">
+                                      <NcToggle
+                                        checked={
+                                          repositoryDraft.autoSyncEnabled
+                                        }
+                                        onChange={(checked) =>
+                                          setRepositoryDraft((current) => ({
+                                            ...current,
+                                            autoSyncEnabled: checked,
+                                          }))
+                                        }
+                                      />
+                                    </div>
+                                  </div>
+                                  <div className="settings-hint">
+                                    {t('repoReview.form.autoSyncHint')}
+                                  </div>
+                                </div>
+                                <div className="form-group">
+                                  <label>
+                                    {t('repoReview.form.autoSyncInterval')}
+                                  </label>
+                                  <input
+                                    className="nc-input"
+                                    type="number"
+                                    min={5}
+                                    max={1440}
+                                    value={
+                                      repositoryDraft.autoSyncIntervalMinutes
+                                    }
+                                    onChange={(event) =>
+                                      setRepositoryDraft((current) => ({
+                                        ...current,
+                                        autoSyncIntervalMinutes: Number(
+                                          event.target.value || 30,
+                                        ),
+                                      }))
+                                    }
+                                    disabled={!repositoryDraft.autoSyncEnabled}
+                                  />
+                                  <div className="settings-hint">
+                                    {t('repoReview.form.autoSyncIntervalHint')}
+                                  </div>
+                                </div>
+
+                                <div className="form-group">
+                                  <label>{t('repoReview.form.digest')}</label>
+                                  <div className="settings-boolean-row">
+                                    <div className="settings-boolean-copy">
+                                      <span>
+                                        {t('repoReview.form.enableDailyDigest')}
+                                      </span>
+                                    </div>
+                                    <div className="channel-boolean-control">
+                                      <NcToggle
+                                        checked={
+                                          repositoryDraft.digestDailyEnabled
+                                        }
+                                        onChange={(checked) =>
+                                          setRepositoryDraft((current) => ({
+                                            ...current,
+                                            digestDailyEnabled: checked,
+                                          }))
+                                        }
+                                      />
+                                    </div>
+                                  </div>
+                                  {repositoryDraft.digestDailyEnabled ? (
+                                    <div className="settings-sub-row">
+                                      <label className="settings-inline-label">
+                                        {t('repoReview.form.deliveryHour')}
+                                      </label>
+                                      <input
+                                        className="nc-input nc-input-sm"
+                                        type="number"
+                                        min={0}
+                                        max={23}
+                                        value={repositoryDraft.digestDailyHour}
+                                        onChange={(event) =>
+                                          setRepositoryDraft((current) => ({
+                                            ...current,
+                                            digestDailyHour: Number(
+                                              event.target.value || 18,
+                                            ),
+                                          }))
+                                        }
+                                      />
+                                    </div>
+                                  ) : null}
+                                  <div className="settings-boolean-row">
+                                    <div className="settings-boolean-copy">
+                                      <span>
+                                        {t(
+                                          'repoReview.form.enableWeeklyDigest',
+                                        )}
+                                      </span>
+                                    </div>
+                                    <div className="channel-boolean-control">
+                                      <NcToggle
+                                        checked={
+                                          repositoryDraft.digestWeeklyEnabled
+                                        }
+                                        onChange={(checked) =>
+                                          setRepositoryDraft((current) => ({
+                                            ...current,
+                                            digestWeeklyEnabled: checked,
+                                          }))
+                                        }
+                                      />
+                                    </div>
+                                  </div>
+                                  {repositoryDraft.digestWeeklyEnabled ? (
+                                    <>
+                                      <div className="settings-sub-row">
+                                        <label className="settings-inline-label">
+                                          {t('repoReview.form.weekday')}
+                                        </label>
+                                        <NcSelect
+                                          className="repo-review-digest-weekday-select"
+                                          value={
+                                            repositoryDraft.digestWeeklyDay
+                                          }
+                                          onChange={(event) =>
+                                            setRepositoryDraft((current) => ({
+                                              ...current,
+                                              digestWeeklyDay: Number(
+                                                event.target.value || 5,
+                                              ),
+                                            }))
+                                          }
+                                        >
+                                          <option value={1}>
+                                            {t('repoReview.weekday.mon')}
+                                          </option>
+                                          <option value={2}>
+                                            {t('repoReview.weekday.tue')}
+                                          </option>
+                                          <option value={3}>
+                                            {t('repoReview.weekday.wed')}
+                                          </option>
+                                          <option value={4}>
+                                            {t('repoReview.weekday.thu')}
+                                          </option>
+                                          <option value={5}>
+                                            {t('repoReview.weekday.fri')}
+                                          </option>
+                                          <option value={6}>
+                                            {t('repoReview.weekday.sat')}
+                                          </option>
+                                          <option value={7}>
+                                            {t('repoReview.weekday.sun')}
+                                          </option>
+                                        </NcSelect>
+                                      </div>
+                                      <div className="settings-sub-row">
+                                        <label className="settings-inline-label">
+                                          {t('repoReview.form.deliveryHour')}
+                                        </label>
+                                        <input
+                                          className="nc-input nc-input-sm"
+                                          type="number"
+                                          min={0}
+                                          max={23}
+                                          value={
+                                            repositoryDraft.digestWeeklyHour
+                                          }
+                                          onChange={(event) =>
+                                            setRepositoryDraft((current) => ({
+                                              ...current,
+                                              digestWeeklyHour: Number(
+                                                event.target.value || 18,
+                                              ),
+                                            }))
+                                          }
+                                        />
+                                      </div>
+                                    </>
+                                  ) : null}
+                                  <div className="settings-hint">
+                                    {t('repoReview.form.digestHint')}
+                                  </div>
+                                </div>
+                                {repositoryDetectionWarnings.length > 0 ? (
+                                  <div className="form-group repo-review-textarea">
+                                    <label>
+                                      {t('repoReview.form.detectionWarnings')}
+                                    </label>
+                                    <div className="repo-review-issues">
+                                      {repositoryDetectionWarnings.map(
+                                        (warning, index) => (
+                                          <div
+                                            key={`${index}-${warning}`}
+                                            className="repo-review-issue repo-review-issue-warning"
+                                          >
+                                            {warning}
+                                          </div>
+                                        ),
+                                      )}
+                                    </div>
+                                  </div>
+                                ) : null}
+                                {contributorsLoading ? (
+                                  <div className="settings-hint repo-review-hint-muted">
+                                    {t('repoReview.form.contributorsLoading')}
+                                  </div>
+                                ) : discoveredContributors.length > 0 ? (
+                                  <div className="settings-hint">
+                                    {t(
+                                      'repoReview.form.contributorsDiscovered',
+                                      {
+                                        count: discoveredContributors.length,
+                                      },
+                                    )}
+                                  </div>
+                                ) : null}
+                                <RepoReviewActorMentionEditor
+                                  isFeishuReviewChat={isFeishuReviewChat}
+                                  pauseOverviewRefresh={pauseOverviewRefresh}
+                                  selectedMentionMemberId={
+                                    selectedMentionMemberId
+                                  }
+                                  setSelectedMentionMemberId={
+                                    setSelectedMentionMemberId
+                                  }
+                                  reviewChatMemberOptions={
+                                    reviewChatMemberOptions
+                                  }
+                                  loadingReviewChatMembers={
+                                    loadingReviewChatMembers
+                                  }
+                                  availableReviewChatMembers={
+                                    availableReviewChatMembers
+                                  }
+                                  selectedMentionMember={selectedMentionMember}
+                                  reviewIdentityCandidates={
+                                    reviewIdentityCandidates
+                                  }
+                                  reviewChatMemberSourceStats={
+                                    reviewChatMemberSourceStats
+                                  }
+                                  reviewChatMembersError={
+                                    reviewChatMembersError
+                                  }
+                                  actorMentionDraftRows={
+                                    repositoryDraft.actorMentionDraftRows
+                                  }
+                                  actorMentionMappingsText={
+                                    repositoryDraft.actorMentionMappingsText
+                                  }
+                                  actorMentionIssues={
+                                    actorMentionMappingsState.issues
+                                  }
+                                  actorMentionEntryCount={
+                                    actorMentionMappingsState.entries.length
+                                  }
+                                  advancedMappingsOpen={advancedMappingsOpen}
+                                  setAdvancedMappingsOpen={
+                                    setAdvancedMappingsOpen
+                                  }
+                                  onRefreshMembers={() =>
+                                    void refreshReviewChatMembers(
+                                      effectiveReviewChatJid,
+                                      false,
+                                    )
+                                  }
+                                  onAppendMentionDraftRow={() =>
+                                    appendMentionDraftRow()
+                                  }
+                                  onApplyIdentityCandidate={
+                                    applyIdentityCandidate
+                                  }
+                                  onUpdateMentionDraftRow={
+                                    updateMentionDraftRow
+                                  }
+                                  onRemoveMentionDraftRow={
+                                    removeMentionDraftRow
+                                  }
+                                  onActorMentionMappingsTextChange={(value) =>
+                                    setRepositoryDraft((current) => ({
+                                      ...current,
+                                      actorMentionMappingsText: value,
+                                    }))
+                                  }
+                                />
+                                <div className="form-group">
+                                  <label>
+                                    {getWebhookSecretLabel(
+                                      repositoryDraft.remoteProvider,
+                                    )}
+                                  </label>
+                                  <input
+                                    type="password"
+                                    value={repositoryDraft.webhookSecret}
+                                    onChange={(event) =>
+                                      setRepositoryDraft((current) => ({
+                                        ...current,
+                                        webhookSecret: event.target.value,
+                                      }))
+                                    }
+                                    placeholder={
+                                      selectedRepository?.hasWebhookSecret
+                                        ? t(
+                                            'repoReview.form.webhookSecretKeepPlaceholder',
+                                          )
+                                        : t(
+                                            'repoReview.form.webhookSecretPlaceholder',
+                                          )
+                                    }
+                                  />
+                                  <div className="settings-hint">
+                                    {selectedRepository?.hasWebhookSecret
+                                      ? t('repoReview.form.secretKeepHint')
+                                      : t(
+                                          'repoReview.form.secretNotConfigured',
+                                        )}
+                                  </div>
+                                  {currentWebhookSecretPreview ? (
+                                    <div className="settings-hint">
+                                      {t('repoReview.form.currentPreview', {
+                                        value: currentWebhookSecretPreview,
+                                      })}
+                                    </div>
+                                  ) : null}
+                                  <div className="settings-hint">
+                                    {getWebhookSecretHint(
+                                      repositoryDraft.remoteProvider,
+                                    )}
+                                  </div>
+                                </div>
+                                {sshKeys.length > 0 && (
+                                  <div className="form-group">
+                                    <label>{t('repoReview.form.sshKey')}</label>
+                                    <select
+                                      value={repositoryDraft.sshKeyId}
+                                      onChange={(e) =>
+                                        setRepositoryDraft((c) => ({
+                                          ...c,
+                                          sshKeyId: e.target.value,
+                                        }))
+                                      }
+                                    >
+                                      <option value="">
+                                        {t('repoReview.form.defaultSshKey')}
+                                      </option>
+                                      {sshKeys.map((k) => (
+                                        <option key={k.id} value={k.id}>
+                                          {k.name}
+                                          {k.fingerprint
+                                            ? ` (${k.fingerprint.slice(0, 20)}…)`
+                                            : ''}
+                                          {k.isDefault ? ' ★' : ''}
+                                        </option>
+                                      ))}
+                                    </select>
+                                    <div className="settings-hint">
+                                      {t('repoReview.form.sshKeyHint')}
+                                    </div>
+                                  </div>
+                                )}
+                                <div className="form-group">
+                                  <label>
+                                    {getPlatformTokenLabel(
+                                      repositoryDraft.remoteProvider,
+                                    )}
+                                  </label>
+                                  <input
+                                    type="password"
+                                    value={repositoryDraft.platformToken}
+                                    onChange={(event) =>
+                                      setRepositoryDraft((current) => ({
+                                        ...current,
+                                        platformToken: event.target.value,
+                                      }))
+                                    }
+                                    placeholder={
+                                      selectedRepository?.hasPlatformToken
+                                        ? t(
+                                            'repoReview.form.platformTokenKeepPlaceholder',
+                                          )
+                                        : t(
+                                            'repoReview.form.platformTokenPlaceholder',
+                                          )
+                                    }
+                                  />
+                                  <div className="settings-hint">
+                                    {selectedRepository?.hasPlatformToken
+                                      ? t(
+                                          'repoReview.form.platformTokenKeepHint',
+                                        )
+                                      : t(
+                                          'repoReview.form.platformTokenNotConfigured',
+                                        )}
+                                  </div>
+                                  {currentPlatformTokenPreview ? (
+                                    <div className="settings-hint">
+                                      {t('repoReview.form.currentPreview', {
+                                        value: currentPlatformTokenPreview,
+                                      })}
+                                    </div>
+                                  ) : null}
+                                  <div className="settings-hint">
+                                    {getPlatformTokenHint(
+                                      repositoryDraft.remoteProvider,
+                                    )}
+                                  </div>
+                                </div>
+                                {repositoryDraft.remoteProvider === 'gitlab' ? (
+                                  <div className="form-group repo-review-textarea">
+                                    <label>
+                                      {t('repoReview.form.gitlabTokenGuide')}
+                                    </label>
+                                    <div className="repo-review-token-guide">
+                                      <div>
+                                        <strong>
+                                          {t(
+                                            'repoReview.form.gitlabWebhookTokenTitle',
+                                          )}
+                                        </strong>
+                                        <span>
+                                          {t(
+                                            'repoReview.form.gitlabWebhookTokenHint',
+                                          )}
+                                        </span>
+                                      </div>
+                                      <div>
+                                        <strong>
+                                          {t(
+                                            'repoReview.form.gitlabAccessTokenTitle',
+                                          )}
+                                        </strong>
+                                        <span>
+                                          {t(
+                                            'repoReview.form.gitlabAccessTokenHint',
+                                          )}
+                                        </span>
+                                      </div>
+                                      <div>
+                                        <strong>
+                                          {t(
+                                            'repoReview.form.gitlabPipelineTriggerTitle',
+                                          )}
+                                        </strong>
+                                        <span>
+                                          {t(
+                                            'repoReview.form.gitlabPipelineTriggerHint',
+                                          )}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  </div>
+                                ) : null}
+                              </div>
+
+                              <div className="form-group">
+                                <label>{t('repoReview.form.allowAiFix')}</label>
+                                <div className="settings-boolean-row">
+                                  <div className="settings-boolean-copy">
+                                    <span>
+                                      {t('repoReview.form.allowAiFixHint')}
+                                    </span>
+                                  </div>
+                                  <div className="channel-boolean-control">
+                                    <NcToggle
+                                      checked={repositoryDraft.allowAiFix}
+                                      onChange={(checked) =>
+                                        setRepositoryDraft((current) => ({
+                                          ...current,
+                                          allowAiFix: checked,
+                                        }))
+                                      }
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+
+                              <label className="settings-toggle-row">
+                                <input
+                                  type="checkbox"
+                                  checked={repositoryDraft.enabled}
+                                  onChange={(event) =>
+                                    setRepositoryDraft((current) => ({
+                                      ...current,
+                                      enabled: event.target.checked,
+                                    }))
+                                  }
+                                />
+                                <span>
+                                  {t('repoReview.form.enableRepoConfig')}
+                                </span>
+                              </label>
+
+                              <div className="modal-actions">
+                                <button
+                                  className="btn-primary"
+                                  onClick={() => void saveRepository()}
+                                  disabled={
+                                    repositoryHasMappingErrors ||
+                                    savingRepository
+                                  }
+                                >
+                                  {savingRepository
+                                    ? t('repoReview.button.saving')
+                                    : t('repoReview.button.save')}
+                                </button>
+                                {repositoryDraft.id ? (
+                                  <button
+                                    className={
+                                      repositoryDraft.enabled
+                                        ? 'btn-warning'
+                                        : 'btn-success'
+                                    }
+                                    onClick={() =>
+                                      void toggleRepositoryEnabled(
+                                        repositoryDraft.id!,
+                                        repositoryDraft.enabled,
+                                      )
+                                    }
+                                  >
+                                    {repositoryDraft.enabled
+                                      ? t('repoReview.button.disableRepo')
+                                      : t('repoReview.button.enableRepo')}
+                                  </button>
+                                ) : null}
+                                <button
+                                  className="btn-danger"
+                                  onClick={() => void deleteRepository()}
+                                  disabled={
+                                    !repositoryDraft.id || deletingRepository
+                                  }
+                                >
+                                  {deletingRepository
+                                    ? t('repoReview.button.deleting')
+                                    : t('repoReview.button.deleteRepo')}
+                                </button>
+                              </div>
+                              <div className="settings-hint">
+                                Local hook-based review remains supported, but
+                                team workflows should generally prefer remote
+                                webhooks or manual remote branch sync.
+                              </div>
+                              {selectedRepository?.autoSyncEnabled ? (
+                                <div className="settings-hint">
+                                  Auto sync:
+                                  {` every ${selectedRepository.autoSyncIntervalMinutes} min; last ${formatRepoAutoSyncStatus(selectedRepository.lastAutoSyncStatus)} ${formatOptionalDateTime(selectedRepository.lastAutoSyncAt)}; next ${formatOptionalDateTime(selectedRepository.nextAutoSyncAt)}`}
+                                  {selectedRepository.lastAutoSyncMessage
+                                    ? `; ${selectedRepository.lastAutoSyncMessage}`
+                                    : ''}
+                                </div>
+                              ) : null}
+                              {lastSyncMessage ? (
+                                <div className="test-result success">
+                                  {lastSyncMessage}
+                                </div>
+                              ) : null}
+                            </div>
+                          </>
+                        ) : null}
                       </div>
-                    ) : null}
-                  </div>
-                </>
-              ) : null}
-            </div>
-            </>
-          )}
-        </div>
-        ) : (
-          <div className="provider-empty repo-review-inline-empty">
-            {t('repoReview.repo.noMatch')}
-          </div>
-        )}
-      </section>
-      </RepoReviewWorkspaceDetailSurface>
-      ) : null}
+                    </>
+                  )}
+                </div>
+              ) : (
+                <div className="provider-empty repo-review-inline-empty">
+                  {t('repoReview.repo.noMatch')}
+                </div>
+              )}
+            </section>
+          </RepoReviewWorkspaceDetailSurface>
+        ) : null}
       </div>
 
       {message ? <div className="test-result success">{message}</div> : null}
@@ -5898,9 +6713,10 @@ export function RepoReviewSettingsPanel({
             repositoryById.get(selectedRunData.repositoryId)?.name ||
             selectedRunData.repositoryId
           }
-	          profileName={
-	            profileById.get(selectedRunData.profileId)?.name || 'Unmatched profile'
-	          }
+          profileName={
+            profileById.get(selectedRunData.profileId)?.name ||
+            'Unmatched profile'
+          }
           progressEntries={selectedRunProgressEntries}
           onClose={closeRunDetail}
           formatRunTitle={formatRunTitle}
@@ -5991,7 +6807,9 @@ export function RepoReviewSettingsPanel({
                 onClick={() => void runConfirmDialog()}
                 disabled={confirmDialog.pending}
               >
-                {confirmDialog.pending ? t('repoReview.button.processing') : confirmDialog.confirmLabel}
+                {confirmDialog.pending
+                  ? t('repoReview.button.processing')
+                  : confirmDialog.confirmLabel}
               </button>
             </div>
           </div>

@@ -81,6 +81,7 @@ export const WEB_CONFIG_KEYS = [
   'KB_MAX_CRAWL_DEPTH',
   'KB_CRAWL_CONCURRENCY',
   'KB_LLM_CONCURRENCY',
+  'CODE_INDEX_LLM_CONCURRENCY',
   'KB_FETCH_TIMEOUT_MS',
   'KB_JINA_TIMEOUT_MS',
 ] as const;
@@ -100,8 +101,7 @@ export const WEB_CONFIG_METADATA: Record<WebConfigKey, ConfigKeyMetadata> = {
     key: 'ASSISTANT_NAME',
     label: t('config.auto_f34e9e', {}, undefined),
     effect: 'new_agent',
-    summary:
-      t('config.auto_3647f4', {}, undefined),
+    summary: t('config.auto_3647f4', {}, undefined),
   },
   WEB_PORT: {
     key: 'WEB_PORT',
@@ -151,24 +151,21 @@ export const WEB_CONFIG_METADATA: Record<WebConfigKey, ConfigKeyMetadata> = {
     key: 'WEB_BROWSER_ENABLED',
     label: t('config.auto_91a471', {}, undefined),
     effect: 'instant',
-    summary:
-      t('config.auto_4d2cb4', {}, undefined),
+    summary: t('config.auto_4d2cb4', {}, undefined),
     risk: 'dangerous',
   },
   WEB_BROWSER_CONNECTION_MODE: {
     key: 'WEB_BROWSER_CONNECTION_MODE',
     label: t('config.auto_9a7450', {}, undefined),
     effect: 'instant',
-    summary:
-      t('config.auto_78128c', {}, undefined),
+    summary: t('config.auto_78128c', {}, undefined),
     risk: 'dangerous',
   },
   WEB_BROWSER_REMOTE_DEBUG_URL: {
     key: 'WEB_BROWSER_REMOTE_DEBUG_URL',
     label: t('config.auto_af022f', {}, undefined),
     effect: 'instant',
-    summary:
-      t('config.auto_f5d810', {}, undefined),
+    summary: t('config.auto_f5d810', {}, undefined),
     risk: 'dangerous',
   },
   WEB_BROWSER_HEADLESS: {
@@ -182,16 +179,14 @@ export const WEB_CONFIG_METADATA: Record<WebConfigKey, ConfigKeyMetadata> = {
     key: 'WEB_BROWSER_EXECUTABLE_PATH',
     label: t('config.auto_1f234c', {}, undefined),
     effect: 'instant',
-    summary:
-      t('config.auto_034064', {}, undefined),
+    summary: t('config.auto_034064', {}, undefined),
     risk: 'dangerous',
   },
   WEB_BROWSER_EXTRA_ARGS: {
     key: 'WEB_BROWSER_EXTRA_ARGS',
     label: t('config.auto_e754a7', {}, undefined),
     effect: 'instant',
-    summary:
-      t('config.auto_1e30a2', {}, undefined),
+    summary: t('config.auto_1e30a2', {}, undefined),
     risk: 'dangerous',
   },
   WEB_BROWSER_START_URL: {
@@ -216,15 +211,13 @@ export const WEB_CONFIG_METADATA: Record<WebConfigKey, ConfigKeyMetadata> = {
     key: 'WEB_SEARCH_ENABLED',
     label: t('config.auto_b2d7ca', {}, undefined),
     effect: 'new_agent',
-    summary:
-      t('config.auto_e51617', {}, undefined),
+    summary: t('config.auto_e51617', {}, undefined),
   },
   WEB_SEARCH_PROVIDER: {
     key: 'WEB_SEARCH_PROVIDER',
     label: t('config.auto_1580d5', {}, undefined),
     effect: 'new_agent',
-    summary:
-      t('config.auto_c0f142', {}, undefined),
+    summary: t('config.auto_c0f142', {}, undefined),
   },
   WEB_SEARCH_MAX_RESULTS: {
     key: 'WEB_SEARCH_MAX_RESULTS',
@@ -236,15 +229,13 @@ export const WEB_CONFIG_METADATA: Record<WebConfigKey, ConfigKeyMetadata> = {
     key: 'WEB_FETCH_PROVIDER',
     label: t('config.auto_faf71f', {}, undefined),
     effect: 'new_agent',
-    summary:
-      t('config.auto_db94c5', {}, undefined),
+    summary: t('config.auto_db94c5', {}, undefined),
   },
   WEB_FETCH_USE_BUILTIN_SITE_PROFILES: {
     key: 'WEB_FETCH_USE_BUILTIN_SITE_PROFILES',
     label: t('config.auto_8b311e', {}, undefined),
     effect: 'new_agent',
-    summary:
-      t('config.auto_3076ae', {}, undefined),
+    summary: t('config.auto_3076ae', {}, undefined),
   },
   WEB_FETCH_MAX_CHARS: {
     key: 'WEB_FETCH_MAX_CHARS',
@@ -262,31 +253,27 @@ export const WEB_CONFIG_METADATA: Record<WebConfigKey, ConfigKeyMetadata> = {
     key: 'WEB_FETCH_BROWSER_COMMAND',
     label: t('config.auto_5daec6', {}, undefined),
     effect: 'new_agent',
-    summary:
-      t('config.auto_ef5b43', {}, undefined),
+    summary: t('config.auto_ef5b43', {}, undefined),
     risk: 'dangerous',
   },
   WEB_FETCH_BROWSER_SITE_PROFILES: {
     key: 'WEB_FETCH_BROWSER_SITE_PROFILES',
     label: t('config.auto_40d96e', {}, undefined),
     effect: 'new_agent',
-    summary:
-      t('config.auto_292c20', {}, undefined),
+    summary: t('config.auto_292c20', {}, undefined),
     risk: 'dangerous',
   },
   WEB_SEARCH_ALLOWED_DOMAINS: {
     key: 'WEB_SEARCH_ALLOWED_DOMAINS',
     label: t('config.auto_cd1f56', {}, undefined),
     effect: 'new_agent',
-    summary:
-      t('config.auto_5a3f19', {}, undefined),
+    summary: t('config.auto_5a3f19', {}, undefined),
   },
   WEB_SEARCH_SEARXNG_BASE_URL: {
     key: 'WEB_SEARCH_SEARXNG_BASE_URL',
     label: 'SearXNG Base URL',
     effect: 'new_agent',
-    summary:
-      t('config.auto_37fb82', {}, undefined),
+    summary: t('config.auto_37fb82', {}, undefined),
   },
   WEB_SEARCH_TAVILY_API_KEY: {
     key: 'WEB_SEARCH_TAVILY_API_KEY',
@@ -299,66 +286,57 @@ export const WEB_CONFIG_METADATA: Record<WebConfigKey, ConfigKeyMetadata> = {
     key: 'CODEX_MAX_TOOL_ITERATIONS',
     label: t('config.auto_f935f7', {}, undefined),
     effect: 'new_agent',
-    summary:
-      t('config.auto_36f5e3', {}, undefined),
+    summary: t('config.auto_36f5e3', {}, undefined),
   },
   BASH_APPROVAL_ALLOWLIST: {
     key: 'BASH_APPROVAL_ALLOWLIST',
     label: t('config.auto_e913e2', {}, undefined),
     effect: 'new_agent',
-    summary:
-      t('config.auto_3ac259', {}, undefined),
+    summary: t('config.auto_3ac259', {}, undefined),
     risk: 'dangerous',
   },
   DEFAULT_ACCESS_MODE: {
     key: 'DEFAULT_ACCESS_MODE',
     label: t('config.auto_3fb4ed', {}, undefined),
     effect: 'new_agent',
-    summary:
-      t('config.auto_95e80d', {}, undefined),
+    summary: t('config.auto_95e80d', {}, undefined),
     risk: 'dangerous',
   },
   MEMORY_ENABLED: {
     key: 'MEMORY_ENABLED',
     label: t('config.auto_71a3fa', {}, undefined),
     effect: 'new_agent',
-    summary:
-      t('config.auto_f2b15b', {}, undefined),
+    summary: t('config.auto_f2b15b', {}, undefined),
   },
   MEMORY_READ_ENABLED: {
     key: 'MEMORY_READ_ENABLED',
     label: t('config.auto_5981b4', {}, undefined),
     effect: 'new_agent',
-    summary:
-      t('config.auto_9b827d', {}, undefined),
+    summary: t('config.auto_9b827d', {}, undefined),
   },
   MEMORY_WRITE_MODE: {
     key: 'MEMORY_WRITE_MODE',
     label: t('config.auto_29940e', {}, undefined),
     effect: 'new_agent',
-    summary:
-      t('config.auto_405124', {}, undefined),
+    summary: t('config.auto_405124', {}, undefined),
   },
   MEMORY_GLOBAL_WRITE_ENABLED: {
     key: 'MEMORY_GLOBAL_WRITE_ENABLED',
     label: t('config.auto_fdc7b8', {}, undefined),
     effect: 'new_agent',
-    summary:
-      t('config.auto_c1f4b4', {}, undefined),
+    summary: t('config.auto_c1f4b4', {}, undefined),
   },
   MEMORY_AUTO_SAVE_ENABLED: {
     key: 'MEMORY_AUTO_SAVE_ENABLED',
     label: t('config.auto_58ca33', {}, undefined),
     effect: 'new_agent',
-    summary:
-      t('config.auto_84e247', {}, undefined),
+    summary: t('config.auto_84e247', {}, undefined),
   },
   MEMORY_SEARCH_SCOPE_DEFAULT: {
     key: 'MEMORY_SEARCH_SCOPE_DEFAULT',
     label: t('config.auto_37f1b2', {}, undefined),
     effect: 'new_agent',
-    summary:
-      t('config.auto_15e887', {}, undefined),
+    summary: t('config.auto_15e887', {}, undefined),
   },
   MEMORY_SEARCH_MAX_RESULTS: {
     key: 'MEMORY_SEARCH_MAX_RESULTS',
@@ -370,118 +348,118 @@ export const WEB_CONFIG_METADATA: Record<WebConfigKey, ConfigKeyMetadata> = {
     key: 'MEMORY_PROMPT_INJECTION_ENABLED',
     label: t('config.auto_c5c6a3', {}, undefined),
     effect: 'new_agent',
-    summary:
-      t('config.auto_0e872b', {}, undefined),
+    summary: t('config.auto_0e872b', {}, undefined),
   },
   MEMORY_PROMPT_MAX_SNIPPETS: {
     key: 'MEMORY_PROMPT_MAX_SNIPPETS',
     label: t('config.auto_f27fe8', {}, undefined),
     effect: 'new_agent',
-    summary:
-      t('config.auto_f17464', {}, undefined),
+    summary: t('config.auto_f17464', {}, undefined),
   },
   MEMORY_PROMPT_TOKEN_BUDGET: {
     key: 'MEMORY_PROMPT_TOKEN_BUDGET',
     label: t('config.auto_0b8308', {}, undefined),
     effect: 'new_agent',
-    summary:
-      t('config.auto_d52794', {}, undefined),
+    summary: t('config.auto_d52794', {}, undefined),
   },
   MEMORY_PROMPT_RECENT_RATIO: {
     key: 'MEMORY_PROMPT_RECENT_RATIO',
     label: t('config.auto_cd558d', {}, undefined),
     effect: 'new_agent',
-    summary:
-      t('config.auto_22c017', {}, undefined),
+    summary: t('config.auto_22c017', {}, undefined),
   },
   MEMORY_PROMPT_SUMMARY_RATIO: {
     key: 'MEMORY_PROMPT_SUMMARY_RATIO',
     label: t('config.auto_608c1f', {}, undefined),
     effect: 'new_agent',
-    summary:
-      t('config.auto_3463b2', {}, undefined),
+    summary: t('config.auto_3463b2', {}, undefined),
   },
   MEMORY_PROMPT_RECALL_RATIO: {
     key: 'MEMORY_PROMPT_RECALL_RATIO',
     label: t('config.auto_48f1f5', {}, undefined),
     effect: 'new_agent',
-    summary:
-      t('config.auto_efccd5', {}, undefined),
+    summary: t('config.auto_efccd5', {}, undefined),
   },
   MEMORY_COMPACTION_ENABLED: {
     key: 'MEMORY_COMPACTION_ENABLED',
     label: t('config.auto_593d49', {}, undefined),
     effect: 'new_agent',
-    summary:
-      t('config.auto_265d04', {}, undefined),
+    summary: t('config.auto_265d04', {}, undefined),
   },
   MEMORY_COMPACTION_TRIGGER_ENTRIES: {
     key: 'MEMORY_COMPACTION_TRIGGER_ENTRIES',
     label: t('config.auto_2f2d76', {}, undefined),
     effect: 'new_agent',
-    summary:
-      t('config.auto_7831d2', {}, undefined),
+    summary: t('config.auto_7831d2', {}, undefined),
   },
   MEMORY_COMPACTION_KEEP_RECENT_ENTRIES: {
     key: 'MEMORY_COMPACTION_KEEP_RECENT_ENTRIES',
     label: t('config.auto_29c934', {}, undefined),
     effect: 'new_agent',
-    summary:
-      t('config.auto_acef38', {}, undefined),
+    summary: t('config.auto_acef38', {}, undefined),
   },
   CHAT_CONTEXT_TOKEN_BUDGET: {
     key: 'CHAT_CONTEXT_TOKEN_BUDGET',
     label: 'Chat Context Token Budget',
     effect: 'new_agent',
-    summary: 'Preferred total token budget for ordinary chat context lanes before the current user message.',
+    summary:
+      'Preferred total token budget for ordinary chat context lanes before the current user message.',
   },
   CHAT_CONTEXT_RECENT_CHAT_RATIO: {
     key: 'CHAT_CONTEXT_RECENT_CHAT_RATIO',
     label: 'Recent Chat Ratio',
     effect: 'new_agent',
-    summary: 'Share of ordinary chat context budget reserved for recent raw user and assistant turns.',
+    summary:
+      'Share of ordinary chat context budget reserved for recent raw user and assistant turns.',
   },
   CHAT_CONTEXT_RECENT_TOOL_RATIO: {
     key: 'CHAT_CONTEXT_RECENT_TOOL_RATIO',
     label: 'Recent Tool Ratio',
     effect: 'new_agent',
-    summary: 'Share of ordinary chat context budget reserved for recent structured tool activity.',
+    summary:
+      'Share of ordinary chat context budget reserved for recent structured tool activity.',
   },
   CHAT_CONTEXT_MEMORY_RECALL_RATIO: {
     key: 'CHAT_CONTEXT_MEMORY_RECALL_RATIO',
     label: 'Memory Recall Ratio',
     effect: 'new_agent',
-    summary: 'Share of ordinary chat context budget reserved for explicit memory recall entries.',
+    summary:
+      'Share of ordinary chat context budget reserved for explicit memory recall entries.',
   },
   CHAT_CONTEXT_SUMMARY_RATIO: {
     key: 'CHAT_CONTEXT_SUMMARY_RATIO',
     label: 'Compacted Summary Ratio',
     effect: 'new_agent',
-    summary: 'Share of ordinary chat context budget reserved for compacted chat and tool summaries.',
+    summary:
+      'Share of ordinary chat context budget reserved for compacted chat and tool summaries.',
   },
   CHAT_CONTEXT_RAW_CHAT_KEEP_ENTRIES: {
     key: 'CHAT_CONTEXT_RAW_CHAT_KEEP_ENTRIES',
     label: 'Raw Chat Window',
     effect: 'new_agent',
-    summary: 'How many recent raw chat entries ordinary chat should prefer to keep before summaries dominate.',
+    summary:
+      'How many recent raw chat entries ordinary chat should prefer to keep before summaries dominate.',
   },
   CHAT_CONTEXT_RAW_TOOL_KEEP_CALLS: {
     key: 'CHAT_CONTEXT_RAW_TOOL_KEEP_CALLS',
     label: 'Raw Tool Window',
     effect: 'new_agent',
-    summary: 'How many recent completed tool calls ordinary chat should keep as raw structured context.',
+    summary:
+      'How many recent completed tool calls ordinary chat should keep as raw structured context.',
   },
   CHAT_CONTEXT_CHAT_COMPACTION_TRIGGER_ENTRIES: {
     key: 'CHAT_CONTEXT_CHAT_COMPACTION_TRIGGER_ENTRIES',
     label: 'Chat Compaction Trigger',
     effect: 'new_agent',
-    summary: 'Eligible raw chat entry count that triggers deterministic chat compaction for ordinary conversations.',
+    summary:
+      'Eligible raw chat entry count that triggers deterministic chat compaction for ordinary conversations.',
   },
   CHAT_CONTEXT_CHAT_COMPACTION_KEEP_RECENT_ENTRIES: {
     key: 'CHAT_CONTEXT_CHAT_COMPACTION_KEEP_RECENT_ENTRIES',
     label: 'Chat Compaction Keep Recent',
     effect: 'new_agent',
-    summary: 'Number of most recent raw chat entries preserved when deterministic chat compaction runs.',
+    summary:
+      'Number of most recent raw chat entries preserved when deterministic chat compaction runs.',
   },
   ALLOW_INSECURE_TLS: {
     key: 'ALLOW_INSECURE_TLS',
@@ -562,23 +540,20 @@ export const WEB_CONFIG_METADATA: Record<WebConfigKey, ConfigKeyMetadata> = {
     key: 'allowed_directories',
     label: t('config.auto_36c2c8', {}, undefined),
     effect: 'new_agent',
-    summary:
-      t('config.auto_3923df', {}, undefined),
+    summary: t('config.auto_3923df', {}, undefined),
     risk: 'dangerous',
   },
   LIVE2D_ENABLED: {
     key: 'LIVE2D_ENABLED',
     label: t('config.auto_370979', {}, undefined),
     effect: 'instant',
-    summary:
-      t('config.auto_6b5423', {}, undefined),
+    summary: t('config.auto_6b5423', {}, undefined),
   },
   LIVE2D_EMOTION_ENABLED: {
     key: 'LIVE2D_EMOTION_ENABLED',
     label: t('config.auto_e9a84c', {}, undefined),
     effect: 'instant',
-    summary:
-      t('config.auto_1114ea', {}, undefined),
+    summary: t('config.auto_1114ea', {}, undefined),
   },
   KB_MAX_FILE_SIZE_MB: {
     key: 'KB_MAX_FILE_SIZE_MB',
@@ -621,6 +596,12 @@ export const WEB_CONFIG_METADATA: Record<WebConfigKey, ConfigKeyMetadata> = {
     label: t('config.auto_73cfa6', {}, undefined),
     effect: 'instant',
     summary: t('config.auto_7cd9d1', {}, undefined),
+  },
+  CODE_INDEX_LLM_CONCURRENCY: {
+    key: 'CODE_INDEX_LLM_CONCURRENCY',
+    label: '代码索引 LLM 并发',
+    effect: 'instant',
+    summary: '控制仓库代码索引 AI 摘要增强的最大并发数。',
   },
   KB_FETCH_TIMEOUT_MS: {
     key: 'KB_FETCH_TIMEOUT_MS',

@@ -36,7 +36,10 @@ import {
   buildProviderExtraConfigValue,
   serializeProviderForClient,
 } from '../provider/provider-http-config.js';
-import { getAllProviderTypeDefs, isValidProviderType } from '../provider/provider-registry.js';
+import {
+  getAllProviderTypeDefs,
+  isValidProviderType,
+} from '../provider/provider-registry.js';
 import { testAiProviderConnection } from '../provider/provider-api.js';
 import {
   assertSenderAllowlistConfigShape,
@@ -89,7 +92,9 @@ async function buildMaskedProviders() {
 }
 
 function normalizeProviderCapability(raw: unknown): ProviderCapability {
-  return String(raw || '').trim().toLowerCase() === 'embedding'
+  return String(raw || '')
+    .trim()
+    .toLowerCase() === 'embedding'
     ? 'embedding'
     : 'llm';
 }
@@ -127,17 +132,19 @@ const MEMORY_BOOLEAN_CONFIG_KEYS = new Set([
 
 const MEMORY_WRITE_MODES = new Set(['disabled', 'daily-only']);
 const MEMORY_SEARCH_SCOPES = new Set(['group', 'global', 'all']);
-const CHAT_CONTEXT_INTEGER_KEYS = new Map<string, { min: number; max: number }>([
-  ['CHAT_CONTEXT_TOKEN_BUDGET', { min: 0, max: 12000 }],
-  ['CHAT_CONTEXT_RECENT_CHAT_RATIO', { min: 0, max: 100 }],
-  ['CHAT_CONTEXT_RECENT_TOOL_RATIO', { min: 0, max: 100 }],
-  ['CHAT_CONTEXT_MEMORY_RECALL_RATIO', { min: 0, max: 100 }],
-  ['CHAT_CONTEXT_SUMMARY_RATIO', { min: 0, max: 100 }],
-  ['CHAT_CONTEXT_RAW_CHAT_KEEP_ENTRIES', { min: 1, max: 100 }],
-  ['CHAT_CONTEXT_RAW_TOOL_KEEP_CALLS', { min: 1, max: 50 }],
-  ['CHAT_CONTEXT_CHAT_COMPACTION_TRIGGER_ENTRIES', { min: 10, max: 500 }],
-  ['CHAT_CONTEXT_CHAT_COMPACTION_KEEP_RECENT_ENTRIES', { min: 1, max: 100 }],
-]);
+const CHAT_CONTEXT_INTEGER_KEYS = new Map<string, { min: number; max: number }>(
+  [
+    ['CHAT_CONTEXT_TOKEN_BUDGET', { min: 0, max: 12000 }],
+    ['CHAT_CONTEXT_RECENT_CHAT_RATIO', { min: 0, max: 100 }],
+    ['CHAT_CONTEXT_RECENT_TOOL_RATIO', { min: 0, max: 100 }],
+    ['CHAT_CONTEXT_MEMORY_RECALL_RATIO', { min: 0, max: 100 }],
+    ['CHAT_CONTEXT_SUMMARY_RATIO', { min: 0, max: 100 }],
+    ['CHAT_CONTEXT_RAW_CHAT_KEEP_ENTRIES', { min: 1, max: 100 }],
+    ['CHAT_CONTEXT_RAW_TOOL_KEEP_CALLS', { min: 1, max: 50 }],
+    ['CHAT_CONTEXT_CHAT_COMPACTION_TRIGGER_ENTRIES', { min: 10, max: 500 }],
+    ['CHAT_CONTEXT_CHAT_COMPACTION_KEEP_RECENT_ENTRIES', { min: 1, max: 100 }],
+  ],
+);
 
 function normalizeBooleanConfigValue(key: string, value: unknown): string {
   if (typeof value === 'boolean') {
@@ -254,9 +261,18 @@ export function registerAdminSettingsRoutes(
   app: Express,
   opts: AdminSettingsRouteOptions,
 ): void {
-  const guard = opts.requirePermission('system.settings', 'system.settings.view');
-  const editGuard = opts.requirePermission('system.settings', 'system.settings.edit');
-  const channelManageGuard = opts.requirePermission('channel.manage', 'channel.system.manage');
+  const guard = opts.requirePermission(
+    'system.settings',
+    'system.settings.view',
+  );
+  const editGuard = opts.requirePermission(
+    'system.settings',
+    'system.settings.edit',
+  );
+  const channelManageGuard = opts.requirePermission(
+    'channel.manage',
+    'channel.system.manage',
+  );
 
   app.put('/api/sender-trust', editGuard, (req, res) => {
     try {
@@ -289,7 +305,9 @@ export function registerAdminSettingsRoutes(
       const after = JSON.stringify(await getSanitizedChannelInstances());
       const changed = before !== after;
 
-      let reload: { disconnected: string[]; connected: string[]; errors: string[] } | undefined;
+      let reload:
+        | { disconnected: string[]; connected: string[]; errors: string[] }
+        | undefined;
       if (changed) {
         reload = await opts.reloadChannels();
       }
@@ -388,9 +406,17 @@ export function registerAdminSettingsRoutes(
             return;
           }
         }
-        if (key === 'KB_LLM_CONCURRENCY') {
+        if (
+          key === 'KB_LLM_CONCURRENCY' ||
+          key === 'CODE_INDEX_LLM_CONCURRENCY'
+        ) {
           try {
-            nextValue = normalizeBoundedIntegerConfigValue(key, nextValue, 1, 16);
+            nextValue = normalizeBoundedIntegerConfigValue(
+              key,
+              nextValue,
+              1,
+              16,
+            );
           } catch (err) {
             res.status(400).json({
               error:
@@ -419,9 +445,16 @@ export function registerAdminSettingsRoutes(
 
       opts.applyProcessConfigSideEffects(appliedEntries);
 
-      const embeddingKeys = ['EMBEDDING_PROVIDER', 'EMBEDDING_API_KEY', 'EMBEDDING_MODEL', 'EMBEDDING_BASE_URL', 'EMBEDDING_DIMENSIONS'];
+      const embeddingKeys = [
+        'EMBEDDING_PROVIDER',
+        'EMBEDDING_API_KEY',
+        'EMBEDDING_MODEL',
+        'EMBEDDING_BASE_URL',
+        'EMBEDDING_DIMENSIONS',
+      ];
       if (changedKeys.some((k) => embeddingKeys.includes(k))) {
-        const { resetEmbeddingProviderCache } = await import('../embedding/resolve.js');
+        const { resetEmbeddingProviderCache } =
+          await import('../embedding/resolve.js');
         resetEmbeddingProviderCache();
       }
 
@@ -493,7 +526,10 @@ export function registerAdminSettingsRoutes(
   });
 
   app.get('/api/ai-providers/types', guard, (_req, res) => {
-    const rawCapability = typeof _req.query.capability === 'string' ? _req.query.capability.trim() : '';
+    const rawCapability =
+      typeof _req.query.capability === 'string'
+        ? _req.query.capability.trim()
+        : '';
     const capability = rawCapability === 'embedding' ? 'embedding' : 'llm';
     res.json(
       getAllProviderTypeDefs(capability).map((def) => ({
@@ -562,17 +598,29 @@ export function registerAdminSettingsRoutes(
         return;
       }
       if (capability === 'embedding' && is_default) {
-        res.status(400).json({ error: 'Embedding provider cannot be the global default chat provider' });
+        res
+          .status(400)
+          .json({
+            error:
+              'Embedding provider cannot be the global default chat provider',
+          });
         return;
       }
       const id = `provider_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
       const operatorId = getTenantUserId(req);
       const numericDimensions =
-        dimensions === null || dimensions === undefined || String(dimensions).trim() === ''
+        dimensions === null ||
+        dimensions === undefined ||
+        String(dimensions).trim() === ''
           ? null
           : Number(dimensions);
-      if (numericDimensions !== null && (!Number.isInteger(numericDimensions) || numericDimensions <= 0)) {
-        res.status(400).json({ error: 'dimensions must be a positive integer' });
+      if (
+        numericDimensions !== null &&
+        (!Number.isInteger(numericDimensions) || numericDimensions <= 0)
+      ) {
+        res
+          .status(400)
+          .json({ error: 'dimensions must be a positive integer' });
         return;
       }
       await createProvider({
@@ -603,8 +651,15 @@ export function registerAdminSettingsRoutes(
         await syncProviderUserAccess(id, user_ids, operatorId);
       }
 
-      logger.info({ id, alias, type, createdBy: operatorId }, 'AI provider created');
-      await auditAdminAction(req, AUDIT_ACTIONS.PROVIDER_CREATE, { targetType: 'ai_providers', targetId: id, targetName: alias });
+      logger.info(
+        { id, alias, type, createdBy: operatorId },
+        'AI provider created',
+      );
+      await auditAdminAction(req, AUDIT_ACTIONS.PROVIDER_CREATE, {
+        targetType: 'ai_providers',
+        targetId: id,
+        targetName: alias,
+      });
       res.json({ ok: true, id });
     } catch {
       res.status(500).json({ error: 'Internal error' });
@@ -616,14 +671,20 @@ export function registerAdminSettingsRoutes(
       opts.auditMutation(req, 'providers.update', 'high');
       const rawId = req.params.id;
       const id =
-        typeof rawId === 'string' ? rawId : Array.isArray(rawId) ? rawId[0] ?? '' : '';
+        typeof rawId === 'string'
+          ? rawId
+          : Array.isArray(rawId)
+            ? (rawId[0] ?? '')
+            : '';
       const provider = await getProvider(id);
       if (!provider) {
         res.status(404).json({ error: 'Not found' });
         return;
       }
       if (provider.user_id !== SYSTEM_USER_ID) {
-        res.status(403).json({ error: t('errors.auto_7e2fdc', {}, req.locale) });
+        res
+          .status(403)
+          .json({ error: t('errors.auto_7e2fdc', {}, req.locale) });
         return;
       }
 
@@ -661,9 +722,10 @@ export function registerAdminSettingsRoutes(
       const operatorId = getTenantUserId(req);
       const updates: Record<string, unknown> = { updated_by: operatorId };
       if (alias !== undefined) updates.alias = alias;
-      const nextCapability = capabilityRaw !== undefined
-        ? normalizeProviderCapability(capabilityRaw)
-        : (provider.capability || 'llm');
+      const nextCapability =
+        capabilityRaw !== undefined
+          ? normalizeProviderCapability(capabilityRaw)
+          : provider.capability || 'llm';
       if (type !== undefined && !isValidProviderType(type, nextCapability)) {
         res.status(400).json({ error: `Invalid provider type: ${type}` });
         return;
@@ -680,8 +742,13 @@ export function registerAdminSettingsRoutes(
           dimensions === null || String(dimensions).trim() === ''
             ? null
             : Number(dimensions);
-        if (numericDimensions !== null && (!Number.isInteger(numericDimensions) || numericDimensions <= 0)) {
-          res.status(400).json({ error: 'dimensions must be a positive integer' });
+        if (
+          numericDimensions !== null &&
+          (!Number.isInteger(numericDimensions) || numericDimensions <= 0)
+        ) {
+          res
+            .status(400)
+            .json({ error: 'dimensions must be a positive integer' });
           return;
         }
         updates.dimensions = numericDimensions;
@@ -713,11 +780,15 @@ export function registerAdminSettingsRoutes(
           : provider.visibility;
       const usage = await getKnowledgeBaseProviderUsage(id);
       if (usage.embeddingRefs > 0 && nextCapability !== 'embedding') {
-        res.status(409).json({ error: t('errors.auto_2575b3', {}, req.locale) });
+        res
+          .status(409)
+          .json({ error: t('errors.auto_2575b3', {}, req.locale) });
         return;
       }
       if (usage.llmRefs > 0 && nextCapability !== 'llm') {
-        res.status(409).json({ error: t('errors.auto_346c7b', {}, req.locale) });
+        res
+          .status(409)
+          .json({ error: t('errors.auto_346c7b', {}, req.locale) });
         return;
       }
       const requiresKnowledgeReembed =
@@ -726,12 +797,20 @@ export function registerAdminSettingsRoutes(
           capability: nextCapability,
           type,
           api_key: updates.api_key as string | undefined,
-          base_url: base_url !== undefined ? (base_url || null) : undefined,
-          model: model !== undefined ? (model || null) : undefined,
-          dimensions: dimensions !== undefined ? (updates.dimensions as number | null) : undefined,
+          base_url: base_url !== undefined ? base_url || null : undefined,
+          model: model !== undefined ? model || null : undefined,
+          dimensions:
+            dimensions !== undefined
+              ? (updates.dimensions as number | null)
+              : undefined,
         });
       if (nextCapability === 'embedding' && nextIsDefault === 1) {
-        res.status(400).json({ error: 'Embedding provider cannot be the global default chat provider' });
+        res
+          .status(400)
+          .json({
+            error:
+              'Embedding provider cannot be the global default chat provider',
+          });
         return;
       }
       if (nextIsDefault === 1 && nextVisibility !== 'public') {
@@ -745,16 +824,26 @@ export function registerAdminSettingsRoutes(
 
       if (nextVisibility === 'restricted' && Array.isArray(role_ids)) {
         await syncProviderRoleAccess(id, role_ids, operatorId);
-      } else if (nextVisibility !== 'restricted' && provider.visibility === 'restricted') {
+      } else if (
+        nextVisibility !== 'restricted' &&
+        provider.visibility === 'restricted'
+      ) {
         await syncProviderRoleAccess(id, [], operatorId);
       }
       if (nextVisibility === 'restricted' && Array.isArray(user_ids)) {
         await syncProviderUserAccess(id, user_ids, operatorId);
-      } else if (nextVisibility !== 'restricted' && provider.visibility === 'restricted') {
+      } else if (
+        nextVisibility !== 'restricted' &&
+        provider.visibility === 'restricted'
+      ) {
         await syncProviderUserAccess(id, [], operatorId);
       }
 
-      await auditAdminAction(req, AUDIT_ACTIONS.PROVIDER_UPDATE, { targetType: 'ai_providers', targetId: id, targetName: provider.alias });
+      await auditAdminAction(req, AUDIT_ACTIONS.PROVIDER_UPDATE, {
+        targetType: 'ai_providers',
+        targetId: id,
+        targetName: provider.alias,
+      });
       res.json({
         ok: true,
         requiresKnowledgeReembed,
@@ -770,23 +859,35 @@ export function registerAdminSettingsRoutes(
       opts.auditMutation(req, 'providers.delete', 'high');
       const rawId = req.params.id;
       const id =
-        typeof rawId === 'string' ? rawId : Array.isArray(rawId) ? rawId[0] ?? '' : '';
+        typeof rawId === 'string'
+          ? rawId
+          : Array.isArray(rawId)
+            ? (rawId[0] ?? '')
+            : '';
       const provider = await getProvider(id);
       if (!provider) {
         res.status(404).json({ error: 'Not found' });
         return;
       }
       if (provider.user_id !== SYSTEM_USER_ID) {
-        res.status(403).json({ error: t('errors.auto_c33022', {}, req.locale) });
+        res
+          .status(403)
+          .json({ error: t('errors.auto_c33022', {}, req.locale) });
         return;
       }
       const usage = await getKnowledgeBaseProviderUsage(id);
       if (usage.embeddingRefs > 0 || usage.llmRefs > 0) {
-        res.status(409).json({ error: t('errors.auto_b2e6cc', {}, req.locale) });
+        res
+          .status(409)
+          .json({ error: t('errors.auto_b2e6cc', {}, req.locale) });
         return;
       }
       await deleteProvider(id, getTenantUserId(req));
-      await auditAdminAction(req, AUDIT_ACTIONS.PROVIDER_DELETE, { targetType: 'ai_providers', targetId: id, targetName: provider.alias });
+      await auditAdminAction(req, AUDIT_ACTIONS.PROVIDER_DELETE, {
+        targetType: 'ai_providers',
+        targetId: id,
+        targetName: provider.alias,
+      });
       res.json({ ok: true });
     } catch {
       res.status(500).json({ error: 'Internal error' });
@@ -797,7 +898,11 @@ export function registerAdminSettingsRoutes(
     try {
       const rawId = req.params.id;
       const id =
-        typeof rawId === 'string' ? rawId : Array.isArray(rawId) ? rawId[0] ?? '' : '';
+        typeof rawId === 'string'
+          ? rawId
+          : Array.isArray(rawId)
+            ? (rawId[0] ?? '')
+            : '';
       const provider = await getProvider(id);
       if (!provider) {
         res.status(404).json({ error: 'Not found' });
@@ -819,7 +924,11 @@ export function registerAdminSettingsRoutes(
     try {
       const rawId = req.params.id;
       const id =
-        typeof rawId === 'string' ? rawId : Array.isArray(rawId) ? rawId[0] ?? '' : '';
+        typeof rawId === 'string'
+          ? rawId
+          : Array.isArray(rawId)
+            ? (rawId[0] ?? '')
+            : '';
       const provider = await getProvider(id);
       if (!provider) {
         res.status(404).json({ error: 'Not found' });
@@ -838,7 +947,11 @@ export function registerAdminSettingsRoutes(
     try {
       const rawId = req.params.id;
       const id =
-        typeof rawId === 'string' ? rawId : Array.isArray(rawId) ? rawId[0] ?? '' : '';
+        typeof rawId === 'string'
+          ? rawId
+          : Array.isArray(rawId)
+            ? (rawId[0] ?? '')
+            : '';
       const list = await getProviderRoleAccessList(id);
       res.json(list);
     } catch (err) {
@@ -852,7 +965,11 @@ export function registerAdminSettingsRoutes(
       opts.auditMutation(req, 'provider.role.grant', 'normal');
       const rawId = req.params.id;
       const id =
-        typeof rawId === 'string' ? rawId : Array.isArray(rawId) ? rawId[0] ?? '' : '';
+        typeof rawId === 'string'
+          ? rawId
+          : Array.isArray(rawId)
+            ? (rawId[0] ?? '')
+            : '';
       const { role_id } = req.body as { role_id?: string };
       if (!role_id) {
         res.status(400).json({ error: 'role_id is required' });
@@ -863,8 +980,13 @@ export function registerAdminSettingsRoutes(
         res.status(404).json({ error: 'Provider not found' });
         return;
       }
-      if (provider.user_id !== SYSTEM_USER_ID || provider.visibility !== 'restricted') {
-        res.status(400).json({ error: t('errors.auto_04d03b', {}, req.locale) });
+      if (
+        provider.user_id !== SYSTEM_USER_ID ||
+        provider.visibility !== 'restricted'
+      ) {
+        res
+          .status(400)
+          .json({ error: t('errors.auto_04d03b', {}, req.locale) });
         return;
       }
       const operatorId = getTenantUserId(req);
@@ -884,10 +1006,18 @@ export function registerAdminSettingsRoutes(
         opts.auditMutation(req, 'provider.role.revoke', 'normal');
         const rawId = req.params.id;
         const id =
-          typeof rawId === 'string' ? rawId : Array.isArray(rawId) ? rawId[0] ?? '' : '';
+          typeof rawId === 'string'
+            ? rawId
+            : Array.isArray(rawId)
+              ? (rawId[0] ?? '')
+              : '';
         const rawRoleId = req.params.roleId;
         const roleId =
-          typeof rawRoleId === 'string' ? rawRoleId : Array.isArray(rawRoleId) ? rawRoleId[0] ?? '' : '';
+          typeof rawRoleId === 'string'
+            ? rawRoleId
+            : Array.isArray(rawRoleId)
+              ? (rawRoleId[0] ?? '')
+              : '';
         const operatorId = getTenantUserId(req);
         await revokeProviderRoleAccess(id, roleId, operatorId);
         res.json({ ok: true });
@@ -902,7 +1032,11 @@ export function registerAdminSettingsRoutes(
     try {
       const rawId = req.params.id;
       const id =
-        typeof rawId === 'string' ? rawId : Array.isArray(rawId) ? rawId[0] ?? '' : '';
+        typeof rawId === 'string'
+          ? rawId
+          : Array.isArray(rawId)
+            ? (rawId[0] ?? '')
+            : '';
       const list = await getProviderUserAccessList(id);
       res.json(list);
     } catch (err) {
@@ -916,7 +1050,11 @@ export function registerAdminSettingsRoutes(
       opts.auditMutation(req, 'provider.user.grant', 'normal');
       const rawId = req.params.id;
       const id =
-        typeof rawId === 'string' ? rawId : Array.isArray(rawId) ? rawId[0] ?? '' : '';
+        typeof rawId === 'string'
+          ? rawId
+          : Array.isArray(rawId)
+            ? (rawId[0] ?? '')
+            : '';
       const { user_id } = req.body as { user_id?: string };
       if (!user_id) {
         res.status(400).json({ error: 'user_id is required' });
@@ -927,8 +1065,13 @@ export function registerAdminSettingsRoutes(
         res.status(404).json({ error: 'Provider not found' });
         return;
       }
-      if (provider.user_id !== SYSTEM_USER_ID || provider.visibility !== 'restricted') {
-        res.status(400).json({ error: t('errors.auto_56695c', {}, req.locale) });
+      if (
+        provider.user_id !== SYSTEM_USER_ID ||
+        provider.visibility !== 'restricted'
+      ) {
+        res
+          .status(400)
+          .json({ error: t('errors.auto_56695c', {}, req.locale) });
         return;
       }
       const operatorId = getTenantUserId(req);
@@ -940,20 +1083,32 @@ export function registerAdminSettingsRoutes(
     }
   });
 
-  app.delete('/api/ai-providers/:id/users/:userId', editGuard, async (req, res) => {
-    try {
-      opts.auditMutation(req, 'provider.user.revoke', 'normal');
-      const rawId = req.params.id;
-      const id =
-        typeof rawId === 'string' ? rawId : Array.isArray(rawId) ? rawId[0] ?? '' : '';
-      const rawUserId = req.params.userId;
-      const userId =
-        typeof rawUserId === 'string' ? rawUserId : Array.isArray(rawUserId) ? rawUserId[0] ?? '' : '';
-      await revokeProviderUserAccess(id, userId);
-      res.json({ ok: true });
-    } catch (err) {
-      logger.error({ err }, 'Failed to revoke provider user access');
-      res.status(500).json({ error: 'Internal error' });
-    }
-  });
+  app.delete(
+    '/api/ai-providers/:id/users/:userId',
+    editGuard,
+    async (req, res) => {
+      try {
+        opts.auditMutation(req, 'provider.user.revoke', 'normal');
+        const rawId = req.params.id;
+        const id =
+          typeof rawId === 'string'
+            ? rawId
+            : Array.isArray(rawId)
+              ? (rawId[0] ?? '')
+              : '';
+        const rawUserId = req.params.userId;
+        const userId =
+          typeof rawUserId === 'string'
+            ? rawUserId
+            : Array.isArray(rawUserId)
+              ? (rawUserId[0] ?? '')
+              : '';
+        await revokeProviderUserAccess(id, userId);
+        res.json({ ok: true });
+      } catch (err) {
+        logger.error({ err }, 'Failed to revoke provider user access');
+        res.status(500).json({ error: 'Internal error' });
+      }
+    },
+  );
 }

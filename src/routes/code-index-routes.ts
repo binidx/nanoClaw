@@ -67,6 +67,7 @@ import {
 import { getCurrentUserId } from '../tenant-context.js';
 import { acquireWorktree, listWorktrees } from '../worktree-manager.js';
 import { DATA_DIR } from '../config.js';
+import { getConfigValue } from '../config-store.js';
 import { runGitCommand } from '../repo-review/repo-review-git.js';
 import { resolvePromptText } from '../prompt/prompt-service.js';
 import { t } from '../i18n/index.js';
@@ -85,6 +86,13 @@ const buildingSet = new Set<string>();
 const enrichingSet = new Set<string>();
 let codeIndexRecoveryStarted = false;
 type CodeIndexSourceInfo = NonNullable<CodeIndexBuildOptions['sourceInfo']>;
+
+async function getCodeIndexLlmConcurrency(): Promise<number> {
+  const raw = await getConfigValue('CODE_INDEX_LLM_CONCURRENCY');
+  const parsed = Number.parseInt(String(raw || ''), 10);
+  if (!Number.isFinite(parsed)) return 2;
+  return Math.max(1, Math.min(16, parsed));
+}
 
 function progressKey(repositoryId: string, branch: string): string {
   return `${repositoryId}\0${branch}`;
@@ -445,9 +453,7 @@ function buildProjectQaPrompt(input: {
   ].join('\n');
 }
 
-function inferProjectQaProfile(
-  question: string,
-): ProjectGraphRetrievalProfile {
+function inferProjectQaProfile(question: string): ProjectGraphRetrievalProfile {
   const normalized = question.toLowerCase();
   if (/(test|spec|coverage|verify|验证|测试)/.test(normalized)) {
     return 'tests';
@@ -455,7 +461,9 @@ function inferProjectQaProfile(
   if (/(config|env|setting|flag|配置)/.test(normalized)) {
     return 'config';
   }
-  if (/(impact|dependency|blast radius|影响|依赖|谁调用|谁引用)/.test(normalized)) {
+  if (
+    /(impact|dependency|blast radius|影响|依赖|谁调用|谁引用)/.test(normalized)
+  ) {
     return 'impact';
   }
   if (/(workflow|pipeline|orchestrator|agent|工作流|编排)/.test(normalized)) {
@@ -469,7 +477,11 @@ function inferProjectQaProfile(
 
 function normalizeProjectQaFocusPaths(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
-  return [...new Set(value.map((entry) => String(entry || '').trim()).filter(Boolean))];
+  return [
+    ...new Set(
+      value.map((entry) => String(entry || '').trim()).filter(Boolean),
+    ),
+  ];
 }
 
 function buildProjectQaExploration(input: {
@@ -505,29 +517,39 @@ function buildProjectQaExploration(input: {
   };
   for (const node of input.queryResult.startNodes) addFile(node.filePath);
   for (const node of input.queryResult.matches.files) addFile(node.filePath);
-  for (const node of input.queryResult.matches.functions) addFile(node.filePath);
+  for (const node of input.queryResult.matches.functions)
+    addFile(node.filePath);
   for (const node of input.queryResult.matches.chunks) addFile(node.filePath);
   const selectedFiles = Array.from(selectedFileSet).slice(0, maxFiles);
   const filesByPath = new Map(
     snapshot.files.map((file) => [file.relativePath, file] as const),
   );
-  const matchedFunctionsByFile = new Map<string, typeof input.queryResult.matches.functions>();
+  const matchedFunctionsByFile = new Map<
+    string,
+    typeof input.queryResult.matches.functions
+  >();
   for (const fn of input.queryResult.matches.functions) {
     if (!fn.filePath || !selectedFileSet.has(fn.filePath)) continue;
     const bucket = matchedFunctionsByFile.get(fn.filePath) || [];
     bucket.push(fn);
     matchedFunctionsByFile.set(fn.filePath, bucket);
   }
-  const matchedChunksByFile = new Map<string, typeof input.queryResult.matches.chunks>();
+  const matchedChunksByFile = new Map<
+    string,
+    typeof input.queryResult.matches.chunks
+  >();
   for (const chunk of input.queryResult.matches.chunks) {
     if (!chunk.filePath || !selectedFileSet.has(chunk.filePath)) continue;
     const bucket = matchedChunksByFile.get(chunk.filePath) || [];
     bucket.push(chunk);
     matchedChunksByFile.set(chunk.filePath, bucket);
   }
-  const resultEdgeNodeIds = new Set(input.queryResult.nodes.map((node) => node.id));
+  const resultEdgeNodeIds = new Set(
+    input.queryResult.nodes.map((node) => node.id),
+  );
   const relevantEdges = input.queryResult.edges.filter(
-    (edge) => resultEdgeNodeIds.has(edge.fromId) && resultEdgeNodeIds.has(edge.toId),
+    (edge) =>
+      resultEdgeNodeIds.has(edge.fromId) && resultEdgeNodeIds.has(edge.toId),
   );
   let matchedFunctionCount = 0;
   let matchedChunkCount = 0;
@@ -574,8 +596,12 @@ function buildProjectQaExploration(input: {
     }
     const fileEdges = relevantEdges
       .filter((edge) => {
-        const fromNode = input.queryResult.nodes.find((node) => node.id === edge.fromId);
-        const toNode = input.queryResult.nodes.find((node) => node.id === edge.toId);
+        const fromNode = input.queryResult.nodes.find(
+          (node) => node.id === edge.fromId,
+        );
+        const toNode = input.queryResult.nodes.find(
+          (node) => node.id === edge.toId,
+        );
         return fromNode?.filePath === filePath || toNode?.filePath === filePath;
       })
       .slice(0, 4);
@@ -614,6 +640,7 @@ async function startCodeIndexRebuild(
   options: {
     summarizeWithAi: boolean;
     embedChunks: boolean;
+    summaryConcurrency: number;
   },
 ): Promise<void> {
   const key = progressKey(repositoryId, branch);
@@ -701,6 +728,7 @@ async function startCodeIndexRebuild(
         userId,
         summarizeWithAi: options.summarizeWithAi,
         embedChunks: options.embedChunks,
+        summaryConcurrency: options.summaryConcurrency,
       });
       return baseSnapshot;
     })
@@ -754,6 +782,7 @@ async function startCodeIndexEnrichment(input: {
   userId: string;
   summarizeWithAi: boolean;
   embedChunks: boolean;
+  summaryConcurrency: number;
 }): Promise<void> {
   const key = progressKey(input.repositoryId, input.branch);
   if (enrichingSet.has(key)) return;
@@ -771,6 +800,7 @@ async function startCodeIndexEnrichment(input: {
   void enrichCodeIndexSnapshotAsync(input.rootDirectory, snapshot, {
     summarizeWithAi: input.summarizeWithAi,
     embedChunks: input.embedChunks,
+    summaryConcurrency: input.summaryConcurrency,
     sourceInfo,
     onProgress: async (progress) => {
       const persisted: CodeIndexProgress = {
@@ -872,6 +902,7 @@ async function recoverPendingCodeIndexEnrichments(): Promise<void> {
       summarizeWithAi:
         meta.stage === 'summaries' || meta.stage === 'embeddings',
       embedChunks: meta.stage === 'embeddings',
+      summaryConcurrency: await getCodeIndexLlmConcurrency(),
     });
   }
 }
@@ -1030,6 +1061,12 @@ export function registerCodeIndexRoutes(
         const embedChunks =
           req.query.enableEmbeddings === '1' ||
           req.body?.enableEmbeddings === true;
+        const requestedSummaryConcurrency = Number(
+          req.query.summaryConcurrency || req.body?.summaryConcurrency,
+        );
+        const summaryConcurrency = Number.isFinite(requestedSummaryConcurrency)
+          ? Math.max(1, Math.min(16, Math.trunc(requestedSummaryConcurrency)))
+          : await getCodeIndexLlmConcurrency();
 
         await startCodeIndexRebuild(
           repositoryId,
@@ -1039,6 +1076,7 @@ export function registerCodeIndexRoutes(
           {
             summarizeWithAi,
             embedChunks,
+            summaryConcurrency,
           },
         );
         res.status(202).json({
@@ -1302,7 +1340,9 @@ export function registerCodeIndexRoutes(
         const branch =
           String(req.query.branch || req.body?.branch || '').trim() ||
           resolveDefaultBranch(repo);
-        const question = String(req.body?.question || req.body?.query || '').trim();
+        const question = String(
+          req.body?.question || req.body?.query || '',
+        ).trim();
         if (!question) {
           res
             .status(400)
@@ -1552,7 +1592,8 @@ export function registerCodeIndexRoutes(
       const question = String(req.body?.question || '').trim();
       const focusPaths = normalizeProjectQaFocusPaths(req.body?.focusPaths);
       const retrievalProfile =
-        String(req.body?.profile || '').trim() || inferProjectQaProfile(question);
+        String(req.body?.profile || '').trim() ||
+        inferProjectQaProfile(question);
       if (!question) {
         res
           .status(400)
@@ -1635,7 +1676,8 @@ export function registerCodeIndexRoutes(
         );
       } catch (err) {
         const isNoProvider =
-          err instanceof Error && err.message.includes('No default AI provider');
+          err instanceof Error &&
+          err.message.includes('No default AI provider');
         if (!isNoProvider) throw err;
         noAi = true;
       }

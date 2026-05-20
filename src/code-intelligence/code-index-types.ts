@@ -40,6 +40,10 @@ export interface CodeIndexProgress {
   stage: CodeIndexStage;
   processedFiles: number;
   totalFiles: number;
+  queuedFiles?: number;
+  activeFiles?: string[];
+  failedFiles?: number;
+  concurrency?: number;
   message: string;
   error: string | null;
   startedAt: string | null;

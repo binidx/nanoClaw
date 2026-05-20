@@ -69,7 +69,8 @@ export const DEFAULTS: Record<string, string> = {
   LDAP_BIND_PASSWORD: '',
   LDAP_SEARCH_BASE: '',
   LDAP_SEARCH_FILTER: '(sAMAccountName=%(user)s)',
-  LDAP_ATTRIBUTE_MAP: '{"username":"sAMAccountName","name":"cn","email":"mail"}',
+  LDAP_ATTRIBUTE_MAP:
+    '{"username":"sAMAccountName","name":"cn","email":"mail"}',
   LDAP_FALLBACK_LOCAL: 'true',
   LDAP_DEFAULT_ROLE: '',
   LIVE2D_ENABLED: 'false',
@@ -81,6 +82,7 @@ export const DEFAULTS: Record<string, string> = {
   KB_MAX_CRAWL_DEPTH: '3',
   KB_CRAWL_CONCURRENCY: '3',
   KB_LLM_CONCURRENCY: '4',
+  CODE_INDEX_LLM_CONCURRENCY: '2',
   KB_FETCH_TIMEOUT_MS: '15000',
   KB_JINA_TIMEOUT_MS: '30000',
 };

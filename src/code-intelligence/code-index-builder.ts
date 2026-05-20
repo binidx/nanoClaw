@@ -11,14 +11,23 @@ import {
   computeCodeMapManifestHash,
 } from './code-map-builder.js';
 import type { CodeMapSnapshot } from './code-map-types.js';
-import { buildIndexedFile, getFileImports, readFileLines, resolveBuildOptions } from './code-search-index.js';
+import {
+  buildIndexedFile,
+  getFileImports,
+  readFileLines,
+  resolveBuildOptions,
+} from './code-search-index.js';
 import type { CodeSearchFile, CodeSearchSymbol } from './code-search-types.js';
 import { loadCodeIndexSnapshot } from '../db/code-index-db.js';
 import {
   listCandidateFiles,
   normalizeRelativePath,
 } from './code-search-collect.js';
-import { preloadTreeSitterGrammars, type TsJsFunctionGraph, type TsJsFunctionGraphNode } from './code-search-tree-sitter.js';
+import {
+  preloadTreeSitterGrammars,
+  type TsJsFunctionGraph,
+  type TsJsFunctionGraphNode,
+} from './code-search-tree-sitter.js';
 import { estimateTokens } from '../knowledge/chunker.js';
 import type {
   CodeIndexChunkRecord,
@@ -40,12 +49,13 @@ export interface CodeIndexBuildOptions {
   excludeGlobs?: string[];
   embedChunks?: boolean;
   summarizeWithAi?: boolean;
+  summaryConcurrency?: number;
   generateSummaryText?: (prompt: string) => Promise<string>;
   onSnapshot?: (snapshot: CodeIndexSnapshot) => void | Promise<void>;
-  onCodeMapSnapshot?: (
-    snapshot: CodeMapSnapshot,
+  onCodeMapSnapshot?: (snapshot: CodeMapSnapshot) => void | Promise<void>;
+  onProgress?: (
+    progress: Omit<CodeIndexProgress, 'repositoryId' | 'branch'>,
   ) => void | Promise<void>;
-  onProgress?: (progress: Omit<CodeIndexProgress, 'repositoryId' | 'branch'>) => void | Promise<void>;
   sourceInfo?: {
     sourceKind?: CodeIndexSnapshotMeta['sourceKind'];
     sourceBranch?: string;
@@ -111,11 +121,15 @@ function buildChunkId(
   )}`;
 }
 
-function chunkEmbeddingOwnerId(chunk: Pick<CodeIndexChunkRecord, 'contentHash'>): string {
+function chunkEmbeddingOwnerId(
+  chunk: Pick<CodeIndexChunkRecord, 'contentHash'>,
+): string {
   return chunk.contentHash;
 }
 
-function chunkEmbeddingText(chunk: Pick<CodeIndexChunkRecord, 'content'>): string {
+function chunkEmbeddingText(
+  chunk: Pick<CodeIndexChunkRecord, 'content'>,
+): string {
   return chunk.content.trim();
 }
 
@@ -148,14 +162,20 @@ function estimateFunctionEndLine(
   return hardLimit;
 }
 
-function attachParentFunctions(nodes: TsJsFunctionGraphNode[]): TsJsFunctionGraphNode[] {
+function attachParentFunctions(
+  nodes: TsJsFunctionGraphNode[],
+): TsJsFunctionGraphNode[] {
   const sorted = [...nodes].sort((left, right) => {
-    if (left.startLine !== right.startLine) return left.startLine - right.startLine;
+    if (left.startLine !== right.startLine)
+      return left.startLine - right.startLine;
     return right.endLine - left.endLine;
   });
   const stack: TsJsFunctionGraphNode[] = [];
   for (const node of sorted) {
-    while (stack.length > 0 && (stack[stack.length - 1]?.endLine || 0) < node.startLine) {
+    while (
+      stack.length > 0 &&
+      (stack[stack.length - 1]?.endLine || 0) < node.startLine
+    ) {
       stack.pop();
     }
     const parent = stack[stack.length - 1];
@@ -196,9 +216,15 @@ function buildTsJsHeuristicGraph(file: CodeSearchFile): TsJsFunctionGraph {
 
   const calls: TsJsFunctionGraph['calls'] = [];
   for (const fn of functions) {
-    for (let lineNumber = fn.startLine; lineNumber <= fn.endLine; lineNumber += 1) {
+    for (
+      let lineNumber = fn.startLine;
+      lineNumber <= fn.endLine;
+      lineNumber += 1
+    ) {
       const line = lines[lineNumber - 1] || '';
-      for (const match of line.matchAll(/\b(this|super|[A-Za-z_$][\w$]*)\.([A-Za-z_$][\w$]*)\s*\(/g)) {
+      for (const match of line.matchAll(
+        /\b(this|super|[A-Za-z_$][\w$]*)\.([A-Za-z_$][\w$]*)\s*\(/g,
+      )) {
         const qualifier = match[1] || null;
         const calleeName = match[2] || '';
         if (!calleeName) continue;
@@ -209,7 +235,9 @@ function buildTsJsHeuristicGraph(file: CodeSearchFile): TsJsFunctionGraph {
           line: lineNumber,
         });
       }
-      for (const match of line.matchAll(/(^|[^.\w$])([A-Za-z_$][\w$]*)\s*\(/g)) {
+      for (const match of line.matchAll(
+        /(^|[^.\w$])([A-Za-z_$][\w$]*)\s*\(/g,
+      )) {
         const calleeName = match[2] || '';
         if (!calleeName || CALL_NAME_SKIP.has(calleeName)) continue;
         calls.push({
@@ -238,23 +266,38 @@ function callableFromSymbol(symbol: CodeSearchSymbol): boolean {
 function looksCallableSignature(signature: string): boolean {
   const text = signature.trim();
   return (
-    /\bfunction\b/.test(text)
-    || /=>/.test(text)
-    || /\w+\s*\([^)]*\)\s*\{?/.test(text)
+    /\bfunction\b/.test(text) ||
+    /=>/.test(text) ||
+    /\w+\s*\([^)]*\)\s*\{?/.test(text)
   );
 }
 
-function sliceLines(lines: string[], startLine: number, endLine: number): string {
-  return lines.slice(startLine - 1, endLine).join('\n').trim();
+function sliceLines(
+  lines: string[],
+  startLine: number,
+  endLine: number,
+): string {
+  return lines
+    .slice(startLine - 1, endLine)
+    .join('\n')
+    .trim();
 }
 
 function buildFileSummary(file: CodeSearchFile, rank: number): string {
   const topSymbols = file.symbols.slice(0, 5).map((symbol) => symbol.name);
   const imports = getFileImports(file);
   const parts = [
-    t('prompts.fileSymbolSummary', { filePath: file.relativePath, count: file.symbols.length }, undefined),
-    topSymbols.length > 0 ? t('prompts.coreSymbols', { symbols: topSymbols.join('、') }, undefined) : t('prompts.auto_6da495', {}, undefined),
-    imports.length > 0 ? t('prompts.importCount', { count: imports.length }, undefined) : t('prompts.auto_88d3e4', {}, undefined),
+    t(
+      'prompts.fileSymbolSummary',
+      { filePath: file.relativePath, count: file.symbols.length },
+      undefined,
+    ),
+    topSymbols.length > 0
+      ? t('prompts.coreSymbols', { symbols: topSymbols.join('、') }, undefined)
+      : t('prompts.auto_6da495', {}, undefined),
+    imports.length > 0
+      ? t('prompts.importCount', { count: imports.length }, undefined)
+      : t('prompts.auto_88d3e4', {}, undefined),
     t('prompts.structWeight', { weight: rank.toFixed(4) }, undefined),
   ];
   return parts.join('；') + '。';
@@ -270,9 +313,22 @@ function buildChunkSummary(
     .slice(0, 4)
     .map((symbol) => symbol.name);
   if (relatedSymbols.length > 0) {
-    return t('prompts.chunkSummaryWithSymbols', { filePath: file.relativePath, startLine, endLine, symbols: relatedSymbols.join('、') }, undefined);
+    return t(
+      'prompts.chunkSummaryWithSymbols',
+      {
+        filePath: file.relativePath,
+        startLine,
+        endLine,
+        symbols: relatedSymbols.join('、'),
+      },
+      undefined,
+    );
   }
-  return t('prompts.chunkSummaryGeneric', { filePath: file.relativePath, startLine, endLine }, undefined);
+  return t(
+    'prompts.chunkSummaryGeneric',
+    { filePath: file.relativePath, startLine, endLine },
+    undefined,
+  );
 }
 
 interface FileSummaryBundle {
@@ -290,15 +346,17 @@ function buildFileSummaryPrompt(
   file: CodeSearchFile,
   chunks: CodeIndexChunkRecord[],
 ): string {
-  const topSymbols = file.symbols.slice(0, 10).map((symbol) =>
-    `${symbol.kind} ${symbol.name} @L${symbol.line}`,
-  );
+  const topSymbols = file.symbols
+    .slice(0, 10)
+    .map((symbol) => `${symbol.kind} ${symbol.name} @L${symbol.line}`);
   const chunkBlock = chunks
-    .map((chunk) => [
-      `<chunk index="${chunk.chunkIndex}" start_line="${chunk.startLine}" end_line="${chunk.endLine}">`,
-      truncateSnippet(chunk.content),
-      '</chunk>',
-    ].join('\n'))
+    .map((chunk) =>
+      [
+        `<chunk index="${chunk.chunkIndex}" start_line="${chunk.startLine}" end_line="${chunk.endLine}">`,
+        truncateSnippet(chunk.content),
+        '</chunk>',
+      ].join('\n'),
+    )
     .join('\n');
 
   return [
@@ -325,16 +383,24 @@ function parseFileSummaryBundle(
   chunks: CodeIndexChunkRecord[],
 ): FileSummaryBundle | null {
   try {
-    const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
+    const cleaned = raw
+      .replace(/^```(?:json)?\s*/i, '')
+      .replace(/```\s*$/i, '')
+      .trim();
     const parsed = JSON.parse(cleaned) as {
       file_summary?: unknown;
       chunk_summaries?: Array<{ chunk_index?: unknown; summary?: unknown }>;
     };
-    const fileSummary = typeof parsed.file_summary === 'string' ? parsed.file_summary.trim() : '';
+    const fileSummary =
+      typeof parsed.file_summary === 'string' ? parsed.file_summary.trim() : '';
     const chunkSummaries = new Map<number, string>();
     for (const item of parsed.chunk_summaries || []) {
-      const index = typeof item.chunk_index === 'number' ? item.chunk_index : Number(item.chunk_index);
-      const summary = typeof item.summary === 'string' ? item.summary.trim() : '';
+      const index =
+        typeof item.chunk_index === 'number'
+          ? item.chunk_index
+          : Number(item.chunk_index);
+      const summary =
+        typeof item.summary === 'string' ? item.summary.trim() : '';
       if (Number.isInteger(index) && summary) {
         chunkSummaries.set(index, summary);
       }
@@ -349,7 +415,10 @@ function parseFileSummaryBundle(
   }
 }
 
-function buildChunkRangesForFile(file: CodeSearchFile, lines: string[]): Array<{ startLine: number; endLine: number }> {
+function buildChunkRangesForFile(
+  file: CodeSearchFile,
+  lines: string[],
+): Array<{ startLine: number; endLine: number }> {
   const ranges: Array<{ startLine: number; endLine: number }> = [];
   const orderedSymbols = [...file.symbols]
     .filter((symbol) => symbol.line >= 1 && symbol.line <= lines.length)
@@ -378,7 +447,10 @@ function buildChunkRangesForFile(file: CodeSearchFile, lines: string[]): Array<{
   return ranges.filter((range) => range.startLine <= range.endLine);
 }
 
-function splitRange(startLine: number, endLine: number): Array<{ startLine: number; endLine: number }> {
+function splitRange(
+  startLine: number,
+  endLine: number,
+): Array<{ startLine: number; endLine: number }> {
   const ranges: Array<{ startLine: number; endLine: number }> = [];
   let cursor = startLine;
   while (cursor <= endLine) {
@@ -394,8 +466,13 @@ function splitRange(startLine: number, endLine: number): Array<{ startLine: numb
   return ranges;
 }
 
-function buildChunks(files: CodeSearchFile[], snapshot: CodeMapSnapshot): CodeIndexChunkRecord[] {
-  const rankByPath = new Map(snapshot.files.map((file) => [file.relativePath, file.rank]));
+function buildChunks(
+  files: CodeSearchFile[],
+  snapshot: CodeMapSnapshot,
+): CodeIndexChunkRecord[] {
+  const rankByPath = new Map(
+    snapshot.files.map((file) => [file.relativePath, file.rank]),
+  );
   const chunks: CodeIndexChunkRecord[] = [];
   for (const file of files) {
     const lines = readFileLines(file.absolutePath);
@@ -404,7 +481,9 @@ function buildChunks(files: CodeSearchFile[], snapshot: CodeMapSnapshot): CodeIn
       const content = sliceLines(lines, range.startLine, range.endLine);
       if (!content) return;
       const summary = buildChunkSummary(file, range.startLine, range.endLine);
-      const contentHash = shortHash(`${file.relativePath}\0${range.startLine}\0${range.endLine}\0${content}`);
+      const contentHash = shortHash(
+        `${file.relativePath}\0${range.startLine}\0${range.endLine}\0${content}`,
+      );
       chunks.push({
         id: buildChunkId(
           snapshot.repositoryId,
@@ -437,35 +516,73 @@ async function enhanceSummariesWithAi(
   chunks: CodeIndexChunkRecord[],
   filePathsNeedingSummary: Set<string>,
   options?: Partial<CodeIndexBuildOptions>,
-  onProgress?: (processed: number, total: number) => void | Promise<void>,
+  onProgress?: (
+    processed: number,
+    total: number,
+    detail?: {
+      activeFiles: string[];
+      queuedFiles: number;
+      failedFiles: number;
+      concurrency: number;
+    },
+  ) => void | Promise<void>,
 ): Promise<void> {
   if (options?.summarizeWithAi === false) return;
   if (filePathsNeedingSummary.size === 0) return;
-  const generateSummary = options?.generateSummaryText || generateTextWithDefaultProvider;
+  const generateSummary =
+    options?.generateSummaryText || generateTextWithDefaultProvider;
   let canUseAi = true;
 
   const fileByPath = new Map(files.map((file) => [file.relativePath, file]));
   const chunkGroups = new Map<string, CodeIndexChunkRecord[]>();
   const totalSummaries = filePathsNeedingSummary.size;
   let processedSummaries = 0;
+  let failedSummaries = 0;
+  let cursor = 0;
+  const activeFiles = new Set<string>();
   for (const chunk of chunks) {
     const list = chunkGroups.get(chunk.filePath) || [];
     list.push(chunk);
     chunkGroups.set(chunk.filePath, list);
   }
 
-  for (const fileRecord of fileRecords) {
-    if (!canUseAi) break;
-    if (!filePathsNeedingSummary.has(fileRecord.relativePath)) continue;
+  const targets = fileRecords.filter((fileRecord) =>
+    filePathsNeedingSummary.has(fileRecord.relativePath),
+  );
+  const concurrency = Math.max(
+    1,
+    Math.min(options?.summaryConcurrency || 1, targets.length || 1, 16),
+  );
+  const report = async () => {
+    await onProgress?.(processedSummaries, totalSummaries, {
+      activeFiles: Array.from(activeFiles),
+      queuedFiles: Math.max(
+        0,
+        totalSummaries - processedSummaries - activeFiles.size,
+      ),
+      failedFiles: failedSummaries,
+      concurrency,
+    });
+  };
+
+  const processFile = async (fileRecord: CodeIndexFileRecord) => {
     const file = fileByPath.get(fileRecord.relativePath);
     const fileChunks = (chunkGroups.get(fileRecord.relativePath) || []).sort(
       (left, right) => left.chunkIndex - right.chunkIndex,
     );
-    if (!file || fileChunks.length === 0) continue;
+    if (!file || fileChunks.length === 0) {
+      processedSummaries += 1;
+      await report();
+      return;
+    }
+    activeFiles.add(fileRecord.relativePath);
+    await report();
     try {
-      const raw = await generateSummary(buildFileSummaryPrompt(file, fileChunks));
+      const raw = await generateSummary(
+        buildFileSummaryPrompt(file, fileChunks),
+      );
       const parsed = parseFileSummaryBundle(raw, file, fileChunks);
-      if (!parsed) continue;
+      if (!parsed) return;
       if (parsed.fileSummary) fileRecord.summary = parsed.fileSummary;
       fileRecord.summarySource = 'ai';
       for (const chunk of fileChunks) {
@@ -478,12 +595,27 @@ async function enhanceSummariesWithAi(
     } catch (err) {
       if (err instanceof Error && /No default AI provider/i.test(err.message)) {
         canUseAi = false;
+      } else {
+        failedSummaries += 1;
       }
     } finally {
+      activeFiles.delete(fileRecord.relativePath);
       processedSummaries += 1;
-      await onProgress?.(processedSummaries, totalSummaries);
+      await report();
     }
-  }
+  };
+
+  const worker = async () => {
+    while (canUseAi) {
+      const nextIndex = cursor;
+      cursor += 1;
+      const fileRecord = targets[nextIndex];
+      if (!fileRecord) break;
+      await processFile(fileRecord);
+    }
+  };
+
+  await Promise.all(Array.from({ length: concurrency }, () => worker()));
 }
 
 function reuseCachedSummaries(
@@ -491,7 +623,9 @@ function reuseCachedSummaries(
   fileRecords: CodeIndexFileRecord[],
   chunks: CodeIndexChunkRecord[],
 ): Set<string> {
-  const filePathsNeedingSummary = new Set(fileRecords.map((file) => file.relativePath));
+  const filePathsNeedingSummary = new Set(
+    fileRecords.map((file) => file.relativePath),
+  );
   if (!previousSnapshot) return filePathsNeedingSummary;
 
   const previousFilesByPath = new Map(
@@ -512,22 +646,28 @@ function reuseCachedSummaries(
 
   for (const fileRecord of fileRecords) {
     const previousFile = previousFilesByPath.get(fileRecord.relativePath);
-    const currentChunks = [...(chunkGroups.get(fileRecord.relativePath) || [])]
-      .sort((left, right) => left.chunkIndex - right.chunkIndex);
-    const previousChunks = [...(previousChunkGroups.get(fileRecord.relativePath) || [])]
-      .sort((left, right) => left.chunkIndex - right.chunkIndex);
+    const currentChunks = [
+      ...(chunkGroups.get(fileRecord.relativePath) || []),
+    ].sort((left, right) => left.chunkIndex - right.chunkIndex);
+    const previousChunks = [
+      ...(previousChunkGroups.get(fileRecord.relativePath) || []),
+    ].sort((left, right) => left.chunkIndex - right.chunkIndex);
 
     if (
-      previousFile
-      && previousFile.fileHash === fileRecord.fileHash
-      && previousFile.summary
-      && currentChunks.length === previousChunks.length
+      previousFile &&
+      previousFile.fileHash === fileRecord.fileHash &&
+      previousFile.summary &&
+      currentChunks.length === previousChunks.length
     ) {
       let allChunksReusable = true;
       for (let index = 0; index < currentChunks.length; index += 1) {
         const currentChunk = currentChunks[index]!;
         const previousChunk = previousChunks[index];
-        if (!previousChunk || previousChunk.contentHash !== currentChunk.contentHash || !previousChunk.summary) {
+        if (
+          !previousChunk ||
+          previousChunk.contentHash !== currentChunk.contentHash ||
+          !previousChunk.summary
+        ) {
           allChunksReusable = false;
           break;
         }
@@ -559,7 +699,10 @@ function reuseCachedSummaries(
   return filePathsNeedingSummary;
 }
 
-function buildFunctions(files: CodeSearchFile[], snapshot: CodeMapSnapshot): CodeIndexFunctionRecord[] {
+function buildFunctions(
+  files: CodeSearchFile[],
+  snapshot: CodeMapSnapshot,
+): CodeIndexFunctionRecord[] {
   const functions: CodeIndexFunctionRecord[] = [];
   for (const file of files) {
     if (file.language === 'typescript' || file.language === 'javascript') {
@@ -636,7 +779,9 @@ function parseTsImportBindings(file: CodeSearchFile): ImportBinding[] {
   const bindings: ImportBinding[] = [];
   const lines = readFileLines(file.absolutePath);
   for (const line of lines) {
-    const match = line.match(/^\s*(?:import|export)\s+(.+?)\s+from\s+['"][^'"]+['"]/);
+    const match = line.match(
+      /^\s*(?:import|export)\s+(.+?)\s+from\s+['"][^'"]+['"]/,
+    );
     if (!match?.[1]) continue;
     const clause = match[1].trim();
     const namedBlock = clause.match(/\{([^}]+)\}/);
@@ -646,7 +791,9 @@ function parseTsImportBindings(file: CodeSearchFile): ImportBinding[] {
         .map((entry) => entry.trim())
         .filter(Boolean)
         .forEach((entry) => {
-          const aliasMatch = entry.match(/^([A-Za-z_$][\w$]*)(?:\s+as\s+([A-Za-z_$][\w$]*))?$/i);
+          const aliasMatch = entry.match(
+            /^([A-Za-z_$][\w$]*)(?:\s+as\s+([A-Za-z_$][\w$]*))?$/i,
+          );
           if (!aliasMatch?.[1]) return;
           bindings.push({
             importedName: aliasMatch[1],
@@ -683,7 +830,9 @@ function inferDefaultImportTargets(
     .flatMap(([, records]) => records)
     .sort((left, right) => left.line - right.line);
   if (candidates.length <= 1) return candidates;
-  const exported = candidates.filter((candidate) => /\bexport\b/.test(candidate.signature));
+  const exported = candidates.filter((candidate) =>
+    /\bexport\b/.test(candidate.signature),
+  );
   return exported.length > 0 ? exported : [candidates[0]];
 }
 
@@ -736,9 +885,10 @@ function buildFunctionEdges(
       localByName.set(fn.name, list);
     }
 
-    const importedBindings = file.language === 'typescript' || file.language === 'javascript'
-      ? parseTsImportBindings(file)
-      : [];
+    const importedBindings =
+      file.language === 'typescript' || file.language === 'javascript'
+        ? parseTsImportBindings(file)
+        : [];
     const importedBindingByLocal = new Map<string, ImportBinding[]>();
     for (const binding of importedBindings) {
       const list = importedBindingByLocal.get(binding.localName) || [];
@@ -748,27 +898,40 @@ function buildFunctionEdges(
 
     const importedTargets = new Map<string, CodeIndexFunctionRecord[]>();
     const possibleEdges = fileEdgesBySource.get(file.relativePath) || [];
-    const scriptLike = file.language === 'typescript' || file.language === 'javascript';
+    const scriptLike =
+      file.language === 'typescript' || file.language === 'javascript';
     if (scriptLike) {
       for (const [localName, bindings] of importedBindingByLocal) {
         const bucket = importedTargets.get(localName) || [];
         for (const binding of bindings) {
-          const matchingEdges = possibleEdges.filter((edge) =>
-            edge.symbols.length === 0
-            || edge.symbols.includes(localName)
-            || (binding.importedName !== '*' && binding.importedName !== 'default' && edge.symbols.includes(binding.importedName)),
+          const matchingEdges = possibleEdges.filter(
+            (edge) =>
+              edge.symbols.length === 0 ||
+              edge.symbols.includes(localName) ||
+              (binding.importedName !== '*' &&
+                binding.importedName !== 'default' &&
+                edge.symbols.includes(binding.importedName)),
           );
           for (const edge of matchingEdges) {
             if (binding.importedName === '*') {
-              const records = inferAllImportTargets(edge.toFile, functionByFileAndName);
+              const records = inferAllImportTargets(
+                edge.toFile,
+                functionByFileAndName,
+              );
               records.forEach((record) => bucket.push(record));
               continue;
             }
             if (binding.importedName === 'default') {
-              inferDefaultImportTargets(edge.toFile, functionByFileAndName).forEach((record) => bucket.push(record));
+              inferDefaultImportTargets(
+                edge.toFile,
+                functionByFileAndName,
+              ).forEach((record) => bucket.push(record));
               continue;
             }
-            const records = functionByFileAndName.get(`${edge.toFile}\0${binding.importedName}`) || [];
+            const records =
+              functionByFileAndName.get(
+                `${edge.toFile}\0${binding.importedName}`,
+              ) || [];
             records.forEach((record) => bucket.push(record));
           }
         }
@@ -777,8 +940,15 @@ function buildFunctionEdges(
     } else {
       for (const importEntry of getFileImports(file)) {
         for (const edge of possibleEdges) {
-          if (edge.symbols.length > 0 && !edge.symbols.includes(importEntry.symbolName)) continue;
-          const candidates = functionByFileAndName.get(`${edge.toFile}\0${importEntry.symbolName}`) || [];
+          if (
+            edge.symbols.length > 0 &&
+            !edge.symbols.includes(importEntry.symbolName)
+          )
+            continue;
+          const candidates =
+            functionByFileAndName.get(
+              `${edge.toFile}\0${importEntry.symbolName}`,
+            ) || [];
           if (candidates.length === 0) continue;
           const existing = importedTargets.get(importEntry.symbolName) || [];
           for (const candidate of candidates) existing.push(candidate);
@@ -790,24 +960,29 @@ function buildFunctionEdges(
     if (scriptLike) {
       const graph = getTsJsFunctionGraph(file);
       const fileFunctionByLocalId = new Map(
-        fileFunctions.map((fn) => [
-          `${fn.name}:${fn.line}:${fn.column}`,
-          fn,
-        ]),
+        fileFunctions.map((fn) => [`${fn.name}:${fn.line}:${fn.column}`, fn]),
       );
 
       for (const call of graph.calls) {
         const fromFunction = fileFunctionByLocalId.get(call.fromLocalId);
         if (!fromFunction) continue;
         if (!call.calleeName || CALL_NAME_SKIP.has(call.calleeName)) continue;
-        const localTargets = (localByName.get(call.calleeName) || []).filter((candidate) => candidate.id !== fromFunction.id);
+        const localTargets = (localByName.get(call.calleeName) || []).filter(
+          (candidate) => candidate.id !== fromFunction.id,
+        );
         let remoteTargets: CodeIndexFunctionRecord[] = [];
-        if (call.qualifier === null || call.qualifier === 'this' || call.qualifier === 'super') {
+        if (
+          call.qualifier === null ||
+          call.qualifier === 'this' ||
+          call.qualifier === 'super'
+        ) {
           remoteTargets = importedTargets.get(call.calleeName) || [];
         } else {
           const qualified = importedTargets.get(call.qualifier) || [];
           if (qualified.length > 0) {
-            remoteTargets = qualified.filter((candidate) => candidate.name === call.calleeName);
+            remoteTargets = qualified.filter(
+              (candidate) => candidate.name === call.calleeName,
+            );
           } else {
             remoteTargets = localByName.get(call.calleeName) || [];
           }
@@ -831,13 +1006,19 @@ function buildFunctionEdges(
     }
 
     for (const fn of fileFunctions) {
-      for (let lineNumber = fn.startLine; lineNumber <= fn.endLine; lineNumber += 1) {
+      for (
+        let lineNumber = fn.startLine;
+        lineNumber <= fn.endLine;
+        lineNumber += 1
+      ) {
         const line = lines[lineNumber - 1] || '';
         const matches = line.matchAll(/\b([A-Za-z_][A-Za-z0-9_]*)\s*\(/g);
         for (const match of matches) {
           const symbol = match[1];
           if (!symbol || CALL_NAME_SKIP.has(symbol)) continue;
-          const localTargets = (localByName.get(symbol) || []).filter((candidate) => candidate.id !== fn.id);
+          const localTargets = (localByName.get(symbol) || []).filter(
+            (candidate) => candidate.id !== fn.id,
+          );
           const remoteTargets = importedTargets.get(symbol) || [];
           const candidates = [...localTargets, ...remoteTargets];
           for (const target of candidates) {
@@ -861,11 +1042,18 @@ function buildFunctionEdges(
   return edges;
 }
 
-function toFiles(snapshot: CodeMapSnapshot, indexedFiles: CodeSearchFile[]): CodeIndexFileRecord[] {
-  const fileByPath = new Map(indexedFiles.map((file) => [file.relativePath, file]));
+function toFiles(
+  snapshot: CodeMapSnapshot,
+  indexedFiles: CodeSearchFile[],
+): CodeIndexFileRecord[] {
+  const fileByPath = new Map(
+    indexedFiles.map((file) => [file.relativePath, file]),
+  );
   return snapshot.files.map((file) => {
     const indexed = fileByPath.get(file.relativePath);
-    const content = indexed ? readFileLines(indexed.absolutePath).join('\n') : '';
+    const content = indexed
+      ? readFileLines(indexed.absolutePath).join('\n')
+      : '';
     return {
       relativePath: file.relativePath,
       language: file.language,
@@ -875,7 +1063,13 @@ function toFiles(snapshot: CodeMapSnapshot, indexedFiles: CodeSearchFile[]): Cod
       rank: file.rank,
       importCount: file.importCount,
       exportCount: file.exportCount,
-      summary: indexed ? buildFileSummary(indexed, file.rank) : t('prompts.fileSummaryUnavailable', { filePath: file.relativePath }, undefined),
+      summary: indexed
+        ? buildFileSummary(indexed, file.rank)
+        : t(
+            'prompts.fileSummaryUnavailable',
+            { filePath: file.relativePath },
+            undefined,
+          ),
       summarySource: 'fallback',
     };
   });
@@ -990,12 +1184,22 @@ function createProgress(
   message: string,
   startedAt: string | null,
   error: string | null = null,
+  detail?: {
+    activeFiles?: string[];
+    queuedFiles?: number;
+    failedFiles?: number;
+    concurrency?: number;
+  },
 ): Omit<CodeIndexProgress, 'repositoryId' | 'branch'> {
   return {
     status: error ? 'error' : stage === 'complete' ? 'ready' : 'building',
     stage,
     processedFiles,
     totalFiles,
+    queuedFiles: detail?.queuedFiles,
+    activeFiles: detail?.activeFiles,
+    failedFiles: detail?.failedFiles,
+    concurrency: detail?.concurrency,
     message,
     error,
     startedAt,
@@ -1018,7 +1222,9 @@ async function collectBuildContext(
   });
   const candidatePaths = listCandidateFiles(rootDirectory, searchOptions);
   const indexedFiles = candidatePaths
-    .map((absolutePath) => buildIndexedFile(rootDirectory, absolutePath, searchOptions))
+    .map((absolutePath) =>
+      buildIndexedFile(rootDirectory, absolutePath, searchOptions),
+    )
     .filter((file): file is CodeSearchFile => file !== null);
   const manifestEntries = candidatePaths.map((absolutePath) => {
     try {
@@ -1049,7 +1255,8 @@ async function collectBuildContext(
   const providedMapSnapshot = options?.codeMapSnapshot || null;
   const canReuseProvidedMap =
     providedMapSnapshot?.manifestHash === manifestHash &&
-    path.resolve(providedMapSnapshot.rootDirectory) === path.resolve(rootDirectory);
+    path.resolve(providedMapSnapshot.rootDirectory) ===
+      path.resolve(rootDirectory);
   const mapSnapshot = canReuseProvidedMap
     ? providedMapSnapshot
     : useAsync
@@ -1083,7 +1290,13 @@ async function buildCodeIndexCore(
     repositoryId,
     branch,
     options?.onProgress,
-    createProgress('scan', totalFiles, totalFiles, t('prompts.auto_cf06fc', {}, undefined), startedAt),
+    createProgress(
+      'scan',
+      totalFiles,
+      totalFiles,
+      t('prompts.auto_cf06fc', {}, undefined),
+      startedAt,
+    ),
   );
 
   const files = toFiles(context.mapSnapshot, context.indexedFiles);
@@ -1091,7 +1304,13 @@ async function buildCodeIndexCore(
     repositoryId,
     branch,
     options?.onProgress,
-    createProgress('symbols', totalFiles, totalFiles, t('prompts.auto_abad41', {}, undefined), startedAt),
+    createProgress(
+      'symbols',
+      totalFiles,
+      totalFiles,
+      t('prompts.auto_abad41', {}, undefined),
+      startedAt,
+    ),
   );
 
   const chunks = buildChunks(context.indexedFiles, context.mapSnapshot);
@@ -1099,21 +1318,41 @@ async function buildCodeIndexCore(
     repositoryId,
     branch,
     options?.onProgress,
-    createProgress('chunks', totalFiles, totalFiles, t('prompts.auto_bc4c4d', {}, undefined), startedAt),
+    createProgress(
+      'chunks',
+      totalFiles,
+      totalFiles,
+      t('prompts.auto_bc4c4d', {}, undefined),
+      startedAt,
+    ),
   );
 
   const functions = buildFunctions(context.indexedFiles, context.mapSnapshot);
-  const functionEdges = buildFunctionEdges(context.indexedFiles, functions, context.mapSnapshot);
+  const functionEdges = buildFunctionEdges(
+    context.indexedFiles,
+    functions,
+    context.mapSnapshot,
+  );
   await reportProgress(
     repositoryId,
     branch,
     options?.onProgress,
-    createProgress('functions', totalFiles, totalFiles, t('prompts.auto_7deea7', {}, undefined), startedAt),
+    createProgress(
+      'functions',
+      totalFiles,
+      totalFiles,
+      t('prompts.auto_7deea7', {}, undefined),
+      startedAt,
+    ),
   );
 
   let embeddedChunkCount = 0;
   let embeddingsEnabled = false;
-  const filePathsNeedingSummary = reuseCachedSummaries(previousSnapshot, files, chunks);
+  const filePathsNeedingSummary = reuseCachedSummaries(
+    previousSnapshot,
+    files,
+    chunks,
+  );
   const shouldRunAiSummaries =
     options?.summarizeWithAi !== false && filePathsNeedingSummary.size > 0;
   const shouldRunEmbeddings =
@@ -1194,7 +1433,7 @@ async function buildCodeIndexCore(
       chunks,
       filePathsNeedingSummary,
       options,
-      async (processed, total) => {
+      async (processed, total, detail) => {
         await reportProgress(
           repositoryId,
           branch,
@@ -1205,6 +1444,8 @@ async function buildCodeIndexCore(
             processed,
             t('prompts.auto_1a5570', {}, undefined),
             startedAt,
+            null,
+            detail,
           ),
         );
       },
@@ -1218,7 +1459,8 @@ async function buildCodeIndexCore(
     const summarySnapshot = buildSnapshot({
       status: summaryStatus,
       stage: summaryStage,
-      generatedAt: summaryStage === 'complete' ? new Date().toISOString() : null,
+      generatedAt:
+        summaryStage === 'complete' ? new Date().toISOString() : null,
       message: summaryMessage,
       progressProcessed: filePathsNeedingSummary.size,
       progressTotal:
@@ -1253,7 +1495,9 @@ async function buildCodeIndexCore(
     status: 'ready',
     stage: 'complete',
     generatedAt: new Date().toISOString(),
-    message: shouldRunEmbeddings ? t('prompts.auto_8f3d2c', {}, undefined) : t('prompts.auto_553d28', {}, undefined),
+    message: shouldRunEmbeddings
+      ? t('prompts.auto_8f3d2c', {}, undefined)
+      : t('prompts.auto_553d28', {}, undefined),
     progressProcessed: shouldRunEmbeddings ? chunks.length : totalFiles,
     progressTotal: shouldRunEmbeddings ? chunks.length : totalFiles,
   });
@@ -1273,7 +1517,13 @@ export async function buildCodeIndexAsync(
   branch: string,
   options?: Partial<CodeIndexBuildOptions>,
 ): Promise<CodeIndexSnapshot> {
-  return await buildCodeIndexCore(rootDirectory, repositoryId, branch, options, true);
+  return await buildCodeIndexCore(
+    rootDirectory,
+    repositoryId,
+    branch,
+    options,
+    true,
+  );
 }
 
 export async function enrichCodeIndexSnapshotAsync(
@@ -1305,7 +1555,9 @@ export async function enrichCodeIndexSnapshotAsync(
     .filter((file) => snapshotFilePaths.has(file.relativePath));
   const summaryTargets = new Set(
     files
-      .filter((file) => file.summarySource !== 'ai' && file.summarySource !== 'cache')
+      .filter(
+        (file) => file.summarySource !== 'ai' && file.summarySource !== 'cache',
+      )
       .map((file) => file.relativePath),
   );
   let embeddedChunkCount = snapshot.meta.stats.embeddedChunkCount;
@@ -1361,14 +1613,18 @@ export async function enrichCodeIndexSnapshotAsync(
       embeddingsEnabled,
     });
 
-  if (options?.summarizeWithAi !== false && summaryTargets.size > 0 && indexedFiles.length > 0) {
+  if (
+    options?.summarizeWithAi !== false &&
+    summaryTargets.size > 0 &&
+    indexedFiles.length > 0
+  ) {
     await enhanceSummariesWithAi(
       indexedFiles,
       files,
       chunks,
       summaryTargets,
       options,
-      async (processed, total) => {
+      async (processed, total, detail) => {
         await reportProgress(
           snapshot.meta.repositoryId,
           snapshot.meta.branch,
@@ -1379,6 +1635,8 @@ export async function enrichCodeIndexSnapshotAsync(
             processed,
             t('prompts.auto_dab1f0', {}, undefined),
             startedAt,
+            null,
+            detail,
           ),
         );
       },
@@ -1445,7 +1703,9 @@ export async function enrichCodeIndexSnapshotAsync(
     status: 'ready',
     stage: 'complete',
     generatedAt: new Date().toISOString(),
-    message: options?.embedChunks ? t('prompts.auto_8f3d2c', {}, undefined) : t('prompts.auto_553d28', {}, undefined),
+    message: options?.embedChunks
+      ? t('prompts.auto_8f3d2c', {}, undefined)
+      : t('prompts.auto_553d28', {}, undefined),
     progressProcessed: options?.embedChunks ? chunks.length : files.length,
     progressTotal: options?.embedChunks ? chunks.length : files.length,
   });
@@ -1466,9 +1726,18 @@ export async function buildCodeIndex(
   options?: Partial<CodeIndexBuildOptions>,
 ): Promise<CodeIndexSnapshot> {
   await preloadTreeSitterGrammars();
-  return await buildCodeIndexCore(rootDirectory, repositoryId, branch, options, false);
+  return await buildCodeIndexCore(
+    rootDirectory,
+    repositoryId,
+    branch,
+    options,
+    false,
+  );
 }
 
-export function resolveCodeIndexSnapshotId(repositoryId: string, branch: string): string {
+export function resolveCodeIndexSnapshotId(
+  repositoryId: string,
+  branch: string,
+): string {
   return buildSnapshotId(repositoryId, branch);
 }

@@ -77,6 +77,10 @@ export interface CodeIndexProgress {
   stage: CodeIndexStage;
   processedFiles: number;
   totalFiles: number;
+  queuedFiles?: number;
+  activeFiles?: string[];
+  failedFiles?: number;
+  concurrency?: number;
   message: string;
   error: string | null;
   startedAt: string | null;
@@ -192,8 +196,14 @@ export interface CodeIndexFunctionEdgeRecord {
 
 export interface CodeIndexFunctionDepsResponse {
   focus: CodeIndexFunctionRecord | null;
-  upstream: Array<{ edge: CodeIndexFunctionEdgeRecord; node: CodeIndexFunctionRecord }>;
-  downstream: Array<{ edge: CodeIndexFunctionEdgeRecord; node: CodeIndexFunctionRecord }>;
+  upstream: Array<{
+    edge: CodeIndexFunctionEdgeRecord;
+    node: CodeIndexFunctionRecord;
+  }>;
+  downstream: Array<{
+    edge: CodeIndexFunctionEdgeRecord;
+    node: CodeIndexFunctionRecord;
+  }>;
 }
 
 export interface ProjectGraphQueryArtifactSummary {
@@ -278,7 +288,9 @@ export async function fetchCodeMap(
   const resp = await fetch(url);
   if (!resp.ok) {
     const body = await resp.json().catch(() => ({}));
-    throw new Error((body as { error?: string }).error || `HTTP ${resp.status}`);
+    throw new Error(
+      (body as { error?: string }).error || `HTTP ${resp.status}`,
+    );
   }
   return resp.json();
 }
@@ -308,7 +320,9 @@ export async function fetchAiSummary(
   });
   if (!resp.ok) {
     const body = await resp.json().catch(() => ({}));
-    throw new Error((body as { error?: string }).error || `HTTP ${resp.status}`);
+    throw new Error(
+      (body as { error?: string }).error || `HTTP ${resp.status}`,
+    );
   }
   return resp.json();
 }
@@ -361,7 +375,9 @@ export async function fetchAiAnalysisStream(
     const contentType = resp.headers.get('content-type') || '';
     if (contentType.includes('application/json')) {
       const body = await resp.json().catch(() => ({}));
-      throw new Error((body as { error?: string }).error || `HTTP ${resp.status}`);
+      throw new Error(
+        (body as { error?: string }).error || `HTTP ${resp.status}`,
+      );
     }
     throw new Error(`HTTP ${resp.status}`);
   }
@@ -369,8 +385,21 @@ export async function fetchAiAnalysisStream(
   const contentType = resp.headers.get('content-type') || '';
 
   if (contentType.includes('application/json')) {
-    const json = await resp.json() as { analysis: AiAnalysis; cached: boolean };
-    callbacks.onDone?.(json.analysis, json.cached);
+    const json = (await resp.json()) as {
+      analysis?: AiAnalysis;
+      cached?: boolean;
+      status?: string;
+      error?: string;
+    };
+    if (!json.analysis) {
+      callbacks.onError?.(
+        json.error ||
+          json.status ||
+          i18n.t('api.unknownError', { ns: 'codeMap' }),
+      );
+      return;
+    }
+    callbacks.onDone?.(json.analysis, !!json.cached);
     return;
   }
 
@@ -411,10 +440,14 @@ export async function fetchAiAnalysisStream(
               callbacks.onDone?.(parsed.analysis, !!parsed.cached);
               break;
             case 'error':
-              callbacks.onError?.(parsed.message || i18n.t('api.unknownError', { ns: 'codeMap' }));
+              callbacks.onError?.(
+                parsed.message || i18n.t('api.unknownError', { ns: 'codeMap' }),
+              );
               break;
           }
-        } catch { /* skip malformed events */ }
+        } catch {
+          /* skip malformed events */
+        }
       }
 
       if (done) break;
@@ -445,12 +478,19 @@ export async function fetchFileContent(
   repositoryId: string,
   branch: string,
   filePath: string,
-): Promise<{ content: string; language: string; lineCount: number; filePath: string }> {
+): Promise<{
+  content: string;
+  language: string;
+  lineCount: number;
+  filePath: string;
+}> {
   const url = `${apiBase}/api/code-map/${encodeURIComponent(repositoryId)}/file-content?branch=${encodeURIComponent(branch)}&file=${encodeURIComponent(filePath)}`;
   const resp = await fetch(url);
   if (!resp.ok) {
     const body = await resp.json().catch(() => ({}));
-    throw new Error((body as { error?: string }).error || `HTTP ${resp.status}`);
+    throw new Error(
+      (body as { error?: string }).error || `HTTP ${resp.status}`,
+    );
   }
   return resp.json();
 }
@@ -472,7 +512,9 @@ export async function fetchCodeIndexStatus(
   const resp = await fetch(url);
   if (!resp.ok) {
     const body = await resp.json().catch(() => ({}));
-    throw new Error((body as { error?: string }).error || `HTTP ${resp.status}`);
+    throw new Error(
+      (body as { error?: string }).error || `HTTP ${resp.status}`,
+    );
   }
   return resp.json();
 }
@@ -486,7 +528,9 @@ export async function fetchCodeIndexProgress(
   const resp = await fetch(url);
   if (!resp.ok) {
     const body = await resp.json().catch(() => ({}));
-    throw new Error((body as { error?: string }).error || `HTTP ${resp.status}`);
+    throw new Error(
+      (body as { error?: string }).error || `HTTP ${resp.status}`,
+    );
   }
   return resp.json();
 }
@@ -495,14 +539,29 @@ export async function rebuildCodeIndex(
   apiBase: string,
   repositoryId: string,
   branch: string,
+  options: {
+    enableAiSummaries?: boolean;
+    enableEmbeddings?: boolean;
+    summaryConcurrency?: number;
+  } = {},
 ): Promise<CodeIndexMeta | null> {
-  const url = `${apiBase}/api/code-index/${encodeURIComponent(repositoryId)}/rebuild?branch=${encodeURIComponent(branch)}&enableAiSummaries=1&enableEmbeddings=1`;
-  const resp = await fetch(url, { method: 'POST' });
+  const url = `${apiBase}/api/code-index/${encodeURIComponent(repositoryId)}/rebuild?branch=${encodeURIComponent(branch)}`;
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      enableAiSummaries: !!options.enableAiSummaries,
+      enableEmbeddings: !!options.enableEmbeddings,
+      summaryConcurrency: options.summaryConcurrency,
+    }),
+  });
   if (!resp.ok) {
     const body = await resp.json().catch(() => ({}));
-    throw new Error((body as { error?: string }).error || `HTTP ${resp.status}`);
+    throw new Error(
+      (body as { error?: string }).error || `HTTP ${resp.status}`,
+    );
   }
-  const json = await resp.json() as { meta?: CodeIndexMeta | null };
+  const json = (await resp.json()) as { meta?: CodeIndexMeta | null };
   return json.meta ?? null;
 }
 
@@ -521,7 +580,9 @@ export async function searchCodeIndex(
   });
   if (!resp.ok) {
     const body = await resp.json().catch(() => ({}));
-    throw new Error((body as { error?: string }).error || `HTTP ${resp.status}`);
+    throw new Error(
+      (body as { error?: string }).error || `HTTP ${resp.status}`,
+    );
   }
   return resp.json();
 }
@@ -540,7 +601,9 @@ export async function listCodeIndexFunctions(
   const resp = await fetch(url);
   if (!resp.ok) {
     const body = await resp.json().catch(() => ({}));
-    throw new Error((body as { error?: string }).error || `HTTP ${resp.status}`);
+    throw new Error(
+      (body as { error?: string }).error || `HTTP ${resp.status}`,
+    );
   }
   return resp.json();
 }
@@ -556,7 +619,9 @@ export async function fetchCodeIndexFunctionDeps(
   const resp = await fetch(url);
   if (!resp.ok) {
     const body = await resp.json().catch(() => ({}));
-    throw new Error((body as { error?: string }).error || `HTTP ${resp.status}`);
+    throw new Error(
+      (body as { error?: string }).error || `HTTP ${resp.status}`,
+    );
   }
   return resp.json();
 }
@@ -571,7 +636,9 @@ export async function fetchCodeIndexFileDetail(
   const resp = await fetch(url);
   if (!resp.ok) {
     const body = await resp.json().catch(() => ({}));
-    throw new Error((body as { error?: string }).error || `HTTP ${resp.status}`);
+    throw new Error(
+      (body as { error?: string }).error || `HTTP ${resp.status}`,
+    );
   }
   return resp.json();
 }
@@ -594,7 +661,9 @@ export async function askProjectCodebase(
   });
   if (!resp.ok) {
     const body = await resp.json().catch(() => ({}));
-    throw new Error((body as { error?: string }).error || `HTTP ${resp.status}`);
+    throw new Error(
+      (body as { error?: string }).error || `HTTP ${resp.status}`,
+    );
   }
   return resp.json();
 }
@@ -642,7 +711,9 @@ export async function fetchRepoDescription(
   const resp = await fetch(url);
   if (!resp.ok) {
     const body = await resp.json().catch(() => ({}));
-    throw new Error((body as { error?: string }).error || `HTTP ${resp.status}`);
+    throw new Error(
+      (body as { error?: string }).error || `HTTP ${resp.status}`,
+    );
   }
   return resp.json();
 }
@@ -661,9 +732,95 @@ export async function generateRepoDescription(
   });
   if (!resp.ok) {
     const body = await resp.json().catch(() => ({}));
-    throw new Error((body as { error?: string }).error || `HTTP ${resp.status}`);
+    throw new Error(
+      (body as { error?: string }).error || `HTTP ${resp.status}`,
+    );
   }
   return resp.json();
+}
+
+export interface RepoDescriptionStreamCallbacks {
+  onStatus?: (message: string) => void;
+  onChunk?: (text: string) => void;
+  onDone?: (
+    description: RepoDescription,
+    cached: boolean,
+    noAi?: boolean,
+  ) => void;
+  onError?: (message: string) => void;
+}
+
+export async function generateRepoDescriptionStream(
+  apiBase: string,
+  repositoryId: string,
+  branch: string,
+  forceRefresh: boolean,
+  callbacks: RepoDescriptionStreamCallbacks,
+  signal?: AbortSignal,
+): Promise<void> {
+  const url = `${apiBase}/api/code-map/${encodeURIComponent(repositoryId)}/repo-description?branch=${encodeURIComponent(branch)}`;
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ forceRefresh, stream: true }),
+    signal,
+  });
+  if (!resp.ok) {
+    const body = await resp.json().catch(() => ({}));
+    throw new Error(
+      (body as { error?: string }).error || `HTTP ${resp.status}`,
+    );
+  }
+
+  const contentType = resp.headers.get('content-type') || '';
+  if (contentType.includes('application/json')) {
+    const json = (await resp.json()) as {
+      description: RepoDescription;
+      cached: boolean;
+      noAi?: boolean;
+    };
+    callbacks.onDone?.(json.description, !!json.cached, json.noAi);
+    return;
+  }
+
+  if (!resp.body) throw new Error('No response body');
+  const reader = resp.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
+      const parts = buffer.split('\n\n');
+      buffer = parts.pop() || '';
+      for (const part of parts) {
+        const lines = part.split('\n');
+        let eventType = '';
+        let eventData = '';
+        for (const line of lines) {
+          if (line.startsWith('event: ')) eventType = line.slice(7).trim();
+          else if (line.startsWith('data: ')) eventData = line.slice(6);
+        }
+        if (!eventType || !eventData) continue;
+        const parsed = JSON.parse(eventData);
+        if (eventType === 'status') callbacks.onStatus?.(parsed.message || '');
+        else if (eventType === 'chunk') callbacks.onChunk?.(parsed.text || '');
+        else if (eventType === 'done')
+          callbacks.onDone?.(
+            parsed.description,
+            !!parsed.cached,
+            !!parsed.noAi,
+          );
+        else if (eventType === 'error')
+          callbacks.onError?.(
+            parsed.message || i18n.t('api.unknownError', { ns: 'codeMap' }),
+          );
+      }
+      if (done) break;
+    }
+  } finally {
+    reader.releaseLock();
+  }
 }
 
 export function getKindLabels(): Record<string, string> {
@@ -691,12 +848,20 @@ export function getKindLabels(): Record<string, string> {
 export const KIND_LABELS: Record<string, string> = getKindLabels();
 
 export const KIND_COLORS: Record<string, string> = {
-  class: '#3b82f6', interface: '#3b82f6',
-  type: '#3b82f6', enum: '#f59e0b',
-  function: '#8b5cf6', method: '#8b5cf6',
-  const: '#10b981', variable: '#10b981',
-  struct: '#f59e0b', trait: '#8b5cf6',
-  module: '#6366f1', package: '#6366f1', namespace: '#6366f1',
-  table: '#f59e0b', view: '#f59e0b',
+  class: '#3b82f6',
+  interface: '#3b82f6',
+  type: '#3b82f6',
+  enum: '#f59e0b',
+  function: '#8b5cf6',
+  method: '#8b5cf6',
+  const: '#10b981',
+  variable: '#10b981',
+  struct: '#f59e0b',
+  trait: '#8b5cf6',
+  module: '#6366f1',
+  package: '#6366f1',
+  namespace: '#6366f1',
+  table: '#f59e0b',
+  view: '#f59e0b',
   unknown: '#64748b',
 };
