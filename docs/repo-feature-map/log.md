@@ -186,3 +186,4 @@
 - 补充 Security/RBAC/Audit 权限矩阵，修正 `review.repo.edit` 被 `includes('view')` 误判为 public view 的权限漏洞。
 - Provider/Assistant 增加密钥更新动作、连接探测诊断字段和会话级 model override；IM/E2EE、上传清理、Subagent nested runtime、Memory/Knowledge loopback、MCP/Skills marketplace、RepoReview/CodeMap observability 和前端 realtime watermark 均完成第一轮优化。
 - 将 feature map 元数据同步到当前已提交代码 `source_head_sha=7e96127385cb6c44ecfc845a1d195157ae448936`；当前工作区包含本轮未提交优化改动，freshness 检查会继续列出脏文件提示。
+- 优化批次提交后，将 feature map 元数据同步到最新代码提交 `source_head_sha=03b68503450e5c4110fb4f79978b45bcb5930fde`。
