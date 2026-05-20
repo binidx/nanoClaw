@@ -677,6 +677,7 @@ export function createSchema(database: Database.Database): void {
       write_to_platform INTEGER NOT NULL DEFAULT 1,
       review_output_mode TEXT NOT NULL DEFAULT 'message',
       diff_subagent_threshold INTEGER NOT NULL DEFAULT 15,
+      subagent_timeout_seconds INTEGER DEFAULT NULL,
       enabled INTEGER NOT NULL DEFAULT 1,
       created_by TEXT NOT NULL DEFAULT '__system__',
       updated_by TEXT NOT NULL DEFAULT '__system__',
@@ -3692,6 +3693,13 @@ export function createSchema(database: Database.Database): void {
   try {
     database.exec(
       `ALTER TABLE review_profiles ADD COLUMN diff_subagent_threshold INTEGER NOT NULL DEFAULT 15`,
+    );
+  } catch {
+    /* column already exists */
+  }
+  try {
+    database.exec(
+      `ALTER TABLE review_profiles ADD COLUMN subagent_timeout_seconds INTEGER DEFAULT NULL`,
     );
   } catch {
     /* column already exists */

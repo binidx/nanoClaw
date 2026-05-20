@@ -332,6 +332,22 @@ export function RepoReviewProfileSection({
                     </div>
                   </div>
                   <div className="form-group">
+                    <label>{t('profile.subagentTimeoutSeconds')}</label>
+                    <input
+                      type="number"
+                      value={profileDraft.subagentTimeoutSeconds}
+                      onChange={(event) =>
+                        setProfileDraft((current) => ({
+                          ...current,
+                          subagentTimeoutSeconds: Number(event.target.value || 0),
+                        }))
+                      }
+                    />
+                    <div className="settings-hint">
+                      {t('profile.subagentTimeoutHint')}
+                    </div>
+                  </div>
+                  <div className="form-group">
                     <label>{t('profile.fullFileReview')}</label>
                     <div className="settings-boolean-row">
                       <div className="settings-boolean-copy">

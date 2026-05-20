@@ -208,6 +208,7 @@ export interface RepoReviewProfile {
   writeToPlatform: boolean;
   reviewOutputMode: 'message' | 'share_link';
   diffSubagentThreshold: number;
+  subagentTimeoutSeconds?: number;
   enabled: boolean;
   /** When set, review agent runs use this provider instead of the user's default. */
   provider_id?: string;

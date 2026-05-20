@@ -111,6 +111,20 @@ function inferCodeFenceLanguage(file?: string): string {
   return 'text';
 }
 
+function buildFindingCodeFenceInfo(
+  finding: Pick<RepoReviewRun['findings'][number], 'file' | 'line'>,
+  language: string,
+  opts?: { includeLine?: boolean },
+): string {
+  const normalizedLanguage = language || 'text';
+  if (!finding.file) return normalizedLanguage;
+  const location =
+    opts?.includeLine !== false && finding.line
+      ? `${finding.file}:${finding.line}`
+      : finding.file;
+  return `${normalizedLanguage}:${location}`;
+}
+
 export function resolveRepoReviewVisibleBody(
   run: Pick<
     RepoReviewRun,
@@ -206,7 +220,7 @@ function formatFindingMarkdown(
   return [
     `${severityIcon} [${issueType}] ${title}`,
     `**文件：** \`${location}\``,
-    `\`\`\`${language}`,
+    `\`\`\`${buildFindingCodeFenceInfo(finding, language)}`,
     codeSnippet,
     '```',
     '**问题：** ' + (finding.detail?.trim() || '暂无详细说明。'),

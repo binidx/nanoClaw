@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next';
 
 import type { RepoReviewRun } from '../../app-types';
+import { MarkdownContent } from '../MarkdownContent';
 import {
   RepoReviewDetailCard,
   ReviewProgressTimeline,
@@ -349,6 +350,17 @@ export function RepoReviewRunDetailModal({
                   审查范围: {run.branch || 'unknown'} | {formatReviewRange(run)}
                 </div>
                 <div>{run.summary}</div>
+              </div>
+            </RepoReviewDetailCard>
+          ) : null}
+          {run.markdownBody ? (
+            <RepoReviewDetailCard
+              title="最终报告"
+              summary={`${run.branch || 'unknown'} | ${formatReviewRange(run)}`}
+              defaultOpen
+            >
+              <div className="repo-review-detail-section">
+                <MarkdownContent content={run.markdownBody} />
               </div>
             </RepoReviewDetailCard>
           ) : null}

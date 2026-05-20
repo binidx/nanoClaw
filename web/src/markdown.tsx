@@ -361,6 +361,23 @@ function parseCodeFenceInfo(info: string): {
   return { language, filePath: rest || undefined };
 }
 
+function parseMarkdownFileLocationLine(line: string): {
+  filePath?: string;
+  lineStart?: number;
+  lineEnd?: number;
+} {
+  const trimmed = line.trim();
+  const match = trimmed.match(
+    /^(?:\*\*文件：\*\*|文件：)\s*`?(.+?):(\d+)(?:-(\d+))?`?\s*$/u,
+  );
+  if (!match) return {};
+  return {
+    filePath: match[1] || undefined,
+    lineStart: Number.parseInt(match[2], 10),
+    lineEnd: match[3] ? Number.parseInt(match[3], 10) : undefined,
+  };
+}
+
 function parseBlocks(content: string): MarkdownBlock[] {
   const lines = content.replace(/\r\n/g, '\n').split('\n');
   const blocks: MarkdownBlock[] = [];
@@ -389,6 +406,10 @@ function parseBlocks(content: string): MarkdownBlock[] {
     if (codeFence) {
       const infoString = codeFence[1]?.trim() || '';
       const parsed = parseCodeFenceInfo(infoString);
+      const locationFallback =
+        !parsed.filePath && !parsed.lineStart && index > 0
+          ? parseMarkdownFileLocationLine(lines[index - 1] || '')
+          : {};
       index += 1;
       const codeLines: string[] = [];
       while (index < lines.length && !/^\s*```\s*$/.test(lines[index])) {
@@ -402,9 +423,9 @@ function parseBlocks(content: string): MarkdownBlock[] {
         kind: 'code',
         code: codeLines.join('\n'),
         language: parsed.language,
-        filePath: parsed.filePath,
-        lineStart: parsed.lineStart,
-        lineEnd: parsed.lineEnd,
+        filePath: parsed.filePath || locationFallback.filePath,
+        lineStart: parsed.lineStart ?? locationFallback.lineStart,
+        lineEnd: parsed.lineEnd ?? locationFallback.lineEnd,
       });
       continue;
     }

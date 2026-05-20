@@ -169,6 +169,7 @@ export interface ReviewProfileRecord {
   provider_id: string | null;
   review_output_mode: string | null;
   diff_subagent_threshold: number;
+  subagent_timeout_seconds: number | null;
   enabled: number;
   created_by: string;
   updated_by: string;
@@ -432,6 +433,7 @@ export interface ReviewProfileUpsertInput {
   provider_id?: string | null;
   review_output_mode?: string;
   diff_subagent_threshold: number;
+  subagent_timeout_seconds: number;
   enabled: boolean;
 }
 
@@ -1284,8 +1286,8 @@ export async function saveReviewProfile(
       id, repository_id, name, stage, source_mode, blocking_mode, pass_decision_mode, review_scope,
       target_branches, skill_ids, mcp_server_ids, prompt_template, include_globs, exclude_globs,
       include_full_file_context, max_files, max_diff_bytes, write_to_chat, write_to_platform, provider_id,
-      review_output_mode, diff_subagent_threshold, enabled, created_by, updated_by, deleted_at, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)`,
+      review_output_mode, diff_subagent_threshold, subagent_timeout_seconds, enabled, created_by, updated_by, deleted_at, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)`,
     )
     .run(
       input.id,
@@ -1310,6 +1312,7 @@ export async function saveReviewProfile(
       input.provider_id || null,
       input.review_output_mode || 'share_link',
       input.diff_subagent_threshold,
+      input.subagent_timeout_seconds,
       input.enabled ? 1 : 0,
       existing?.created_by || getCurrentUserId(),
       getCurrentUserId(),

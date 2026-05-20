@@ -66,5 +66,6 @@ export type ProfileDraft = {
   writeToPlatform: boolean;
   reviewOutputMode: 'message' | 'share_link';
   diffSubagentThreshold: number;
+  subagentTimeoutSeconds: number;
   enabled: boolean;
 };

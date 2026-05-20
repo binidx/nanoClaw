@@ -360,12 +360,25 @@ const REPO_REVIEW_SUBAGENT_RESULT_PROMPT_MAX_CHARS = Math.max(
 );
 const REPO_REVIEW_SUBAGENT_TIMEOUT_MS = Math.max(
   50,
-  Number(process.env.NANOCLAW_REVIEW_SUBAGENT_TIMEOUT_MS) || 300_000,
+  Number(process.env.NANOCLAW_REVIEW_SUBAGENT_TIMEOUT_MS) || 420_000,
 );
 const REPO_REVIEW_SUBAGENT_TIMEOUT_GRACE_MS = Math.max(
   25,
   Number(process.env.NANOCLAW_REVIEW_SUBAGENT_TIMEOUT_GRACE_MS) || 20_000,
 );
+
+function resolveRepoReviewProfileSubagentTimeoutMs(
+  profile: Pick<RepoReviewProfile, 'subagentTimeoutSeconds'>,
+): number {
+  const seconds = Math.max(
+    30,
+    Math.trunc(
+      Number(profile.subagentTimeoutSeconds) ||
+        Math.trunc(REPO_REVIEW_SUBAGENT_TIMEOUT_MS / 1000),
+    ),
+  );
+  return seconds * 1000;
+}
 
 function normalizeLegacyRepoReviewText(value: unknown): string {
   const text = stringValue(value);
@@ -1317,6 +1330,16 @@ async function normalizeProfileRecord(
     writeToPlatform: parsed.writeToPlatform,
     reviewOutputMode: normalizeReviewOutputMode(record.review_output_mode),
     diffSubagentThreshold: record.diff_subagent_threshold ?? 15,
+    subagentTimeoutSeconds:
+      record.subagent_timeout_seconds ??
+      Math.max(
+        1,
+        Math.trunc(
+          (Number(process.env.NANOCLAW_REVIEW_SUBAGENT_TIMEOUT_MS) ||
+            Number(process.env.NANOCLAW_REVIEW_WORKER_TIMEOUT_MS) ||
+            420_000) / 1000,
+        ),
+      ),
     enabled: parsed.enabledBool,
     ...(providerId ? { provider_id: providerId } : {}),
   };
@@ -3394,6 +3417,12 @@ async function normalizeProfileInput(
       existing?.diff_subagent_threshold ?? 15,
       0,
       1000,
+    ),
+    subagent_timeout_seconds: normalizeInteger(
+      payload.subagentTimeoutSeconds ?? payload.subagent_timeout_seconds,
+      existing?.subagent_timeout_seconds ?? 420,
+      30,
+      3600,
     ),
     enabled: normalizeBoolean(payload.enabled, existing?.enabled !== 0),
   };
@@ -8720,6 +8749,9 @@ async function runRepoReviewAgenticSubagents(input: {
         ]),
       });
       try {
+        const subagentTimeoutMs = resolveRepoReviewProfileSubagentTimeoutMs(
+          input.profile,
+        );
         const resolved = await resolveRepoReviewAgenticSubagentPrompt({
           repository: input.repository,
           profile: input.profile,
@@ -8783,7 +8815,7 @@ async function runRepoReviewAgenticSubagents(input: {
             ownerKind: 'subagent',
             ownerLabel: `子代理 ${index + 1}/${input.tasks.length}`,
           },
-          timeoutMs: REPO_REVIEW_SUBAGENT_TIMEOUT_MS,
+          timeoutMs: subagentTimeoutMs,
           timeoutGraceMs: REPO_REVIEW_SUBAGENT_TIMEOUT_GRACE_MS,
           timeoutFollowupPrompt: buildRepoReviewSubagentTimeoutFollowupPrompt({
             task,
@@ -8796,7 +8828,7 @@ async function runRepoReviewAgenticSubagents(input: {
               detail: `${task.title} 超时，已请求当前进度总结`,
               kind: 'subagent',
               metadataText: formatProgressKeyValues([
-                ['timeout_ms', REPO_REVIEW_SUBAGENT_TIMEOUT_MS],
+                ['timeout_ms', subagentTimeoutMs],
                 ['grace_ms', REPO_REVIEW_SUBAGENT_TIMEOUT_GRACE_MS],
                 ['takeover', 'pending'],
               ]),
@@ -14823,6 +14855,7 @@ async function createDefaultProfilesForRepository(
           write_to_chat: true,
           write_to_platform: true,
           diff_subagent_threshold: 15,
+          subagent_timeout_seconds: 420,
           enabled: true,
         }),
       ),
@@ -14851,6 +14884,7 @@ async function createDefaultProfilesForRepository(
           write_to_chat: true,
           write_to_platform: false,
           diff_subagent_threshold: 15,
+          subagent_timeout_seconds: 420,
           enabled: true,
         }),
       ),

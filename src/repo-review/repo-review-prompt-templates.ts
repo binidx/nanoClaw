@@ -14,7 +14,7 @@ const REPORT_STYLE_BLOCK = [
   '- 不要写空泛的总结句，尽量给出可落地的检查点。',
 ].join('\n');
 
-const REPO_REVIEW_FIXED_REPORT_TEMPLATE_BLOCK = [
+export const REPO_REVIEW_FIXED_REPORT_TEMPLATE_BLOCK = [
   '## 固定报告模板',
   '最终正文必须使用下面的中文 Markdown 结构，不要改标题、不要省略章节：',
   '',

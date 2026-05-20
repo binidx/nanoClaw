@@ -917,6 +917,7 @@ export interface RepoReviewProfile {
   writeToPlatform: boolean;
   reviewOutputMode?: 'message' | 'share_link';
   diffSubagentThreshold: number;
+  subagentTimeoutSeconds?: number;
   enabled: boolean;
 }
 
@@ -1004,6 +1005,8 @@ export interface RepoReviewRun {
   prMrNumber: string;
   actor: string;
   summary: string;
+  markdownBody?: string;
+  rawModelOutput?: string;
   resultState?: string;
   baselineSource?: string;
   baselineRef?: string;

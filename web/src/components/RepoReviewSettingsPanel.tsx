@@ -333,6 +333,7 @@ const EMPTY_PROFILE_DRAFT: ProfileDraft = {
   writeToPlatform: true,
   reviewOutputMode: 'share_link',
   diffSubagentThreshold: 15,
+  subagentTimeoutSeconds: 420,
   enabled: true,
 };
 
@@ -839,6 +840,7 @@ function makeProfileDraft(
     reviewOutputMode:
       profile.reviewOutputMode === 'message' ? 'message' : 'share_link',
     diffSubagentThreshold: profile.diffSubagentThreshold ?? 15,
+    subagentTimeoutSeconds: profile.subagentTimeoutSeconds ?? 420,
     enabled: profile.enabled,
   };
 }

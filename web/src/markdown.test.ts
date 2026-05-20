@@ -64,4 +64,20 @@ describe('renderMarkdownContent', () => {
     expect(html).not.toContain('src="https://cdn.example.com/demo/cat.png?size=large."');
     expect(html).toContain('</a>.</p>');
   });
+
+  it('infers file path and line numbers for code blocks from a preceding 文件 line', () => {
+    const html = renderToStaticMarkup(
+      createElement(
+        Fragment,
+        null,
+        renderMarkdownContent(
+          ['**文件：** `src/demo.ts:42-43`', '```ts', 'const answer = 42;', 'return answer;', '```'].join('\n'),
+        ),
+      ),
+    );
+
+    expect(html).toContain('src/demo.ts:42-43');
+    expect(html).toContain('<td class="md-code-line-number">42</td>');
+    expect(html).toContain('<td class="md-code-line-number">43</td>');
+  });
 });

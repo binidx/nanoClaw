@@ -568,6 +568,7 @@ export function buildMySQLSchema(autoPk: string): string {
       write_to_platform INT NOT NULL DEFAULT 1,
       review_output_mode VARCHAR(64) NOT NULL DEFAULT 'message',
       diff_subagent_threshold INT NOT NULL DEFAULT 15,
+      subagent_timeout_seconds INT DEFAULT NULL,
       enabled INT NOT NULL DEFAULT 1,
       created_by VARCHAR(64) NOT NULL DEFAULT '__system__',
       updated_by VARCHAR(64) NOT NULL DEFAULT '__system__',
@@ -3095,6 +3096,9 @@ export async function runMySQLMigrations(engine: DbEngine): Promise<void> {
   // ── Diff subagent threshold ──
   await safeMigrate(
     `ALTER TABLE review_profiles ADD COLUMN diff_subagent_threshold INT NOT NULL DEFAULT 15`,
+  );
+  await safeMigrate(
+    `ALTER TABLE review_profiles ADD COLUMN subagent_timeout_seconds INT DEFAULT NULL`,
   );
 
   // ── Provider audit fields + role-based access ──────────────────

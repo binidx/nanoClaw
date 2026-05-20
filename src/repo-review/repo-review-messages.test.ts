@@ -44,7 +44,9 @@ describe('repo-review messages', () => {
     expect(markdown).toContain(
       '**文件：** `src/repo-review/repo-review-coordinator.ts:123-141`',
     );
-    expect(markdown).toContain('```ts');
+    expect(markdown).toContain(
+      '```ts:src/repo-review/repo-review-coordinator.ts:123-141',
+    );
     expect(markdown).toContain('markdown_body: parsed.markdownBody || null,');
     expect(markdown).toContain('markdown_body: finalMarkdownBody,');
     expect(markdown).toContain('**证据边界：**');

@@ -4133,6 +4133,345 @@ describe('repo-review-service', () => {
     expect(mockRunAgentProcess).toHaveBeenCalledTimes(2);
   });
 
+  it('asks the main agent to finalize loose freeform output into the fixed report template', async () => {
+    runGit(tempRepo, ['commit', '-m', 'base']);
+    fs.writeFileSync(
+      path.join(tempRepo, 'src-a.ts'),
+      'export function allocate(parts: number[]) { return parts.reduce((a, b) => a + b, 0); }\n',
+      'utf8',
+    );
+    fs.writeFileSync(
+      path.join(tempRepo, 'src-b.ts'),
+      'export function resolveFolder(active: boolean) { return active; }\n',
+      'utf8',
+    );
+    runGit(tempRepo, ['add', 'src-a.ts', 'src-b.ts']);
+
+    const looseMainOutput = [
+      '聊天上下文装配逻辑：存在应阻塞问题。',
+      '管理页状态链路：还存在回归风险。',
+      '',
+      '重点问题',
+      '1. tokenBudget 可能失效（高）',
+      'src-a.ts:1-1',
+      '',
+      '当前按多个比例独立分配预算，但没有保证总和 <= 100，会突破总预算。',
+      '修复建议：分配前先校验或归一化比例总和。',
+      '',
+      '2. 特殊会话目录状态误报（中）',
+      'src-b.ts:1-1',
+      '',
+      'group_folder_active 依赖严格比对，没有注册信息时会直接误报异常。',
+    ].join('\n');
+    const finalizedOutput = JSON.stringify({
+      overall: 'fail',
+      summary: '发现 1 个高风险问题和 1 个中风险问题，建议修复后再合并。',
+      findings: [
+        {
+          severity: 'high',
+          file: 'src-a.ts',
+          line: '1-1',
+          title: 'tokenBudget 可能失效',
+          codeSnippet:
+            'export function allocate(parts: number[]) { return parts.reduce((a, b) => a + b, 0); }',
+          fixCode:
+            'export function allocate(parts: number[]) { const total = parts.reduce((a, b) => a + b, 0); if (total > 100) throw new Error(\"invalid ratios\"); return total; }',
+          detail:
+            '当前按多个比例独立分配预算，但没有保证总和 <= 100，会突破总预算。',
+          suggestion: '分配前先校验或归一化比例总和。',
+        },
+        {
+          severity: 'medium',
+          file: 'src-b.ts',
+          line: '1-1',
+          title: '特殊会话目录状态误报',
+          codeSnippet:
+            'export function resolveFolder(active: boolean) { return active; }',
+          fixCode:
+            'export function resolveFolder(active: boolean | null) { return active !== false; }',
+          detail:
+            'group_folder_active 依赖严格比对，没有注册信息时会直接误报异常。',
+          suggestion: '为未注册的特殊会话补充兼容判断。',
+        },
+      ],
+      scope_limitations: [],
+      suggestions: ['优先修复高风险预算问题。'],
+      recommended_block: true,
+      markdown_body: [
+        '## 代码审查报告',
+        '',
+        '### 一、审查总结',
+        '发现 1 个高风险问题和 1 个中风险问题，建议修复后再合并。',
+        '',
+        '### 二、高风险问题',
+        '🔴 [问题类型] tokenBudget 可能失效',
+        '**文件：** `src-a.ts:1-1`',
+        '```ts',
+        'export function allocate(parts: number[]) { return parts.reduce((a, b) => a + b, 0); }',
+        '```',
+        '**问题：** 当前按多个比例独立分配预算，但没有保证总和 <= 100，会突破总预算。',
+        '**修复建议：**',
+        '```ts',
+        'export function allocate(parts: number[]) { const total = parts.reduce((a, b) => a + b, 0); if (total > 100) throw new Error("invalid ratios"); return total; }',
+        '```',
+        '',
+        '### 三、中风险问题',
+        '🟡 [问题类型] 特殊会话目录状态误报',
+        '**文件：** `src-b.ts:1-1`',
+        '```ts',
+        'export function resolveFolder(active: boolean) { return active; }',
+        '```',
+        '**问题：** group_folder_active 依赖严格比对，没有注册信息时会直接误报异常。',
+        '**修复建议：**',
+        '```ts',
+        'export function resolveFolder(active: boolean | null) { return active !== false; }',
+        '```',
+        '',
+        '### 四、低风险问题 / 代码规范',
+        '未发现低风险问题。',
+        '',
+        '### 五、代码亮点',
+        '未发现需要特别说明的代码亮点。',
+        '',
+        '### 六、总结',
+        '| 风险等级 | 数量 | 主要问题 |',
+        '|---------|------|---------|',
+        '| 🔴 高风险 | 1 | tokenBudget 可能失效 |',
+        '| 🟡 中风险 | 1 | 特殊会话目录状态误报 |',
+        '| 🔵 低风险 | 0 | 无 |',
+      ].join('\n'),
+    });
+    mockRunAgentProcess
+      .mockResolvedValueOnce({
+        status: 'success',
+        result: looseMainOutput,
+      })
+      .mockResolvedValueOnce({
+        status: 'success',
+        result: finalizedOutput,
+      });
+
+    const service = await import('./repo-review-service.js');
+    const repository = await service.upsertRepoReviewRepository({
+      id: 'repo-main-finalize-template',
+      name: 'Repo Main Finalize Template',
+      local_repo_path: tempRepo,
+      enabled: true,
+    });
+    await service.upsertRepoReviewProfile({
+      id: 'profile-main-finalize-template',
+      repository_id: repository.id,
+      name: 'Main Finalize Template',
+      stage: 'commit',
+      source_mode: 'local',
+      blocking_mode: 'soft_fail',
+      review_scope: 'staged_diff',
+      diff_subagent_threshold: 10,
+      write_to_chat: false,
+      write_to_platform: false,
+      enabled: true,
+    });
+
+    const result = await service.triggerLocalRepoReview({
+      repositoryId: repository.id,
+      stage: 'commit',
+    });
+
+    expect(mockRunAgentProcess).toHaveBeenCalledTimes(2);
+    const finalizePrompt = String(
+      mockRunAgentProcess.mock.calls[1]?.[1]?.prompt?.text || '',
+    );
+    expect(finalizePrompt).toContain('主代理终稿整理');
+    expect(finalizePrompt).toContain('允许你使用只读工具重新读取相关文件');
+    expect(mockRunAgentProcess.mock.calls[1]?.[1]?.toolPolicy).toBe(
+      'readonly',
+    );
+
+    const run = result.runs[0]!.run;
+    expect(run.overall).toBe('fail');
+    expect(run.findings).toHaveLength(2);
+    expect(run.findings[0]).toEqual(
+      expect.objectContaining({
+        severity: 'high',
+        file: 'src-a.ts',
+        title: 'tokenBudget 可能失效',
+      }),
+    );
+    expect(run.markdownBody).toContain('## 代码审查报告');
+    expect(run.markdownBody).toContain('### 二、高风险问题');
+    expect(run.markdownBody).toContain('**文件：** `src-a.ts:1-1`');
+    expect(run.rawModelOutput).toContain('"markdown_body"');
+  });
+
+  it('re-enters main-agent finalize when the first structured result still lacks line and codeSnippet', async () => {
+    runGit(tempRepo, ['commit', '-m', 'base']);
+    fs.writeFileSync(
+      path.join(tempRepo, 'src-gap.ts'),
+      'export function brokenBudget(parts: number[]) {\n  return parts.reduce((a, b) => a + b, 0);\n}\n',
+      'utf8',
+    );
+    runGit(tempRepo, ['add', 'src-gap.ts']);
+
+    mockRunAgentProcess
+      .mockResolvedValueOnce({
+        status: 'success',
+        result: JSON.stringify({
+          overall: 'warn',
+          summary: '存在一个高风险问题，需要补齐代码定位后再输出终稿。',
+          findings: [
+            {
+              severity: 'high',
+              file: 'src-gap.ts',
+              title: 'tokenBudget 归一化缺失',
+              detail: '比例总和可能超过 100，导致总预算被突破。',
+              suggestion: '补充总和校验或归一化。',
+            },
+          ],
+          scope_limitations: [],
+          suggestions: ['补齐精确代码定位。'],
+          recommended_block: true,
+          markdown_body: [
+            '## 代码审查报告',
+            '',
+            '### 一、审查总结',
+            '存在一个高风险问题，需要补齐代码定位后再输出终稿。',
+            '',
+            '### 二、高风险问题',
+            '🔴 [问题类型] tokenBudget 归一化缺失',
+            '**文件：** `src-gap.ts`',
+            '**问题：** 比例总和可能超过 100，导致总预算被突破。',
+            '**修复建议：** 补充总和校验或归一化。',
+            '',
+            '### 三、中风险问题',
+            '未发现中风险问题。',
+            '',
+            '### 四、低风险问题 / 代码规范',
+            '未发现低风险问题。',
+            '',
+            '### 五、代码亮点',
+            '未发现需要特别说明的代码亮点。',
+            '',
+            '### 六、总结',
+            '| 风险等级 | 数量 | 主要问题 |',
+            '|---------|------|---------|',
+            '| 🔴 高风险 | 1 | tokenBudget 归一化缺失 |',
+            '| 🟡 中风险 | 0 | 无 |',
+            '| 🔵 低风险 | 0 | 无 |',
+          ].join('\n'),
+        }),
+      })
+      .mockResolvedValueOnce({
+        status: 'success',
+        result: JSON.stringify({
+          overall: 'fail',
+          summary: '发现一个高风险问题，已补齐代码片段和行号。',
+          findings: [
+            {
+              severity: 'high',
+              file: 'src-gap.ts',
+              line: '1-2',
+              title: 'tokenBudget 归一化缺失',
+              codeSnippet:
+                'export function brokenBudget(parts: number[]) {\n  return parts.reduce((a, b) => a + b, 0);\n}',
+              fixCode:
+                'export function brokenBudget(parts: number[]) {\n  const total = parts.reduce((a, b) => a + b, 0);\n  if (total > 100) throw new Error("invalid ratios");\n  return total;\n}',
+              detail: '比例总和可能超过 100，导致总预算被突破。',
+              suggestion: '补充总和校验或归一化。',
+            },
+          ],
+          scope_limitations: [],
+          suggestions: ['优先修复预算归一化问题。'],
+          recommended_block: true,
+          markdown_body: [
+            '## 代码审查报告',
+            '',
+            '### 一、审查总结',
+            '发现一个高风险问题，已补齐代码片段和行号。',
+            '',
+            '### 二、高风险问题',
+            '🔴 [问题类型] tokenBudget 归一化缺失',
+            '**文件：** `src-gap.ts:1-2`',
+            '```ts:src-gap.ts:1-2',
+            'export function brokenBudget(parts: number[]) {',
+            '  return parts.reduce((a, b) => a + b, 0);',
+            '}',
+            '```',
+            '**问题：** 比例总和可能超过 100，导致总预算被突破。',
+            '**修复建议：**',
+            '```ts:src-gap.ts',
+            'export function brokenBudget(parts: number[]) {',
+            '  const total = parts.reduce((a, b) => a + b, 0);',
+            '  if (total > 100) throw new Error("invalid ratios");',
+            '  return total;',
+            '}',
+            '```',
+            '',
+            '### 三、中风险问题',
+            '未发现中风险问题。',
+            '',
+            '### 四、低风险问题 / 代码规范',
+            '未发现低风险问题。',
+            '',
+            '### 五、代码亮点',
+            '未发现需要特别说明的代码亮点。',
+            '',
+            '### 六、总结',
+            '| 风险等级 | 数量 | 主要问题 |',
+            '|---------|------|---------|',
+            '| 🔴 高风险 | 1 | tokenBudget 归一化缺失 |',
+            '| 🟡 中风险 | 0 | 无 |',
+            '| 🔵 低风险 | 0 | 无 |',
+          ].join('\n'),
+        }),
+      });
+
+    const service = await import('./repo-review-service.js');
+    const repository = await service.upsertRepoReviewRepository({
+      id: 'repo-main-finalize-missing-evidence',
+      name: 'Repo Main Finalize Missing Evidence',
+      local_repo_path: tempRepo,
+      enabled: true,
+    });
+    await service.upsertRepoReviewProfile({
+      id: 'profile-main-finalize-missing-evidence',
+      repository_id: repository.id,
+      name: 'Main Finalize Missing Evidence',
+      stage: 'commit',
+      source_mode: 'local',
+      blocking_mode: 'soft_fail',
+      review_scope: 'staged_diff',
+      diff_subagent_threshold: 10,
+      write_to_chat: false,
+      write_to_platform: false,
+      enabled: true,
+    });
+
+    const result = await service.triggerLocalRepoReview({
+      repositoryId: repository.id,
+      stage: 'commit',
+    });
+
+    expect(mockRunAgentProcess).toHaveBeenCalledTimes(2);
+    const finalizeInput = mockRunAgentProcess.mock.calls[1]?.[1];
+    expect(finalizeInput?.toolPolicy).toBe('readonly');
+    expect(String(finalizeInput?.prompt?.text || '')).toContain(
+      '"missing_fields": [',
+    );
+    expect(String(finalizeInput?.prompt?.text || '')).toContain('codeSnippet');
+    expect(String(finalizeInput?.prompt?.text || '')).toContain('fixCode');
+
+    const run = result.runs[0]!.run;
+    expect(run.overall).toBe('fail');
+    expect(run.findings[0]).toEqual(
+      expect.objectContaining({
+        file: 'src-gap.ts',
+        line: '1-2',
+        codeSnippet: expect.stringContaining('brokenBudget'),
+      }),
+    );
+    expect(run.markdownBody).toContain('```ts:src-gap.ts:1-2');
+  });
+
   it('synthesizes a detailed markdown review body when structured output omits raw_report_markdown', async () => {
     mockRunAgentProcess.mockResolvedValue({
       status: 'success',
