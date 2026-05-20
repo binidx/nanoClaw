@@ -108,6 +108,62 @@ describe('agent runner memory tools', () => {
     expect(results[0]?.snippet).toContain('Friday night');
   });
 
+  it('lets memory_get read user:memory refs returned by memory_search', async () => {
+    const { groupDir, globalDir } = createMemoryWorkspace();
+    vi.stubEnv('NANOCLAW_GROUP_DIR', groupDir);
+    vi.stubEnv('NANOCLAW_GLOBAL_DIR', globalDir);
+    vi.stubEnv('NANOCLAW_INTERNAL_API_BASE', 'http://127.0.0.1:3377');
+    vi.stubEnv('NANOCLAW_INTERNAL_API_TOKEN', 'secret-token');
+    vi.stubEnv('NANOCLAW_USER_ID', 'memory-user');
+    vi.stubEnv('NANOCLAW_CHAT_JID', 'memory-tools@g.us');
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/internal/memory/user/search')) {
+        return {
+          ok: true,
+          json: async () => ({
+            memories: [
+              {
+                id: 'memory-1',
+                category: 'preference',
+                content: 'Alice prefers concise status updates.',
+                importance: 8,
+                scope: 'global',
+              },
+            ],
+          }),
+        };
+      }
+      return {
+        ok: true,
+        json: async () => ({}),
+      };
+    });
+    vi.stubGlobal('fetch', fetchMock as typeof fetch);
+
+    const { executeTool } = await importCodexTools();
+
+    const searchOutput = await executeTool(
+      'memory_search',
+      {
+        query: 'concise status',
+        max_results: 3,
+      },
+      groupDir,
+    );
+    const getOutput = await executeTool(
+      'memory_get',
+      {
+        path: 'user:memory/memory-1',
+      },
+      groupDir,
+    );
+
+    expect(searchOutput).toContain('user:memory/memory-1');
+    expect(getOutput).toContain('user:memory/memory-1#L1-L1');
+    expect(getOutput).toContain('Alice prefers concise status updates.');
+  });
+
   it('attaches recent search follow-up metadata when memory_get reads a searched hit', { timeout: 15_000 }, async () => {
     const { groupDir, globalDir } = createMemoryWorkspace();
     fs.writeFileSync(
@@ -318,6 +374,29 @@ describe('agent runner memory tools', () => {
     expect(() => saveMemoryNote('blocked note', { scope: 'group' })).toThrow(
       /writes are disabled by configuration/i,
     );
+  });
+
+  it('does not best-effort save user memory before disabled write checks pass', async () => {
+    const { groupDir, globalDir } = createMemoryWorkspace();
+    vi.stubEnv('NANOCLAW_GROUP_DIR', groupDir);
+    vi.stubEnv('NANOCLAW_GLOBAL_DIR', globalDir);
+    vi.stubEnv('MEMORY_WRITE_MODE', 'disabled');
+    vi.stubEnv('NANOCLAW_INTERNAL_API_BASE', 'http://127.0.0.1:3377');
+    vi.stubEnv('NANOCLAW_INTERNAL_API_TOKEN', 'secret-token');
+    vi.stubEnv('NANOCLAW_USER_ID', 'memory-user');
+    vi.stubEnv('NANOCLAW_CHAT_JID', 'memory-tools@g.us');
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({}),
+    }));
+    vi.stubGlobal('fetch', fetchMock as typeof fetch);
+
+    const { saveMemoryNote } = await importMemoryTools();
+
+    expect(() => saveMemoryNote('blocked note', { scope: 'group' })).toThrow(
+      /writes are disabled by configuration/i,
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it('adds memory_search, memory_get, and memory_save to codex tool definitions', async () => {

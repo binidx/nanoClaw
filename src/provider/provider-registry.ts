@@ -1,4 +1,5 @@
 import type { AiProvider } from '../db/assistants.js';
+import { decryptValue } from '../crypto.js';
 import { getProviderHttpConfig } from './provider-http-config.js';
 import { t } from '../i18n/index.js';
 
@@ -229,11 +230,24 @@ export function buildAgentEnv(
   resolvedModel: string,
   commonEnv: Record<string, string>,
 ): Record<string, string> {
-  const def = getProviderTypeDef(provider.type, provider.capability || 'llm');
+  const runtimeProvider = withDecryptedProviderSecrets(provider);
+  const def = getProviderTypeDef(runtimeProvider.type, runtimeProvider.capability || 'llm');
   if (!def) {
     return { ...commonEnv, AI_PROVIDER: 'claude' };
   }
-  return { ...commonEnv, ...def.agentEnvMapper(provider, resolvedModel) };
+  return { ...commonEnv, ...def.agentEnvMapper(runtimeProvider, resolvedModel) };
+}
+
+export function withDecryptedProviderSecrets<T extends Pick<AiProvider, 'api_key'>>(
+  provider: T,
+): T {
+  if (!provider.api_key) return provider;
+  const apiKey = decryptValue(provider.api_key);
+  if (apiKey === provider.api_key) return provider;
+  return {
+    ...provider,
+    api_key: apiKey,
+  };
 }
 
 export function deriveProviderCapability(

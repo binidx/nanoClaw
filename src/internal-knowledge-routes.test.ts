@@ -3,8 +3,10 @@ import inject from 'light-my-request';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { _initTestDatabase } from './db/init.js';
-import { createKnowledgeBase } from './db/assistants.js';
+import { createAssistant, createKnowledgeBase } from './db/assistants.js';
 import { dba } from './db/engine-access.js';
+import { setRegisteredGroup } from './db/sessions.js';
+import { createDefaultAssistantConfig } from './assistant/assistant-config.js';
 import { upsertUserKnowledgeBinding } from './knowledge/user-kb-service.js';
 import { registerInternalKnowledgeRoutes } from './routes/internal-knowledge-routes.js';
 import type { KnowledgeBaseRecord } from './types/context.js';
@@ -194,6 +196,81 @@ describe('internal knowledge routes', () => {
     expect(response.json()).toEqual([
       expect.objectContaining({ id: sharedKbId, user_enabled: 0 }),
       expect.objectContaining({ id: subscribedKbId, user_enabled: 1 }),
+    ]);
+  });
+
+  it('authorizes assistant-bound private KBs for internal agent search', async () => {
+    const privateKbId = await createKb({
+      id: 'kb-assistant-private',
+      name: 'Assistant Private KB',
+      visibility: 'private',
+      enabled: 1,
+      user_id: 'kb-owner',
+    });
+    await insertWikiPage(
+      privateKbId,
+      'page-private-topic',
+      'private-topic',
+      'overview',
+      [],
+    );
+    await createAssistant({
+      id: 'assistant-with-private-kb',
+      name: 'Assistant With Private KB',
+      config: {
+        ...createDefaultAssistantConfig(),
+        kbIds: [privateKbId],
+      },
+    });
+    await setRegisteredGroup('assistant-chat@g.us', {
+      name: 'Assistant Chat',
+      folder: 'assistant-chat',
+      trigger: '@bot',
+      added_at: '2026-04-28T00:00:00.000Z',
+      assistantId: 'assistant-with-private-kb',
+    });
+
+    const app = express();
+    app.use(express.json());
+    registerInternalKnowledgeRoutes(app, {
+      requireInternalApi: (_req, _res, next) => next(),
+    });
+
+    const listResponse = await inject(app, {
+      method: 'GET',
+      url: '/internal/knowledge/bases?user_id=runtime-user&chat_jid=assistant-chat%40g.us',
+    });
+    expect(listResponse.statusCode).toBe(200);
+    expect(listResponse.json()).toEqual([
+      expect.objectContaining({
+        id: privateKbId,
+        assistant_bound: 1,
+        user_enabled: 0,
+      }),
+    ]);
+
+    const searchResponse = await inject(app, {
+      method: 'POST',
+      url: '/internal/knowledge/search',
+      headers: {
+        'content-type': 'application/json',
+      },
+      payload: JSON.stringify({
+        query: 'private-topic',
+        user_id: 'runtime-user',
+        chat_jid: 'assistant-chat@g.us',
+        kb_ids: [privateKbId],
+        top_k: 5,
+        min_score: 0,
+      }),
+    });
+
+    expect(searchResponse.statusCode).toBe(200);
+    expect(searchResponse.json().wiki).toEqual([
+      expect.objectContaining({
+        kbId: privateKbId,
+        pageId: 'page-private-topic',
+      }),
     ]);
   });
 

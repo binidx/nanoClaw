@@ -375,6 +375,104 @@ describe('workflow routes', () => {
     });
   });
 
+  it('rejects node and edge mutations that reference another workflow', async () => {
+    const app = createApp();
+    const first = await createWorkflowFixture();
+    const secondWorkflow = await workflowDb.createWorkflow({
+      name: 'Workflow Beta',
+      description: 'foreign fixture',
+      workflow_config: { messageDelayMs: 0 },
+    });
+    const secondRole = await workflowDb.createWorkflowNode(secondWorkflow.id, {
+      node_type: 'role',
+      name: 'Foreign Architect',
+      config_json: { goal: 'Plan elsewhere' },
+    });
+    const secondTaskA = await workflowDb.createWorkflowNode(secondWorkflow.id, {
+      node_type: 'task',
+      name: 'Foreign Plan',
+      role_node_id: secondRole.id,
+      config_json: { prompt: 'Plan elsewhere' },
+    });
+    const secondTaskB = await workflowDb.createWorkflowNode(secondWorkflow.id, {
+      node_type: 'task',
+      name: 'Foreign Build',
+      role_node_id: secondRole.id,
+      config_json: { prompt: 'Build elsewhere' },
+    });
+    await workflowDb.createWorkflowEdge(secondWorkflow.id, {
+      source_node_id: secondTaskA.id,
+      target_node_id: secondTaskB.id,
+      direction: 'one_way',
+    });
+    const secondEdge = (await workflowDb.listWorkflowEdges(secondWorkflow.id))[0];
+
+    await withServer(app, async (baseUrl) => {
+      const foreignEdgeCreateResponse = await fetch(
+        `${baseUrl}/api/workflows/${first.workflow.id}/edges`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            source_node_id: first.taskA.id,
+            target_node_id: secondTaskA.id,
+            direction: 'one_way',
+          }),
+        },
+      );
+      expect(foreignEdgeCreateResponse.status).toBe(400);
+      await expect(foreignEdgeCreateResponse.json()).resolves.toEqual({
+        error: 'target_node_id must reference a node in this workflow',
+      });
+
+      const foreignEdgeUpdateResponse = await fetch(
+        `${baseUrl}/api/workflows/${first.workflow.id}/edges/${secondEdge.id}`,
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ label: 'should not update' }),
+        },
+      );
+      expect(foreignEdgeUpdateResponse.status).toBe(404);
+      await expect(foreignEdgeUpdateResponse.json()).resolves.toEqual({
+        error: 'Edge not found',
+      });
+
+      const firstEdge = (await workflowDb.listWorkflowEdges(first.workflow.id))[0];
+      const foreignEndpointUpdateResponse = await fetch(
+        `${baseUrl}/api/workflows/${first.workflow.id}/edges/${firstEdge.id}`,
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ source_node_id: secondTaskB.id }),
+        },
+      );
+      expect(foreignEndpointUpdateResponse.status).toBe(400);
+      await expect(foreignEndpointUpdateResponse.json()).resolves.toEqual({
+        error: 'source_node_id must reference a node in this workflow',
+      });
+
+      const foreignEdgeDeleteResponse = await fetch(
+        `${baseUrl}/api/workflows/${first.workflow.id}/edges/${secondEdge.id}`,
+        { method: 'DELETE' },
+      );
+      expect(foreignEdgeDeleteResponse.status).toBe(404);
+
+      const foreignNodeDeleteResponse = await fetch(
+        `${baseUrl}/api/workflows/${first.workflow.id}/nodes/${secondTaskA.id}`,
+        { method: 'DELETE' },
+      );
+      expect(foreignNodeDeleteResponse.status).toBe(404);
+    });
+
+    expect((await workflowDb.listWorkflowEdges(secondWorkflow.id)).map((edge) => edge.id)).toContain(
+      secondEdge.id,
+    );
+    expect((await workflowDb.listWorkflowNodes(secondWorkflow.id)).map((node) => node.id)).toContain(
+      secondTaskA.id,
+    );
+  });
+
   it('validates a workflow and reports structural errors', async () => {
     const app = createApp();
     const { workflow, taskA } = await createWorkflowFixture();
@@ -611,6 +709,60 @@ describe('workflow routes', () => {
         expect.objectContaining({ intervention_type: 'input_update' }),
         expect.objectContaining({ intervention_type: 'output_update' }),
       ]);
+    });
+  });
+
+  it('keeps an aborted running node paused when pause-node is requested', async () => {
+    const app = createApp();
+    const { workflow, taskA } = await createWorkflowFixture();
+    let runningSignal: AbortSignal | undefined;
+
+    executeWorkflowTaskMock.mockImplementationOnce(async (input: { signal?: AbortSignal }) => {
+      runningSignal = input.signal;
+      await new Promise<void>((resolve) => {
+        if (input.signal?.aborted) {
+          resolve();
+          return;
+        }
+        input.signal?.addEventListener('abort', () => resolve(), { once: true });
+      });
+      return {
+        success: false,
+        error: 'aborted by pause',
+        execution_ms: 3,
+        poll_count: 1,
+      };
+    });
+
+    await withServer(app, async (baseUrl) => {
+      const startResponse = await fetch(`${baseUrl}/api/workflows/${workflow.id}/run`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ input: 'Pause the running node' }),
+      });
+      expect(startResponse.status).toBe(200);
+      const run = (await startResponse.json()) as { id: string };
+
+      await waitFor(async () => Boolean(runningSignal));
+
+      const pauseResponse = await fetch(
+        `${baseUrl}/api/workflows/run/${run.id}/nodes/${taskA.id}/pause`,
+        { method: 'POST' },
+      );
+      expect(pauseResponse.status).toBe(200);
+
+      await waitFor(async () => {
+        const graph = await workflowDb.getWorkflowRunGraph(run.id);
+        return graph?.runNodes.find((node) => node.node_id === taskA.id)?.status === 'paused';
+      });
+
+      const graph = await workflowDb.getWorkflowRunGraph(run.id);
+      expect(graph?.run.status).toBe('running');
+      expect(graph?.runNodes.find((node) => node.node_id === taskA.id)).toMatchObject({
+        status: 'paused',
+        pause_reason: 'Node paused by user',
+        last_error: '',
+      });
     });
   });
 

@@ -6,6 +6,7 @@ import { dba } from '../db/engine-access.js';
 import type { FileStorageAdapter } from '../im/im-file-storage.js';
 import { isActiveMember } from '../im/im-membership-service.js';
 import { fetchLinkPreview } from '../im/im-link-preview.js';
+import { isRoomEncrypted } from '../im/im-social-service.js';
 import { getTenantUserId } from '../tenant/tenant-request.js';
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
@@ -204,10 +205,29 @@ export function registerImFileRoutes(
 
   app.get('/api/im/link-preview', viewGuard, async (req, res) => {
     try {
-      getTenantUserId(req); // auth check
+      const userId = getTenantUserId(req);
+      const chatJid =
+        typeof req.query.chatJid === 'string' ? req.query.chatJid : '';
       const url = typeof req.query.url === 'string' ? req.query.url : '';
+      if (!chatJid) {
+        res
+          .status(400)
+          .json({ ok: false, error: 'chatJid parameter is required' });
+        return;
+      }
       if (!url) {
         res.status(400).json({ ok: false, error: 'url parameter is required' });
+        return;
+      }
+      if (!(await isActiveMember(chatJid, userId))) {
+        res.status(403).json({ ok: false, error: 'Forbidden' });
+        return;
+      }
+      if (await isRoomEncrypted(chatJid)) {
+        res.status(403).json({
+          ok: false,
+          error: 'Link previews are disabled for E2EE rooms',
+        });
         return;
       }
 

@@ -103,7 +103,10 @@ export function createConversationAdminSupport(
   const readConfig = deps.getConfigEntry || getConfig;
   const resolveIpcPath = deps.resolveGroupIpcPathEntry || resolveGroupIpcPath;
   const runtimeLogger = deps.logger || logger;
-  const runtimeApprovalPatchesByJid = new Map<string, RuntimeApprovalPatchRecord[]>();
+  const runtimeApprovalPatchesByJid = new Map<
+    string,
+    RuntimeApprovalPatchRecord[]
+  >();
 
   function getApprovalPaths(groupFolder: string) {
     const ipcDir = resolveIpcPath(groupFolder);
@@ -122,7 +125,9 @@ export function createConversationAdminSupport(
     return paths;
   }
 
-  async function getConversationGroupFolder(jid: string): Promise<string | null> {
+  async function getConversationGroupFolder(
+    jid: string,
+  ): Promise<string | null> {
     const group = await readRegisteredGroup(jid);
     return group?.folder || null;
   }
@@ -215,6 +220,8 @@ export function createConversationAdminSupport(
       throw new Error('Approval request expired');
     }
     const resolvedAt = new Date().toISOString();
+    const effectiveScope =
+      request.toolName === 'DirectoryAccess' ? 'current_tool_call' : scope;
     const runtimeApprovalPatch =
       decision === 'allow-once'
         ? {
@@ -225,7 +232,7 @@ export function createConversationAdminSupport(
             command: request.command,
             cwd: request.cwd,
             source: 'approval' as const,
-            scope,
+            scope: effectiveScope,
             createdAt: request.createdAt,
             resolvedAt,
             expiresAt: new Date(
@@ -244,7 +251,7 @@ export function createConversationAdminSupport(
       }),
     );
 
-    if (runtimeApprovalPatch && scope === 'current_runtime') {
+    if (runtimeApprovalPatch && effectiveScope === 'current_runtime') {
       const active = pruneRuntimeApprovalPatchesForConversation(jid).filter(
         (patch) => patch.id !== runtimeApprovalPatch.id,
       );

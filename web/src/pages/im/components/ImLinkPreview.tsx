@@ -4,22 +4,33 @@ import { getImLinkPreview } from '../im-api';
 
 const cache = new Map<string, LinkPreviewData | null>();
 
-export function ImLinkPreview({ url }: { url: string }) {
+export function ImLinkPreview({
+  url,
+  chatJid,
+}: {
+  url: string;
+  chatJid: string;
+}) {
+  const cacheKey = `${chatJid}\n${url}`;
   const [data, setData] = useState<LinkPreviewData | null | undefined>(
-    cache.has(url) ? cache.get(url) : undefined,
+    cache.has(cacheKey) ? cache.get(cacheKey) : undefined,
   );
+
+  useEffect(() => {
+    setData(cache.has(cacheKey) ? cache.get(cacheKey) : undefined);
+  }, [cacheKey]);
 
   useEffect(() => {
     if (data !== undefined) return;
     let cancelled = false;
-    void getImLinkPreview(url).then((d) => {
-      cache.set(url, d);
+    void getImLinkPreview(url, chatJid).then((d) => {
+      cache.set(cacheKey, d);
       if (!cancelled) setData(d);
     });
     return () => {
       cancelled = true;
     };
-  }, [url, data]);
+  }, [cacheKey, chatJid, url, data]);
 
   if (!data) return null;
   if (!data.title && !data.description) return null;
@@ -61,7 +72,10 @@ export function ImLinkPreview({ url }: { url: string }) {
       ) : null}
       <div style={{ minWidth: 0, flex: 1 }}>
         {data.siteName ? (
-          <div className="settings-hint" style={{ fontSize: 10, marginBottom: 2 }}>
+          <div
+            className="settings-hint"
+            style={{ fontSize: 10, marginBottom: 2 }}
+          >
             {data.siteName}
           </div>
         ) : null}

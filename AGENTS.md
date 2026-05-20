@@ -13,6 +13,7 @@ Follow a Karpathy-style operating model inspired by `forrestchang/andrej-karpath
 - Surgical changes: every changed line should trace back to the user request.
 - Goal-driven execution: finish with the relevant verification command or a clear reason it could not run.
 - Frontend canvas baseline: nav-based business pages should read as one continuous pale-blue frosted-glass canvas, without nested white cards, hard segmented page shells, or extra visual hierarchy unless a user explicitly asks for it.
+- Frontend page responsibility baseline: card-library or list-management pages should stay list-focused; detail and edit flows should open in modal/drawer overlays, and list plus detail must not render as simultaneous side-by-side primary content in the same page shell.
 - Frontend rewrite trigger: if a frontend style bug has already been patched three times and the target page still visibly misses the requested result, stop layering overrides and rewrite the offending component or page shell onto the shared global component path.
 
 ## Read Order

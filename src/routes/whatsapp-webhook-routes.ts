@@ -12,10 +12,37 @@ import { logger } from '../logger.js';
 
 type RawBodyRequest = Request & { rawBody?: string };
 
+function isWhatsAppWebhookPath(path: string): boolean {
+  return (
+    path === '/webhooks/whatsapp' || path.startsWith('/webhooks/whatsapp/')
+  );
+}
+
+export function captureWhatsAppWebhookRawBody(
+  req: Request,
+  _res: unknown,
+  buf: Buffer,
+): void {
+  const rawPath = req.originalUrl || req.url || '';
+  const path = rawPath.split('?')[0] || '';
+  if (isWhatsAppWebhookPath(path)) {
+    (req as RawBodyRequest).rawBody = buf.toString('utf8');
+  }
+}
+
 const webhookJsonBodyParser = express.raw({
   type: ['application/json', 'application/*+json', 'text/json'],
   limit: '2mb',
 });
+
+const captureRawWebhookJsonBody: RequestHandler = (req, res, next) => {
+  const rawReq = req as RawBodyRequest;
+  if (typeof rawReq.rawBody === 'string' || req.body !== undefined) {
+    next();
+    return;
+  }
+  webhookJsonBodyParser(req, res, next);
+};
 
 const parseRawWebhookJsonBody: RequestHandler = (req, res, next) => {
   if (!Buffer.isBuffer(req.body)) {
@@ -150,7 +177,7 @@ export function registerWhatsAppWebhookRoutes(app: Express): void {
         }
       }
 
-      const handled = dispatchWhatsAppWebhook(
+      const handled = await dispatchWhatsAppWebhook(
         (req.body || {}) as WhatsAppWebhookPayload,
       );
       res.json({ ok: true, handled });
@@ -166,13 +193,13 @@ export function registerWhatsAppWebhookRoutes(app: Express): void {
   app.get('/webhooks/whatsapp/:instanceId', handleWhatsAppVerification);
   app.post(
     '/webhooks/whatsapp',
-    webhookJsonBodyParser,
+    captureRawWebhookJsonBody,
     parseRawWebhookJsonBody,
     handleWhatsAppWebhook,
   );
   app.post(
     '/webhooks/whatsapp/:instanceId',
-    webhookJsonBodyParser,
+    captureRawWebhookJsonBody,
     parseRawWebhookJsonBody,
     handleWhatsAppWebhook,
   );

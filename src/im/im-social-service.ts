@@ -531,6 +531,17 @@ export async function upsertRoomKeys(
       if (!userId || !deviceId || !wrappedKey) {
         throw new Error('Invalid room key row');
       }
+      const targetDeviceId = deviceId.slice(0, 128);
+      const targetDevice = (await dba
+        .prepare(
+          `SELECT 1 FROM im_device_keys WHERE user_id = ? AND device_id = ? LIMIT 1`,
+        )
+        .get(userId, targetDeviceId)) as { 1?: number } | undefined;
+      if (!targetDevice) {
+        throw new Error(
+          'Room key target device does not belong to target user',
+        );
+      }
       await dba
         .prepare(
           `INSERT OR REPLACE INTO im_room_keys
@@ -540,7 +551,7 @@ export async function upsertRoomKeys(
         .run(
           chatJid,
           userId,
-          deviceId.slice(0, 128),
+          targetDeviceId,
           wrappedKey,
           algorithm.slice(0, 128),
           ts,

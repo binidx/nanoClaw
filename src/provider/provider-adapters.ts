@@ -1,6 +1,11 @@
 import type { AiProvider } from '../db/assistants.js';
 import { buildProviderFetchHeaders } from './provider-http-config.js';
-import { getProviderTypeDef, resolveBaseUrl, resolveModel } from './provider-registry.js';
+import {
+  getProviderTypeDef,
+  resolveBaseUrl,
+  resolveModel,
+  withDecryptedProviderSecrets,
+} from './provider-registry.js';
 import {
   type AiUsageLog,
   logAiError,
@@ -622,7 +627,24 @@ class OpenAICompatibleAdapter implements ProviderApiAdapter {
 const anthropicAdapter = new AnthropicAdapter();
 const openaiAdapter = new OpenAICompatibleAdapter();
 
+function withRuntimeSecrets(adapter: ProviderApiAdapter): ProviderApiAdapter {
+  return {
+    testConnection(provider, timeoutMs) {
+      return adapter.testConnection(withDecryptedProviderSecrets(provider), timeoutMs);
+    },
+    generateText(provider, prompt, opts) {
+      return adapter.generateText(withDecryptedProviderSecrets(provider), prompt, opts);
+    },
+    generateTextStream(provider, prompt, opts) {
+      return adapter.generateTextStream(withDecryptedProviderSecrets(provider), prompt, opts);
+    },
+  };
+}
+
+const runtimeAnthropicAdapter = withRuntimeSecrets(anthropicAdapter);
+const runtimeOpenaiAdapter = withRuntimeSecrets(openaiAdapter);
+
 export function getProviderAdapter(providerType: string): ProviderApiAdapter {
   const def = getProviderTypeDef(providerType);
-  return def?.apiStyle === 'anthropic' ? anthropicAdapter : openaiAdapter;
+  return def?.apiStyle === 'anthropic' ? runtimeAnthropicAdapter : runtimeOpenaiAdapter;
 }

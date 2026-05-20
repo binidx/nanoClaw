@@ -12,13 +12,12 @@
 
 所以：**你不需要手工维护交叉引用、overview 页或事件日志** —— 系统会做。你只要管「答好问题 + 沉淀有价值的综合答案」。
 
-## 可用 MCP 工具（6 件）
+## 可用 MCP 工具（5 件）
 
 | 工具 | 用途 | 什么时候用 |
 |---|---|---|
 | `knowledge_list` | 列出当前用户可见的所有 KB | 每次会话开头；不确定往哪个 KB 查时 |
 | `knowledge_search` | FTS + 可选向量混合检索 | 回答任何可能已经在知识库里的问题时，**先于 web search** |
-| `knowledge_wiki_list` | 浏览某个 KB 已编译好的 Wiki 页目录 | 想先看 KB 结构、找 overview / entity / concept / synthesis 页时 |
 | `knowledge_wiki_read` | 读取单个 Wiki 页全文 | `knowledge_search` 命中某页后，需要展开整页阅读时 |
 | `knowledge_recent_events` | 看一个 KB 最近发生了什么 | "最近 XX 有什么变化"；或给 lint / 综述答案补"近 20 条活动"上下文 |
 | `knowledge_save_as_page` | 把刚产出的综合答案保存为 wiki 页 | 只有当答案**值得以后被直接命中**时；需 KB 开启 `allow_query_backfill` |
@@ -42,6 +41,8 @@ user 问 X →
 - `knowledge_search` 负责**找入口**
 - `knowledge_wiki_read` 负责**读整页**
 - 不要只看 `knowledge_search` 返回的截断片段就下结论
+
+当前没有单独的 `knowledge_wiki_list` 工具；需要浏览 Wiki 结构时，先用 `knowledge_list` / `knowledge_search` 找入口，再用 `knowledge_wiki_read` 展开具体页面。
 
 回填触发的 rule of thumb：**3 篇以上源文档 + 问题是可重复问的**（"X 和 Y 的区别"、"X 的配置清单"、"最近 X 的变化"），就值得回填。一次性、非常 personal 的问题（"帮我改我这行代码"）不要回填。
 

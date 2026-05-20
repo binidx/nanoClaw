@@ -112,6 +112,9 @@ const OUTPUT_END_MARKER = '---NANOCLAW_OUTPUT_END---';
 const SUBAGENT_RUNTIME_DIR_NAME = '.nanoclaw-subagents';
 const SUBAGENT_CLOSE_GRACE_MS = 10_000;
 const SUBAGENT_HISTORY_FILE_NAME = 'history.json';
+const SUBAGENT_DEFAULT_TIMEOUT_MS = 15 * 60_000;
+const SUBAGENT_MIN_TIMEOUT_MS = 5 * 60_000;
+const SUBAGENT_MAX_TIMEOUT_MS = 60 * 60_000;
 
 interface ManagedSubagent {
   id: string;
@@ -1823,6 +1826,63 @@ function waitForManagedSubagentResult(
   });
 }
 
+function resolveSubagentResponseTimeoutMs(rawTimeout: unknown): number {
+  const requestedTimeout =
+    typeof rawTimeout === 'number' &&
+    Number.isFinite(rawTimeout) &&
+    rawTimeout > 0
+      ? Math.floor(rawTimeout)
+      : SUBAGENT_DEFAULT_TIMEOUT_MS;
+  return Math.min(
+    SUBAGENT_MAX_TIMEOUT_MS,
+    Math.max(SUBAGENT_MIN_TIMEOUT_MS, requestedTimeout),
+  );
+}
+
+async function waitForManagedSubagentResultWithTimeout(
+  handle: ManagedSubagent,
+  requestId: string,
+  rawTimeout: unknown,
+  label: string,
+  options?: CodexToolExecutionOptions,
+): Promise<string> {
+  const timeoutMs = resolveSubagentResponseTimeoutMs(rawTimeout);
+  const waitP = waitForManagedSubagentResult(handle, requestId);
+  void waitP.catch(() => {
+    /* absorb late rejection when timeout wins Promise.race */
+  });
+  let timeoutId: NodeJS.Timeout | undefined;
+  let timeoutFired = false;
+  try {
+    return await Promise.race([
+      waitP,
+      new Promise<never>((_, reject) => {
+        timeoutId = setTimeout(() => {
+          timeoutFired = true;
+          reject(new Error(`${label} timed out after ${timeoutMs}ms`));
+        }, timeoutMs);
+      }),
+    ]);
+  } catch (err) {
+    if (timeoutFired) {
+      const msg =
+        err instanceof Error
+          ? err.message
+          : `${label} timed out after ${timeoutMs}ms`;
+      rejectManagedSubagentWaiter(handle, requestId, msg);
+      handle.stopReason = 'stopped';
+      requestManagedSubagentClose(handle);
+      void waitForManagedSubagentExit(handle);
+      options?.onSubagentUpdate?.(
+        buildManagedSubagentUpdate(handle, 'failed', msg),
+      );
+    }
+    throw err;
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
+}
+
 async function waitForManagedSubagentExit(
   handle: ManagedSubagent,
   timeoutMs = SUBAGENT_CLOSE_GRACE_MS,
@@ -2122,9 +2182,12 @@ async function executeTeamCreate(
     { mode: 'team', name, task, workProfile },
     options,
   );
-  const firstResult = await waitForManagedSubagentResult(
+  const firstResult = await waitForManagedSubagentResultWithTimeout(
     handle,
     handle.initialRequestId,
+    input.timeout_ms,
+    'TeamCreate sub-agent',
+    options,
   );
 
   if (!keepAlive) {
@@ -2173,7 +2236,13 @@ async function executeSendMessage(
     return `Sent message to sub-agent ${handle.name} (${handle.id}).`;
   }
 
-  const result = await waitForManagedSubagentResult(handle, requestId);
+  const result = await waitForManagedSubagentResultWithTimeout(
+    handle,
+    requestId,
+    input.timeout_ms,
+    'SendMessage sub-agent',
+    options,
+  );
   if (input.close_after_response === true) {
     handle.stopReason = 'completed';
     requestManagedSubagentClose(handle);
@@ -2255,20 +2324,7 @@ async function executeAgentSubagent(
   //   - a default of 15 minutes when the model does not supply timeout_ms
   //   - a floor of 5 minutes when the model does supply a smaller value
   //   - a hard ceiling of 60 minutes (was 1 hour previously too)
-  const SUBAGENT_DEFAULT_TIMEOUT_MS = 15 * 60_000;
-  const SUBAGENT_MIN_TIMEOUT_MS = 5 * 60_000;
-  const SUBAGENT_MAX_TIMEOUT_MS = 60 * 60_000;
-  const rawTimeout = input.timeout_ms;
-  const requestedTimeout =
-    typeof rawTimeout === 'number' &&
-    Number.isFinite(rawTimeout) &&
-    rawTimeout > 0
-      ? Math.floor(rawTimeout)
-      : SUBAGENT_DEFAULT_TIMEOUT_MS;
-  const timeoutMs = Math.min(
-    SUBAGENT_MAX_TIMEOUT_MS,
-    Math.max(SUBAGENT_MIN_TIMEOUT_MS, requestedTimeout),
-  );
+  const timeoutMs = resolveSubagentResponseTimeoutMs(input.timeout_ms);
   let timeoutId: NodeJS.Timeout | undefined;
   let timeoutFired = false;
   try {
@@ -2940,14 +2996,16 @@ async function executeMemoryGet(
     lineStart: result.lineStart,
     lineEnd: result.lineEnd,
   });
-  await notifyMemoryRecall({
-    path: result.path,
-    scope: result.scope,
-    lineStart: result.lineStart,
-    lineEnd: result.lineEnd,
-    text: result.text,
-    ...followup,
-  });
+  if (!result.userMemoryId) {
+    await notifyMemoryRecall({
+      path: result.path,
+      scope: result.scope,
+      lineStart: result.lineStart,
+      lineEnd: result.lineEnd,
+      text: result.text,
+      ...followup,
+    });
+  }
   return `${result.path}#L${result.lineStart}-L${result.lineEnd}\n${result.text}`;
 }
 

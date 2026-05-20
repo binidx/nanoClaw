@@ -3144,7 +3144,10 @@ async function executeCodexToolCall(
   toolCall: CodexPlannedToolCall,
   cwd: string,
   turnStream: CodexTurnEventEmitter,
-  toolOptions?: Pick<CodexToolExecutionOptions, 'agentInput' | 'secrets'>,
+  toolOptions?: Pick<
+    CodexToolExecutionOptions,
+    'agentInput' | 'secrets' | 'originTurnId' | 'originToolCallId'
+  >,
 ): Promise<CodexExecutedToolCall> {
   let subagentInfo = buildSubagentInfo(
     toolCall.name,
@@ -3160,6 +3163,8 @@ async function executeCodexToolCall(
 
   const output = await executeTool(toolCall.name, toolCall.args, cwd, {
     ...toolOptions,
+    originTurnId: toolOptions?.originTurnId || turnStream.turnId,
+    originToolCallId: toolOptions?.originToolCallId || toolCall.id,
     onSubagentUpdate: (update) => {
       subagentInfo = mergeSubagentInfo(
         subagentInfo,
@@ -3220,7 +3225,10 @@ async function executeCodexToolBatch(
   toolCalls: CodexPlannedToolCall[],
   cwd: string,
   turnStream: CodexTurnEventEmitter,
-  toolOptions?: Pick<CodexToolExecutionOptions, 'agentInput' | 'secrets'>,
+  toolOptions?: Pick<
+    CodexToolExecutionOptions,
+    'agentInput' | 'secrets' | 'originTurnId' | 'originToolCallId'
+  >,
 ): Promise<CodexExecutedToolCall[]> {
   const allSubagentSpawnCalls =
     toolCalls.length > 1 &&

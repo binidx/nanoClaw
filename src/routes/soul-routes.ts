@@ -471,7 +471,9 @@ export function registerSoulRoutes(app: Express, opts: SoulRouteOptions): void {
         return;
       }
       const memories = Array.isArray(data.memories) ? data.memories : [];
-      const observations = Array.isArray(data.observations) ? data.observations : [];
+      const observations = Array.isArray(data.observations)
+        ? data.observations
+        : [];
       const insights = Array.isArray(data.insights) ? data.insights : [];
       const skills = Array.isArray(data.skills) ? data.skills : [];
       const summary = {
@@ -507,23 +509,26 @@ export function registerSoulRoutes(app: Express, opts: SoulRouteOptions): void {
       }
 
       const existingMemoryKeys = new Set(
-        (await getUserMemories(userId, { limit: 5000, timeScope: 'all' }))
-          .map((memory) =>
+        (await getUserMemories(userId, { limit: 5000, timeScope: 'all' })).map(
+          (memory) =>
             [
               memory.scope,
               memory.conversation_id ?? '',
               memory.category,
               memory.content.trim(),
             ].join('\u0000'),
-          ),
+        ),
       );
       for (const memory of memories) {
         if (!memory?.content || typeof memory.content !== 'string') continue;
         const scope = memory.scope ?? 'global';
-        const conversationId = memory.conversation_id ?? memory.conversationId ?? null;
+        const conversationId =
+          memory.conversation_id ?? memory.conversationId ?? null;
         const category = memory.category ?? 'general';
         const content = memory.content.trim();
-        const key = [scope, conversationId ?? '', category, content].join('\u0000');
+        const key = [scope, conversationId ?? '', category, content].join(
+          '\u0000',
+        );
         if (existingMemoryKeys.has(key)) continue;
         await addUnifiedMemory(userId, {
           category,
@@ -541,23 +546,29 @@ export function registerSoulRoutes(app: Express, opts: SoulRouteOptions): void {
 
       const now = new Date().toISOString();
       const existingObservationKeys = new Set(
-        (await listUserMemoryObservations(userId, { limit: 5000 }))
-          .map((observation) =>
+        (await listUserMemoryObservations(userId, { limit: 5000 })).map(
+          (observation) =>
             [
               observation.conversation_id ?? '',
               observation.category,
               observation.observation_type,
               observation.content.trim(),
             ].join('\u0000'),
-          ),
+        ),
       );
       for (const observation of observations) {
-        if (!observation?.content || typeof observation.content !== 'string') continue;
+        if (!observation?.content || typeof observation.content !== 'string')
+          continue;
         const category = observation.category ?? 'general';
         const observationType = observation.observation_type ?? 'context_note';
         const conversationId = observation.conversation_id ?? null;
         const content = observation.content.trim();
-        const key = [conversationId ?? '', category, observationType, content].join('\u0000');
+        const key = [
+          conversationId ?? '',
+          category,
+          observationType,
+          content,
+        ].join('\u0000');
         if (existingObservationKeys.has(key)) continue;
         await addUserMemoryObservation({
           id: crypto.randomUUID(),
@@ -566,7 +577,9 @@ export function registerSoulRoutes(app: Express, opts: SoulRouteOptions): void {
           category,
           content,
           observation_type: observationType,
-          frequency: Number.isFinite(observation.frequency) ? observation.frequency : 1,
+          frequency: Number.isFinite(observation.frequency)
+            ? observation.frequency
+            : 1,
           last_seen_at: observation.last_seen_at ?? now,
           confidence: Number.isFinite(observation.confidence)
             ? observation.confidence
@@ -580,10 +593,9 @@ export function registerSoulRoutes(app: Express, opts: SoulRouteOptions): void {
         existingObservationKeys.add(key);
       }
       const existingInsightKeys = new Set(
-        (await listPersonaInsights(userId, { limit: 5000 }))
-          .map((insight) =>
-            [insight.insight_type, insight.content.trim()].join('\u0000'),
-          ),
+        (await listPersonaInsights(userId, { limit: 5000 })).map((insight) =>
+          [insight.insight_type, insight.content.trim()].join('\u0000'),
+        ),
       );
       for (const insight of insights) {
         if (!insight?.content || typeof insight.content !== 'string') continue;
@@ -599,7 +611,9 @@ export function registerSoulRoutes(app: Express, opts: SoulRouteOptions): void {
           evidence_count: Number.isFinite(insight.evidence_count)
             ? insight.evidence_count
             : 1,
-          confidence: Number.isFinite(insight.confidence) ? insight.confidence : 0.5,
+          confidence: Number.isFinite(insight.confidence)
+            ? insight.confidence
+            : 0.5,
           status: insight.status ?? 'candidate',
           created_at: now,
           updated_at: now,
@@ -607,15 +621,14 @@ export function registerSoulRoutes(app: Express, opts: SoulRouteOptions): void {
         existingInsightKeys.add(key);
       }
       const existingSkillKeys = new Set(
-        (await listMemorySkills({ userId, limit: 5000 }))
-          .map((skill) =>
-            [
-              skill.scope,
-              skill.name.trim(),
-              skill.trigger_pattern.trim(),
-              skill.body.trim(),
-            ].join('\u0000'),
-          ),
+        (await listMemorySkills({ userId, limit: 5000 })).map((skill) =>
+          [
+            skill.scope,
+            skill.name.trim(),
+            skill.trigger_pattern.trim(),
+            skill.body.trim(),
+          ].join('\u0000'),
+        ),
       );
       for (const skill of skills) {
         if (!skill?.name || !skill?.body) continue;
@@ -752,12 +765,20 @@ export function registerSoulRoutes(app: Express, opts: SoulRouteOptions): void {
             ? (rawId[0] ?? '')
             : '';
       const body = req.body || {};
-      await updateMemorySkill(id, {
-        status: body.status,
-        name: body.name,
-        trigger_pattern: body.trigger_pattern,
-        body: body.body,
-      });
+      const updated = await updateMemorySkill(
+        id,
+        {
+          status: body.status,
+          name: body.name,
+          trigger_pattern: body.trigger_pattern,
+          body: body.body,
+        },
+        userId,
+      );
+      if (!updated) {
+        res.status(404).json({ ok: false, error: 'Memory skill not found' });
+        return;
+      }
       res.json({ ok: true });
     } catch (err) {
       res.status(500).json({ ok: false, error: String(err) });
@@ -778,7 +799,11 @@ export function registerSoulRoutes(app: Express, opts: SoulRouteOptions): void {
           : Array.isArray(rawId)
             ? (rawId[0] ?? '')
             : '';
-      await deleteMemorySkill(id);
+      const deleted = await deleteMemorySkill(id, userId);
+      if (!deleted) {
+        res.status(404).json({ ok: false, error: 'Memory skill not found' });
+        return;
+      }
       res.json({ ok: true });
     } catch (err) {
       res.status(500).json({ ok: false, error: String(err) });

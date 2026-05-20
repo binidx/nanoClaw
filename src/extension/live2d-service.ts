@@ -48,7 +48,10 @@ export function decodeZipEntryName(rawEntryName: Buffer | Uint8Array): string {
   }
 }
 
-async function extractZipToCache(modelId: string, zipBuffer: Buffer): Promise<string> {
+async function extractZipToCache(
+  modelId: string,
+  zipBuffer: Buffer,
+): Promise<string> {
   const cacheDir = ensureCacheDir(modelId);
   const markerPath = getCacheMarkerPath(cacheDir);
   if (fs.existsSync(markerPath)) return cacheDir;
@@ -75,8 +78,14 @@ function detectEntryFile(dir: string): string | null {
   function walk(current: string, prefix: string) {
     for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
       if (entry.isDirectory()) {
-        walk(path.join(current, entry.name), prefix ? `${prefix}/${entry.name}` : entry.name);
-      } else if (entry.name.endsWith('.model3.json') || entry.name.endsWith('.model.json')) {
+        walk(
+          path.join(current, entry.name),
+          prefix ? `${prefix}/${entry.name}` : entry.name,
+        );
+      } else if (
+        entry.name.endsWith('.model3.json') ||
+        entry.name.endsWith('.model.json')
+      ) {
         candidates.push(prefix ? `${prefix}/${entry.name}` : entry.name);
       }
     }
@@ -87,7 +96,9 @@ function detectEntryFile(dir: string): string | null {
   return model3 || candidates[0]!;
 }
 
-export async function ensureModelCache(modelId: string): Promise<string | null> {
+export async function ensureModelCache(
+  modelId: string,
+): Promise<string | null> {
   const cacheDir = getCacheDir(modelId);
   const markerPath = getCacheMarkerPath(cacheDir);
   if (fs.existsSync(markerPath)) return cacheDir;
@@ -97,10 +108,20 @@ export async function ensureModelCache(modelId: string): Promise<string | null> 
   return extractZipToCache(modelId, data);
 }
 
-export function getModelFilePath(modelId: string, relativePath: string): string | null {
+export function getModelFilePath(
+  modelId: string,
+  relativePath: string,
+): string | null {
   const cacheDir = getCacheDir(modelId);
   const resolved = path.resolve(cacheDir, relativePath);
-  if (!resolved.startsWith(cacheDir)) return null;
+  const boundary = path.relative(cacheDir, resolved);
+  if (
+    boundary === '..' ||
+    boundary.startsWith(`..${path.sep}`) ||
+    path.isAbsolute(boundary)
+  ) {
+    return null;
+  }
   if (!fs.existsSync(resolved)) return null;
   return resolved;
 }
@@ -118,7 +139,11 @@ export interface Live2DModelInfo {
   updatedAt: string;
 }
 
-function toModelInfo(r: Omit<Live2DModelRecord, 'model_data'> | Omit<Live2DModelRecord, 'model_data' | 'thumbnail'>): Live2DModelInfo {
+function toModelInfo(
+  r:
+    | Omit<Live2DModelRecord, 'model_data'>
+    | Omit<Live2DModelRecord, 'model_data' | 'thumbnail'>,
+): Live2DModelInfo {
   return {
     id: r.id,
     name: r.name,
@@ -138,7 +163,9 @@ export async function listModels(userId: string): Promise<Live2DModelInfo[]> {
   return rows.map(toModelInfo);
 }
 
-export async function getModelInfo(id: string): Promise<Live2DModelInfo | null> {
+export async function getModelInfo(
+  id: string,
+): Promise<Live2DModelInfo | null> {
   const row = await getLive2DModelMeta(id);
   return row ? toModelInfo(row) : null;
 }
@@ -181,7 +208,11 @@ export async function uploadModel(input: {
   return toModelInfo(record);
 }
 
-export async function removeModel(id: string, userId: string, isAdmin: boolean): Promise<boolean> {
+export async function removeModel(
+  id: string,
+  userId: string,
+  isAdmin: boolean,
+): Promise<boolean> {
   const model = await getLive2DModelMeta(id);
   if (!model) return false;
   if (model.user_id !== userId && !isAdmin) return false;
@@ -199,7 +230,12 @@ export async function patchModel(
   id: string,
   userId: string,
   isAdmin: boolean,
-  updates: { name?: string; description?: string; visibility?: string; thumbnail?: Buffer },
+  updates: {
+    name?: string;
+    description?: string;
+    visibility?: string;
+    thumbnail?: Buffer;
+  },
 ): Promise<boolean> {
   const model = await getLive2DModelMeta(id);
   if (!model) return false;
@@ -234,7 +270,9 @@ export interface Live2DPreferences {
   modelOffsetY: number;
 }
 
-export async function getUserPreferences(userId: string): Promise<Live2DPreferences> {
+export async function getUserPreferences(
+  userId: string,
+): Promise<Live2DPreferences> {
   const row = await getLive2DUserPreferences(userId);
   return {
     enabled: row ? row.enabled === 1 : false,

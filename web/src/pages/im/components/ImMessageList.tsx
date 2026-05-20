@@ -355,7 +355,9 @@ export function ImMessageList({
         {messages.map((m, i) => {
           const mine = m.sender === currentUserId;
           const urls = extractDetectedUrls(m.content);
-          const previewUrls = urls.filter((url) => !isLikelyImageUrl(url));
+          const previewUrls = e2eeState?.enabled
+            ? []
+            : urls.filter((url) => !isLikelyImageUrl(url));
           const attachments = m.attachments || [];
           const isPlaceholder =
             m.content === '[文件]' && attachments.length > 0;
@@ -429,10 +431,14 @@ export function ImMessageList({
                   </>
                 }
               >
-                {previewUrls.length > 0 && (
+                {chatJid && previewUrls.length > 0 && (
                   <div className="im-msg-link-previews">
                     {previewUrls.slice(0, 3).map((url) => (
-                      <ImLinkPreview key={url} url={url} />
+                      <ImLinkPreview
+                        key={`${chatJid}:${url}`}
+                        url={url}
+                        chatJid={chatJid}
+                      />
                     ))}
                   </div>
                 )}

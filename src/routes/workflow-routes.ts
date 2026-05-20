@@ -71,6 +71,26 @@ function findWorkflowNode(
   return snapshot?.nodes.find((node) => node.id === nodeId);
 }
 
+function findWorkflowEdge(
+  snapshot: Awaited<ReturnType<typeof db.getWorkflowSnapshot>>,
+  edgeId: string,
+) {
+  return snapshot?.edges.find((edge) => edge.id === edgeId);
+}
+
+function validateWorkflowEdgeEndpoint(
+  snapshot: Awaited<ReturnType<typeof db.getWorkflowSnapshot>>,
+  nodeId: string,
+  fieldName: 'source_node_id' | 'target_node_id',
+  res: Response,
+): boolean {
+  if (!findWorkflowNode(snapshot, nodeId)) {
+    sendError(res, 400, `${fieldName} must reference a node in this workflow`);
+    return false;
+  }
+  return true;
+}
+
 function requiresSystemWorkflowAdmin(config: WorkflowConfig): boolean {
   return (
     config.kind === 'system_capability' ||
@@ -393,6 +413,15 @@ export function registerWorkflowRoutes(
         sendError(res, access.status, access.message);
         return;
       }
+      const snapshot = await db.getWorkflowSnapshot(workflowId);
+      if (!snapshot) {
+        sendError(res, 404, 'Workflow not found');
+        return;
+      }
+      if (!findWorkflowNode(snapshot, nodeId)) {
+        sendError(res, 404, 'Node not found');
+        return;
+      }
       await db.deleteWorkflowNode(nodeId);
       res.json({ ok: true });
     } catch (err) {
@@ -409,6 +438,11 @@ export function registerWorkflowRoutes(
         sendError(res, access.status, access.message);
         return;
       }
+      const snapshot = await db.getWorkflowSnapshot(workflowId);
+      if (!snapshot) {
+        sendError(res, 404, 'Workflow not found');
+        return;
+      }
       if (!isEdgeDirection(req.body?.direction)) {
         sendError(res, 400, 'direction must be one_way or two_way');
         return;
@@ -420,9 +454,17 @@ export function registerWorkflowRoutes(
         sendError(res, 400, 'source_node_id and target_node_id are required');
         return;
       }
+      const sourceNodeId = normalizedString(req.body.source_node_id);
+      const targetNodeId = normalizedString(req.body.target_node_id);
+      if (
+        !validateWorkflowEdgeEndpoint(snapshot, sourceNodeId, 'source_node_id', res) ||
+        !validateWorkflowEdgeEndpoint(snapshot, targetNodeId, 'target_node_id', res)
+      ) {
+        return;
+      }
       const edge = await db.createWorkflowEdge(workflowId, {
-        source_node_id: req.body.source_node_id,
-        target_node_id: req.body.target_node_id,
+        source_node_id: sourceNodeId,
+        target_node_id: targetNodeId,
         direction: req.body.direction,
         label: typeof req.body?.label === 'string' ? req.body.label : undefined,
         config_json:
@@ -446,9 +488,39 @@ export function registerWorkflowRoutes(
         sendError(res, access.status, access.message);
         return;
       }
+      const snapshot = await db.getWorkflowSnapshot(workflowId);
+      if (!snapshot) {
+        sendError(res, 404, 'Workflow not found');
+        return;
+      }
+      const existingEdge = findWorkflowEdge(snapshot, edgeId);
+      if (!existingEdge) {
+        sendError(res, 404, 'Edge not found');
+        return;
+      }
       const patch: Record<string, unknown> = {};
-      if (typeof req.body?.source_node_id === 'string') patch.source_node_id = req.body.source_node_id;
-      if (typeof req.body?.target_node_id === 'string') patch.target_node_id = req.body.target_node_id;
+      if (req.body?.source_node_id !== undefined) {
+        if (typeof req.body.source_node_id !== 'string') {
+          sendError(res, 400, 'source_node_id must be a string');
+          return;
+        }
+        const sourceNodeId = normalizedString(req.body.source_node_id);
+        if (!validateWorkflowEdgeEndpoint(snapshot, sourceNodeId, 'source_node_id', res)) {
+          return;
+        }
+        patch.source_node_id = sourceNodeId;
+      }
+      if (req.body?.target_node_id !== undefined) {
+        if (typeof req.body.target_node_id !== 'string') {
+          sendError(res, 400, 'target_node_id must be a string');
+          return;
+        }
+        const targetNodeId = normalizedString(req.body.target_node_id);
+        if (!validateWorkflowEdgeEndpoint(snapshot, targetNodeId, 'target_node_id', res)) {
+          return;
+        }
+        patch.target_node_id = targetNodeId;
+      }
       if (isEdgeDirection(req.body?.direction)) patch.direction = req.body.direction;
       if (typeof req.body?.label === 'string') patch.label = req.body.label;
       if (req.body?.config_json && typeof req.body.config_json === 'object') {
@@ -469,6 +541,15 @@ export function registerWorkflowRoutes(
       const access = await requireWorkflowForUser(workflowId);
       if (!access.ok) {
         sendError(res, access.status, access.message);
+        return;
+      }
+      const snapshot = await db.getWorkflowSnapshot(workflowId);
+      if (!snapshot) {
+        sendError(res, 404, 'Workflow not found');
+        return;
+      }
+      if (!findWorkflowEdge(snapshot, edgeId)) {
+        sendError(res, 404, 'Edge not found');
         return;
       }
       await db.deleteWorkflowEdge(edgeId);

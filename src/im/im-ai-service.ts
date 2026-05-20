@@ -2,6 +2,7 @@ import {
   getAssistant,
   getDefaultProviderForUser,
   getProvider,
+  isProviderVisibleToUser,
   type AiProvider,
 } from '../db.js';
 import { dba } from '../db/engine-access.js';
@@ -201,9 +202,19 @@ async function resolveInvocationPromptContext(
       { getAssistantById: getAssistant, getProviderById: getProvider },
       { requireEnabled: true, disableSoul: true },
     );
-    provider = runtime.providerOverrideId
-      ? await getProvider(runtime.providerOverrideId)
-      : await getDefaultProviderForUser(invocation.requested_by);
+    if (runtime.providerOverrideId) {
+      const visible = await isProviderVisibleToUser(
+        runtime.providerOverrideId,
+        invocation.requested_by,
+        'llm',
+      );
+      provider = visible ? await getProvider(runtime.providerOverrideId) : undefined;
+      if (!provider) {
+        throw new Error('Assistant provider is not visible to IM requester');
+      }
+    } else {
+      provider = await getDefaultProviderForUser(invocation.requested_by);
+    }
     if (provider && runtime.modelOverride) {
       provider = { ...provider, model: runtime.modelOverride };
     }

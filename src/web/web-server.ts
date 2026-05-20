@@ -43,6 +43,7 @@ import {
   type MemoryIdentityRepository,
 } from '../memory/identity-service.js';
 import { getConversationLastEventSeq } from '../runtime/realtime-events.js';
+import { recordAuditLog } from '../db/audit-log.js';
 import { createConversationAdminSupport } from '../conversation/conversation-admin-support.js';
 import {
   readPendingAsksForConversation as readPendingAsks,
@@ -119,7 +120,10 @@ import { localeMiddleware } from '../i18n/middleware.js';
 import { registerAvailableProviderRoutes } from '../routes/available-provider-routes.js';
 import { registerUserProviderRoutes } from '../routes/user-provider-routes.js';
 import { registerChannelInstanceRoutes } from '../routes/channel-instance-routes.js';
-import { registerWhatsAppWebhookRoutes } from '../routes/whatsapp-webhook-routes.js';
+import {
+  captureWhatsAppWebhookRawBody,
+  registerWhatsAppWebhookRoutes,
+} from '../routes/whatsapp-webhook-routes.js';
 import { registerLive2DRoutes } from '../routes/live2d-routes.js';
 import { registerUserMcpRoutes } from '../routes/user-mcp-routes.js';
 import { registerUserSkillRoutes } from '../routes/user-skill-routes.js';
@@ -568,6 +572,7 @@ export function createWebServer(opts: WebServerOptions) {
     logger,
     getAuthenticatedUsername,
     getRequestClientKey,
+    recordAuditLog,
   });
   const persistSlashCommandManagedMcpServers = async (
     servers: Array<{
@@ -622,6 +627,7 @@ export function createWebServer(opts: WebServerOptions) {
   app.use(
     express.json({
       limit: DEFAULT_JSON_BODY_LIMIT,
+      verify: captureWhatsAppWebhookRawBody,
     }),
   );
 
@@ -775,7 +781,10 @@ export function createWebServer(opts: WebServerOptions) {
   registerLive2DRoutes(app, { requirePermission });
   registerUserMcpRoutes(app, { requirePermission, requireLocalCapability });
   registerUserSkillRoutes(app, { requirePermission, requireLocalCapability });
-  registerPublicLibraryRoutes(app, { requirePermission, requireLocalCapability });
+  registerPublicLibraryRoutes(app, {
+    requirePermission,
+    requireLocalCapability,
+  });
   registerAdminMarketplaceRoutes(app, { requirePermission });
   registerAdminTrashRoutes(app, { requirePermission });
   registerAdminAuditRoutes(app, { requirePermission });

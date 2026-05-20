@@ -4,6 +4,8 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import {
   _initTestDatabase,
+  addMemorySkill,
+  getMemorySkill,
   getUserMemories,
   listMemorySkills,
   listPersonaInsights,
@@ -148,5 +150,46 @@ describe('soul routes', () => {
     expect(await listUserMemoryObservations(user!.id)).toHaveLength(1);
     expect(await listPersonaInsights(user!.id)).toHaveLength(1);
     expect(await listMemorySkills({ userId: user!.id })).toHaveLength(1);
+  });
+
+  it('does not update or delete another user memory skill', async () => {
+    const app = createApp();
+    const now = new Date().toISOString();
+    await addMemorySkill({
+      id: 'skill-other-user',
+      user_id: 'other-user',
+      scope: 'global',
+      name: 'Other skill',
+      trigger_pattern: 'other',
+      body: 'Original body',
+      termination_condition: null,
+      success_count: 0,
+      failure_count: 0,
+      last_used_at: null,
+      last_verified_at: null,
+      status: 'active',
+      metadata_json: null,
+      created_at: now,
+      updated_at: now,
+    });
+
+    const updateResponse = await inject(app, {
+      method: 'PUT',
+      url: '/api/soul/memory-skills/skill-other-user',
+      headers: { 'content-type': 'application/json' },
+      payload: JSON.stringify({ body: 'Tampered body' }),
+    });
+    expect(updateResponse.statusCode).toBe(404);
+    expect(await getMemorySkill('skill-other-user')).toMatchObject({
+      user_id: 'other-user',
+      body: 'Original body',
+    });
+
+    const deleteResponse = await inject(app, {
+      method: 'DELETE',
+      url: '/api/soul/memory-skills/skill-other-user',
+    });
+    expect(deleteResponse.statusCode).toBe(404);
+    expect(await getMemorySkill('skill-other-user')).toBeTruthy();
   });
 });

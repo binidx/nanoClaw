@@ -28,6 +28,7 @@ Use this skill for changes under `web/src/**`, especially:
 - If a title, name, or label is shown in multiple places, centralize the selection logic instead of patching each view differently.
 - When changing visual styles, keep light mode and dark mode in sync.
 - For nav-based business pages, prefer a single continuous canvas. Avoid nested white section boxes, hard header/body splits, or obvious layered panels unless the user explicitly asks for them.
+- For card-library or list-management pages, keep the page itself focused on the list; open detail and edit flows in modal/drawer overlays, and do not render list and detail as side-by-side primary content in the same page shell.
 - The default visual direction for business pages is pale-blue frosted glass. Do not introduce warm orange or peach accent washes unless the user explicitly requests that palette.
 - Prefer small component changes over broad page rewrites.
 - If a visible style regression has already survived three repair rounds, stop stacking CSS overrides and rewrite the offending component or shell onto the shared global component path instead.

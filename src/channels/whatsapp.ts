@@ -5,6 +5,7 @@ import {
   getAssistantName,
   getConfiguredChannelInstances,
 } from '../config-store.js';
+import { hasStoredMessage } from '../db.js';
 import { createModuleLogger } from '../logger.js';
 
 const channelLog = createModuleLogger('channel-whatsapp');
@@ -14,6 +15,7 @@ import { getWebChannel } from './web.js';
 
 const GRAPH_API_BASE = 'https://graph.facebook.com';
 const DEFAULT_GRAPH_VERSION = 'v23.0';
+const DEDUP_MAX = 1000;
 
 type WhatsAppChannelHandle = WhatsAppChannel | MultiWhatsAppChannel;
 
@@ -184,6 +186,7 @@ export class WhatsAppChannel implements Channel {
   private readonly graphVersion: string;
   private assistantName = 'NanoClaw';
   private connected = false;
+  private readonly seenIds = new Set<string>();
 
   constructor(instance: ChannelInstanceConfig, opts: ChannelOpts) {
     this.instance = instance;
@@ -292,7 +295,7 @@ export class WhatsAppChannel implements Channel {
     );
   }
 
-  handleWebhookPayload(payload: WhatsAppWebhookPayload): number {
+  async handleWebhookPayload(payload: WhatsAppWebhookPayload): Promise<number> {
     let handledMessages = 0;
 
     for (const entry of payload.entry || []) {
@@ -310,11 +313,23 @@ export class WhatsAppChannel implements Channel {
 
           const timestamp = parseTimestamp(message.timestamp);
           const chatJid = buildWhatsAppJid(this.instance.id, waId);
+          const dedupId = `${chatJid}:${messageId}`;
+          if (
+            this.seenIds.has(dedupId) ||
+            (await hasStoredMessage(chatJid, messageId))
+          ) {
+            this.recordSeenMessage(dedupId);
+            channelLog.info(
+              { chatJid, messageId },
+              'Skipping duplicate WhatsApp webhook message',
+            );
+            continue;
+          }
           const senderName = findContactName(value?.contacts, waId);
           const content = resolveMessageText(message);
           if (!content) continue;
 
-          this.opts.onChatMetadata(
+          await this.opts.onChatMetadata(
             chatJid,
             timestamp,
             senderName,
@@ -324,7 +339,7 @@ export class WhatsAppChannel implements Channel {
 
           let group = this.opts.registeredGroups()[chatJid];
           if (!group && this.opts.registerGroup) {
-            this.opts.registerGroup(chatJid, {
+            await this.opts.registerGroup(chatJid, {
               name: `WhatsApp ${senderName}`,
               folder: deriveWhatsAppGroupFolder(this.instance.id, waId),
               trigger: `@${this.assistantName}`,
@@ -347,7 +362,8 @@ export class WhatsAppChannel implements Channel {
             is_from_me: false,
           };
 
-          this.opts.onMessage(chatJid, inboundMessage);
+          await this.opts.onMessage(chatJid, inboundMessage);
+          this.recordSeenMessage(dedupId);
           this.opts.onRealtimeMessage?.(chatJid, inboundMessage);
 
           const webCh = getWebChannel();
@@ -375,6 +391,14 @@ export class WhatsAppChannel implements Channel {
     }
 
     return handledMessages;
+  }
+
+  private recordSeenMessage(id: string): void {
+    this.seenIds.add(id);
+    if (this.seenIds.size > DEDUP_MAX) {
+      const first = this.seenIds.values().next().value;
+      if (first) this.seenIds.delete(first);
+    }
   }
 }
 
@@ -412,7 +436,7 @@ class MultiWhatsAppChannel implements Channel {
     await Promise.all(this.channels.map((channel) => channel.disconnect()));
   }
 
-  handleWebhookPayload(payload: WhatsAppWebhookPayload): number {
+  async handleWebhookPayload(payload: WhatsAppWebhookPayload): Promise<number> {
     const phoneNumberId = String(
       payload.entry?.[0]?.changes?.[0]?.value?.metadata?.phone_number_id || '',
     ).trim();
@@ -420,13 +444,14 @@ class MultiWhatsAppChannel implements Channel {
       const channel = this.channels.find(
         (entry) => entry.outboundPhoneNumberId === phoneNumberId,
       );
-      if (channel) return channel.handleWebhookPayload(payload);
+      if (channel) return await channel.handleWebhookPayload(payload);
     }
 
-    return this.channels.reduce(
-      (count, channel) => count + channel.handleWebhookPayload(payload),
-      0,
-    );
+    let handled = 0;
+    for (const channel of this.channels) {
+      handled += await channel.handleWebhookPayload(payload);
+    }
+    return handled;
   }
 
   private findChannel(jid: string): WhatsAppChannel | undefined {
@@ -436,11 +461,11 @@ class MultiWhatsAppChannel implements Channel {
 
 export function dispatchWhatsAppWebhook(
   payload: WhatsAppWebhookPayload,
-): number {
+): Promise<number> {
   const channel = globalWhatsAppChannel;
   if (!channel) {
     channelLog.warn('WhatsApp webhook received but channel is not initialized');
-    return 0;
+    return Promise.resolve(0);
   }
 
   if (channel instanceof WhatsAppChannel) {

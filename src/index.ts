@@ -185,9 +185,7 @@ async function main(): Promise<void> {
     await runFileToDbMigration();
   }
   await hydrateFileSystemFromDb();
-  loadState().catch((err) => {
-    logger.error({ err }, 'Failed to load router state during startup');
-  });
+  await loadState();
   const recoveredSubagentRuntimes = recoverOrphanedSubagentRuntimes();
   if (recoveredSubagentRuntimes.recovered > 0) {
     logger.warn(
@@ -457,9 +455,7 @@ async function main(): Promise<void> {
   });
 
   queue.setProcessMessagesFn(processGroupMessages);
-  recoverPendingMessages().catch((err) => {
-    logger.error({ err }, 'Failed to recover pending messages during startup');
-  });
+  await recoverPendingMessages();
   startMessageLoop().catch((err) => {
     logger.fatal({ err }, 'Message loop crashed unexpectedly');
     process.exit(1);

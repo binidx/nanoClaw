@@ -372,6 +372,8 @@ describe('codex persistent subagent tools', () => {
           CODEX_API_KEY: 'test-key',
           CODEX_MODEL: 'gpt-5.4',
         },
+        originTurnId: 'turn-parent',
+        originToolCallId: 'tool-parent',
       },
     );
 
@@ -393,12 +395,16 @@ describe('codex persistent subagent tools', () => {
     const runtimeMetadata = JSON.parse(
       fs.readFileSync(path.join(runtimeRoot, agentId!, 'runtime.json'), 'utf8'),
     ) as {
+      originTurnId?: string;
+      originToolCallId?: string;
       topologyRole?: string;
       workProfile?: string;
       role?: string;
       controlScope?: string;
     };
     expect(runtimeMetadata).toMatchObject({
+      originTurnId: 'turn-parent',
+      originToolCallId: 'tool-parent',
       topologyRole: 'orchestrator',
       workProfile: 'explorer',
       role: 'orchestrator',
@@ -443,6 +449,96 @@ describe('codex persistent subagent tools', () => {
     const deleteOutput = await deletePromise;
     expect(deleteOutput).toContain('Scout');
     expect(deleteOutput).toContain('stopped');
+  });
+
+  it('times out TeamCreate when the initial managed subagent result never arrives', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.stubEnv('NANOCLAW_SUBAGENTS_ENABLED', '1');
+      vi.stubEnv('NANOCLAW_SUBAGENTS_MAX_DEPTH', '3');
+      vi.stubEnv('NANOCLAW_SUBAGENT_DEPTH', '0');
+
+      const tempRoot = path.join(process.cwd(), 'tmp');
+      fs.mkdirSync(tempRoot, { recursive: true });
+      const tempDir = fs.mkdtempSync(
+        path.join(tempRoot, 'nanoclaw-subagents-'),
+      );
+      createdPaths.push(tempDir);
+      vi.stubEnv('NANOCLAW_GROUP_DIR', tempDir);
+
+      const createPromise = executeTool(
+        'TeamCreate',
+        { prompt: 'Inspect the codebase', name: 'Scout', timeout_ms: 1 },
+        process.cwd(),
+      );
+
+      await Promise.resolve();
+      fakeProc.emit('spawn');
+      await vi.advanceTimersByTimeAsync(5 * 60_000);
+
+      await expect(createPromise).resolves.toContain(
+        'TeamCreate sub-agent timed out after 300000ms',
+      );
+    } finally {
+      vi.clearAllTimers();
+      vi.useRealTimers();
+    }
+  });
+
+  it('times out SendMessage when the managed subagent does not answer', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.stubEnv('NANOCLAW_SUBAGENTS_ENABLED', '1');
+      vi.stubEnv('NANOCLAW_SUBAGENTS_MAX_DEPTH', '3');
+      vi.stubEnv('NANOCLAW_SUBAGENT_DEPTH', '0');
+
+      const tempRoot = path.join(process.cwd(), 'tmp');
+      fs.mkdirSync(tempRoot, { recursive: true });
+      const tempDir = fs.mkdtempSync(
+        path.join(tempRoot, 'nanoclaw-subagents-'),
+      );
+      createdPaths.push(tempDir);
+      vi.stubEnv('NANOCLAW_GROUP_DIR', tempDir);
+      let childInputRaw = '';
+      const realEnd = fakeProc.stdin.end.bind(fakeProc.stdin);
+      vi.spyOn(fakeProc.stdin, 'end').mockImplementation(((chunk?: any) => {
+        if (chunk) childInputRaw += chunk.toString();
+        return realEnd(chunk);
+      }) as any);
+
+      const createPromise = executeTool(
+        'TeamCreate',
+        { prompt: 'Inspect the codebase', name: 'Scout', keep_alive: true },
+        process.cwd(),
+      );
+
+      await Promise.resolve();
+      fakeProc.emit('spawn');
+      emitStructuredOutput(fakeProc, {
+        status: 'success',
+        requestId: JSON.parse(childInputRaw).requestId,
+        result: 'initial result from subagent',
+      });
+      await createPromise;
+
+      const runtimeRoot = path.join(tempDir, '.nanoclaw-subagents');
+      const [agentId] = fs.readdirSync(runtimeRoot);
+      const sendPromise = executeTool(
+        'SendMessage',
+        { agent_id: agentId, prompt: 'Continue', timeout_ms: 1 },
+        process.cwd(),
+      );
+
+      await Promise.resolve();
+      await vi.advanceTimersByTimeAsync(5 * 60_000);
+
+      await expect(sendPromise).resolves.toContain(
+        'SendMessage sub-agent timed out after 300000ms',
+      );
+    } finally {
+      vi.clearAllTimers();
+      vi.useRealTimers();
+    }
   });
 
   it('surfaces sub-agent startup failures without converting them into hard tool errors', async () => {
@@ -743,6 +839,51 @@ describe('codex workspace path enforcement', () => {
     );
 
     expect(output).toContain('Permission denied:');
+  });
+
+  it('uses DirectoryAccess allow-once without persisting the allowed directory', async () => {
+    const tempRoot = path.join(process.cwd(), 'tmp');
+    fs.mkdirSync(tempRoot, { recursive: true });
+    const tempDir = fs.mkdtempSync(
+      path.join(tempRoot, 'nanoclaw-codex-tools-allow-once-'),
+    );
+    createdPaths.push(tempDir);
+
+    const allowedDir = path.join(tempDir, 'allowed');
+    const secretDir = path.join(tempDir, 'secret');
+    fs.mkdirSync(allowedDir, { recursive: true });
+    fs.mkdirSync(secretDir, { recursive: true });
+    fs.writeFileSync(path.join(secretDir, 'secret.txt'), 'top secret', 'utf8');
+
+    vi.stubEnv('NANOCLAW_ALLOWED_DIRS', JSON.stringify([allowedDir]));
+    vi.stubEnv('NANOCLAW_ACCESS_MODE', 'allowlist');
+    setApprovalEventEmitter({
+      emitApprovalRequest: (request) => {
+        const responsesDir = path.join(testIpcDir, 'approvals', 'responses');
+        fs.mkdirSync(responsesDir, { recursive: true });
+        fs.writeFileSync(
+          path.join(responsesDir, `${request.id}.json`),
+          JSON.stringify({
+            decision: 'allow-once',
+            resolvedAt: new Date().toISOString(),
+          }),
+        );
+      },
+    });
+
+    const output = await executeTool(
+      'read_file',
+      {
+        file_path: path.join(secretDir, 'secret.txt'),
+      },
+      allowedDir,
+    );
+
+    expect(output).toContain('top secret');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(JSON.parse(process.env.NANOCLAW_ALLOWED_DIRS || '[]')).toEqual([
+      allowedDir,
+    ]);
   });
 
   it('blocks bash commands that obviously reference paths outside the workspace', async () => {

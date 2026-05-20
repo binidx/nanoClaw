@@ -7,7 +7,7 @@
 - 聊天（ChatPage）
 - 股票分析（StockAnalysisPage）
 - 任务（TasksPageContainer / TasksPage）
-- Repo Review（组件嵌入配置页）
+- Repo Review（仓库 / Repository 工作台内的审查能力）
 - 助手（AssistantsPage）
 - 渠道与运行状态（ChannelsPage）
 - 终端（TerminalPage）
@@ -75,6 +75,8 @@
   推送 `message`、`turn_event`、`stream`、`typing`、`approval_request`、`approval_resolved`、`reset`、`interrupted` 等增量事件
 
 前端通过 `last_event_seq` 做事件水位控制，避免旧事件覆盖新状态。会话切换时还会依赖 `epochRef + activeJidRef + seenIds` 隔离旧请求和旧事件。
+
+当前实现不是严格意义上的 WebSocket replay：WebSocket 负责 live push，断线后的主要回补依赖 HTTP snapshot。`GET /api/conversations/:jid/messages` 返回的 `last_event_seq` 主要用于观测和 ack 对齐，前端不会从消息快照推进 websocket watermark；水位推进来自 realtime event 和发送响应。
 
 ## 为什么聊天时间线不是"数据库直出"
 
@@ -163,7 +165,7 @@ KnowledgePage 提供知识库管理界面，支持：
 - 向量检索配置
 - Embedding 引擎选择（OpenAI / 智谱 / Ollama）
 
-知识库通过向量检索为会话提供长期知识上下文。
+知识库不再自动注入普通会话 prompt；Agent 通过 knowledge MCP 工具按需检索。知识库检索以 FTS 候选为基础，可选向量重排和 Wiki 读写。
 
 ## 灵魂
 
@@ -192,9 +194,11 @@ UsersPage 提供用户与权限管理界面，支持：
 当前职责边界是：
 
 - `SettingsPage`
-  Provider、渠道实例、基础配置、默认访问策略、发送者信任、浏览器控制、Repo Review、运行态观测入口
+  Provider、渠道实例、基础配置、默认访问策略、发送者信任、浏览器控制、运行态观测入口
 - `AppsPage`
   扩展、Skills、MCP 等能力管理
+
+Repo Review 的主要入口在 Repository / Repos 工作台及其审查组件中，不是 SettingsPage 的常规 tab。
 
 这比"把所有高级功能都塞进配置页"更清晰，也更符合当前系统的扩展面。
 

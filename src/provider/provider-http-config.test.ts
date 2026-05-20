@@ -4,6 +4,7 @@ import {
   buildProviderExtraConfigValue,
   buildProviderFetchHeaders,
   getProviderHttpConfig,
+  serializeProviderForClient,
 } from './provider-http-config.js';
 
 describe('provider-http-config', () => {
@@ -65,6 +66,46 @@ describe('provider-http-config', () => {
       codexApiMode: 'chat_completions',
       userAgent: 'NanoClaw/2.0',
       headers: { 'X-Client': 'portable' },
+    });
+  });
+
+  it('masks custom headers for client serialization', () => {
+    expect(
+      serializeProviderForClient({
+        extra_config: JSON.stringify({
+          headers: {
+            Authorization: 'Bearer secret-token',
+            'X-Api-Key': 'abcd',
+          },
+        }),
+      }).custom_headers,
+    ).toEqual({
+      Authorization: '****oken',
+      'X-Api-Key': '****',
+    });
+  });
+
+  it('preserves existing header secrets when client sends masked values back', () => {
+    const serialized = buildProviderExtraConfigValue(
+      {
+        custom_headers: {
+          Authorization: '****oken',
+          'X-Trace': 'new-trace',
+        },
+      },
+      JSON.stringify({
+        headers: {
+          Authorization: 'Bearer secret-token',
+          'X-Trace': 'old-trace',
+        },
+      }),
+    );
+
+    expect(JSON.parse(String(serialized))).toEqual({
+      headers: {
+        Authorization: 'Bearer secret-token',
+        'X-Trace': 'new-trace',
+      },
     });
   });
 });

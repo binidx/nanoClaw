@@ -35,6 +35,7 @@ function parseLimit(raw: unknown, fallback: number): number {
 
 export function registerImGroupRoutes(app: Express, opts: ImGroupRouteOptions): void {
   const guard = opts.requirePermission('im.view', 'conversation.view');
+  const writeGuard = opts.requirePermission('im.send', 'conversation.send');
   const manageGuard = opts.requirePermission('im.manage_groups');
 
   app.get('/api/im/conversations/:jid/members', guard, async (req, res) => {
@@ -151,7 +152,7 @@ export function registerImGroupRoutes(app: Express, opts: ImGroupRouteOptions): 
     }
   });
 
-  app.post('/api/im/groups/:jid/join-request', guard, async (req, res) => {
+  app.post('/api/im/groups/:jid/join-request', writeGuard, async (req, res) => {
     try {
       const userId = getTenantUserId(req);
       const jid = pr(req.params.jid);

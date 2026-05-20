@@ -160,3 +160,17 @@
 - 会话功能行补充 `src/db/tavern.ts`、`src/tavern/tavern-service.ts` 和 `src/runtime/runtime-dispatch-web-failure.test.ts`，标明 tavern persona 绑定、快照与 prompt 注入入口。
 - Soul 功能行补充 `src/routes/tavern-routes.ts`、`web/src/components/soul/TavernPersonasPanel.tsx`，明确 SoulPage 现在同时承载主灵魂与酒馆人格管理。
 - 后端路由速查新增 `src/routes/tavern-routes.ts`，会话管理路由补充“Web 新建酒馆会话绑定”语义，避免后续 agent 只查 `soul-routes` 而漏掉 tavern API。
+
+## [2026-05-20] audit | 全功能实现/文档一致性审查
+
+- IM 功能行补充 `src/routes/im-friend-routes.ts` 与 `src/routes/im-group-routes.ts`，明确好友和群管理已经从主 IM 路由拆分为稳定入口。
+- 多渠道功能行标注 `src/conversation/channel-connection-manager.ts` 尚未接入主运行时；当前生效路径仍是全局 `CHANNEL_INSTANCES` 与 `/api/channel-config`。
+- Agent Runner 功能行补齐 Codex MCP bridge、审批 route、system-read 和 conversation access support 入口。
+- MCP/Skills 功能行补齐 registry/public-library 路由和 `src/extension/registry-service.ts`，并把 AppsPageV2 作为 v2 前端入口。
+- CodeMap/Code Index 功能行补充 Project QA tab 与 `/api/code-index/:repositoryId/ask` 入口。
+- 将 feature map 元数据同步到当前已提交代码 `source_head_sha=ce638379e3cc4da8873c07070d8d42e90cd55630`；当前工作区仍有未提交前端改动，freshness 检查会继续提示相关脏文件。
+
+## [2026-05-20] fix | 全功能审查后并行修复同步
+
+- 同步记录本轮 Provider、Workflow、Share/Soul/Tavern/Live2D、IM/E2EE、多渠道、Agent Runner、记忆/知识库、启动恢复和审计落库相关修复后的当前代码基线。
+- 将 feature map 元数据同步到当前已提交代码 `source_head_sha=d5eb7924b9725bf740de921301b1a3fd96e32648`；当前工作区仍包含本轮未提交实现和文档改动，freshness 检查会继续列出脏文件作为提示。

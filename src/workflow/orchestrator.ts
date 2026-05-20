@@ -778,6 +778,15 @@ export class WorkflowOrchestrator {
     this.runningNodeIds.delete(node.id);
     this.abortControllers.delete(node.id);
 
+    if (abortController.signal.aborted) {
+      const latestRunNode = await db.getWorkflowRunNode(this.runId, node.id);
+      if (latestRunNode?.status === 'paused') {
+        this.eventBus.emit(this.runId, 'node_paused', { nodeId: node.id });
+        this.enqueueSchedule();
+        return;
+      }
+    }
+
     if (abortController.signal.aborted && this.runStatus !== 'running') {
       await db.updateWorkflowRunNode(runNode.id, {
         status: 'paused',

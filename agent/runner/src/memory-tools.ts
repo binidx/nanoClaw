@@ -45,6 +45,7 @@ export interface MemoryReadResult {
   lineStart: number;
   lineEnd: number;
   text: string;
+  userMemoryId?: string;
 }
 
 export interface MemorySaveResult {
@@ -90,6 +91,7 @@ interface RecentMemorySearchHit {
   path: string;
   lineStart: number;
   lineEnd: number;
+  snippet: string;
   query: string;
   rank: number;
   resultCount: number;
@@ -142,6 +144,7 @@ function rememberRecentMemorySearchHits(
       path: result.path,
       lineStart: result.lineStart,
       lineEnd: result.lineEnd,
+      snippet: result.snippet,
       query: normalizedQuery,
       rank: index + 1,
       resultCount: results.length,
@@ -400,6 +403,17 @@ function resolveScopeRoots(scope: MemoryScope): Array<Exclude<MemoryScope, 'all'
 
 function buildPathRef(scope: Exclude<MemoryScope, 'all'>, relPath: string): string {
   return `${scope}:${relPath}`;
+}
+
+function parseUserMemoryPathRef(pathRef: string): string | null {
+  const raw = String(pathRef || '').trim();
+  const prefix = 'user:memory/';
+  if (!raw.startsWith(prefix)) return null;
+  const memoryId = raw.slice(prefix.length).trim();
+  if (!memoryId || memoryId.includes('..') || memoryId.includes('/')) {
+    throw new Error(`Invalid user memory ref: ${raw}`);
+  }
+  return memoryId;
 }
 
 function toPortablePath(value: string): string {
@@ -684,6 +698,28 @@ export function readMemoryFile(
   pathRef: string,
   options?: { from?: number; lines?: number },
 ): MemoryReadResult {
+  const userMemoryId = parseUserMemoryPathRef(pathRef);
+  if (userMemoryId) {
+    const normalizedPath = `user:memory/${userMemoryId}`;
+    const recent = recentMemorySearchHits
+      .filter((entry) => entry.path === normalizedPath)
+      .sort((left, right) => right.matchedAtMs - left.matchedAtMs)[0];
+    if (!recent) {
+      throw new Error(
+        `User memory ref not found in recent search results: ${normalizedPath}. Run memory_search again first.`,
+      );
+    }
+    void touchUserMemoryRecallViaApi(userMemoryId);
+    return {
+      path: normalizedPath,
+      scope: 'group',
+      lineStart: 1,
+      lineEnd: 1,
+      text: formatNumberedLines([recent.snippet], 1),
+      userMemoryId,
+    };
+  }
+
   const resolved = resolveMemoryPathRef(pathRef);
   if (!fs.existsSync(resolved.absolutePath)) {
     throw new Error(`Memory file not found: ${resolved.pathRef}`);
@@ -716,20 +752,20 @@ export function saveMemoryNote(
     throw new Error(`Invalid memory scope: ${String(scope)}`);
   }
 
-  // Try per-user DB save first (non-blocking, best-effort)
-  const userIdEnv = String(process.env.NANOCLAW_USER_ID || '').trim();
-  if (userIdEnv) {
-    saveUserMemoryViaApi(content, {
-      scope: scope === 'global' ? 'global' : 'conversation',
-    }).catch(() => {});
-  }
-
   const disabledMessage = getMemoryWriteDisabledMessage(scope);
   if (disabledMessage) {
     throw new Error(disabledMessage);
   }
   if (scope === 'global' && process.env.NANOCLAW_IS_MAIN !== '1') {
     throw new Error('Global memory writes are only allowed in the main session.');
+  }
+
+  // Keep user-memory projection aligned with the file write authorization.
+  const userIdEnv = String(process.env.NANOCLAW_USER_ID || '').trim();
+  if (userIdEnv) {
+    saveUserMemoryViaApi(content, {
+      scope: scope === 'global' ? 'global' : 'conversation',
+    }).catch(() => {});
   }
 
   const rootDir = getScopeRoot(scope);

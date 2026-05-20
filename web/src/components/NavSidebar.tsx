@@ -9,6 +9,7 @@ import {
   IconChannel,
   IconChat,
   IconMoon,
+  IconMasks,
   IconPuzzle,
   IconSettings,
   IconStar,
@@ -219,7 +220,7 @@ export function NavSidebar({
             className={navItemClass}
             title={isCollapsed ? t('page.tavern') : undefined}
           >
-            <IconStar /> <span>{t('page.tavern')}</span>
+            <IconMasks /> <span>{t('page.tavern')}</span>
           </NavLink>
         )}
         {canAccessPage('knowledge') && (

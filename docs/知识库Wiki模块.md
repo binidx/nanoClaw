@@ -219,10 +219,11 @@ Wiki 页自身还有两类关系：
 
 - `knowledge_list`
 - `knowledge_search`
-- `knowledge_wiki_list`
 - `knowledge_wiki_read`
 - `knowledge_recent_events`
 - `knowledge_save_as_page`
+
+当前没有单独的 `knowledge_wiki_list` 工具；需要浏览 Wiki 结构时，先用 `knowledge_list` / `knowledge_search` 找入口，再用 `knowledge_wiki_read` 展开具体页面。
 
 推荐调用链是：
 
@@ -435,4 +436,3 @@ Wiki 页自身还有两类关系：
 - 摘要/关系：先看 `llm-enhancer.ts`
 - 查询质量：先看 `retrieval.ts`
 - Agent 消费方式：先看 `ipc-mcp-stdio.ts`
-

@@ -16,7 +16,7 @@ import {
 } from '../database/engine.js';
 import { isValidGroupFolder } from '../group-folder.js';
 import { logger } from '../logger.js';
-import { getCurrentUserId } from '../tenant/tenant-context.js';
+import { getCurrentUserId, SYSTEM_USER_ID } from '../tenant/tenant-context.js';
 import { buildIdentityMemoryDocumentRecord } from '../memory/identity-documents.js';
 import { buildDurableCandidateSummaryLines } from '../memory/promotion.js';
 import {
@@ -63,13 +63,25 @@ import { dba, eng, getSqliteRawDatabase, isSqlite } from './engine-access.js';
 import { createPlaceholders, estimateTokenCount, normalizeMemoryText } from './sql-utils.js';
 import { t } from '../i18n/index.js';
 
+function buildTaskOwnerScope(userId?: string): {
+  clause: string;
+  values: string[];
+} {
+  if (!userId) return { clause: '', values: [] };
+  return {
+    clause: ` AND (user_id = ? OR (user_id = ? AND created_by = ?))`,
+    values: [userId, SYSTEM_USER_ID, userId],
+  };
+}
+
 export async function createTask(
   task: Omit<ScheduledTask, 'last_run' | 'last_result'>,
 ): Promise<void> {
+  const userId = getCurrentUserId();
   await dba.prepare(
     `
-    INSERT INTO scheduled_tasks (id, title, group_folder, chat_jid, prompt, schedule_type, schedule_value, context_mode, next_run, retry_limit, retry_backoff_ms, failure_mode, consecutive_failures, last_error, status, created_at, updated_at, created_by, updated_by)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO scheduled_tasks (id, title, group_folder, chat_jid, prompt, schedule_type, schedule_value, context_mode, next_run, retry_limit, retry_backoff_ms, failure_mode, consecutive_failures, last_error, status, user_id, created_at, updated_at, created_by, updated_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `,
   ).run(
     task.id,
@@ -87,39 +99,57 @@ export async function createTask(
     Math.max(0, Number(task.consecutive_failures || 0)),
     task.last_error || null,
     task.status,
+    userId,
     task.created_at,
     task.created_at,
-    getCurrentUserId(),
-    getCurrentUserId(),
+    userId,
+    userId,
   );
 }
 
-export async function getTaskById(id: string): Promise<ScheduledTask | undefined> {
-  return await dba.prepare('SELECT * FROM scheduled_tasks WHERE id = ? AND deleted_at IS NULL').get(id) as
+export async function getTaskById(
+  id: string,
+  userId?: string,
+): Promise<ScheduledTask | undefined> {
+  const scope = buildTaskOwnerScope(userId);
+  return await dba.prepare(
+    `SELECT * FROM scheduled_tasks WHERE id = ? AND deleted_at IS NULL${scope.clause}`,
+  ).get(id, ...scope.values) as
     | ScheduledTask
     | undefined;
 }
 
-export async function getTasksForGroup(groupFolder: string): Promise<ScheduledTask[]> {
+export async function getTasksForGroup(
+  groupFolder: string,
+  userId?: string,
+): Promise<ScheduledTask[]> {
+  const scope = buildTaskOwnerScope(userId);
   return await dba
     .prepare(
-      'SELECT * FROM scheduled_tasks WHERE group_folder = ? AND deleted_at IS NULL ORDER BY created_at DESC',
+      `SELECT * FROM scheduled_tasks WHERE group_folder = ? AND deleted_at IS NULL${scope.clause} ORDER BY created_at DESC`,
     )
-    .all(groupFolder) as ScheduledTask[];
+    .all(groupFolder, ...scope.values) as ScheduledTask[];
 }
 
-export async function getTasksForChat(chatJid: string): Promise<ScheduledTask[]> {
+export async function getTasksForChat(
+  chatJid: string,
+  userId?: string,
+): Promise<ScheduledTask[]> {
+  const scope = buildTaskOwnerScope(userId);
   return await dba
     .prepare(
-      'SELECT * FROM scheduled_tasks WHERE chat_jid = ? AND deleted_at IS NULL ORDER BY created_at DESC',
+      `SELECT * FROM scheduled_tasks WHERE chat_jid = ? AND deleted_at IS NULL${scope.clause} ORDER BY created_at DESC`,
     )
-    .all(chatJid) as ScheduledTask[];
+    .all(chatJid, ...scope.values) as ScheduledTask[];
 }
 
-export async function getAllTasks(): Promise<ScheduledTask[]> {
+export async function getAllTasks(userId?: string): Promise<ScheduledTask[]> {
+  const scope = buildTaskOwnerScope(userId);
   return await dba
-    .prepare('SELECT * FROM scheduled_tasks WHERE deleted_at IS NULL ORDER BY created_at DESC')
-    .all() as ScheduledTask[];
+    .prepare(
+      `SELECT * FROM scheduled_tasks WHERE deleted_at IS NULL${scope.clause} ORDER BY created_at DESC`,
+    )
+    .all(...scope.values) as ScheduledTask[];
 }
 
 export interface TaskSnapshot {
@@ -196,6 +226,7 @@ export async function updateTask(
       | 'status'
     >
   >,
+  options?: { userId?: string },
 ): Promise<void> {
   const fields: string[] = [];
   const values: unknown[] = [];
@@ -255,21 +286,27 @@ export async function updateTask(
 
   if (fields.length === 0) return;
 
-  values.push(id);
+  const scope = buildTaskOwnerScope(options?.userId);
+  values.push(id, ...scope.values);
   await dba.prepare(
-    `UPDATE scheduled_tasks SET ${fields.join(', ')} WHERE id = ? AND deleted_at IS NULL`,
+    `UPDATE scheduled_tasks SET ${fields.join(', ')} WHERE id = ? AND deleted_at IS NULL${scope.clause}`,
   ).run(...values);
 }
 
-export async function deleteTask(id: string): Promise<void> {
-  // Delete child records first (FK constraint)
-  await dba.prepare('DELETE FROM task_run_logs WHERE task_id = ?').run(id);
+export async function deleteTask(
+  id: string,
+  options?: { userId?: string },
+): Promise<void> {
   const ts = new Date().toISOString();
-  await dba
+  const scope = buildTaskOwnerScope(options?.userId);
+  const result = await dba
     .prepare(
-      'UPDATE scheduled_tasks SET deleted_at = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL',
+      `UPDATE scheduled_tasks SET deleted_at = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL${scope.clause}`,
     )
-    .run(ts, ts, id);
+    .run(ts, ts, id, ...scope.values);
+  if (result.changes > 0) {
+    await dba.prepare('DELETE FROM task_run_logs WHERE task_id = ?').run(id);
+  }
 }
 
 export async function getDueTasks(): Promise<ScheduledTask[]> {
@@ -338,7 +375,7 @@ export async function updateTaskAfterRun(
   const now = new Date().toISOString();
   const nextStatus =
     input.status ?? (input.nextRun === null ? 'completed' : undefined);
-  updateTask(id, {
+  await updateTask(id, {
     next_run: input.nextRun,
     status: nextStatus,
     consecutive_failures: input.consecutiveFailures,

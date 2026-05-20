@@ -57,7 +57,7 @@ Workflow Workbench 是 Workteam 的图形化替代层。它把原先“智能体
 - 任务节点可直接绑定助手；执行时 worker 节点助手优先于角色节点助手，节点覆写继续优先于助手默认运行配置。
 - 跨节点消息默认进入延迟 transfer 队列；默认延迟为 15 秒，可通过工作流配置调整为 0 以兼容即时运行。
 - 节点 execution 事件在运行台中会按 turn/tool/approval/ask/reasoning 语义解析为可读 timeline，而不再只显示原始 JSON。
-- 任务节点必须绑定角色节点。
+- 任务节点可显式绑定角色节点；未绑定时后端使用隐藏 runtime role 兼容执行模型。
 - 任务输入由两部分组成：
   - 整图输入 `workflow_runs.input`
   - 上游节点或历史消息为该节点累积的消息上下文
@@ -82,7 +82,7 @@ Workflow Workbench 是 Workteam 的图形化替代层。它把原先“智能体
 `web/src/pages/WorkteamPage.tsx` 现在承载 Workflow Workbench：
 
 - 入口：工作流卡片库；点击卡片后在同一页面进入详情画布，不做页面跳转
-- 左栏：新建入口、节点模板和标准图模板
+- 左栏：新建入口和画布工具；当前页面支持添加 worker、连线、拖拽、重连和自动排版
 - 中央：可拖拽节点画布、框选多节点、批量拖动、自动排版、消息流连线与连线重连
 - 右栏：节点 / 连线属性面板
 - 底部：运行列表、整图输入、整图输出、pending transfer 队列、产物交付、基于 dialogue session / message frame 的讨论边摘要与边级消息面板、支持一键回填为节点输入的节点讨论历史，以及节点独立 execution / event 时间线
@@ -95,4 +95,4 @@ Workflow Workbench 是 Workteam 的图形化替代层。它把原先“智能体
 - 旧 Workteam 现已提供 `POST /api/workteam/:id/migrate-to-workflow` 迁移入口，可将 team/agent/task 结构转换为 workflow 定义并复制仓库绑定。
 - `web-server` 不再注册旧 Workteam 主 CRUD / run 路由；旧模块仅保留迁移与 runner-profile 辅助接口。
 - 仓库绑定面板和仓库关系展示已经 workflow 化，主仓库绑定与 runner-profile 配置以 workflow 作为 owner 进行展示和编辑。
-- 左侧模板库已支持一键插入角色节点、任务节点和标准图模板（如 SDLC Lite、Analysis -> Execute -> Summarize、Debate + Arbiter）。
+- 新建 workflow 默认 seed 固定四节点 pipeline；左侧标准图模板库（如 SDLC Lite、Analysis -> Execute -> Summarize、Debate + Arbiter）不属于当前已落地入口。

@@ -94,7 +94,11 @@ describe('conversation-admin-support', () => {
     });
 
     expect(
-      await support.writeApprovalDecisionForConversation('jid', 'a1', 'allow-once'),
+      await support.writeApprovalDecisionForConversation(
+        'jid',
+        'a1',
+        'allow-once',
+      ),
     ).toEqual(request);
     expect(fs.existsSync(path.join(responsesDir, 'a1.json'))).toBe(true);
     expect(
@@ -132,10 +136,18 @@ describe('conversation-admin-support', () => {
       logger: { warn: vi.fn() },
     });
 
-    await support.writeApprovalDecisionForConversation('jid', 'a1', 'allow-once');
-    expect(support.readActiveRuntimeApprovalPatchesForConversation('jid')).toHaveLength(1);
+    await support.writeApprovalDecisionForConversation(
+      'jid',
+      'a1',
+      'allow-once',
+    );
+    expect(
+      support.readActiveRuntimeApprovalPatchesForConversation('jid'),
+    ).toHaveLength(1);
     support.clearRuntimeApprovalPatchesForConversation('jid');
-    expect(support.readActiveRuntimeApprovalPatchesForConversation('jid')).toEqual([]);
+    expect(
+      support.readActiveRuntimeApprovalPatchesForConversation('jid'),
+    ).toEqual([]);
   });
 
   it('does not persist runtime patches for current_tool_call scope', async () => {
@@ -164,7 +176,45 @@ describe('conversation-admin-support', () => {
       'allow-once',
       'current_tool_call',
     );
-    expect(support.readActiveRuntimeApprovalPatchesForConversation('jid')).toEqual([]);
+    expect(
+      support.readActiveRuntimeApprovalPatchesForConversation('jid'),
+    ).toEqual([]);
+  });
+
+  it('treats DirectoryAccess approvals as current tool call only', async () => {
+    const request: PendingApprovalRecord = {
+      id: 'a1',
+      toolCallId: 'tool-1',
+      toolName: 'DirectoryAccess',
+      command: 'access /tmp/outside',
+      createdAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    };
+    fs.writeFileSync(
+      path.join(requestsDir, 'a1.json'),
+      JSON.stringify(request),
+    );
+
+    const support = createConversationAdminSupport({
+      getRegisteredGroupByJid: () => ({ folder: 'group-1' }) as any,
+      resolveGroupIpcPathEntry: () => path.join(tempDir, 'ipc'),
+      logger: { warn: vi.fn() },
+    });
+
+    await support.writeApprovalDecisionForConversation(
+      'jid',
+      'a1',
+      'allow-once',
+      'current_runtime',
+    );
+
+    expect(
+      support.readActiveRuntimeApprovalPatchesForConversation('jid'),
+    ).toEqual([]);
+    const response = JSON.parse(
+      fs.readFileSync(path.join(responsesDir, 'a1.json'), 'utf8'),
+    ) as { runtimeApprovalPatch?: { scope?: string } };
+    expect(response.runtimeApprovalPatch?.scope).toBe('current_tool_call');
   });
 
   it('summarizes runtime approval patches without treating them as persistent policy', () => {

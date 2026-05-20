@@ -63,6 +63,7 @@ MCP 把外部工具或服务接入运行时。v2 支持：
 | GET | `/api/user/mcp-servers/mine` | 仅列出自己的 |
 | POST | `/api/user/mcp-servers` | 创建 |
 | POST | `/api/user/mcp-servers/ai-generate` | AI 生成并安装用户私有 MCP |
+| POST | `/api/user/mcp-servers/import-json` | 从 JSON 配置导入 MCP，兼容 Cursor / Claude 风格 |
 | POST | `/api/user/mcp-servers/import-path` | 从本地目录或入口文件导入 MCP |
 | PUT | `/api/user/mcp-servers/:id` | 更新 |
 | DELETE | `/api/user/mcp-servers/:id` | 删除 |
@@ -133,7 +134,7 @@ Skills 是 AI 可读的 Markdown 指令集合。v2 支持：
 | GET | `/api/registry/catalog` | 查询注册表目录（支持 type/search/refresh） |
 | POST | `/api/registry/install` | 从注册表安装条目 |
 
-注册表服务：`src/registry-service.ts`
+注册表服务：`src/extension/registry-service.ts`
 路由：`src/routes/registry-routes.ts`
 
 说明：
@@ -143,6 +144,8 @@ Skills 是 AI 可读的 Markdown 指令集合。v2 支持：
 - `public-library` 仍只聚合用户主动分享出来的 `shared` 内容，语义不同于商店。
 - `NANOCLAW_REGISTRY_CATALOG_URLS` 支持同时配置远程 JSON catalog 和本地 skill 目录。
 - 对 `/proj/openclaw`，推荐直接挂本地 `skills` / `extensions` 目录作为 skill 源，而不是假设存在 NanoClaw 兼容的远程 registry JSON。
+
+注意：上面的 Agent Reach 内置源属于 legacy extension marketplace 配置路径；v2 `/api/admin/marketplace-sources` / `/api/marketplace-sources` 当前只读取 DB 中的管理员市场源，不会自动把 legacy 内置源并入该列表。
 
 ## AI 访问方案
 
@@ -156,9 +159,11 @@ AI Agent 需要读取本地 `.md` 文件。方案采用 **启动时重建 + CRUD
    - `data/shared/skills/{id}/SKILL.md`（共享项）
    - AI 生成或本地导入 MCP 的附加文件保存在对应用户 MCP 目录中，例如 `data/users/{user_id}/mcp-servers/{id}/package/*`
    - 本地导入 Skill 的附加文件保存在对应用户 Skill 目录中，例如 `data/users/{user_id}/skills/{id}/*`
-3. 每次 CRUD 操作同步更新 DB 和本地文件
+3. 每次 CRUD 操作以 DB 为 source of truth，并 best-effort 同步本地文件；如果文件同步失败，当前实现记录 warning 而不是回滚 DB
 4. Agent 进程通过 `agent-runner-spawn.ts` 注入用户专属 MCP
 5. Agent 进程通过 `agent-runner-mounts.ts` 挂载用户专属 + 共享 Skills
+
+`skills-engine/` 是独立的项目文件变更引擎，用于 apply/manifest/state/lock 等能力；它不是用户级 Skill CRUD 的执行路径。
 
 ## 数据迁移
 
@@ -173,15 +178,16 @@ v1 到 v2 的迁移在 `src/migration/mcp-skills-migration.ts` 中：
 
 ## 前端
 
-v2 前端使用 `AppsPageV2.tsx`，包含三个标签：
+v2 前端使用 `AppsPageV2.tsx`，当前包含两个主标签：
 
 - **我的应用**：卡片网格，支持状态/类型过滤，创建/编辑抽屉，本地路径导入，显示 capability 与 health 状态，并支持 AI 生成 MCP
-- **公共库**：搜索 + 类型过滤 + 安装
-- **市场源管理**：管理员可见，CRUD 市场源
+- **商店**：聚合 registry、用户共享内容和管理员市场源管理入口；管理员市场源管理在商店内通过按钮展开
 
 ## 兼容性
 
 旧的 `/api/managed-mcp-servers` 和 `/api/managed-skills` API 仍然可用（`runtime-customization-routes.ts`），实现渐进迁移。
+
+需要区分两套安装路径：`/api/registry/install` 会创建用户级私有 MCP/Skill 副本；legacy `/api/extensions/*` 安装仍写全局 managed skills/MCP 和 config 安装记录，不等同于 v2 用户隔离模型。
 
 ## 风险边界
 

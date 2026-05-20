@@ -682,43 +682,6 @@ export function registerConversationAdminRoutes(
         ),
       );
 
-      if (
-        decision === 'allow-once' &&
-        request.toolName === 'DirectoryAccess' &&
-        request.command?.startsWith('access ') &&
-        opts.updateConversationAccessPolicy
-      ) {
-        const approvedDir = request.command.slice('access '.length).trim();
-        if (approvedDir) {
-          try {
-            const group = await getRegisteredGroup(jid);
-            const convPolicy = group?.agentConfig?.accessPolicy;
-            const fallback = await opts.getDefaultConversationAccessPolicy();
-            const existingDirs: string[] =
-              convPolicy?.directories ?? fallback?.directories ?? [];
-            const mode =
-              convPolicy?.mode ?? fallback?.mode ?? 'allowlist';
-            if (!existingDirs.includes(approvedDir)) {
-              await Promise.resolve(
-                opts.updateConversationAccessPolicy(jid, {
-                  mode,
-                  directories: [...existingDirs, approvedDir],
-                }),
-              );
-              logger.info(
-                { jid, directory: approvedDir },
-                'Auto-added directory to access policy via approval',
-              );
-            }
-          } catch (autoAddErr) {
-            logger.warn(
-              { err: autoAddErr, jid },
-              'Failed to auto-add directory from approval',
-            );
-          }
-        }
-      }
-
       const webChannel = getWebChannel();
       if (webChannel) {
         webChannel.notifyApprovalResolved(jid, {

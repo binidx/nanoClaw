@@ -71,9 +71,12 @@ export function registerTaskSessionRoutes(
 
   app.get('/api/tasks', viewGuard, async (req, res) => {
     try {
+      const userId = getTenantUserId(req);
       const chatJid =
         typeof req.query.chat_jid === 'string' ? req.query.chat_jid : '';
-      const tasks = chatJid ? await getTasksForChat(chatJid) : await getAllTasks();
+      const tasks = chatJid
+        ? await getTasksForChat(chatJid, userId)
+        : await getAllTasks(userId);
       const taskIds = [...new Set(tasks.map((task) => task.id))];
       const chatJids = [...new Set(tasks.map((task) => task.chat_jid))];
       const registeredGroupsByChatJid = new Map(
@@ -85,7 +88,7 @@ export function registerTaskSessionRoutes(
       );
       const conversationNames = await getConversationDisplayNames(
         chatJids,
-        getTenantUserId(req),
+        userId,
       );
       const latestRunMap = new Map(
         (await getLatestTaskRunLogsForTaskIds(taskIds)).map((log) => [
@@ -211,8 +214,9 @@ export function registerTaskSessionRoutes(
 
   app.patch('/api/tasks/:id', manageGuard, async (req, res) => {
     try {
+      const userId = getTenantUserId(req);
       opts.auditMutation(req, 'tasks.update', 'normal');
-      const task = await getTaskById(paramString(req.params.id));
+      const task = await getTaskById(paramString(req.params.id), userId);
       if (!task) {
         res.status(404).json({ error: 'Task not found' });
         return;
@@ -257,28 +261,32 @@ export function registerTaskSessionRoutes(
         nextScheduleValue,
       );
 
-      await updateTask(task.id, {
-        title: nextTitle,
-        prompt: nextPrompt,
-        schedule_type: nextScheduleType,
-        schedule_value: nextScheduleValue,
-        context_mode: nextContextMode,
-        next_run: nextRun,
-        retry_limit:
-          retryLimit === undefined
-            ? task.retry_limit
-            : Math.max(0, Number(retryLimit || 0)),
-        retry_backoff_ms:
-          retryBackoffMs === undefined
-            ? task.retry_backoff_ms
-            : Math.max(1000, Number(retryBackoffMs || 300000)),
-        failure_mode:
-          failureMode === undefined
-            ? task.failure_mode
-            : failureMode === 'pause'
-              ? 'pause'
-              : 'continue',
-      });
+      await updateTask(
+        task.id,
+        {
+          title: nextTitle,
+          prompt: nextPrompt,
+          schedule_type: nextScheduleType,
+          schedule_value: nextScheduleValue,
+          context_mode: nextContextMode,
+          next_run: nextRun,
+          retry_limit:
+            retryLimit === undefined
+              ? task.retry_limit
+              : Math.max(0, Number(retryLimit || 0)),
+          retry_backoff_ms:
+            retryBackoffMs === undefined
+              ? task.retry_backoff_ms
+              : Math.max(1000, Number(retryBackoffMs || 300000)),
+          failure_mode:
+            failureMode === undefined
+              ? task.failure_mode
+              : failureMode === 'pause'
+                ? 'pause'
+                : 'continue',
+        },
+        { userId },
+      );
       opts.refreshTaskSnapshots?.();
       res.json({
         ok: true,
@@ -313,6 +321,7 @@ export function registerTaskSessionRoutes(
 
   app.post('/api/tasks/:id/run', manageGuard, async (req, res) => {
     try {
+      const userId = getTenantUserId(req);
       opts.auditMutation(req, 'tasks.run', 'normal');
       if (!opts.runTaskNow) {
         res
@@ -320,7 +329,12 @@ export function registerTaskSessionRoutes(
           .json({ error: 'Manual task execution is not available' });
         return;
       }
-      const result = await Promise.resolve(opts.runTaskNow(paramString(req.params.id)));
+      const task = await getTaskById(paramString(req.params.id), userId);
+      if (!task) {
+        res.status(404).json({ error: 'Task not found' });
+        return;
+      }
+      const result = await Promise.resolve(opts.runTaskNow(task.id));
       if (!result.ok) {
         res
           .status(result.error === 'Task not found' ? 404 : 400)
@@ -338,13 +352,14 @@ export function registerTaskSessionRoutes(
 
   app.post('/api/tasks/:id/pause', manageGuard, async (req, res) => {
     try {
+      const userId = getTenantUserId(req);
       opts.auditMutation(req, 'tasks.pause', 'normal');
-      const task = await getTaskById(paramString(req.params.id));
+      const task = await getTaskById(paramString(req.params.id), userId);
       if (!task) {
         res.status(404).json({ error: 'Task not found' });
         return;
       }
-      await updateTask(task.id, { status: 'paused' });
+      await updateTask(task.id, { status: 'paused' }, { userId });
       opts.refreshTaskSnapshots?.();
       res.json({ ok: true });
     } catch (err) {
@@ -355,13 +370,14 @@ export function registerTaskSessionRoutes(
 
   app.post('/api/tasks/:id/resume', manageGuard, async (req, res) => {
     try {
+      const userId = getTenantUserId(req);
       opts.auditMutation(req, 'tasks.resume', 'normal');
-      const task = await getTaskById(paramString(req.params.id));
+      const task = await getTaskById(paramString(req.params.id), userId);
       if (!task) {
         res.status(404).json({ error: 'Task not found' });
         return;
       }
-      await updateTask(task.id, { status: 'active' });
+      await updateTask(task.id, { status: 'active' }, { userId });
       opts.refreshTaskSnapshots?.();
       res.json({ ok: true });
     } catch (err) {
@@ -372,13 +388,14 @@ export function registerTaskSessionRoutes(
 
   app.delete('/api/tasks/:id', manageGuard, async (req, res) => {
     try {
+      const userId = getTenantUserId(req);
       opts.auditMutation(req, 'tasks.delete', 'normal');
-      const task = await getTaskById(paramString(req.params.id));
+      const task = await getTaskById(paramString(req.params.id), userId);
       if (!task) {
         res.status(404).json({ error: 'Task not found' });
         return;
       }
-      await deleteTask(task.id);
+      await deleteTask(task.id, { userId });
       opts.refreshTaskSnapshots?.();
       res.json({ ok: true });
     } catch (err) {

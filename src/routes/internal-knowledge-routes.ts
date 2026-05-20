@@ -1,6 +1,12 @@
 import type { Express, RequestHandler } from 'express';
 
-import { dba, getKnowledgeBase, listKnowledgeBases } from '../db.js';
+import {
+  dba,
+  getAssistant,
+  getKnowledgeBase,
+  getRegisteredGroup,
+  listKnowledgeBases,
+} from '../db.js';
 import { logger } from '../logger.js';
 import { searchKnowledge } from '../knowledge/retrieval.js';
 import { listUserKnowledgeBindings } from '../knowledge/user-kb-service.js';
@@ -21,21 +27,50 @@ function isKbVisibleToUser(
   return kb.visibility === 'shared';
 }
 
+async function resolveAssistantBoundKbIds(chatJid?: string): Promise<Set<string>> {
+  const normalizedChatJid = String(chatJid || '').trim();
+  if (!normalizedChatJid) return new Set();
+  const group = await getRegisteredGroup(normalizedChatJid);
+  const assistantId = group?.assistantId?.trim();
+  if (!assistantId) return new Set();
+  const assistant = await getAssistant(assistantId);
+  if (!assistant?.enabled) return new Set();
+  return new Set(
+    assistant.config.kbIds
+      .map((id) => id.trim())
+      .filter(Boolean),
+  );
+}
+
+function isKbAccessibleToAgent(
+  kb: { id: string; user_id?: string | null; visibility?: string | null },
+  userId: string,
+  assistantBoundKbIds: Set<string>,
+): boolean {
+  return isKbVisibleToUser(kb, userId) || assistantBoundKbIds.has(kb.id);
+}
+
 async function resolveAgentAccessibleKbs(
   userId: string,
+  chatJid?: string,
 ): Promise<Array<{
   id: string;
   user_enabled: number;
+  assistant_bound: number;
   enabled: number;
   user_id: string;
   visibility: string;
 }>> {
   const bases = await listKnowledgeBases();
-  const visible = bases.filter((kb) => isKbVisibleToUser(kb, userId));
+  const assistantBoundKbIds = await resolveAssistantBoundKbIds(chatJid);
+  const visible = bases.filter((kb) =>
+    isKbAccessibleToAgent(kb, userId, assistantBoundKbIds),
+  );
   if (userId === SYSTEM_USER_ID) {
     return visible.map((kb) => ({
       ...kb,
       user_enabled: 1,
+      assistant_bound: assistantBoundKbIds.has(kb.id) ? 1 : 0,
     }));
   }
 
@@ -45,8 +80,12 @@ async function resolveAgentAccessibleKbs(
     .map((kb) => ({
       ...kb,
       user_enabled: bindingMap.get(kb.id) ?? 0,
+      assistant_bound: assistantBoundKbIds.has(kb.id) ? 1 : 0,
     }))
-    .filter((kb) => kb.enabled === 1 && (kb.user_enabled === 1 || kb.visibility === 'shared'));
+    .filter((kb) =>
+      kb.enabled === 1 &&
+      (kb.user_enabled === 1 || kb.visibility === 'shared' || kb.assistant_bound === 1),
+    );
 }
 
 export function registerInternalKnowledgeRoutes(
@@ -63,7 +102,8 @@ export function registerInternalKnowledgeRoutes(
           res.status(400).json({ error: 'user_id is required' });
           return;
         }
-        res.json(await resolveAgentAccessibleKbs(userId));
+        const chatJid = String(req.query.chat_jid || req.query.chatJid || '').trim();
+        res.json(await resolveAgentAccessibleKbs(userId, chatJid));
       } catch (err) {
         logger.error({ err }, 'Failed to list internal knowledge bases');
         res.status(500).json({ error: 'Internal error' });
@@ -86,6 +126,7 @@ export function registerInternalKnowledgeRoutes(
           res.status(400).json({ error: 'user_id is required' });
           return;
         }
+        const chatJid = String(req.body?.chat_jid || req.body?.chatJid || '').trim();
 
         let topK: number | undefined;
         const topKRaw = req.body?.top_k;
@@ -115,7 +156,7 @@ export function registerInternalKnowledgeRoutes(
           minScore = parsed;
         }
 
-        const accessibleKbs = await resolveAgentAccessibleKbs(userId);
+        const accessibleKbs = await resolveAgentAccessibleKbs(userId, chatJid);
         const visibleIds = accessibleKbs.map((kb) => kb.id);
 
         const kbIdsBody = req.body?.kb_ids;
@@ -157,8 +198,10 @@ export function registerInternalKnowledgeRoutes(
           res.status(400).json({ error: 'user_id is required' });
           return;
         }
+        const chatJid = String(req.query.chat_jid || req.query.chatJid || '').trim();
         const kb = await getKnowledgeBase(kbId);
-        if (!kb || !isKbVisibleToUser(kb, userId)) {
+        const assistantBoundKbIds = await resolveAssistantBoundKbIds(chatJid);
+        if (!kb || !isKbAccessibleToAgent(kb, userId, assistantBoundKbIds)) {
           res.status(404).json({ error: t('knowledge.notFound', {}, req.locale) });
           return;
         }
@@ -235,6 +278,7 @@ export function registerInternalKnowledgeRoutes(
           res.status(400).json({ error: 'page_id or (kb_id and title) is required' });
           return;
         }
+        const chatJid = String(req.query.chat_jid || req.query.chatJid || '').trim();
 
         const row = (await dba.prepare(
           pageId
@@ -247,7 +291,8 @@ export function registerInternalKnowledgeRoutes(
         }
         const pageKbId = String(row.kb_id ?? '');
         const kb = await getKnowledgeBase(pageKbId);
-        if (!kb || !isKbVisibleToUser(kb, userId)) {
+        const assistantBoundKbIds = await resolveAssistantBoundKbIds(chatJid);
+        if (!kb || !isKbAccessibleToAgent(kb, userId, assistantBoundKbIds)) {
           res.status(404).json({ error: t('knowledge.wikiPageNotFound', {}, req.locale) });
           return;
         }
@@ -274,8 +319,10 @@ export function registerInternalKnowledgeRoutes(
           res.status(400).json({ error: 'user_id is required' });
           return;
         }
+        const chatJid = String(req.query.chat_jid || req.query.chatJid || '').trim();
         const kb = await getKnowledgeBase(kbId);
-        if (!kb || !isKbVisibleToUser(kb, userId)) {
+        const assistantBoundKbIds = await resolveAssistantBoundKbIds(chatJid);
+        if (!kb || !isKbAccessibleToAgent(kb, userId, assistantBoundKbIds)) {
           res.status(404).json({ error: t('knowledge.notFound', {}, req.locale) });
           return;
         }

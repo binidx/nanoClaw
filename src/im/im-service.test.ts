@@ -2,8 +2,11 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import { _initTestDatabase, dba } from '../db.js';
 import {
+  createGroupConversation,
+  createImJoinRequest,
   listImEventsAfter,
   recordImEventWithSeq,
+  searchPublicGroups,
   sendImMessageWithReply,
   updateImReadCursor,
 } from './im-service.js';
@@ -11,6 +14,7 @@ import {
   getEncryptedEnvelopesForMessages,
   listRoomKeysForDevice,
   saveEncryptedMessageEnvelope,
+  upsertDeviceKey,
   upsertRoomKeys,
 } from './im-social-service.js';
 
@@ -115,6 +119,8 @@ describe('IM event sequencing', () => {
 
   it('scopes wrapped room keys to the target user device', async () => {
     const jid = 'im_grp_room-4';
+    await upsertDeviceKey('user-a', 'device-a', '{"public":"a"}');
+    await upsertDeviceKey('user-b', 'device-b', '{"public":"b"}');
     await upsertRoomKeys(jid, [
       {
         userId: 'user-a',
@@ -137,5 +143,47 @@ describe('IM event sequencing', () => {
       device_id: 'device-a',
       wrapped_key: '{"ciphertext":"a"}',
     });
+  });
+
+  it('rejects room keys for devices owned by a different user', async () => {
+    const jid = 'im_grp_room-4b';
+    await upsertDeviceKey('user-a', 'device-a', '{"public":"a"}');
+
+    await expect(
+      upsertRoomKeys(jid, [
+        {
+          userId: 'user-b',
+          deviceId: 'device-a',
+          wrappedKey: '{"ciphertext":"wrong-user"}',
+          algorithm: 'ECDH-P256+HKDF-SHA256+A256GCM',
+        },
+      ]),
+    ).rejects.toThrow('Room key target device does not belong to target user');
+
+    await expect(
+      listRoomKeysForDevice(jid, 'user-b', 'device-a'),
+    ).resolves.toHaveLength(0);
+  });
+
+  it('excludes dissolved public groups from search and join requests', async () => {
+    const jid = await createGroupConversation(
+      'owner-user',
+      'Archived Public Room',
+      [],
+      'public',
+    );
+    await expect(searchPublicGroups('Archived')).resolves.toHaveLength(1);
+
+    const deletedAt = '2026-05-03T01:00:00.000Z';
+    await dba
+      .prepare(
+        `UPDATE im_chat_meta SET deleted_at = ?, updated_at = ? WHERE chat_jid = ?`,
+      )
+      .run(deletedAt, deletedAt, jid);
+
+    await expect(searchPublicGroups('Archived')).resolves.toEqual([]);
+    await expect(
+      createImJoinRequest(jid, 'applicant-user', 'please add me'),
+    ).rejects.toThrow('Group not found');
   });
 });

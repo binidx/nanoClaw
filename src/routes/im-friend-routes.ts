@@ -33,6 +33,7 @@ export function registerImFriendRoutes(
   opts: ImFriendRouteOptions,
 ): void {
   const guard = opts.requirePermission('im.view', 'conversation.view');
+  const writeGuard = opts.requirePermission('im.send', 'conversation.send');
 
   app.get('/api/im/users/search', guard, async (req, res) => {
     try {
@@ -71,7 +72,7 @@ export function registerImFriendRoutes(
     }
   });
 
-  app.post('/api/im/friends/requests', guard, async (req, res) => {
+  app.post('/api/im/friends/requests', writeGuard, async (req, res) => {
     try {
       const userId = getTenantUserId(req);
       const body = req.body as { toUserId?: string; message?: string };
@@ -130,7 +131,7 @@ export function registerImFriendRoutes(
     }
   });
 
-  app.post('/api/im/friends/requests/:id/accept', guard, async (req, res) => {
+  app.post('/api/im/friends/requests/:id/accept', writeGuard, async (req, res) => {
     try {
       const userId = getTenantUserId(req);
       await acceptFriendRequest(pr(req.params.id), userId);
@@ -145,7 +146,7 @@ export function registerImFriendRoutes(
     }
   });
 
-  app.post('/api/im/friends/requests/:id/reject', guard, async (req, res) => {
+  app.post('/api/im/friends/requests/:id/reject', writeGuard, async (req, res) => {
     try {
       const userId = getTenantUserId(req);
       await rejectFriendRequest(pr(req.params.id), userId);
@@ -160,7 +161,7 @@ export function registerImFriendRoutes(
     }
   });
 
-  app.delete('/api/im/friends/:friendId', guard, async (req, res) => {
+  app.delete('/api/im/friends/:friendId', writeGuard, async (req, res) => {
     try {
       const userId = getTenantUserId(req);
       await removeFriend(userId, pr(req.params.friendId));

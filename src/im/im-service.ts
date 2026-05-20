@@ -632,6 +632,7 @@ export async function searchPublicGroups(
     FROM im_chat_meta meta
     WHERE meta.chat_type = 'group'
       AND meta.visibility = 'public'
+      AND meta.deleted_at IS NULL
       AND ${nameLikeSql}
     ORDER BY meta.name ASC
     LIMIT ?
@@ -647,7 +648,7 @@ export async function createImJoinRequest(
 ): Promise<ImJoinRequest> {
   const meta = (await dba
     .prepare(
-      `SELECT chat_type, visibility FROM im_chat_meta WHERE chat_jid = ? LIMIT 1`,
+      `SELECT chat_type, visibility FROM im_chat_meta WHERE chat_jid = ? AND deleted_at IS NULL LIMIT 1`,
     )
     .get(chatJid)) as { chat_type: string; visibility: string } | undefined;
   if (!meta || meta.chat_type !== 'group') {

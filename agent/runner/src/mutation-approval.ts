@@ -113,15 +113,31 @@ export async function requestDirectoryAccessApproval(input: {
     canWhitelist: false,
   });
   if (decision === 'allow-once') {
+    const previousRaw = process.env.NANOCLAW_ALLOWED_DIRS;
     const raw = process.env.NANOCLAW_ALLOWED_DIRS;
     let dirs: string[] = [];
     try {
-      dirs = raw ? JSON.parse(raw) : [];
-    } catch { /* empty */ }
-    if (!dirs.includes(input.targetPath)) {
-      dirs.push(input.targetPath);
-      process.env.NANOCLAW_ALLOWED_DIRS = JSON.stringify(dirs);
+      const parsed = raw ? JSON.parse(raw) : [];
+      dirs = Array.isArray(parsed)
+        ? parsed.filter((entry): entry is string => typeof entry === 'string')
+        : [];
+    } catch {
+      dirs = [];
     }
+    if (dirs.includes(input.targetPath)) {
+      return decision;
+    }
+    const nextRaw = JSON.stringify([...dirs, input.targetPath]);
+    process.env.NANOCLAW_ALLOWED_DIRS = nextRaw;
+    const timeout = setTimeout(() => {
+      if (process.env.NANOCLAW_ALLOWED_DIRS !== nextRaw) return;
+      if (typeof previousRaw === 'string') {
+        process.env.NANOCLAW_ALLOWED_DIRS = previousRaw;
+      } else {
+        delete process.env.NANOCLAW_ALLOWED_DIRS;
+      }
+    }, 0);
+    timeout.unref?.();
   }
   return decision;
 }

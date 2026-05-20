@@ -30,6 +30,7 @@ import {
 import { getTenantUserId } from '../tenant/tenant-request.js';
 import { SYSTEM_USER_ID } from '../tenant/tenant-context.js';
 import { auditAdminAction, AUDIT_ACTIONS } from '../auth/audit-middleware.js';
+import { encryptValue, maskApiKey } from '../crypto.js';
 import { logger } from '../logger.js';
 import {
   buildProviderExtraConfigValue,
@@ -83,7 +84,7 @@ export interface AdminSettingsRouteOptions {
 async function buildMaskedProviders() {
   return (await getAllSystemProviders()).map((provider) => ({
     ...serializeProviderForClient(provider),
-    api_key: provider.api_key ? `****${provider.api_key.slice(-4)}` : null,
+    api_key: provider.api_key ? maskApiKey(provider.api_key) : null,
   }));
 }
 
@@ -579,7 +580,7 @@ export function registerAdminSettingsRoutes(
         alias,
         type,
         capability,
-        api_key: api_key || null,
+        api_key: api_key ? encryptValue(api_key) : null,
         base_url: base_url || null,
         model: model || null,
         dimensions: numericDimensions,
@@ -670,7 +671,7 @@ export function registerAdminSettingsRoutes(
       if (type !== undefined) updates.type = type;
       if (capabilityRaw !== undefined) updates.capability = nextCapability;
       if (typeof api_key === 'string' && !/\*{4,}/.test(api_key)) {
-        updates.api_key = api_key;
+        updates.api_key = api_key ? encryptValue(api_key) : null;
       }
       if (base_url !== undefined) updates.base_url = base_url;
       if (model !== undefined) updates.model = model;

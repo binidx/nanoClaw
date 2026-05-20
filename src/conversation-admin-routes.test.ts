@@ -502,6 +502,62 @@ describe('conversation admin routes', () => {
     });
   });
 
+  it('does not persist DirectoryAccess allow-once approvals into conversation policy', async () => {
+    const writeApprovalDecisionForConversation = vi.fn(() => ({
+      id: 'a1',
+      toolCallId: 'tool-1',
+      toolName: 'DirectoryAccess',
+      command: 'access /tmp/outside',
+    }));
+    const updateConversationAccessPolicy = vi.fn();
+    const app = express();
+    app.use(express.json());
+    registerConversationAdminRoutes(app, {
+      requirePermission: allowAllRequirePermission,
+      auditMutation: vi.fn(),
+      readPendingApprovalsForConversation: vi.fn(() => []),
+      readActiveRuntimeApprovalPatchesForConversation: vi.fn(() => []),
+      writeApprovalDecisionForConversation,
+      updateConversationAccessPolicy,
+      resetConversationRuntime: vi.fn(),
+      clearRuntimeApprovalPatchesForConversation: vi.fn(),
+      clearCodexConversationState: vi.fn(),
+      getDefaultConversationAccessPolicy: vi.fn(() => ({
+        mode: 'allowlist' as const,
+        directories: [],
+      })),
+      normalizeAccessPolicyInput: vi.fn(() => ({
+        mode: 'allowlist' as const,
+        directories: [],
+      })),
+      normalizeAllowedDirectoriesInput: vi.fn(() => []),
+    });
+
+    await withServer(app, async (baseUrl) => {
+      const response = await fetch(
+        `${baseUrl}/api/conversations/${encodeURIComponent('web:test')}/approvals/a1`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            decision: 'allow-once',
+            scope: 'current_runtime',
+          }),
+        },
+      );
+
+      expect(response.status).toBe(200);
+    });
+
+    expect(writeApprovalDecisionForConversation).toHaveBeenCalledWith(
+      'web:test',
+      'a1',
+      'allow-once',
+      'current_runtime',
+    );
+    expect(updateConversationAccessPolicy).not.toHaveBeenCalled();
+  });
+
   it('rejects per-conversation directory overrides for assistant-managed chats', async () => {
     updateConversationMeta.mockReset();
     const app = express();
@@ -526,9 +582,11 @@ describe('conversation admin routes', () => {
         value && typeof value === 'object'
           ? {
               mode: 'allowlist' as const,
-              directories: Array.isArray((value as { directories?: unknown }).directories)
-                ? ((value as { directories: unknown[] }).directories.filter((entry) =>
-                    typeof entry === 'string',
+              directories: Array.isArray(
+                (value as { directories?: unknown }).directories,
+              )
+                ? ((value as { directories: unknown[] }).directories.filter(
+                    (entry) => typeof entry === 'string',
                   ) as string[])
                 : [],
             }
@@ -684,7 +742,10 @@ describe('conversation admin routes', () => {
     });
 
     expect(interruptConversationReply).toHaveBeenCalledWith('web:test');
-    expect(resetConversationRuntime).toHaveBeenCalledWith('web:test', 'web_test');
+    expect(resetConversationRuntime).toHaveBeenCalledWith(
+      'web:test',
+      'web_test',
+    );
     expect(callOrder).toEqual([
       'update-access',
       'interrupt',
@@ -739,7 +800,10 @@ describe('conversation admin routes', () => {
       await expect(response.json()).resolves.toEqual({ ok: true });
     });
 
-    expect(regenerateConversationReply).toHaveBeenCalledWith('web:test', 'turn-1');
+    expect(regenerateConversationReply).toHaveBeenCalledWith(
+      'web:test',
+      'turn-1',
+    );
     expect(callOrder).toEqual(['clear-patches', 'regenerate']);
   });
 

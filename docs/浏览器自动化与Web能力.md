@@ -54,9 +54,9 @@
 | `NANOCLAW_WEB_SEARCH_PROVIDER` | `auto` | 搜索引擎：`auto`/`duckduckgo_html`/`bing`/`brave`/`tavily`/`searxng` |
 | `NANOCLAW_WEB_SEARCH_BING_DOMAIN` | `cn.bing.com` | Bing 搜索域名，非中国区部署可改为 `www.bing.com` |
 | `NANOCLAW_WEB_SEARCH_MAX_RESULTS` | `5` | 搜索返回的最大结果数 |
-| `NANOCLAW_WEB_SEARCH_ALLOWED_DOMAINS` | (空) | JSON 字符串数组，限制搜索和抓取的域名白名单 |
+| `NANOCLAW_WEB_SEARCH_ALLOWED_DOMAINS` | (空) | runner 环境变量使用 JSON 字符串数组；UI/DB 配置接受换行、逗号或空白分隔 |
 | `NANOCLAW_WEB_FETCH_PROVIDER` | `auto` | 抓取方式：`auto`/`basic`/`browser_cli` |
-| `NANOCLAW_WEB_FETCH_MAX_CHARS` | `10000` | 抓取内容最大字符数 |
+| `NANOCLAW_WEB_FETCH_MAX_CHARS` | `12000` | 抓取内容最大字符数 |
 | `NANOCLAW_WEB_FETCH_BROWSER_COMMAND` | (空) | 渲染抓取的浏览器命令模板 |
 
 ## 使用建议

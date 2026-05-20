@@ -1512,6 +1512,7 @@ if (INTERNAL_API_BASE && INTERNAL_API_TOKEN) {
       try {
         const url = new URL(`${INTERNAL_API_BASE}/internal/knowledge/bases`);
         url.searchParams.set('user_id', KB_USER_ID || '__system__');
+        if (chatJid) url.searchParams.set('chat_jid', chatJid);
         const response = await fetch(url.toString(), {
           headers: { [INTERNAL_API_TOKEN_HEADER]: INTERNAL_API_TOKEN },
         });
@@ -1556,6 +1557,7 @@ Use knowledge_list first if you're unsure which knowledge base to search.${kbHin
           query: args.query,
           top_k: args.top_k ?? 5,
           user_id: KB_USER_ID || '__system__',
+          chat_jid: chatJid || undefined,
         };
         if (args.kb_ids && args.kb_ids.length > 0) body.kb_ids = args.kb_ids;
 
@@ -1689,6 +1691,7 @@ Use knowledge_list first if you're unsure which knowledge base to search.${kbHin
         }
         const url = new URL(`${INTERNAL_API_BASE}/internal/knowledge/wiki-page`);
         url.searchParams.set('user_id', KB_USER_ID || '__system__');
+        if (chatJid) url.searchParams.set('chat_jid', chatJid);
         if (hasPageId) url.searchParams.set('page_id', String(args.page_id).trim());
         else {
           url.searchParams.set('kb_id', String(args.kb_id).trim());
@@ -1764,6 +1767,7 @@ Requires the KB to have allow_query_backfill=1; call knowledge_list first if uns
           body: JSON.stringify({
             kb_id: args.kb_id,
             user_id: KB_USER_ID || '__system__',
+            chat_jid: chatJid || undefined,
             title: args.title,
             content: args.content,
             source_query: args.source_query ?? '',
@@ -1804,6 +1808,7 @@ Output: newest-first list; each line is \`[YYYY-MM-DD] event_type | title\`.`,
         const url = new URL(`${INTERNAL_API_BASE}/internal/knowledge/events`);
         url.searchParams.set('kb_id', args.kb_id);
         url.searchParams.set('user_id', KB_USER_ID || '__system__');
+        if (chatJid) url.searchParams.set('chat_jid', chatJid);
         url.searchParams.set('limit', String(args.limit ?? 20));
         if (args.type) url.searchParams.set('type', args.type);
         const response = await fetch(url.toString(), {

@@ -13,12 +13,21 @@ export interface DrawerProps {
 export function Drawer({ open, onClose, title, width = 560, children, footer }: DrawerProps) {
   const drawerRef = useRef<HTMLDivElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
+  const previousBodyOverflowRef = useRef<string | null>(null);
+  const previousBodyPaddingRightRef = useRef<string | null>(null);
   const { t } = useTranslation('common');
 
   // Save + restore focus
   useEffect(() => {
     if (open) {
       previousFocusRef.current = document.activeElement as HTMLElement;
+      previousBodyOverflowRef.current = document.body.style.overflow;
+      previousBodyPaddingRightRef.current = document.body.style.paddingRight;
+      const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
+      document.body.style.overflow = 'hidden';
+      if (scrollbarWidth > 0) {
+        document.body.style.paddingRight = `${scrollbarWidth}px`;
+      }
       // Focus the drawer itself or first focusable after mount
       requestAnimationFrame(() => {
         const el = drawerRef.current;
@@ -32,6 +41,12 @@ export function Drawer({ open, onClose, title, width = 560, children, footer }: 
       previousFocusRef.current.focus();
       previousFocusRef.current = null;
     }
+
+    return () => {
+      document.body.style.overflow = previousBodyOverflowRef.current || '';
+      document.body.style.paddingRight =
+        previousBodyPaddingRightRef.current || '';
+    };
   }, [open]);
 
   // Focus trap + Escape

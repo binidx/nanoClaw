@@ -14,6 +14,7 @@ type ProviderHttpConfigSource =
 
 const USER_AGENT_KEYS = ['userAgent', 'user_agent'] as const;
 const HEADER_KEYS = ['headers', 'httpHeaders', 'custom_headers'] as const;
+const MASKED_VALUE_PATTERN = /\*{4,}/;
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value);
@@ -73,6 +74,27 @@ function normalizeStringRecord(input: unknown): Record<string, string> {
 
 function normalizeOptionalString(value: unknown): string {
   return typeof value === 'string' ? value.trim() : String(value ?? '').trim();
+}
+
+function isMaskedValue(value: string): boolean {
+  return MASKED_VALUE_PATTERN.test(value);
+}
+
+function maskHeaderValue(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+  return trimmed.length <= 4 ? '****' : `****${trimmed.slice(-4)}`;
+}
+
+export function maskProviderCustomHeaders(
+  headers: Record<string, string> | null | undefined,
+): Record<string, string> | null {
+  if (!headers || Object.keys(headers).length === 0) return null;
+  const masked: Record<string, string> = {};
+  for (const [key, value] of Object.entries(headers)) {
+    masked[key] = maskHeaderValue(value);
+  }
+  return masked;
 }
 
 function stripKnownHttpConfigKeys(
@@ -151,12 +173,22 @@ export function buildProviderExtraConfigValue(
   const nextHeaders = hasExplicitHeaders
     ? normalizeStringRecord(input.custom_headers ?? input.headers)
     : currentConfig.headers;
+  const preservedHeaders = hasExplicitHeaders
+    ? Object.fromEntries(
+        Object.entries(nextHeaders).map(([key, value]) => [
+          key,
+          isMaskedValue(value) && currentConfig.headers[key]
+            ? currentConfig.headers[key]
+            : value,
+        ]),
+      )
+    : nextHeaders;
 
   if (nextUserAgent) {
     preserved.userAgent = nextUserAgent;
   }
-  if (Object.keys(nextHeaders).length > 0) {
-    preserved.headers = nextHeaders;
+  if (Object.keys(preservedHeaders).length > 0) {
+    preserved.headers = preservedHeaders;
   }
 
   return Object.keys(preserved).length > 0
@@ -174,7 +206,6 @@ export function serializeProviderForClient<T extends Pick<AiProvider, 'extra_con
   return {
     ...provider,
     user_agent: config.userAgent || null,
-    custom_headers:
-      Object.keys(config.headers).length > 0 ? config.headers : null,
+    custom_headers: maskProviderCustomHeaders(config.headers),
   };
 }

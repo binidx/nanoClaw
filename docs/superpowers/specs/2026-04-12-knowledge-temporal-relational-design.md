@@ -38,7 +38,7 @@ L2/L3 模式支持知识库级别独立配置 LLM 模型，允许使用廉价小
 |------|------|--------|------|
 | `enhancement_level` | TEXT | `'metadata'` | 增强模式：`metadata` / `wiki_lite` / `wiki_full` |
 | `llm_provider_id` | TEXT | NULL | L2/L3 入库 LLM 的 `ai_providers.id`。解析时走 `getProvider(id)` + 权限校验 |
-| `llm_model_override` | TEXT | NULL | 覆盖 provider 默认模型（可选，允许用廉价小模型） |
+| `llm_model_override` | TEXT | NULL | 历史设计字段；当前 API 拒绝非空值，入库时固定为 NULL |
 | `temporal_half_life_days` | INTEGER | 365 | 时序衰减半衰期（天），越短则越倾向新文档 |
 
 ### knowledge_documents 扩展字段
@@ -163,7 +163,7 @@ knowledge_wiki_pages N──M knowledge_documents          (source_doc_ids)
 
 **异步执行机制**：参考 `memory/compaction-scheduler` 模式，使用 `setImmediate` 触发后台处理，`llm_status` 保证幂等性（`processing` 状态超过 5 分钟自动回退为 `pending`，支持崩溃恢复）。单文档单 flight（按 `document_id` 加锁）。
 
-**LLM 调用封装**：`src/knowledge/llm-call.ts` 通过 `getProvider(kb.llm_provider_id)` 解析凭证，`getProviderAdapter(provider.type)` 获取适配器，`llm_model_override` 覆盖 provider 默认模型。权限校验走 KB owner 的 provider 可见性规则。
+**LLM 调用封装**：`src/knowledge/llm-call.ts` 通过 `getProvider(kb.llm_provider_id)` 解析凭证，`getProviderAdapter(provider.type)` 获取适配器。`llm_model_override` 是历史设计字段，当前 route 会拒绝非空 override，实际使用 provider 默认模型。权限校验走 KB owner 的 provider 可见性规则。
 
 **摘要生成** `generateSummary(docContent, llmConfig)`
 
@@ -369,7 +369,7 @@ interface SearchResponse {
 
 | 端点 | 变更 |
 |------|------|
-| `POST /api/knowledge/bases` | 新增 `enhancement_level`, `llm_provider_id`, `llm_model_override`, `temporal_half_life_days` 字段 |
+| `POST /api/knowledge/bases` | 新增 `enhancement_level`, `llm_provider_id`, `temporal_half_life_days` 字段；`llm_model_override` 保留为历史字段但当前非空会被拒绝 |
 | `PUT /api/knowledge/bases/:id` | 同上 |
 | `POST /api/knowledge/search` | 返回格式统一为 `{wiki_results, chunk_results}`（L1/L2 时 `wiki_results` 为 `[]`），chunk 结果含 `doc_path`、`published_at`、`doc_summary`、`parent_summary` |
 | `POST /api/knowledge/bases/:id/documents` | 新增可选 `published_at` 参数 |

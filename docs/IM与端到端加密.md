@@ -28,6 +28,7 @@ E2EE 是按会话开关控制的，字段是 `im_chat_meta.e2ee_enabled`。
 - 设备公钥：上传到服务端 `im_device_keys`，供其他成员给这个设备分发 room key。
 - Room key：每个加密会话使用一个 AES-256-GCM room key 加密消息和附件。
 - Wrapped room key：发送方用 ECDH + HKDF 为每个目标设备派生包装密钥，把 room key 加密后上传到 `im_room_keys`。
+- Wrapped room key 上传时，后端会校验目标 `(user_id, device_id)` 必须已经存在于 `im_device_keys`；不能把 room key 写给不属于目标用户的设备。
 - 新设备加入后，如果服务端没有这个设备可解的 wrapped room key，需要已有持有 room key 的设备执行“重新分发密钥”。
 
 因此，“我的密钥和对方一样吗”的准确答案是：设备私钥不一样；双方能读同一个加密会话，是因为各自设备都拿到了同一个 room key 的可解密副本。
@@ -42,6 +43,10 @@ E2EE 是按会话开关控制的，字段是 `im_chat_meta.e2ee_enabled`。
 
 服务端仍能看到会话成员、消息时间、发送者、附件密文大小、密文 envelope 和 wrapped room key；服务端不能直接读取加密后的消息正文或附件原文。
 
+当前官方前端会在上传前加密 E2EE 附件，但后端上传接口本身无法证明客户端上传的 bytes 一定是密文。因此这个安全边界不覆盖恶意客户端或绕过官方前端的客户端。
+
+当前官方前端会在 E2EE 房间禁用服务端链接预览，后端 `/api/im/link-preview` 接口也会拒绝加密房间请求，避免把 URL 这类明文派生信息发送给服务端或三方站点。
+
 ## AI、搜索与协作限制
 
 E2EE 会话不允许 AI 成员读取或介入。
@@ -49,6 +54,8 @@ E2EE 会话不允许 AI 成员读取或介入。
 - 开启 E2EE 时，后端会移除活跃 AI 成员，并把排队或运行中的 AI invocation 标记失败。
 - 加密房间内发送消息不会触发 mentions 解析。
 - IM 服务端搜索会排除 `e2ee_enabled = 1` 的会话，因为服务端只有 `[encrypted]` 占位符和密文。
+
+非 E2EE 房间允许 IM AI 成员介入；这类调用会把近期房间明文消息拼入模型 prompt，并可能记录 prompt trace。需要把非 E2EE IM AI 视为“明文会话交给模型供应商处理”的能力。
 
 ## 当前安全边界
 

@@ -1862,6 +1862,12 @@ describe('task CRUD', () => {
       status: 'active',
       created_at: '2024-01-01T00:00:00.000Z',
     });
+    expect(
+      await claimTaskExecution('task-after-run', {
+        requireDue: true,
+        now: '2024-06-01T00:00:01.000Z',
+      }),
+    ).toBe(true);
 
     await updateTaskAfterRun('task-after-run', {
       nextRun: null,
@@ -1876,6 +1882,7 @@ describe('task CRUD', () => {
       status: 'completed',
       consecutive_failures: 1,
       last_error: 'network error',
+      runtime_claimed_at: null,
     });
     expect((await getTaskById('task-after-run'))?.last_run).toBeTruthy();
   });

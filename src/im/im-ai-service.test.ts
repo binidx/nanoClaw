@@ -164,6 +164,60 @@ describe('IM AI invocation execution', () => {
     expect(result.status).toBe('completed');
   });
 
+  it('does not let IM invocations use an assistant provider invisible to the requester', async () => {
+    const jid = 'im_grp_ai-private-provider';
+    await addRoom(jid);
+    await createProvider({
+      id: 'provider-private',
+      alias: 'Private Provider',
+      type: 'openai',
+      api_key: 'test-key',
+      base_url: 'https://example.invalid/v1',
+      model: 'test-model',
+      extra_config: null,
+      is_default: 0,
+      user_id: '__system__',
+      visibility: 'restricted',
+      created_by: 'user-b',
+      updated_by: 'user-b',
+    });
+    const config = createDefaultAssistantConfig();
+    config.providerId = 'provider-private';
+    await createAssistant({
+      id: 'assistant-private-provider',
+      name: 'Assistant',
+      enabled: true,
+      config,
+      userId: '__system__',
+      visibility: 'shared',
+    });
+    await addAiMember({
+      chatJid: jid,
+      assistantId: 'assistant-private-provider',
+      displayName: 'Assistant',
+      kind: 'assistant',
+      createdBy: 'user-a',
+    });
+    const invocation = await createAiInvocation({
+      chatJid: jid,
+      assistantId: 'assistant-private-provider',
+      requestedBy: 'user-a',
+      prompt: 'Use hidden provider',
+    });
+
+    const result = await processImAiInvocation(invocation.id, {
+      generateReply: async () => {
+        throw new Error('generateReply should not run for invisible provider');
+      },
+      notifyEvent: () => {},
+    });
+
+    expect(result).toMatchObject({
+      status: 'failed',
+      error: 'Assistant provider is not visible to IM requester',
+    });
+  });
+
   it('fails a queued invocation without reading or replying after E2EE is enabled', async () => {
     const jid = 'im_grp_ai-2';
     await addRoom(jid);

@@ -16,7 +16,7 @@ Runner Profile 让 SDLC 任务在非 Node.js 项目（Java 8 / Go / Python）上
 - 用于 eval 的**成功判据**（`required_patterns`）
 
 仓库选一个 profile 后：
-1. `POST /workteam/:id/run` 启动时先 `validateProfileTools` 快速失败
+1. Runner Profile 解析与工具校验能力仍存在；完整旧 Workteam SDLC run route 当前未在 web server 注册
 2. 正式执行任务时，每个 Agent 进程 spawn 时把 profile 的 env 合并进去
 3. Agent 的 Bash 工具（`/bin/sh`）从 PATH 中就能找到对应工具链
 
@@ -25,7 +25,7 @@ Runner Profile 让 SDLC 任务在非 Node.js 项目（Java 8 / Go / Python）上
 ```mermaid
 flowchart TB
   repo["Repository + binding<br/>config_json: profile_id=java8"]
-  run["POST /workteam/:id/run"]
+  run["旧 Workteam run route<br/>当前未注册"]
   res["resolveRunnerProfile<br/>读 resource_bindings"]
   val["validateProfileTools<br/>快速失败"]
   orch["Orchestrator.setRunnerProfile"]
@@ -117,7 +117,7 @@ curl .../api/workteam/runner-profiles
 
 ### 4. 启动 SDLC run
 
-和原来一样 `POST /workteam/:id/run`。orchestrator 会：
+Runner Profile 的底层解析、工具校验和 env 注入仍保留，但当前 web server 只注册 Workteam support routes，不注册完整旧 Workteam CRUD / run routes。若要恢复旧 SDLC run，需要重新注册 `registerWorkteamRoutes`。恢复后 orchestrator 会：
 - 读仓库绑定 → 解析 profile
 - `validateProfileTools` 失败时返回 400，错误消息告诉你缺哪个工具
 - 通过则把 profile env 注入到每个 Agent 进程
@@ -156,7 +156,7 @@ and ensure `java` and `mvn` / `./gradlew` are on PATH.
 - `src/workteam/project-detector.ts` — 按标志文件探测
 - `src/workteam/runner-profile-registry.ts` — `chatJid → profile` 内存映射
 - `src/workteam/runner-profile-resolver.ts` — 绑定读写 + 解析
-- `src/agent-runner-spawn.ts` — 在 `spawnAgent` 处读 registry 并合并 env
+- `src/agent/agent-runner-spawn.ts` — 在 `spawnAgent` 处读 registry 并合并 env
 - `src/workteam/agent-adapter.ts` — 任务前注册、结束/异常清理
 - `src/workteam/orchestrator.ts` — `startRun` 前 `validateProfileTools`
 - `src/routes/workteam-routes.ts` — 四个 API 端点

@@ -52,23 +52,50 @@ export function createAuditMutation(deps: {
   getRequestClientKey: (
     req: Pick<Request, 'ip' | 'headers' | 'socket'>,
   ) => string;
+  recordAuditLog?: (input: {
+    action: string;
+    username?: string;
+    ipAddress?: string;
+    details?: Record<string, unknown>;
+  }) => Promise<void>;
 }) {
   return function auditMutation(
     req: Request,
     operation: string,
     risk: 'normal' | 'high' = 'normal',
   ): void {
+    const actor = deps.getAuthenticatedUsername(req.headers.cookie) || undefined;
+    const client = deps.getRequestClientKey(req);
     deps.logger.info(
       {
         operation,
         risk,
-        actor: deps.getAuthenticatedUsername(req.headers.cookie),
-        client: deps.getRequestClientKey(req),
+        actor,
+        client,
         method: req.method,
         path: req.path,
       },
       'Protected mutation request',
     );
+    if (deps.recordAuditLog) {
+      void deps
+        .recordAuditLog({
+          action: operation,
+          username: actor,
+          ipAddress: req.ip || req.socket?.remoteAddress || client,
+          details: {
+            risk,
+            method: req.method,
+            path: req.path,
+          },
+        })
+        .catch((err) => {
+          deps.logger.info(
+            { err, operation, risk },
+            'Failed to persist mutation audit log',
+          );
+        });
+    }
   };
 }
 

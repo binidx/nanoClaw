@@ -16,7 +16,7 @@ It's not just a chat shell. It's a control console organized around local direct
 
 ### Communication & Chat
 - **Multi-channel support**: Web, Feishu (Lark), Telegram, Discord, Slack, Gmail, WhatsApp
-- **Real-time chat**: WebSocket replay, structured turn timelines, approval workflows, interrupt handling, file uploads, Markdown export
+- **Real-time chat**: WebSocket live updates with HTTP snapshot backfill, structured turn timelines, approval workflows, interrupt handling, file uploads, Markdown export
 - **Session management**: Conversational context with cursor-based replay, pending message handling, and duplicate-consumption protection
 - **IM messaging**: Internal messaging system with friend/group conversations, message sending, and caching
 
@@ -89,10 +89,10 @@ It's not just a chat shell. It's a control console organized around local direct
 | Component | Location | Description |
 |-----------|----------|-------------|
 | **Runtime Orchestrator** | `src/index.ts` | Main entry, startup lifecycle, message loop |
-| **Web Server** | `src/web-server.ts` | Express, WebSocket, auth, static hosting |
+| **Web Server** | `src/web/web-server.ts` | Express, WebSocket, auth, static hosting |
 | **Route Modules** | `src/routes/` | 46 HTTP route modules for all API endpoints |
 | **Database Layer** | `src/db/` + `src/database/` | 32 CRUD modules, 3 DDL schemas, engine abstraction |
-| **Agent Runner** | `src/agent-runner.ts` + `agent/runner/` | Local subprocess bridge + runner implementation |
+| **Agent Runner** | `src/agent/agent-runner.ts` + `agent/runner/` | Local subprocess bridge + runner implementation |
 | **Memory System** | `src/memory/` | Identity, hybrid search, context assembly, compaction |
 | **Knowledge Base** | `src/knowledge/` | Chunking, retrieval, LLM enhancement, Wiki |
 | **Channels** | `src/channels/` | Web, Feishu, Telegram, Discord, Slack, Gmail, WhatsApp |
@@ -108,7 +108,7 @@ It's not just a chat shell. It's a control console organized around local direct
 - **Node.js** 20+
 - **npm** (comes with Node.js)
 - **Git** (for repository operations)
-- At least one working **AI Provider** (OpenAI, Ollama, Zhipu, etc.)
+- At least one working **LLM Provider** (OpenAI, Zhipu, Gemini, OpenAI-compatible, etc.); Ollama is currently supported for embeddings.
 
 ### Recommended (for enhanced Agent capabilities)
 | Tool | Purpose | Installation |

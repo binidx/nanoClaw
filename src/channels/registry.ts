@@ -13,7 +13,10 @@ import {
   type ConversationCreateTargetDefinition,
 } from '../config-channel-definitions.js';
 
-export type RegisterGroupFn = (jid: string, group: RegisteredGroup) => void;
+export type RegisterGroupFn = (
+  jid: string,
+  group: RegisteredGroup,
+) => void | Promise<void>;
 
 export interface ChannelOpts {
   onMessage: OnInboundMessage;

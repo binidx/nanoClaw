@@ -4207,8 +4207,6 @@ function AppShell() {
             <TavernPage
               apiBase={API}
               providers={providers}
-              managedMcpServers={managedMcpServers}
-              managedSkills={managedSkills}
               conversations={conversationsByRecent}
               onStartChat={startTavernConversation}
               onOpenConversation={switchConversation}

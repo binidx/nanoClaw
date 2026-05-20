@@ -16,9 +16,7 @@ import {
 } from '../db.js';
 import { DATA_DIR } from '../config.js';
 import { getTenantUserId } from '../tenant/tenant-request.js';
-import {
-  buildTavernPersonaView,
-} from '../tavern/tavern-service.js';
+import { buildTavernPersonaView } from '../tavern/tavern-service.js';
 import type { ManagedMcpTemplate } from '../assistant/assistant-mcp.js';
 
 interface ManagedSkillCatalogEntry {
@@ -90,7 +88,7 @@ async function validateTavernGlobalConfigInput(
 
   if (
     input.providerId &&
-    !await isProviderVisibleToUser(input.providerId, userId, 'llm')
+    !(await isProviderVisibleToUser(input.providerId, userId, 'llm'))
   ) {
     throw new Error(`Unknown provider id: ${input.providerId}`);
   }
@@ -134,11 +132,7 @@ function assertImageUpload(
 }
 
 function resolveAvatarPath(relativePath: string): string {
-  const normalized = relativePath
-    .replace(/\\/g, '/')
-    .replace(/^\/+/, '')
-    .trim();
-  if (!normalized) throw new Error('Invalid avatar path');
+  const normalized = normalizeAvatarRelativePath(relativePath);
   const absolutePath = path.resolve(TAVERN_AVATAR_ROOT, normalized);
   const rootPath = path.resolve(TAVERN_AVATAR_ROOT);
   if (
@@ -148,6 +142,15 @@ function resolveAvatarPath(relativePath: string): string {
     throw new Error('Invalid avatar path');
   }
   return absolutePath;
+}
+
+function normalizeAvatarRelativePath(relativePath: string): string {
+  const normalized = relativePath
+    .replace(/\\/g, '/')
+    .replace(/^\/+/, '')
+    .trim();
+  if (!normalized) throw new Error('Invalid avatar path');
+  return normalized;
 }
 
 export function registerTavernRoutes(
@@ -307,13 +310,20 @@ export function registerTavernRoutes(
         const absolutePath = resolveAvatarPath(relativePath);
         await fs.mkdir(path.dirname(absolutePath), { recursive: true });
         await fs.writeFile(absolutePath, req.file.buffer);
-        const updated = await setTavernPersonaAvatarPath(id, userId, relativePath);
+        const updated = await setTavernPersonaAvatarPath(
+          id,
+          userId,
+          relativePath,
+        );
         res.json({
           ok: true,
           persona: updated ? buildTavernPersonaView(updated) : null,
         });
       } catch (err) {
-        if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') {
+        if (
+          err instanceof multer.MulterError &&
+          err.code === 'LIMIT_FILE_SIZE'
+        ) {
           res.status(413).json({ ok: false, error: 'Avatar file too large' });
           return;
         }
@@ -330,7 +340,19 @@ export function registerTavernRoutes(
         res.status(400).json({ ok: false, error: 'path is required' });
         return;
       }
-      const absolutePath = resolveAvatarPath(rawPath);
+      const userId = getTenantUserId(req);
+      const relativePath = normalizeAvatarRelativePath(rawPath);
+      const personas = await listTavernPersonas(userId);
+      const ownsAvatar = personas.some(
+        (persona) =>
+          persona.avatar_path &&
+          normalizeAvatarRelativePath(persona.avatar_path) === relativePath,
+      );
+      if (!ownsAvatar) {
+        res.status(404).json({ ok: false, error: 'Avatar not found' });
+        return;
+      }
+      const absolutePath = resolveAvatarPath(relativePath);
       const bytes = await fs.readFile(absolutePath);
       const ext = path.extname(absolutePath).toLowerCase();
       const mimeType =

@@ -17,6 +17,7 @@ import type {
   ProviderGeneratedTextResult,
 } from './provider-adapters.js';
 import { t } from '../i18n/index.js';
+import { withDecryptedProviderSecrets } from './provider-registry.js';
 
 export type {
   ProviderConnectivityResult,
@@ -330,19 +331,20 @@ export async function generateWebSearchTextWithDefaultProvider(
     throw new Error('Default AI provider does not support built-in web search');
   }
 
-  const apiBase = normalizeCodexApiBase(provider.base_url || '');
-  const model = provider.model || 'gpt-5.4';
+  const runtimeProvider = withDecryptedProviderSecrets(provider);
+  const apiBase = normalizeCodexApiBase(runtimeProvider.base_url || '');
+  const model = runtimeProvider.model || 'gpt-5.4';
   const endpoint = `${apiBase}/responses`;
   const startTime = Date.now();
-  const requestId = logAiRequest(provider.type, model, endpoint, prompt, true);
+  const requestId = logAiRequest(runtimeProvider.type, model, endpoint, prompt, true);
   
   let resp: Response;
   try {
     resp = await fetch(endpoint, {
       method: 'POST',
-      headers: buildProviderFetchHeaders(provider, {
+      headers: buildProviderFetchHeaders(runtimeProvider, {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${provider.api_key}`,
+        Authorization: `Bearer ${runtimeProvider.api_key}`,
       }),
       body: JSON.stringify({
         model: model,
@@ -362,7 +364,7 @@ export async function generateWebSearchTextWithDefaultProvider(
   } catch (err) {
     logAiError(
       requestId,
-      provider.type,
+      runtimeProvider.type,
       model,
       endpoint,
       err instanceof Error ? err : new Error(String(err)),
@@ -375,7 +377,7 @@ export async function generateWebSearchTextWithDefaultProvider(
     const errorText = await resp.text();
     logAiError(
       requestId,
-      provider.type,
+      runtimeProvider.type,
       model,
       endpoint,
       new Error(`API error ${resp.status}: ${errorText.slice(0, 500)}`),
@@ -388,7 +390,7 @@ export async function generateWebSearchTextWithDefaultProvider(
   
   const result = await readFirstCodexResponseText(resp);
   const durationMs = Date.now() - startTime;
-  logAiStreamComplete(requestId, provider.type, model, endpoint, durationMs, {
+  logAiStreamComplete(requestId, runtimeProvider.type, model, endpoint, durationMs, {
     requestText: prompt,
     responseText: result.text,
     usage: result.usage,
@@ -401,7 +403,7 @@ export async function generateWebSearchTextWithDefaultProvider(
       featureScope: opts.promptTrace.featureScope,
       targetUserId: opts.promptTrace.targetUserId ?? userId ?? '',
       chatJid: opts.promptTrace.chatJid ?? null,
-      provider: provider.type,
+      provider: runtimeProvider.type,
       model: result.model || model,
       stableSystemPrompt: opts.promptTrace.stableSystemPrompt ?? null,
       volatileSystemPrompt: opts.promptTrace.volatileSystemPrompt ?? null,
@@ -421,13 +423,14 @@ export async function testAiProviderConnection(
   provider: AiProvider,
   timeoutMs = 5000,
 ): Promise<ProviderConnectivityResult> {
-  if ((provider.capability || 'llm') === 'embedding') {
-    const embeddingProvider = buildEmbeddingProviderFromAiProvider(provider);
+  const runtimeProvider = withDecryptedProviderSecrets(provider);
+  if ((runtimeProvider.capability || 'llm') === 'embedding') {
+    const embeddingProvider = buildEmbeddingProviderFromAiProvider(runtimeProvider);
     if (!embeddingProvider) {
       return {
         ok: false,
         message: t('errors.auto_83e291', {}, undefined),
-        model: provider.model || undefined,
+        model: runtimeProvider.model || undefined,
       };
     }
     const startedAt = Date.now();
@@ -441,18 +444,18 @@ export async function testAiProviderConnection(
       return {
         ok: true,
         message: 'embedding ok',
-        model: provider.model || undefined,
+        model: runtimeProvider.model || undefined,
         latencyMs: Date.now() - startedAt,
       };
     } catch (err) {
       return {
         ok: false,
         message: err instanceof Error ? err.message : 'Embedding test failed',
-        model: provider.model || undefined,
+        model: runtimeProvider.model || undefined,
         latencyMs: Date.now() - startedAt,
       };
     }
   }
-  const adapter = getProviderAdapter(provider.type);
-  return adapter.testConnection(provider, timeoutMs);
+  const adapter = getProviderAdapter(runtimeProvider.type);
+  return adapter.testConnection(runtimeProvider, timeoutMs);
 }

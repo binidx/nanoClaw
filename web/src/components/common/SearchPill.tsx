@@ -20,6 +20,9 @@ export function SearchPill({
   kbdLabel,
   leadingIcon,
   className = '',
+  type = 'text',
+  autoComplete = 'off',
+  style,
   ...rest
 }: SearchPillProps) {
   return (
@@ -30,8 +33,12 @@ export function SearchPill({
         </span>
       ) : null}
       <input
+        className="nc-search-pill-input"
+        type={type}
+        autoComplete={autoComplete}
         value={value}
         onChange={(event) => onChange(event.target.value)}
+        style={style}
         {...rest}
       />
       {value ? (

@@ -47,7 +47,8 @@ Repo Review 是面向 Git 仓库的审查流水线，不只是"把 diff 发给�
 
 ## 涉及的表
 
-- `review_repositories`：仓库注册
+- `repositories` + `repo_features(feature_type='code_review')`：当前仓库注册与 Repo Review 配置主路径
+- `review_repositories`：历史仓库注册 fallback
 - `review_profiles`：审查 profile 配置
 - `review_runs`：审查运行记录
 - `review_digest_runs`：digest 运行记录
@@ -107,7 +108,7 @@ Repo Review 是面向 Git 仓库的审查流水线，不只是"把 diff 发给�
 - 远端同步会依赖远程仓库和分支状态
 - webhook 验签失败会直接阻断入站事件
 - 审查运行会消耗本地运行时与模型额度
-- 多用户模式下，hooks 安装/卸载、手动远端同步以及 SSH key 管理属于本机写操作，应纳入 `local.install` 门禁；团队场景优先 webhook 或远端平台触发，而不是默认开放本地 hooks。
+- 多用户模式下，hooks 安装/卸载、手动远端同步以及 SSH key 管理属于本机写操作，应纳入 `local.install` 门禁；团队场景优先 webhook 或远端平台触发，而不是默认开放本地 hooks。当前指定分支同步 `sync-branch` 的门禁弱于 `sync-remote`，是否也需要 `local.install` 取决于产品对“刷新本地 mirror / 读取远端 refs”的安全归类。
 
 ## 适合写进运维手册的事实
 

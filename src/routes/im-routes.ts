@@ -375,6 +375,28 @@ export function registerImRoutes(app: Express, opts: ImRouteOptions): void {
           });
           return;
         }
+        if (hasAttachments) {
+          const placeholders = attachmentIds.map(() => '?').join(',');
+          const rows = (await dba
+            .prepare(
+              `SELECT id, chat_jid FROM im_attachments WHERE id IN (${placeholders}) AND uploaded_by = ? AND message_id IS NULL`,
+            )
+            .all(...attachmentIds, userId)) as Array<{
+            id: string;
+            chat_jid: string;
+          }>;
+          const requested = new Set(attachmentIds);
+          if (
+            rows.length !== requested.size ||
+            rows.some((row) => row.chat_jid !== jid)
+          ) {
+            res.status(400).json({
+              ok: false,
+              error: 'Invalid attachment for this conversation',
+            });
+            return;
+          }
+        }
 
         if (clientId) {
           const existing = await getImMessageByClientId(jid, userId, clientId);
@@ -443,9 +465,9 @@ export function registerImRoutes(app: Express, opts: ImRouteOptions): void {
           const placeholders = attachmentIds.map(() => '?').join(',');
           await dba
             .prepare(
-              `UPDATE im_attachments SET message_id = ? WHERE id IN (${placeholders}) AND uploaded_by = ? AND message_id IS NULL`,
+              `UPDATE im_attachments SET message_id = ? WHERE id IN (${placeholders}) AND uploaded_by = ? AND chat_jid = ? AND message_id IS NULL`,
             )
-            .run(message.id, ...attachmentIds, userId);
+            .run(message.id, ...attachmentIds, userId, jid);
 
           attachments = (
             (await dba
@@ -989,10 +1011,11 @@ export function registerImRoutes(app: Express, opts: ImRouteOptions): void {
         });
         res.json({ ok: true });
       } catch (err) {
-        const msg = String(err);
+        const msg = err instanceof Error ? err.message : String(err);
         if (
           msg.includes('active members') ||
-          msg.includes('Invalid room key')
+          msg.includes('Invalid room key') ||
+          msg.includes('target device')
         ) {
           res.status(400).json({ ok: false, error: msg });
           return;

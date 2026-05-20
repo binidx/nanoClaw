@@ -1,7 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AppSelect, type AppSelectOption } from '../components/AppSelect';
-import { IconCalendar, IconSearch } from '../components/AppIcons';
+import {
+  IconCalendar,
+  IconCandlestick,
+  IconChannel,
+  IconChat,
+  IconClock,
+  IconMail,
+  IconSearch,
+} from '../components/AppIcons';
 import { CatalogPageShell, Drawer, SearchPill } from '../components/common';
 
 import type { Conversation, ScheduledTaskSummary } from '../app-types';
@@ -259,6 +267,124 @@ function getLatestTaskError(task: ScheduledTaskSummary) {
 
 function getConversationLabel(conversation: Conversation | null | undefined, t: (key: string) => string) {
   return getConversationTitle(conversation) || t('tasks.未命名对话');
+}
+
+function formatTaskShortDateTime(value: string | null) {
+  if (!value) return '-';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat(undefined, {
+    month: 'numeric',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(date);
+}
+
+function formatTaskClockTime(hours: number, minutes: number) {
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+}
+
+function formatTaskScheduleSummary(
+  task: ScheduledTaskSummary,
+  t: (key: string, opts?: Record<string, unknown>) => string,
+) {
+  if (task.schedule_type === 'cron') {
+    const parts = task.schedule_value.trim().split(/\s+/);
+    if (parts.length === 5) {
+      const [minuteRaw, hourRaw, dayOfMonth, month, dayOfWeek] = parts;
+      const minute = Number(minuteRaw);
+      const hour = Number(hourRaw);
+      if (
+        Number.isInteger(minute) &&
+        Number.isInteger(hour) &&
+        minute >= 0 &&
+        minute <= 59 &&
+        hour >= 0 &&
+        hour <= 23 &&
+        dayOfMonth === '*' &&
+        month === '*'
+      ) {
+        const time = formatTaskClockTime(hour, minute);
+        if (dayOfWeek === '*') return t('tasks.每天时间', { time });
+        if (dayOfWeek === '1-5') return t('tasks.工作日时间', { time });
+        if (/^\d$/.test(dayOfWeek)) {
+          const weekday = Number(dayOfWeek);
+          const weekdaySeed = new Date(Date.UTC(2026, 0, weekday === 0 ? 4 : weekday + 4));
+          const day = new Intl.DateTimeFormat(undefined, {
+            weekday: 'short',
+          }).format(weekdaySeed);
+          return t('tasks.每周时间', { day, time });
+        }
+      }
+    }
+    return `Cron · ${task.schedule_value}`;
+  }
+
+  if (task.schedule_type === 'interval') {
+    const milliseconds = Number(task.schedule_value);
+    if (!Number.isNaN(milliseconds) && milliseconds >= 60000) {
+      const minutes = Math.round(milliseconds / 60000);
+      if (minutes >= 60 && minutes % 60 === 0) {
+        return t('tasks.每隔N小时', { count: minutes / 60 });
+      }
+      return t('tasks.每隔N分钟', { count: minutes });
+    }
+    return formatSchedule(task, t);
+  }
+
+  return task.next_run
+    ? formatTaskShortDateTime(task.next_run)
+    : t('tasks.执行一次');
+}
+
+function formatTaskScheduleDetail(
+  task: ScheduledTaskSummary,
+  t: (key: string, opts?: Record<string, unknown>) => string,
+) {
+  if (task.next_run) {
+    return t('tasks.下次时间N', {
+      time: formatTaskShortDateTime(task.next_run),
+    });
+  }
+  if (task.last_run) {
+    return t('tasks.上次时间N', {
+      time: formatTaskShortDateTime(task.last_run),
+    });
+  }
+  return formatSchedule(task, t);
+}
+
+function getTaskRuntimeLabel(
+  task: ScheduledTaskSummary,
+  t: (key: string) => string,
+) {
+  if (task.runtime_status === 'queued') return t('tasks.排队中');
+  if (task.runtime_status === 'running') return t('tasks.执行中');
+  return getStatusLabel(task.status, t);
+}
+
+function getTaskStatusTone(task: ScheduledTaskSummary) {
+  if (task.runtime_status === 'queued' || task.runtime_status === 'running') {
+    return 'active';
+  }
+  if (task.status === 'paused') return 'paused';
+  if (task.status === 'completed') return 'completed';
+  return 'active';
+}
+
+function getTaskCardVisual(task: ScheduledTaskSummary) {
+  const source = `${task.title}\n${task.prompt}`.toLowerCase();
+  if (/(邮件|邮箱|gmail|mail|email)/i.test(source)) {
+    return { icon: <IconMail />, tone: 'mail' as const };
+  }
+  if (/(数据|报表|看板|统计|分析|dashboard|report)/i.test(source)) {
+    return { icon: <IconCandlestick />, tone: 'analytics' as const };
+  }
+  if (/(监控|巡检|预警|扫描|检查|动态|monitor|watch|alert)/i.test(source)) {
+    return { icon: <IconChannel />, tone: 'monitor' as const };
+  }
+  return { icon: <IconCalendar />, tone: 'calendar' as const };
 }
 
 export function TasksPage({
@@ -666,6 +792,8 @@ export function TasksPage({
                   conversationNameByJid.get(task.chat_jid) ||
                   task.conversation_name ||
                   task.chat_jid;
+                const taskVisual = getTaskCardVisual(task);
+                const taskStatusTone = getTaskStatusTone(task);
 
                 return (
                   <article
@@ -679,73 +807,83 @@ export function TasksPage({
                     >
                       <div className="tasks-card-summary-main">
                         <div className="tasks-card-top">
-                          <div className={`tasks-card-icon-badge ${task.status}`}>
-                            <IconCalendar />
+                          <div
+                            className={`tasks-card-icon-badge tone-${taskVisual.tone} state-${taskStatusTone}`}
+                          >
+                            {taskVisual.icon}
                           </div>
                           <div className="tasks-card-title-wrap">
                             <div className="tasks-card-title-row">
                               <div className="provider-alias">
                                 {task.title || t('tasks.未命名任务')}
                               </div>
-                              <span
-                                className={`tasks-status-badge ${task.status}`}
-                              >
-                                {getStatusLabel(task.status, t)}
-                              </span>
                             </div>
                             <div className="tasks-card-preview">
-                              {truncateText(task.prompt, 96)}
+                              {truncateText(task.prompt, 54)}
                             </div>
                           </div>
                         </div>
                         <div className="tasks-card-meta-list">
-                          <div className="tasks-card-meta-line">
-                            <span className="tasks-card-meta-key">
-                              {t('tasks.调度方式')}
+                          <div className="tasks-card-meta-item">
+                            <span className="tasks-card-meta-icon">
+                              <IconClock />
                             </span>
-                            <span className="tasks-card-meta-value">
-                              {formatSchedule(task, t)}
-                            </span>
+                            <div className="tasks-card-meta-copy">
+                              <span className="tasks-card-meta-value">
+                                {formatTaskScheduleSummary(task, t)}
+                              </span>
+                              <span className="tasks-card-meta-detail">
+                                {formatTaskScheduleDetail(task, t)}
+                              </span>
+                            </div>
                           </div>
-                          <div className="tasks-card-meta-line">
-                            <span className="tasks-card-meta-key">
-                              {t('tasks.目标对话')}
+                          <div className="tasks-card-meta-item">
+                            <span className="tasks-card-meta-icon">
+                              <IconChat />
                             </span>
-                            <span className="tasks-card-meta-value">
-                              {conversationLabel}
-                            </span>
+                            <div className="tasks-card-meta-copy">
+                              <span className="tasks-card-meta-value">
+                                {conversationLabel}
+                              </span>
+                              <span className="tasks-card-meta-detail">
+                                {t('tasks.绑定会话')} ·{' '}
+                                {getContextLabel(task.context_mode, t)}
+                              </span>
+                            </div>
                           </div>
                         </div>
-                        <div className="tasks-card-badges">
-                          <span
-                            className={`tasks-context-badge ${task.context_mode}`}
-                            title={getContextLabel(task.context_mode, t)}
+                        <div className="tasks-card-footer">
+                          <div
+                            className={`tasks-card-runtime ${taskStatusTone}`}
                           >
-                            {getContextLabel(task.context_mode, t)}
-                          </span>
-                          {task.group_folder_active === false ? (
-                            <span
-                              className="tasks-warning-badge"
-                              title={t('tasks.任务对应的工作目录当前不可用')}
-                            >
-                              {t('tasks.目录异常')}
-                            </span>
-                          ) : null}
-                          {Math.max(
-                            0,
-                            Number(task.consecutive_failures || 0),
-                          ) > 0 ? (
-                            <span
-                              className="tasks-warning-badge"
-                              title={getLatestTaskError(task)}
-                            >
-                              {t('tasks.连续失败')}{' '}
-                              {Math.max(
-                                0,
-                                Number(task.consecutive_failures || 0),
-                              )}
-                            </span>
-                          ) : null}
+                            <span className="tasks-card-runtime-dot" />
+                            <span>{getTaskRuntimeLabel(task, t)}</span>
+                          </div>
+                          <div className="tasks-card-badges">
+                            {task.group_folder_active === false ? (
+                              <span
+                                className="tasks-warning-badge"
+                                title={t('tasks.任务对应的工作目录当前不可用')}
+                              >
+                                {t('tasks.目录异常')}
+                              </span>
+                            ) : null}
+                            {Math.max(
+                              0,
+                              Number(task.consecutive_failures || 0),
+                            ) > 0 ? (
+                              <span
+                                className="tasks-warning-badge"
+                                title={getLatestTaskError(task)}
+                              >
+                                {t('tasks.连续失败')}{' '}
+                                {Math.max(
+                                  0,
+                                  Number(task.consecutive_failures || 0),
+                                )}
+                              </span>
+                            ) : null}
+                          </div>
                         </div>
                       </div>
                     </button>
@@ -753,7 +891,11 @@ export function TasksPage({
                     <div className="tasks-card-actions tasks-card-actions-compact">
                       <button
                         className="tasks-inline-action"
-                        onClick={() => void handleRunTask(task)}
+                        onClick={() =>
+                          void (task.status === 'paused'
+                            ? onResumeTask(task.id)
+                            : handleRunTask(task))
+                        }
                         disabled={
                           taskBusy ||
                           task.runtime_status === 'queued' ||

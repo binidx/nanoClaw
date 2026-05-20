@@ -348,18 +348,52 @@ export function isKnowledgeSearchApiConfigured(): boolean {
   return Boolean(INTERNAL_API_BASE && INTERNAL_API_TOKEN);
 }
 
+function parseAvailableKnowledgeBaseIds(): string[] | null {
+  const raw = String(process.env.NANOCLAW_AVAILABLE_KB_IDS || '').trim();
+  if (!raw) return null;
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    parsed = raw.split(',');
+  }
+
+  const values = Array.isArray(parsed) ? parsed : [];
+  return [
+    ...new Set(
+      values
+        .filter((value): value is string => typeof value === 'string')
+        .map((value) => value.trim())
+        .filter(Boolean),
+    ),
+  ];
+}
+
 export async function searchKnowledgeBaseViaApi(
   query: string,
   topK: number,
 ): Promise<KnowledgeSearchHit[] | null> {
   if (!isKnowledgeSearchApiConfigured()) return null;
+  const currentUserId = String(
+    process.env.NANOCLAW_USER_ID || userId || '',
+  ).trim();
+  const currentChatJid = String(
+    process.env.NANOCLAW_CHAT_JID || chatJid || '',
+  ).trim();
+  if (!currentUserId) return null;
   const clampedTopK = Math.max(1, Math.min(50, Math.floor(topK)));
+  const availableKbIds = parseAvailableKnowledgeBaseIds();
+  if (availableKbIds && availableKbIds.length === 0) return null;
+
   try {
     const body: Record<string, unknown> = {
       query,
       top_k: clampedTopK,
-      user_id: userId || '__system__',
+      user_id: currentUserId,
     };
+    if (currentChatJid) body.chat_jid = currentChatJid;
+    if (availableKbIds) body.kb_ids = availableKbIds;
 
     const response = await fetch(`${INTERNAL_API_BASE}/internal/knowledge/search`, {
       method: 'POST',

@@ -402,10 +402,11 @@ export async function uploadImFile(
 
 export async function getImLinkPreview(
   url: string,
+  chatJid: string,
 ): Promise<LinkPreviewData | null> {
   try {
     const res = await apiFetch<{ ok: true; preview: LinkPreviewData | null }>(
-      `/link-preview?url=${encodeURIComponent(url)}`,
+      `/link-preview?chatJid=${encodeURIComponent(chatJid)}&url=${encodeURIComponent(url)}`,
     );
     return res.preview;
   } catch {

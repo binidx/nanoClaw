@@ -118,6 +118,37 @@ describe('ipc mcp stdio create_feishu_cloud_doc tool', () => {
     });
   });
 
+  it('passes the current chat jid to internal knowledge list authorization', async () => {
+    vi.stubEnv('NANOCLAW_USER_ID', 'runtime-user');
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => [
+        {
+          id: 'kb-assistant-private',
+          name: 'Assistant KB',
+          description: 'Private assistant-bound KB',
+        },
+      ],
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await import('./ipc-mcp-stdio.ts');
+
+    const tool = registeredTools.find(
+      (entry) => entry.name === 'knowledge_list',
+    );
+    expect(tool).toBeDefined();
+
+    const result = await tool!.handler({});
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const requestedUrl = String(fetchMock.mock.calls[0]?.[0] ?? '');
+    expect(requestedUrl).toContain('/internal/knowledge/bases');
+    expect(requestedUrl).toContain('user_id=runtime-user');
+    expect(requestedUrl).toContain('chat_jid=feishu%3Aoc_review_chat');
+    expect(result.content[0].text).toContain('Assistant KB');
+  });
+
   it('posts structured sections to the current chat route', async () => {
     const fetchMock = vi.fn(async () => ({
       ok: true,

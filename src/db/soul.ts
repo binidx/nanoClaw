@@ -543,7 +543,15 @@ export async function findSimilarUserMemories(
              AND to_tsvector('${cfg}', content) @@ plainto_tsquery('${cfg}', ?)
            LIMIT ?`,
         )
-        .all(userId, category, now, now, now, query, limit)) as UserMemoryRecord[];
+        .all(
+          userId,
+          category,
+          now,
+          now,
+          now,
+          query,
+          limit,
+        )) as UserMemoryRecord[];
     } catch {
       // fall through to LIKE
     }
@@ -559,7 +567,15 @@ export async function findSimilarUserMemories(
              AND MATCH(content) AGAINST(? IN BOOLEAN MODE)
            LIMIT ?`,
         )
-        .all(userId, category, now, now, now, query, limit)) as UserMemoryRecord[];
+        .all(
+          userId,
+          category,
+          now,
+          now,
+          now,
+          query,
+          limit,
+        )) as UserMemoryRecord[];
     } catch {
       // fall through to LIKE
     }
@@ -576,7 +592,15 @@ export async function findSimilarUserMemories(
              AND user_memories_fts MATCH ?
            LIMIT ?`,
         )
-        .all(userId, category, now, now, now, query, limit)) as UserMemoryRecord[];
+        .all(
+          userId,
+          category,
+          now,
+          now,
+          now,
+          query,
+          limit,
+        )) as UserMemoryRecord[];
     } catch {
       // fall through to LIKE
     }
@@ -591,7 +615,15 @@ export async function findSimilarUserMemories(
          AND (expires_at IS NULL OR expires_at > ?)
        LIMIT ?`,
     )
-    .all(userId, category, `%${query}%`, now, now, now, limit)) as UserMemoryRecord[];
+    .all(
+      userId,
+      category,
+      `%${query}%`,
+      now,
+      now,
+      now,
+      limit,
+    )) as UserMemoryRecord[];
 }
 
 export async function getRecentlyAccessedMemories(
@@ -1267,7 +1299,8 @@ export async function updateMemorySkill(
       | 'metadata_json'
     >
   >,
-): Promise<void> {
+  userId?: string,
+): Promise<boolean> {
   const sets: string[] = [];
   const params: Array<string | number | null> = [];
   for (const [key, value] of Object.entries(updates)) {
@@ -1276,13 +1309,16 @@ export async function updateMemorySkill(
       params.push(value as string | number | null);
     }
   }
-  if (sets.length === 0) return;
+  if (sets.length === 0) return false;
   sets.push('updated_at = ?');
   params.push(new Date().toISOString());
   params.push(id);
-  await dba
-    .prepare(`UPDATE memory_skills SET ${sets.join(', ')} WHERE id = ?`)
+  const where = userId ? 'WHERE id = ? AND user_id = ?' : 'WHERE id = ?';
+  if (userId) params.push(userId);
+  const result = await dba
+    .prepare(`UPDATE memory_skills SET ${sets.join(', ')} ${where}`)
     .run(...params);
+  return Number(result.changes || 0) > 0;
 }
 
 export async function recordSkillUsage(
@@ -1300,6 +1336,14 @@ export async function recordSkillUsage(
     .run(now, now, id);
 }
 
-export async function deleteMemorySkill(id: string): Promise<void> {
-  await dba.prepare(`DELETE FROM memory_skills WHERE id = ?`).run(id);
+export async function deleteMemorySkill(
+  id: string,
+  userId?: string,
+): Promise<boolean> {
+  const result = userId
+    ? await dba
+        .prepare(`DELETE FROM memory_skills WHERE id = ? AND user_id = ?`)
+        .run(id, userId)
+    : await dba.prepare(`DELETE FROM memory_skills WHERE id = ?`).run(id);
+  return Number(result.changes || 0) > 0;
 }

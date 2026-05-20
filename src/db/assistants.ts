@@ -617,10 +617,7 @@ export async function getProvider(id: string): Promise<AiProvider | undefined> {
 }
 
 export async function getDefaultProvider(): Promise<AiProvider | undefined> {
-  const provider = await dba
-    .prepare("SELECT * FROM ai_providers WHERE user_id = ? AND is_default = 1 AND visibility = 'public' AND deleted_at IS NULL LIMIT 1")
-    .get(SYSTEM_USER_ID) as AiProvider | undefined;
-  return provider && supportsProviderCapability(provider, 'llm') ? provider : undefined;
+  return getDefaultProviderForUser(SYSTEM_USER_ID);
 }
 
 export async function getUserDefaultProviderPreference(
@@ -667,7 +664,7 @@ export async function getUserPreferredDefaultProvider(userId: string): Promise<A
 
 export async function getLegacyDefaultProvider(): Promise<AiProvider | undefined> {
   const provider = await dba
-    .prepare("SELECT * FROM ai_providers WHERE is_default = 1 AND deleted_at IS NULL LIMIT 1")
+    .prepare("SELECT * FROM ai_providers WHERE is_default = 1 AND deleted_at IS NULL AND COALESCE(capability, 'llm') = 'llm' LIMIT 1")
     .get() as AiProvider | undefined;
   return provider && supportsProviderCapability(provider, 'llm') ? provider : undefined;
 }
@@ -677,17 +674,17 @@ export async function getDefaultProviderForUser(userId: string): Promise<AiProvi
   if (preferred) return preferred;
 
   const userProvider = await dba
-    .prepare("SELECT * FROM ai_providers WHERE user_id = ? AND is_default = 1 AND deleted_at IS NULL LIMIT 1")
+    .prepare("SELECT * FROM ai_providers WHERE user_id = ? AND is_default = 1 AND deleted_at IS NULL AND COALESCE(capability, 'llm') = 'llm' LIMIT 1")
     .get(userId) as AiProvider | undefined;
   if (userProvider && supportsProviderCapability(userProvider, 'llm')) return userProvider;
 
   const firstOwnProvider = await dba
-    .prepare("SELECT * FROM ai_providers WHERE user_id = ? AND deleted_at IS NULL ORDER BY updated_at DESC LIMIT 1")
+    .prepare("SELECT * FROM ai_providers WHERE user_id = ? AND deleted_at IS NULL AND COALESCE(capability, 'llm') = 'llm' ORDER BY updated_at DESC LIMIT 1")
     .get(userId) as AiProvider | undefined;
   if (firstOwnProvider && supportsProviderCapability(firstOwnProvider, 'llm')) return firstOwnProvider;
 
   const systemDefault = await dba
-    .prepare("SELECT * FROM ai_providers WHERE user_id = ? AND is_default = 1 AND deleted_at IS NULL LIMIT 1")
+    .prepare("SELECT * FROM ai_providers WHERE user_id = ? AND is_default = 1 AND deleted_at IS NULL AND COALESCE(capability, 'llm') = 'llm' LIMIT 1")
     .get(SYSTEM_USER_ID) as AiProvider | undefined;
   if (systemDefault && supportsProviderCapability(systemDefault, 'llm') && await isProviderVisibleToUser(systemDefault.id, userId, 'llm')) {
     return systemDefault;
