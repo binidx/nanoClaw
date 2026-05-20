@@ -784,9 +784,9 @@ export function SettingsPromptTab({ apiBase }: { apiBase: string }) {
   };
 
   return (
-    <div className="settings-section settings-general-panel" style={{ display: 'grid', gap: 16 }}>
+    <div className="settings-tab-stack" style={{ display: 'grid', gap: 16 }}>
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(280px, 360px) minmax(0, 1fr)', gap: 16 }}>
-        <section className="settings-section settings-general-panel" style={{ margin: 0 }}>
+        <section className="settings-subsection settings-general-panel" style={{ margin: 0 }}>
           <h3>{t('settings.prompt.提示词配置项')}</h3>
           <div className="settings-field-grid" style={{ gap: 8 }}>
             <input className="nc-input" value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t('settings.prompt.搜索_key_标题_功能域')} />
@@ -816,7 +816,7 @@ export function SettingsPromptTab({ apiBase }: { apiBase: string }) {
           </div>
         </section>
 
-        <section className="settings-section settings-general-panel" style={{ margin: 0 }}>
+        <section className="settings-subsection settings-general-panel" style={{ margin: 0 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
             <div>
               <h3>{selectedDefinition?.title || t('settings.prompt.选择一个提示词')}</h3>
@@ -874,7 +874,7 @@ export function SettingsPromptTab({ apiBase }: { apiBase: string }) {
         </section>
       </div>
 
-      <section className="settings-section settings-general-panel" style={{ margin: 0 }}>
+      <section className="settings-subsection settings-general-panel" style={{ margin: 0 }}>
         <h3>{t('settings.prompt.运行时预览')}</h3>
         <div style={{ display: 'grid', gap: 8, marginBottom: 16 }}>
           <select
@@ -976,7 +976,7 @@ export function SettingsPromptTab({ apiBase }: { apiBase: string }) {
       </section>
 
       {previewResult && (
-        <section className="settings-section settings-general-panel" style={{ margin: 0 }}>
+        <section className="settings-subsection settings-general-panel" style={{ margin: 0 }}>
           <h3>{t('settings.prompt.最终装配结果')}</h3>
           <div className="settings-hint">
             {formatFeatureScope(t, previewResult.featureScope)} / {previewResult.promptKey ? formatPromptLabel(previewResult.promptKey) : previewResult.chatJid || t('settings.prompt.预览')}
@@ -1023,7 +1023,7 @@ export function SettingsPromptTab({ apiBase }: { apiBase: string }) {
         </section>
       )}
 
-      <section className="settings-section settings-general-panel" style={{ margin: 0 }}>
+      <section className="settings-subsection settings-general-panel" style={{ margin: 0 }}>
         <h3>{t('settings.prompt.提示词真实记录')}</h3>
         <div style={{ display: 'grid', gridTemplateColumns: 'minmax(320px, 420px) minmax(0, 1fr)', gap: 16 }}>
           <div style={{ maxHeight: 420, overflow: 'auto', display: 'grid', gap: 8 }}>

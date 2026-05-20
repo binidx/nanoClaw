@@ -53,7 +53,7 @@ export function SettingsSubagentTab(props: SettingsSubagentTabProps) {
   const subagentMaxActiveOptions = getSubagentMaxActiveOptions(t);
 
   return (
-  <div className="settings-section">
+  <div className="settings-tab-stack">
     <div className="settings-subsection">
       <h3>{t('settings.subagent.title')}</h3>
       <div className="settings-hint">
@@ -132,7 +132,7 @@ export function SettingsSubagentTab(props: SettingsSubagentTabProps) {
       {subagentMessage ? (<div className={`test-result ${subagentMessageTone}`}>{subagentMessage}</div>) : null}
     </div>
 
-    <div className="settings-subsection" style={{ marginTop: 24 }}>
+    <div className="settings-subsection">
       <h3>{t('settings.subagent.90197a')}</h3>
       <p className="settings-hint">{t('settings.subagent.59630b')}</p>
       {subagentRuntime ? (

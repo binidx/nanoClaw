@@ -1170,6 +1170,14 @@
   border-radius: var(--radius-2xl);
 }
 
+.settings-view.extensions-mode .settings-stage-body > .settings-section:only-child {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  border-radius: 0;
+}
+
 .settings-view.extensions-mode .extensions-panel {
   box-shadow: 0 16px 36px rgba(15, 23, 42, 0.08);
 }
