@@ -31,8 +31,10 @@ import {
   upsertConversationApproval,
 } from '../app-helpers';
 import {
+  applyConversationRealtimeWatermark,
   normalizeConversationMessagesResponse,
   normalizeConversationRealtimeEvent,
+  shouldIgnoreConversationRealtimeSeq,
 } from '../conversation-realtime';
 
 type ChatStateUpdater = (
@@ -40,29 +42,11 @@ type ChatStateUpdater = (
   updater: (state: ConversationChatState) => ConversationChatState,
 ) => void;
 
-export function shouldIgnoreConversationRealtimeSeq(
-  state: ConversationChatState | undefined,
-  seq: number | undefined,
-): boolean {
-  return (
-    typeof seq === 'number' &&
-    typeof state?.lastEventSeq === 'number' &&
-    seq <= state.lastEventSeq
-  );
-}
-
 function applyLastEventSeq(
   state: ConversationChatState,
   seq: number | undefined,
 ): ConversationChatState {
-  if (!Number.isFinite(seq)) return state;
-  if ((state.lastEventSeq ?? Number.NEGATIVE_INFINITY) >= (seq as number)) {
-    return state;
-  }
-  return {
-    ...state,
-    lastEventSeq: seq,
-  };
+  return applyConversationRealtimeWatermark(state, seq, 'live');
 }
 
 type UseConversationRealtimeParams = {
@@ -79,6 +63,8 @@ type UseConversationRealtimeParams = {
 };
 
 export const MESSAGE_PAGE_SIZE = 50;
+
+export { shouldIgnoreConversationRealtimeSeq };
 
 export function shouldIgnoreStructuredStreamEvent(): boolean {
   return false;
@@ -139,6 +125,7 @@ export function applyConversationMessagesSnapshot(params: {
 
   return {
     ...reconciled,
+    ...applyConversationRealtimeWatermark(reconciled, data.last_event_seq, 'snapshot'),
     turns: mergePersistedAndTransientTurns(data.turns, reconciled.turns),
     approvals: data.approvals ?? state.approvals,
   };

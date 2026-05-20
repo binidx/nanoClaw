@@ -479,6 +479,33 @@ function getRepoReviewJsonBytes(value: unknown): number {
   }
 }
 
+function collectRepoReviewProjectGraphSelectedFiles(
+  context: ReviewEvidenceBundle['projectGraphContext'] | undefined,
+  fallbackFiles: string[],
+): string[] {
+  if (!context || context.status !== 'ready') return fallbackFiles.slice(0, 50);
+  const seen = new Set<string>();
+  const selected: string[] = [];
+  for (const node of [
+    ...context.startNodes,
+    ...context.topFiles,
+    ...context.topFunctions,
+    ...context.topChunks,
+  ]) {
+    const filePath = stringValue(node.filePath);
+    if (!filePath || seen.has(filePath)) continue;
+    seen.add(filePath);
+    selected.push(filePath);
+  }
+  for (const filePath of fallbackFiles) {
+    const normalized = stringValue(filePath);
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    selected.push(normalized);
+  }
+  return selected.slice(0, 50);
+}
+
 export function getRepoReviewProjectGraphFileCommunity(input: {
   prepared: ReviewPreparedContext;
   filePath: string;
@@ -504,6 +531,7 @@ function buildInitialRepoReviewExecutionStats(input: {
   changedFiles: string[];
   evidenceBundle?: ReviewEvidenceBundle;
 }): RepoReviewExecutionStats {
+  const projectGraphContext = input.evidenceBundle?.projectGraphContext;
   return {
     diffFiles: input.changedFiles.length,
     diffBytes: getRepoReviewUtf8Bytes(input.diffText),
@@ -533,10 +561,34 @@ function buildInitialRepoReviewExecutionStats(input: {
           codeMapContextStatus: input.evidenceBundle.codeMapStatus.status,
           codeIndexContextStatus: input.evidenceBundle.codeIndexStatus.status,
           changedFunctionCount: input.evidenceBundle.changedFunctions.length,
+          projectGraphNodeCount:
+            projectGraphContext?.status === 'ready'
+              ? projectGraphContext.nodeCount
+              : 0,
+          projectGraphEdgeCount:
+            projectGraphContext?.status === 'ready'
+              ? projectGraphContext.edgeCount
+              : 0,
+          projectGraphSelectedFiles: collectRepoReviewProjectGraphSelectedFiles(
+            projectGraphContext,
+            input.changedFiles,
+          ),
+          ...(projectGraphContext?.status === 'ready'
+            ? {
+                projectGraphConfidence: projectGraphContext.confidence,
+                projectGraphPlanner: projectGraphContext.planner,
+                ...(projectGraphContext.artifact?.id
+                  ? { projectGraphArtifactId: projectGraphContext.artifact.id }
+                  : {}),
+              }
+            : {}),
         }
       : {
           evidenceBundleBytes: 0,
           changedFunctionCount: 0,
+          projectGraphNodeCount: 0,
+          projectGraphEdgeCount: 0,
+          projectGraphSelectedFiles: input.changedFiles.slice(0, 50),
         }),
   };
 }
@@ -727,6 +779,56 @@ function normalizeReviewEvidenceStatusValue(
     : undefined;
 }
 
+function normalizeRepoReviewObservabilityConfidence(
+  value: unknown,
+): RepoReviewExecutionStats['projectGraphConfidence'] {
+  const record = asRecord(value);
+  const overall = Number(record.overall);
+  if (!Number.isFinite(overall)) return undefined;
+  const seedScore = Number(record.seedScore);
+  const graphScore = Number(record.graphScore);
+  const contextScore = Number(record.contextScore);
+  return {
+    overall: Math.max(0, overall),
+    ...(Number.isFinite(seedScore)
+      ? { seedScore: Math.max(0, seedScore) }
+      : {}),
+    ...(Number.isFinite(graphScore)
+      ? { graphScore: Math.max(0, graphScore) }
+      : {}),
+    ...(Number.isFinite(contextScore)
+      ? { contextScore: Math.max(0, contextScore) }
+      : {}),
+  };
+}
+
+function normalizeRepoReviewObservabilityPlanner(
+  value: unknown,
+): RepoReviewExecutionStats['projectGraphPlanner'] {
+  const record = asRecord(value);
+  const strategy = stringValue(record.strategy);
+  if (!strategy) return undefined;
+  const forcedSeedCount = Number(record.forcedSeedCount);
+  const communityHintCount = Number(record.communityHintCount);
+  const workerCount = Number(record.workerCount);
+  const splitGroups = Number(record.splitGroups);
+  return {
+    strategy,
+    ...(Number.isFinite(forcedSeedCount)
+      ? { forcedSeedCount: Math.max(0, forcedSeedCount) }
+      : {}),
+    ...(Number.isFinite(communityHintCount)
+      ? { communityHintCount: Math.max(0, communityHintCount) }
+      : {}),
+    ...(Number.isFinite(workerCount)
+      ? { workerCount: Math.max(0, workerCount) }
+      : {}),
+    ...(Number.isFinite(splitGroups)
+      ? { splitGroups: Math.max(0, splitGroups) }
+      : {}),
+  };
+}
+
 function normalizeRepoReviewExecutionStats(
   value: unknown,
 ): RepoReviewExecutionStats | undefined {
@@ -798,6 +900,24 @@ function normalizeRepoReviewExecutionStats(
       0,
       Number(record.fallbackReviewedFileCount) || 0,
     ),
+    projectGraphNodeCount: Math.max(
+      0,
+      Number(record.projectGraphNodeCount) || 0,
+    ),
+    projectGraphEdgeCount: Math.max(
+      0,
+      Number(record.projectGraphEdgeCount) || 0,
+    ),
+    projectGraphSelectedFiles: normalizeStringArray(
+      record.projectGraphSelectedFiles,
+    ).slice(0, 50),
+    projectGraphConfidence: normalizeRepoReviewObservabilityConfidence(
+      record.projectGraphConfidence,
+    ),
+    projectGraphPlanner: normalizeRepoReviewObservabilityPlanner(
+      record.projectGraphPlanner,
+    ),
+    projectGraphArtifactId: stringValue(record.projectGraphArtifactId) || undefined,
   };
 }
 

@@ -32,6 +32,13 @@ import type {
   KnowledgeBase,
   KnowledgeEnhancementLevel,
 } from '../app-types';
+import {
+  resolveKnowledgeContentView,
+  resolveKnowledgeDetailTab,
+  resolveKnowledgeDrawerTab,
+  type KnowledgeContentView,
+  type KnowledgeWorkbenchTab,
+} from './knowledge-page-helpers';
 import { createMarkdownHeadingId } from '../markdown-helpers';
 import '../styles/knowledge.css';
 
@@ -303,15 +310,6 @@ interface KnowledgeGraphResponse {
 
 type KnowledgeGraphViewMode = 'overview' | 'focus' | 'full';
 
-type KnowledgeWorkbenchTab =
-  | 'overview'
-  | 'content'
-  | 'graph'
-  | 'settings'
-  | 'search';
-
-type KnowledgeContentView = 'docs' | 'tree' | 'wiki';
-
 function getStatusLabels(t: (key: string) => string): Record<string, string> {
   return {
     pending: t('等待处理'),
@@ -557,24 +555,6 @@ const RELATION_GRAPH_LINK_TYPES = [
   'references',
   'wiki_source',
 ] as const;
-
-const VALID_DRAWER_TABS: ReadonlySet<string> = new Set([
-  'overview',
-  'docs',
-  'search',
-  'config',
-  'tree',
-  'relations',
-  'wiki',
-]);
-
-const VALID_WORKBENCH_TABS: ReadonlySet<string> = new Set([
-  'overview',
-  'content',
-  'graph',
-  'settings',
-  'search',
-]);
 
 const VALID_CONTENT_VIEWS: ReadonlySet<string> = new Set([
   'docs',
@@ -884,36 +864,26 @@ export function KnowledgePage({ apiBase }: KnowledgePageProps) {
   );
 
   const detailTab: KnowledgeWorkbenchTab = useMemo(() => {
-    if (creatingKb) return 'settings';
-    if (!selectedKb && urlView === 'search') return 'search';
-    if (!selectedKb) return 'overview';
-
-    const fromUrl = urlTab && VALID_DRAWER_TABS.has(urlTab) ? urlTab : 'overview';
-    if (fromUrl === 'docs' || fromUrl === 'tree' || fromUrl === 'wiki') return 'content';
-    if (fromUrl === 'relations') return 'graph';
-    if (fromUrl === 'config') return 'settings';
-    if (VALID_WORKBENCH_TABS.has(fromUrl)) return fromUrl as KnowledgeWorkbenchTab;
-    return 'overview';
+    return resolveKnowledgeDetailTab({
+      creatingKb,
+      hasSelectedKb: Boolean(selectedKb),
+      urlTab,
+      urlView,
+    });
   }, [creatingKb, selectedKb, urlTab, urlView]);
 
   const contentView: KnowledgeContentView = useMemo(() => {
-    const fromContent =
-      urlContent && VALID_CONTENT_VIEWS.has(urlContent)
-        ? (urlContent as KnowledgeContentView)
-        : null;
-    if (fromContent) return fromContent;
-    if (urlTab === 'tree') return 'tree';
-    if (urlTab === 'wiki') return 'wiki';
-    return 'docs';
+    return resolveKnowledgeContentView({ urlContent, urlTab });
   }, [urlContent, urlTab]);
 
   const drawerTab = useMemo(() => {
-    if (creatingKb) return 'config';
-    if (!selectedKb && urlView === 'search') return 'search';
-    if (detailTab === 'content') return contentView;
-    if (detailTab === 'graph') return 'relations';
-    if (detailTab === 'settings') return 'config';
-    return detailTab;
+    return resolveKnowledgeDrawerTab({
+      creatingKb,
+      hasSelectedKb: Boolean(selectedKb),
+      urlView,
+      detailTab,
+      contentView,
+    });
   }, [contentView, creatingKb, detailTab, selectedKb, urlView]);
 
   const fetchBases = useCallback(async () => {

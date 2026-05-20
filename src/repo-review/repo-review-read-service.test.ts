@@ -89,12 +89,47 @@ describe('repo-review-read-service', () => {
     });
     updateReviewRun('run-running', {
       summary: 'search indexing still running',
+      changed_files: ['src/search/index.ts', 'src/search/query.ts'],
+      diff_bytes: 4096,
+      duration_ms: 125000,
       callback_context: {
         reviewProgress: {
           turnCount: 2,
           latestAssistantText: '正在收敛跨文件结论。',
           latestErrorText: null,
           hasTerminalOutput: true,
+          steps: [
+            {
+              id: 'prepare_review_evidence',
+              label: '准备 Review Evidence',
+              status: 'completed',
+              startedAt: '2026-03-22T10:05:00.000Z',
+              durationMs: 1200,
+            },
+          ],
+        },
+        executionStats: {
+          diffFiles: 2,
+          diffBytes: 4096,
+          promptBytesBuilt: 8192,
+          modelCallCount: 3,
+          workerCount: 2,
+          completedWorkerCount: 2,
+          mainReadonlyToolCallCount: 1,
+          subagentToolCallCount: 4,
+          codeMapContextStatus: 'ready',
+          codeIndexContextStatus: 'ready',
+          projectGraphNodeCount: 12,
+          projectGraphEdgeCount: 7,
+          projectGraphSelectedFiles: ['src/search/index.ts'],
+          projectGraphConfidence: {
+            overall: 0.82,
+            seedScore: 0.9,
+          },
+          projectGraphPlanner: {
+            strategy: 'mixed',
+            forcedSeedCount: 2,
+          },
         },
       },
     });
@@ -113,6 +148,36 @@ describe('repo-review-read-service', () => {
       latestAssistantText: '正在收敛跨文件结论。',
       latestErrorText: null,
       hasTerminalOutput: true,
+    });
+    expect(allRuns[1]?.observability).toMatchObject({
+      source: 'github',
+      kind: 'repo_review_run',
+      status: 'running',
+      durationMs: 125000,
+      nodeCount: 12,
+      edgeCount: 7,
+      selectedFiles: ['src/search/index.ts'],
+      selectedFileCount: 1,
+      confidence: {
+        overall: 0.82,
+        seedScore: 0.9,
+      },
+      planner: {
+        strategy: 'mixed',
+        forcedSeedCount: 2,
+      },
+      metrics: {
+        diffFiles: 2,
+        diffBytes: 4096,
+        promptBytesBuilt: 8192,
+        modelCallCount: 3,
+        workerCount: 2,
+        completedWorkerCount: 2,
+        readonlyToolCallCount: 5,
+        progressStepCount: 1,
+        codeMapContextStatus: 'ready',
+        codeIndexContextStatus: 'ready',
+      },
     });
     expect(allRuns[0]?.commitDetails).toEqual([]);
     expect(allRuns[0]?.passDecisionMode).toBe('human');

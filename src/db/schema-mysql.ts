@@ -253,6 +253,40 @@ export function buildMySQLSchema(autoPk: string): string {
       error TEXT
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+    CREATE TABLE IF NOT EXISTS job_statuses (
+      id VARCHAR(64) PRIMARY KEY,
+      source VARCHAR(64) NOT NULL,
+      subject_type VARCHAR(64) NOT NULL,
+      subject_id VARCHAR(128) NOT NULL,
+      run_key VARCHAR(128),
+      status VARCHAR(32) NOT NULL,
+      title TEXT,
+      started_at VARCHAR(64),
+      finished_at VARCHAR(64),
+      duration_ms INT,
+      result_json MEDIUMTEXT,
+      error TEXT,
+      metadata_json MEDIUMTEXT,
+      user_id VARCHAR(64) NOT NULL DEFAULT '__system__',
+      created_at VARCHAR(64) NOT NULL,
+      updated_at VARCHAR(64) NOT NULL,
+      KEY idx_job_statuses_subject_created (source, subject_type, subject_id, created_at DESC),
+      KEY idx_job_statuses_status_updated (status, updated_at DESC)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+    CREATE TABLE IF NOT EXISTS job_events (
+      id VARCHAR(64) PRIMARY KEY,
+      job_id VARCHAR(64) NOT NULL,
+      event_type VARCHAR(64) NOT NULL,
+      status VARCHAR(32),
+      message TEXT,
+      data_json MEDIUMTEXT,
+      user_id VARCHAR(64) NOT NULL DEFAULT '__system__',
+      created_at VARCHAR(64) NOT NULL,
+      KEY idx_job_events_job_created (job_id, created_at ASC),
+      KEY idx_job_events_type_created (event_type, created_at DESC)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
     CREATE TABLE IF NOT EXISTS router_state (
       \`key\` VARCHAR(128) PRIMARY KEY,
       value TEXT NOT NULL
@@ -3333,6 +3367,50 @@ export async function runMySQLMigrations(engine: DbEngine): Promise<void> {
   );
   await safeMigrate(
     `CREATE INDEX idx_scheduled_tasks_created ON scheduled_tasks(deleted_at, created_at DESC)`,
+  );
+  await safeMigrate(`
+    CREATE TABLE IF NOT EXISTS job_statuses (
+      id VARCHAR(64) PRIMARY KEY,
+      source VARCHAR(64) NOT NULL,
+      subject_type VARCHAR(64) NOT NULL,
+      subject_id VARCHAR(128) NOT NULL,
+      run_key VARCHAR(128),
+      status VARCHAR(32) NOT NULL,
+      title TEXT,
+      started_at VARCHAR(64),
+      finished_at VARCHAR(64),
+      duration_ms INT,
+      result_json MEDIUMTEXT,
+      error TEXT,
+      metadata_json MEDIUMTEXT,
+      user_id VARCHAR(64) NOT NULL DEFAULT '__system__',
+      created_at VARCHAR(64) NOT NULL,
+      updated_at VARCHAR(64) NOT NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `);
+  await safeMigrate(
+    `CREATE INDEX idx_job_statuses_subject_created ON job_statuses(source, subject_type, subject_id, created_at DESC)`,
+  );
+  await safeMigrate(
+    `CREATE INDEX idx_job_statuses_status_updated ON job_statuses(status, updated_at DESC)`,
+  );
+  await safeMigrate(`
+    CREATE TABLE IF NOT EXISTS job_events (
+      id VARCHAR(64) PRIMARY KEY,
+      job_id VARCHAR(64) NOT NULL,
+      event_type VARCHAR(64) NOT NULL,
+      status VARCHAR(32),
+      message TEXT,
+      data_json MEDIUMTEXT,
+      user_id VARCHAR(64) NOT NULL DEFAULT '__system__',
+      created_at VARCHAR(64) NOT NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `);
+  await safeMigrate(
+    `CREATE INDEX idx_job_events_job_created ON job_events(job_id, created_at ASC)`,
+  );
+  await safeMigrate(
+    `CREATE INDEX idx_job_events_type_created ON job_events(event_type, created_at DESC)`,
   );
   await safeMigrate(`ALTER TABLE chats ADD COLUMN created_at VARCHAR(64)`);
   await safeMigrate(`ALTER TABLE chats ADD COLUMN updated_at VARCHAR(64)`);

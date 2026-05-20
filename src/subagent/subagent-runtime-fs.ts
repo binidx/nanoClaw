@@ -4,7 +4,9 @@ import path from 'path';
 import { DATA_DIR, GROUPS_DIR } from '../config.js';
 import {
   GROUPS_DIR_OVERRIDE_ENV,
+  HISTORY_FILE_NAME,
   RUN_REGISTRY_PATH_OVERRIDE_ENV,
+  SUBAGENT_DIR_NAME,
   type SubagentRuntimeEntry,
   isSupportedControlScope,
   isSupportedProvider,
@@ -14,6 +16,8 @@ import {
   isSupportedRuntimeKind,
   isSupportedWorkProfile,
 } from './subagent-runtime-types.js';
+
+const MAX_NESTED_RUNTIME_ROOT_SCAN_DEPTH = 64;
 
 export function getRunRegistryPath(): string {
   const override = process.env[RUN_REGISTRY_PATH_OVERRIDE_ENV]?.trim();
@@ -25,6 +29,72 @@ export function getRunRegistryPath(): string {
 export function getRuntimeRegistryGroupsDir(): string {
   const override = process.env[GROUPS_DIR_OVERRIDE_ENV]?.trim();
   return override ? path.resolve(override) : GROUPS_DIR;
+}
+
+function addRuntimeRoot(
+  roots: string[],
+  seen: Set<string>,
+  runtimeRoot: string,
+): void {
+  let resolved = path.resolve(runtimeRoot);
+  try {
+    resolved = fs.realpathSync(runtimeRoot);
+  } catch {
+    // Keep the resolved path when the root was found by name but disappeared.
+  }
+  if (seen.has(resolved)) return;
+  seen.add(resolved);
+  roots.push(runtimeRoot);
+}
+
+function collectNestedRuntimeRoots(
+  currentDir: string,
+  roots: string[],
+  seen: Set<string>,
+  depth: number,
+): void {
+  if (depth > MAX_NESTED_RUNTIME_ROOT_SCAN_DEPTH) return;
+  let entries: fs.Dirent[] = [];
+  try {
+    entries = fs.readdirSync(currentDir, { withFileTypes: true });
+  } catch {
+    return;
+  }
+
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    const childPath = path.join(currentDir, entry.name);
+    if (entry.name === SUBAGENT_DIR_NAME) {
+      addRuntimeRoot(roots, seen, childPath);
+    }
+    collectNestedRuntimeRoots(childPath, roots, seen, depth + 1);
+  }
+}
+
+export function listRuntimeRegistryRoots(): string[] {
+  const groupsDir = getRuntimeRegistryGroupsDir();
+  const roots: string[] = [];
+  const seen = new Set<string>();
+  let groupEntries: fs.Dirent[] = [];
+  try {
+    groupEntries = fs.readdirSync(groupsDir, { withFileTypes: true });
+  } catch {
+    return roots;
+  }
+
+  for (const groupEntry of groupEntries) {
+    if (!groupEntry.isDirectory()) continue;
+    const groupDir = path.join(groupsDir, groupEntry.name);
+    const runtimeRoot = path.join(groupDir, SUBAGENT_DIR_NAME);
+    if (fs.existsSync(runtimeRoot)) {
+      addRuntimeRoot(roots, seen, runtimeRoot);
+      collectNestedRuntimeRoots(runtimeRoot, roots, seen, 0);
+      continue;
+    }
+    collectNestedRuntimeRoots(groupDir, roots, seen, 0);
+  }
+
+  return roots;
 }
 
 export function parseRuntimeEntry(
@@ -101,7 +171,9 @@ export function parseRuntimeEntry(
   }
 }
 
-export function readRuntimeEntry(filePath: string): SubagentRuntimeEntry | null {
+export function readRuntimeEntry(
+  filePath: string,
+): SubagentRuntimeEntry | null {
   try {
     const payload = JSON.parse(
       fs.readFileSync(filePath, 'utf8'),
@@ -122,6 +194,10 @@ export function readRuntimeHistory(filePath: string): SubagentRuntimeEntry[] {
   } catch {
     return [];
   }
+}
+
+export function getRuntimeRootHistoryPath(runtimeRoot: string): string {
+  return path.join(runtimeRoot, HISTORY_FILE_NAME);
 }
 
 export function writeJsonFile(filePath: string, payload: unknown): void {

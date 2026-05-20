@@ -274,6 +274,110 @@ describe('internal knowledge routes', () => {
     ]);
   });
 
+  it('scopes internal search to the requested kb_ids intersection', async () => {
+    const sharedKbId = await createKb({
+      id: 'kb-shared-scope',
+      name: 'Shared Scope KB',
+      visibility: 'shared',
+      enabled: 1,
+      user_id: '__system__',
+    });
+    const privateKbId = await createKb({
+      id: 'kb-private-scope',
+      name: 'Private Scope KB',
+      visibility: 'private',
+      enabled: 1,
+      user_id: 'kb-owner',
+    });
+    await insertWikiPage(
+      sharedKbId,
+      'page-shared-topic',
+      'shared-topic',
+      'overview',
+      [],
+    );
+    await insertWikiPage(
+      privateKbId,
+      'page-private-scope-topic',
+      'private-topic',
+      'overview',
+      [],
+    );
+    await createAssistant({
+      id: 'assistant-scope-private-kb',
+      name: 'Assistant Scope Private KB',
+      config: {
+        ...createDefaultAssistantConfig(),
+        kbIds: [privateKbId],
+      },
+    });
+    await setRegisteredGroup('scope-chat@g.us', {
+      name: 'Scope Chat',
+      folder: 'scope-chat',
+      trigger: '@bot',
+      added_at: '2026-04-28T00:00:00.000Z',
+      assistantId: 'assistant-scope-private-kb',
+    });
+
+    const app = express();
+    app.use(express.json());
+    registerInternalKnowledgeRoutes(app, {
+      requireInternalApi: (_req, _res, next) => next(),
+    });
+
+    const scopedResponse = await inject(app, {
+      method: 'POST',
+      url: '/internal/knowledge/search',
+      headers: {
+        'content-type': 'application/json',
+      },
+      payload: JSON.stringify({
+        query: 'topic',
+        user_id: 'runtime-user',
+        chat_jid: 'scope-chat@g.us',
+        kb_ids: [sharedKbId, 'kb-not-visible'],
+        top_k: 5,
+        min_score: 0,
+      }),
+    });
+
+    expect(scopedResponse.statusCode).toBe(200);
+    const scopedJson = scopedResponse.json();
+    expect(scopedJson.wiki).toEqual([
+      expect.objectContaining({
+        kbId: sharedKbId,
+        pageId: 'page-shared-topic',
+      }),
+    ]);
+    expect(scopedJson.wiki).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kbId: privateKbId }),
+      ]),
+    );
+
+    const emptyScopeResponse = await inject(app, {
+      method: 'POST',
+      url: '/internal/knowledge/search',
+      headers: {
+        'content-type': 'application/json',
+      },
+      payload: JSON.stringify({
+        query: 'private-topic',
+        user_id: 'runtime-user',
+        chat_jid: 'scope-chat@g.us',
+        kb_ids: [],
+        top_k: 5,
+        min_score: 0,
+      }),
+    });
+
+    expect(emptyScopeResponse.statusCode).toBe(200);
+    expect(emptyScopeResponse.json()).toEqual({
+      chunks: [],
+      wiki: [],
+    });
+  });
+
   it('accepts internal knowledge search POST bodies and returns structured results', async () => {
     const kbId = await createKb();
 

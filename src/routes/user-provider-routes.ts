@@ -23,6 +23,7 @@ import {
   buildProviderExtraConfigValue,
   serializeProviderForClient,
 } from '../provider/provider-http-config.js';
+import { resolveProviderSecretUpdate } from '../provider/provider-secret.js';
 import type { ProviderCapability } from '../provider/provider-registry.js';
 import { isValidProviderType } from '../provider/provider-registry.js';
 import { testAiProviderConnection } from '../provider/provider-api.js';
@@ -47,7 +48,7 @@ function embeddingMaterialChanged(
   next: {
     capability: ProviderCapability;
     type?: string;
-    api_key?: string;
+    api_key?: string | null;
     base_url?: string | null;
     model?: string | null;
     dimensions?: number | null;
@@ -97,6 +98,8 @@ export function registerUserProviderRoutes(
         type,
         capability: capabilityRaw,
         api_key,
+        api_key_action,
+        apiKeyAction,
         base_url,
         model,
         dimensions,
@@ -109,6 +112,8 @@ export function registerUserProviderRoutes(
         type?: string;
         capability?: string;
         api_key?: string;
+        api_key_action?: string;
+        apiKeyAction?: string;
         base_url?: string;
         model?: string;
         dimensions?: number | string | null;
@@ -207,6 +212,8 @@ export function registerUserProviderRoutes(
         type,
         capability: capabilityRaw,
         api_key,
+        api_key_action,
+        apiKeyAction,
         base_url,
         model,
         dimensions,
@@ -219,6 +226,8 @@ export function registerUserProviderRoutes(
         type?: string;
         capability?: string;
         api_key?: string;
+        api_key_action?: string;
+        apiKeyAction?: string;
         base_url?: string;
         model?: string;
         dimensions?: number | string | null;
@@ -239,12 +248,11 @@ export function registerUserProviderRoutes(
         return;
       }
 
-      const encryptedKey =
-        typeof api_key === 'string' && /\*{4,}/.test(api_key)
-          ? provider.api_key
-          : api_key
-            ? encryptValue(api_key)
-            : provider.api_key;
+      const secretUpdate = resolveProviderSecretUpdate({
+        currentEncryptedValue: provider.api_key,
+        rawValue: api_key,
+        action: api_key_action ?? apiKeyAction,
+      });
       const numericDimensions =
         dimensions === null || dimensions === undefined || String(dimensions).trim() === ''
           ? null
@@ -267,7 +275,7 @@ export function registerUserProviderRoutes(
         embeddingMaterialChanged(provider, {
           capability: nextCapability,
           type,
-          api_key: encryptedKey || undefined,
+          api_key: secretUpdate.changed ? secretUpdate.value : undefined,
           base_url: base_url !== undefined ? (base_url || undefined) : undefined,
           model: model !== undefined ? (model || undefined) : undefined,
           dimensions: dimensions !== undefined ? numericDimensions : undefined,
@@ -277,7 +285,7 @@ export function registerUserProviderRoutes(
         alias: alias || provider.alias,
         type: type || provider.type,
         capability: nextCapability,
-        api_key: encryptedKey,
+        api_key: secretUpdate.value,
         base_url: base_url !== undefined ? base_url : provider.base_url,
         model: model !== undefined ? model : provider.model,
         dimensions: dimensions !== undefined ? numericDimensions : provider.dimensions,
@@ -301,8 +309,15 @@ export function registerUserProviderRoutes(
         ok: true,
         requiresKnowledgeReembed,
         knowledgeBaseRefs: usage.embeddingRefs,
+        apiKeyAction: secretUpdate.action,
+        apiKeyChanged: secretUpdate.changed,
       });
     } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (message.includes('api_key')) {
+        res.status(400).json({ error: message });
+        return;
+      }
       logger.error({ err }, 'Failed to update user provider');
       res.status(500).json({ error: 'Internal error' });
     }

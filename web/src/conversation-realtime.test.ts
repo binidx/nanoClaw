@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { normalizeConversationRealtimeEvent } from './conversation-realtime';
+import {
+  applyConversationRealtimeWatermark,
+  normalizeConversationRealtimeEvent,
+  shouldIgnoreConversationRealtimeSeq,
+} from './conversation-realtime';
 
 describe('normalizeConversationRealtimeEvent IM events', () => {
   it('normalizes IM message-created envelopes with message payload metadata', () => {
@@ -50,5 +54,29 @@ describe('normalizeConversationRealtimeEvent IM events', () => {
         attachments: [{ id: 'file-1' }],
       },
     });
+  });
+});
+
+describe('conversation realtime watermarks', () => {
+  it('advances live and send ack watermarks but not HTTP snapshot watermarks', () => {
+    const base = {
+      messages: [],
+      pendingMessages: [],
+      turns: [],
+      approvals: [],
+      lastEventSeq: 5,
+    };
+
+    expect(shouldIgnoreConversationRealtimeSeq(base, 5)).toBe(true);
+    expect(shouldIgnoreConversationRealtimeSeq(base, 6)).toBe(false);
+    expect(
+      applyConversationRealtimeWatermark(base, 9, 'snapshot').lastEventSeq,
+    ).toBe(5);
+    expect(
+      applyConversationRealtimeWatermark(base, 8, 'live').lastEventSeq,
+    ).toBe(8);
+    expect(
+      applyConversationRealtimeWatermark(base, 7, 'send_ack').lastEventSeq,
+    ).toBe(7);
   });
 });

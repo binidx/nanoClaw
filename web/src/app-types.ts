@@ -1395,6 +1395,7 @@ export interface AiProvider {
   user_agent?: string | null;
   custom_headers?: Record<string, string> | null;
   custom_headers_text?: string | null;
+  api_key_action?: 'keep' | 'rotate' | 'clear' | 'touch';
 }
 
 export interface ProviderTypeDef {
@@ -1409,9 +1410,20 @@ export interface ProviderTypeDef {
 
 export interface TestResult {
   ok: boolean;
+  status?:
+    | 'success'
+    | 'http_error'
+    | 'timeout'
+    | 'network_error'
+    | 'configuration_error'
+    | 'unknown_error';
   message: string;
   model?: string;
   latencyMs?: number;
+  endpoint?: string;
+  httpStatus?: number;
+  providerType?: string;
+  capability?: 'llm' | 'embedding';
 }
 
 export interface OrphanDirectoryEntry {

@@ -16,9 +16,20 @@ import {
 
 export interface ProviderConnectivityResult {
   ok: boolean;
+  status:
+    | 'success'
+    | 'http_error'
+    | 'timeout'
+    | 'network_error'
+    | 'configuration_error'
+    | 'unknown_error';
   message: string;
   model?: string;
   latencyMs?: number;
+  endpoint?: string;
+  httpStatus?: number;
+  providerType?: string;
+  capability?: 'llm' | 'embedding';
 }
 
 export interface ProviderGeneratedTextResult {
@@ -161,8 +172,12 @@ class AnthropicAdapter implements ProviderApiAdapter {
       );
       return {
         ok: false,
+        status: 'http_error',
         message: `API error ${resp.status}: ${errorText.slice(0, 200)}`,
+        model,
         latencyMs,
+        endpoint,
+        httpStatus: resp.status,
       };
     }
     const data = (await resp.json()) as AnthropicResponsePayload;
@@ -173,7 +188,15 @@ class AnthropicAdapter implements ProviderApiAdapter {
       responseText,
       usage: normalizeAnthropicUsage(data.usage),
     });
-    return { ok: true, message: responseText, model: data.model, latencyMs };
+    return {
+      ok: true,
+      status: 'success',
+      message: responseText,
+      model: data.model,
+      latencyMs,
+      endpoint,
+      httpStatus: resp.status,
+    };
   }
 
   async generateText(
@@ -417,8 +440,12 @@ class OpenAICompatibleAdapter implements ProviderApiAdapter {
       );
       return {
         ok: false,
+        status: 'http_error',
         message: `API error ${resp.status}: ${errorText.slice(0, 200)}`,
+        model,
         latencyMs,
+        endpoint,
+        httpStatus: resp.status,
       };
     }
     const payload = (await resp.json()) as OpenAiCompatiblePayload;
@@ -430,7 +457,15 @@ class OpenAICompatibleAdapter implements ProviderApiAdapter {
       responseText,
       usage: normalizeOpenAiUsage(payload.usage),
     });
-    return { ok: true, message: responseText, model: payload.model, latencyMs };
+    return {
+      ok: true,
+      status: 'success',
+      message: responseText,
+      model: payload.model,
+      latencyMs,
+      endpoint,
+      httpStatus: resp.status,
+    };
   }
 
   async generateText(

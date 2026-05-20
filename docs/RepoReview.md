@@ -91,7 +91,7 @@ Repo Review 是面向 Git 仓库的审查流水线，不只是"把 diff 发给�
 
 - `reviewTurns` 记录真实的审查执行过程，包含 `tool_call`、`reasoning`、`assistant_message` 和 phase/group 元数据，适合排障和完整回放。
 - `reviewProgress.steps` 记录列表友好的阶段快照，重点展示调度、worker、主代理、reducer、持久化等阶段状态与耗时。
-- `/api/repo-reviews/runs-summary` 默认只返回 summary run 数据：`reviewTurns` 为空，主要依赖 `reviewProgress` 呈现列表里的“分析过程”。
+- `/api/repo-reviews/runs-summary` 默认只返回 summary run 数据：`reviewTurns` 为空，主要依赖 `reviewProgress` 呈现列表里的“分析过程”；同时返回 `observability` 摘要，字段风格与 ProjectGraph query artifact 对齐，包括 `durationMs`、`nodeCount`、`edgeCount`、`selectedFiles`、`confidence`、`planner`、`source`、`kind`、`status`，并从 `duration_ms`、`callback_context.executionStats`、`reviewProgress.steps` 派生，不需要额外 DB 迁移。
 - `/api/repo-reviews/runs/:runId/detail` 才返回完整 `reviewTurns`，因此“列表里只有主代理直审卡片”通常表示摘要接口做了裁剪，不表示后端没有记录真实 tool-call 流。
 - 前端时间线会兼容历史 run：旧 agentic step id 仍可展示，但当前 run 的主路径应优先理解为“主代理直审”或“worker 后主代理补审”。
 

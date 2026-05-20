@@ -162,6 +162,19 @@ describe('agent runner memory tools', () => {
     expect(searchOutput).toContain('user:memory/memory-1');
     expect(getOutput).toContain('user:memory/memory-1#L1-L1');
     expect(getOutput).toContain('Alice prefers concise status updates.');
+    expect(
+      fetchMock.mock.calls.some((call) =>
+        String(call[0]).endsWith('/internal/memory/recall'),
+      ),
+    ).toBe(false);
+  });
+
+  it('fails closed for user:memory refs that were not returned by recent search', async () => {
+    const { readMemoryFile } = await importMemoryTools();
+
+    expect(() => readMemoryFile('user:memory/memory-unknown')).toThrow(
+      /Run memory_search again first/i,
+    );
   });
 
   it('attaches recent search follow-up metadata when memory_get reads a searched hit', { timeout: 15_000 }, async () => {

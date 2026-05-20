@@ -16,6 +16,9 @@ afterEach(() => {
     recursive: true,
     force: true,
   });
+  fs.rmSync(path.join(live2dCacheRoot, 'outside-secret.model3.json'), {
+    force: true,
+  });
 });
 
 describe('decodeZipEntryName', () => {
@@ -48,6 +51,30 @@ describe('decodeZipEntryName', () => {
 
     expect(
       getModelFilePath('model-a', '../model-ab/secret.model3.json'),
+    ).toBeNull();
+  });
+
+  it('rejects absolute paths to existing files outside the model cache', () => {
+    const modelDir = path.join(live2dCacheRoot, 'model-a');
+    const outsideFile = path.join(
+      live2dCacheRoot,
+      'outside-secret.model3.json',
+    );
+    fs.mkdirSync(modelDir, { recursive: true });
+    fs.writeFileSync(outsideFile, '{}');
+
+    expect(getModelFilePath('model-a', outsideFile)).toBeNull();
+  });
+
+  it('rejects traversal after a nested safe-looking segment', () => {
+    const modelDir = path.join(live2dCacheRoot, 'model-a');
+    const siblingDir = path.join(live2dCacheRoot, 'model-ab');
+    fs.mkdirSync(path.join(modelDir, 'assets'), { recursive: true });
+    fs.mkdirSync(siblingDir, { recursive: true });
+    fs.writeFileSync(path.join(siblingDir, 'secret.model3.json'), '{}');
+
+    expect(
+      getModelFilePath('model-a', 'assets/../../model-ab/secret.model3.json'),
     ).toBeNull();
   });
 });

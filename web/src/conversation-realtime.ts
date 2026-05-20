@@ -2,6 +2,7 @@ import i18n from './i18n/index.ts';
 import type {
   ApprovalRequest,
   AssistantTurn,
+  ConversationChatState,
   ConversationMessagesResponse,
   ConversationSendAck,
   Message,
@@ -21,6 +22,34 @@ type RealtimeMeta = {
   clientId?: string;
   timestamp?: string;
 };
+
+export type ConversationWatermarkSource = 'live' | 'send_ack' | 'snapshot';
+
+export function shouldIgnoreConversationRealtimeSeq(
+  state: Pick<ConversationChatState, 'lastEventSeq'> | undefined,
+  seq: number | undefined,
+): boolean {
+  return (
+    typeof seq === 'number' &&
+    typeof state?.lastEventSeq === 'number' &&
+    seq <= state.lastEventSeq
+  );
+}
+
+export function applyConversationRealtimeWatermark<T extends ConversationChatState>(
+  state: T,
+  seq: number | undefined,
+  source: ConversationWatermarkSource,
+): T {
+  if (source === 'snapshot' || !Number.isFinite(seq)) return state;
+  if ((state.lastEventSeq ?? Number.NEGATIVE_INFINITY) >= (seq as number)) {
+    return state;
+  }
+  return {
+    ...state,
+    lastEventSeq: seq,
+  };
+}
 
 export type NormalizedConversationRealtimeEvent =
   | ({

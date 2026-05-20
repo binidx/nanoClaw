@@ -110,6 +110,7 @@ export interface ChatCompletionsToolDef {
 const OUTPUT_START_MARKER = '---NANOCLAW_OUTPUT_START---';
 const OUTPUT_END_MARKER = '---NANOCLAW_OUTPUT_END---';
 const SUBAGENT_RUNTIME_DIR_NAME = '.nanoclaw-subagents';
+const SUBAGENT_RUNTIME_ROOT_ENV = 'NANOCLAW_SUBAGENT_RUNTIME_ROOT';
 const SUBAGENT_CLOSE_GRACE_MS = 10_000;
 const SUBAGENT_HISTORY_FILE_NAME = 'history.json';
 const SUBAGENT_DEFAULT_TIMEOUT_MS = 15 * 60_000;
@@ -1462,7 +1463,10 @@ function buildManagedSubagentRuntime(
   metadataPath: string;
 } {
   const groupRoot = process.env.NANOCLAW_GROUP_DIR?.trim() || cwd;
-  const runtimeDir = path.join(groupRoot, SUBAGENT_RUNTIME_DIR_NAME, childId);
+  const runtimeRoot =
+    process.env[SUBAGENT_RUNTIME_ROOT_ENV]?.trim() ||
+    path.join(groupRoot, SUBAGENT_RUNTIME_DIR_NAME);
+  const runtimeDir = path.join(runtimeRoot, childId);
   return {
     runtimeDir,
     groupDir: path.join(runtimeDir, 'group'),
@@ -1988,6 +1992,7 @@ async function startManagedSubagent(
       env: {
         ...process.env,
         NANOCLAW_GROUP_DIR: runtimePaths.groupDir,
+        [SUBAGENT_RUNTIME_ROOT_ENV]: path.dirname(runtimePaths.runtimeDir),
         NANOCLAW_IPC_DIR: runtimePaths.ipcDir,
         NANOCLAW_SUBAGENT_DEPTH: String(depth),
         NANOCLAW_SUBAGENT_ROLE: topologyRole,

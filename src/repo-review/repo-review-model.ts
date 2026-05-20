@@ -411,6 +411,54 @@ export interface RepoReviewExecutionStats {
   partialWorkerResultCount?: number;
   fallbackMainReviewCount?: number;
   fallbackReviewedFileCount?: number;
+  projectGraphNodeCount?: number;
+  projectGraphEdgeCount?: number;
+  projectGraphSelectedFiles?: string[];
+  projectGraphConfidence?: RepoReviewObservabilityConfidenceSummary;
+  projectGraphPlanner?: RepoReviewObservabilityPlannerSummary;
+  projectGraphArtifactId?: string;
+}
+
+export interface RepoReviewObservabilityConfidenceSummary {
+  overall: number;
+  seedScore?: number;
+  graphScore?: number;
+  contextScore?: number;
+}
+
+export interface RepoReviewObservabilityPlannerSummary {
+  strategy: string;
+  forcedSeedCount?: number;
+  communityHintCount?: number;
+  workerCount?: number;
+  splitGroups?: number;
+}
+
+export interface RepoReviewRunObservabilitySummary {
+  source: string;
+  kind: string;
+  status: string;
+  durationMs: number;
+  nodeCount: number;
+  edgeCount: number;
+  selectedFileCount: number;
+  selectedFiles: string[];
+  confidence?: RepoReviewObservabilityConfidenceSummary;
+  planner?: RepoReviewObservabilityPlannerSummary;
+  metrics: {
+    diffFiles: number;
+    diffBytes: number;
+    promptBytesBuilt: number;
+    modelCallCount: number;
+    workerCount: number;
+    completedWorkerCount: number;
+    failedWorkerCount: number;
+    timedOutWorkerCount: number;
+    readonlyToolCallCount: number;
+    progressStepCount: number;
+    codeMapContextStatus?: ReviewEvidenceContextStatusValue;
+    codeIndexContextStatus?: ReviewEvidenceContextStatusValue;
+  };
 }
 
 export interface RepoReviewProgressSnapshot {
@@ -592,6 +640,7 @@ export interface RepoReviewRun {
   changedFiles: string[];
   diffBytes: number;
   executionStats?: RepoReviewExecutionStats;
+  observability?: RepoReviewRunObservabilitySummary;
   durationMs?: number;
   platformStatus: string;
   chatDeliveryStatus?: string;

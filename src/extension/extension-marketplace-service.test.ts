@@ -4,8 +4,12 @@ import path from 'path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import JSZip from 'jszip';
 
-const testDataDir = path.join(os.tmpdir(), 'nanoclaw-extension-marketplace-test');
+const testDataDir = path.join(
+  os.tmpdir(),
+  'nanoclaw-extension-marketplace-test',
+);
 const configStore = new Map<string, string>();
+const marketplaceStore = new Map<string, Record<string, unknown>>();
 const setConfigFailureKeys = new Set<string>();
 const MAX_REMOTE_FETCH_BYTES = 64 * 1024 * 1024;
 
@@ -23,6 +27,34 @@ vi.mock('../db.js', () => ({
   },
   deleteConfig: (key: string) => {
     configStore.delete(key);
+  },
+  generateMarketplaceSourceId: () => `mkt_${marketplaceStore.size + 1}`,
+  upsertMarketplaceSource: (record: Record<string, unknown>) => {
+    marketplaceStore.set(String(record.id), { ...record });
+  },
+  getMarketplaceSource: (id: string) => {
+    const record = marketplaceStore.get(id);
+    return record && !record.deleted_at ? record : null;
+  },
+  listMarketplaceSources: (enabledOnly = false) =>
+    Array.from(marketplaceStore.values())
+      .filter((record) => !record.deleted_at)
+      .filter((record) => !enabledOnly || record.enabled === 1)
+      .sort((a, b) => {
+        const sortDelta = Number(a.sort_order || 0) - Number(b.sort_order || 0);
+        if (sortDelta !== 0) return sortDelta;
+        return String(b.updated_at || '').localeCompare(
+          String(a.updated_at || ''),
+        );
+      }),
+  deleteMarketplaceSource: (id: string) => {
+    const record = marketplaceStore.get(id);
+    if (record) {
+      marketplaceStore.set(id, {
+        ...record,
+        deleted_at: new Date().toISOString(),
+      });
+    }
   },
 }));
 
@@ -45,9 +77,134 @@ describe('extension marketplace service', () => {
     vi.resetModules();
     vi.unstubAllGlobals();
     configStore.clear();
+    marketplaceStore.clear();
     setConfigFailureKeys.clear();
     fs.rmSync(testDataDir, { recursive: true, force: true });
     fs.mkdirSync(testDataDir, { recursive: true });
+  });
+
+  it('returns v2 admin sources with legacy config sources marked read-only', async () => {
+    configStore.set(
+      'WEB_EXTENSION_MARKETPLACES',
+      JSON.stringify([
+        {
+          id: 'legacy',
+          name: 'Legacy',
+          source: '/legacy/marketplace',
+          enabled: true,
+        },
+      ]),
+    );
+    marketplaceStore.set('admin', {
+      id: 'admin',
+      name: 'Admin',
+      source: '/admin/marketplace',
+      enabled: 1,
+      description: null,
+      icon_url: null,
+      sort_order: 0,
+      created_by: 'admin-user',
+      created_at: '2026-01-01T00:00:00.000Z',
+      updated_at: '2026-01-01T00:00:00.000Z',
+    });
+
+    const { getExtensionMarketplaceSourcesForResponse } =
+      await import('./extension-marketplace-service.js');
+
+    const sources = await getExtensionMarketplaceSourcesForResponse();
+
+    expect(sources).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'admin',
+          origin: 'admin_registry',
+          readOnly: false,
+        }),
+        expect.objectContaining({
+          id: 'legacy',
+          origin: 'legacy_config',
+          readOnly: true,
+        }),
+      ]),
+    );
+  });
+
+  it('persists marketplace sources to v2 admin storage without rewriting legacy config', async () => {
+    configStore.set(
+      'WEB_EXTENSION_MARKETPLACES',
+      JSON.stringify([
+        {
+          id: 'legacy',
+          name: 'Legacy',
+          source: '/legacy/marketplace',
+          enabled: true,
+        },
+      ]),
+    );
+    const originalLegacyConfig = configStore.get('WEB_EXTENSION_MARKETPLACES');
+
+    const { persistExtensionMarketplaceSources } =
+      await import('./extension-marketplace-service.js');
+
+    const sources = await persistExtensionMarketplaceSources([
+      {
+        id: 'legacy',
+        name: 'Legacy',
+        source: '/legacy/marketplace',
+        enabled: true,
+      },
+      {
+        id: 'admin-next',
+        name: 'Admin Next',
+        source: '/admin/next',
+        enabled: true,
+      },
+    ]);
+
+    expect(configStore.get('WEB_EXTENSION_MARKETPLACES')).toBe(
+      originalLegacyConfig,
+    );
+    expect(marketplaceStore.get('admin-next')).toMatchObject({
+      id: 'admin-next',
+      name: 'Admin Next',
+      source: '/admin/next',
+      enabled: 1,
+    });
+    expect(marketplaceStore.has('legacy')).toBe(false);
+    expect(sources).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'legacy', readOnly: true }),
+        expect.objectContaining({ id: 'admin-next', readOnly: false }),
+      ]),
+    );
+  });
+
+  it('rejects attempts to mutate read-only legacy marketplace sources through legacy save', async () => {
+    configStore.set(
+      'WEB_EXTENSION_MARKETPLACES',
+      JSON.stringify([
+        {
+          id: 'legacy',
+          name: 'Legacy',
+          source: '/legacy/marketplace',
+          enabled: true,
+        },
+      ]),
+    );
+
+    const { persistExtensionMarketplaceSources } =
+      await import('./extension-marketplace-service.js');
+
+    await expect(
+      persistExtensionMarketplaceSources([
+        {
+          id: 'legacy',
+          name: 'Legacy',
+          source: '/changed',
+          enabled: true,
+        },
+      ]),
+    ).rejects.toThrow(/read-only legacy config/i);
   });
 
   it('lists catalog entries from a local marketplace source', async () => {
@@ -109,9 +266,8 @@ describe('extension marketplace service', () => {
       'utf-8',
     );
 
-    const { getExtensionMarketplaceCatalog } = await import(
-      './extension-marketplace-service.js'
-    );
+    const { getExtensionMarketplaceCatalog } =
+      await import('./extension-marketplace-service.js');
     const result = await getExtensionMarketplaceCatalog({
       source: marketplaceRoot,
     });
@@ -153,9 +309,8 @@ describe('extension marketplace service', () => {
       })),
     );
 
-    const { getExtensionMarketplaceCatalog } = await import(
-      './extension-marketplace-service.js'
-    );
+    const { getExtensionMarketplaceCatalog } =
+      await import('./extension-marketplace-service.js');
     const result = await getExtensionMarketplaceCatalog({
       source: 'https://example.com/.claude-plugin/marketplace.json',
     });
@@ -268,7 +423,9 @@ describe('extension marketplace service', () => {
     });
     expect(installs[0]?.contentHash).toMatch(/^[a-f0-9]{64}$/);
 
-    const storedMcp = JSON.parse(configStore.get('WEB_MCP_SERVERS') || '{}') as {
+    const storedMcp = JSON.parse(
+      configStore.get('WEB_MCP_SERVERS') || '{}',
+    ) as {
       [key: string]: { command?: string; args?: string[] };
     };
     expect(Object.keys(storedMcp)).toHaveLength(1);
@@ -318,9 +475,8 @@ describe('extension marketplace service', () => {
       ]),
     );
 
-    const { installMarketplaceExtensionFromInput } = await import(
-      './extension-marketplace-service.js'
-    );
+    const { installMarketplaceExtensionFromInput } =
+      await import('./extension-marketplace-service.js');
 
     await expect(
       installMarketplaceExtensionFromInput({
@@ -402,11 +558,15 @@ describe('extension marketplace service', () => {
 
     const removedSkillId = installResult.installed.installedSkillIds[0]!;
     const removedMcpId = installResult.installed.installedMcpServerIds[0]!;
-    const extensionDir = path.join(testDataDir, 'extensions', installResult.installed.id);
-
-    expect(fs.existsSync(path.join(testDataDir, 'custom-skills', removedSkillId))).toBe(
-      true,
+    const extensionDir = path.join(
+      testDataDir,
+      'extensions',
+      installResult.installed.id,
     );
+
+    expect(
+      fs.existsSync(path.join(testDataDir, 'custom-skills', removedSkillId)),
+    ).toBe(true);
     expect(fs.existsSync(extensionDir)).toBe(true);
 
     const uninstallResult = await uninstallExtensionFromInput({
@@ -416,12 +576,14 @@ describe('extension marketplace service', () => {
     expect(uninstallResult.removed.id).toBe(installResult.installed.id);
     expect(uninstallResult.installs).toHaveLength(0);
     expect(await getExtensionInstallsForResponse()).toHaveLength(0);
-    expect(fs.existsSync(path.join(testDataDir, 'custom-skills', removedSkillId))).toBe(
-      false,
-    );
+    expect(
+      fs.existsSync(path.join(testDataDir, 'custom-skills', removedSkillId)),
+    ).toBe(false);
     expect(fs.existsSync(extensionDir)).toBe(false);
 
-    const storedMcp = JSON.parse(configStore.get('WEB_MCP_SERVERS') || '{}') as {
+    const storedMcp = JSON.parse(
+      configStore.get('WEB_MCP_SERVERS') || '{}',
+    ) as {
       [key: string]: { command?: string; args?: string[] };
     };
     expect(storedMcp[removedMcpId]).toBeUndefined();
@@ -507,7 +669,10 @@ describe('extension marketplace service', () => {
     );
     const previousMcpConfig = configStore.get('WEB_MCP_SERVERS');
 
-    const invalidBundleRoot = path.join(testDataDir, 'invalid-overwrite-bundle');
+    const invalidBundleRoot = path.join(
+      testDataDir,
+      'invalid-overwrite-bundle',
+    );
     fs.mkdirSync(invalidBundleRoot, { recursive: true });
 
     await expect(
@@ -516,7 +681,7 @@ describe('extension marketplace service', () => {
         installId: installedRecord.id,
         overwrite: true,
       }),
-    ).rejects.toThrow(/未识别到可安装内容/);
+    ).rejects.toThrow(/没有可安装内容|未识别到可安装内容/);
 
     const installs = await getExtensionInstallsForResponse();
     expect(installs).toHaveLength(1);
@@ -696,10 +861,8 @@ describe('extension marketplace service', () => {
       ]),
     );
 
-    const {
-      installMarketplaceExtensionFromInput,
-      reconcileExtensionInstalls,
-    } = await import('./extension-marketplace-service.js');
+    const { installMarketplaceExtensionFromInput, reconcileExtensionInstalls } =
+      await import('./extension-marketplace-service.js');
 
     const installed = await installMarketplaceExtensionFromInput({
       sourceId: 'example',
@@ -722,7 +885,11 @@ describe('extension marketplace service', () => {
     );
 
     fs.rmSync(skillPath, { force: true });
-    fs.writeFileSync(extensionSkillPath, '# Repo Review\n\nChanged content.\n', 'utf-8');
+    fs.writeFileSync(
+      extensionSkillPath,
+      '# Repo Review\n\nChanged content.\n',
+      'utf-8',
+    );
     configStore.set('WEB_MCP_SERVERS', JSON.stringify({}));
 
     const reconciled = await reconcileExtensionInstalls();
@@ -733,7 +900,7 @@ describe('extension marketplace service', () => {
     expect(reconciled.installs[0]?.warnings.join(' | ')).toMatch(/Skill 缺失/);
     expect(reconciled.installs[0]?.warnings.join(' | ')).toMatch(/MCP 缺失/);
     expect(reconciled.installs[0]?.warnings.join(' | ')).toMatch(
-      /扩展内容哈希已变化/,
+      /扩展内容(?:哈希)?已变化/,
     );
   });
 
@@ -770,7 +937,9 @@ describe('extension marketplace service', () => {
         ),
       ),
     ).toBe(true);
-    expect((await getExtensionInstallsForResponse())[0]?.sourceType).toBe('import');
+    expect((await getExtensionInstallsForResponse())[0]?.sourceType).toBe(
+      'import',
+    );
   });
 
   it('imports a remote raw SKILL.md link', async () => {
@@ -783,9 +952,7 @@ describe('extension marketplace service', () => {
         body: null,
         arrayBuffer: async () =>
           Buffer.from(
-            input
-              .toString()
-              .includes('SKILL.md')
+            input.toString().includes('SKILL.md')
               ? '# Remote Skill\n\nRemote bundle skill.\n'
               : '',
             'utf-8',
@@ -793,9 +960,8 @@ describe('extension marketplace service', () => {
       })),
     );
 
-    const { importExtensionFromInput } = await import(
-      './extension-marketplace-service.js'
-    );
+    const { importExtensionFromInput } =
+      await import('./extension-marketplace-service.js');
 
     const result = await importExtensionFromInput({
       source: 'https://example.com/repo-review/SKILL.md',
@@ -837,16 +1003,18 @@ describe('extension marketplace service', () => {
     );
 
     const zip = new JSZip();
-    zip.file('zip-bundle/skills/zip-skill/SKILL.md', '# Zip Skill\n\nFrom zip archive.\n');
+    zip.file(
+      'zip-bundle/skills/zip-skill/SKILL.md',
+      '# Zip Skill\n\nFrom zip archive.\n',
+    );
     const archivePath = path.join(testDataDir, 'zip-bundle.zip');
     fs.writeFileSync(
       archivePath,
       await zip.generateAsync({ type: 'nodebuffer' }),
     );
 
-    const { importExtensionFromInput } = await import(
-      './extension-marketplace-service.js'
-    );
+    const { importExtensionFromInput } =
+      await import('./extension-marketplace-service.js');
 
     const result = await importExtensionFromInput({
       source: archivePath,
@@ -878,9 +1046,8 @@ describe('extension marketplace service', () => {
       })),
     );
 
-    const { importExtensionFromInput } = await import(
-      './extension-marketplace-service.js'
-    );
+    const { importExtensionFromInput } =
+      await import('./extension-marketplace-service.js');
 
     const result = await importExtensionFromInput({
       source: 'https://example.com/repo-review-bundle.zip',
@@ -906,9 +1073,8 @@ describe('extension marketplace service', () => {
       await zip.generateAsync({ type: 'nodebuffer' }),
     );
 
-    const { importExtensionFromInput } = await import(
-      './extension-marketplace-service.js'
-    );
+    const { importExtensionFromInput } =
+      await import('./extension-marketplace-service.js');
 
     await expect(
       importExtensionFromInput({
@@ -933,9 +1099,8 @@ describe('extension marketplace service', () => {
       })),
     );
 
-    const { importExtensionFromInput } = await import(
-      './extension-marketplace-service.js'
-    );
+    const { importExtensionFromInput } =
+      await import('./extension-marketplace-service.js');
 
     await expect(
       importExtensionFromInput({
@@ -960,9 +1125,8 @@ describe('extension marketplace service', () => {
       })),
     );
 
-    const { importExtensionFromInput } = await import(
-      './extension-marketplace-service.js'
-    );
+    const { importExtensionFromInput } =
+      await import('./extension-marketplace-service.js');
 
     await expect(
       importExtensionFromInput({

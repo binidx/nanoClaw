@@ -90,6 +90,11 @@ export function ImInputBar({
               ? {
                   fileName: 'encrypted.bin',
                   mimeType: 'application/octet-stream',
+                  encrypted: {
+                    version: 1,
+                    algorithm: 'AES-GCM-256',
+                    iv: encrypted.meta.iv,
+                  },
                 }
               : undefined,
           );

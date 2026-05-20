@@ -141,10 +141,16 @@ function buildProviderStatus(
     };
   }
   if (testResult && !testResult.ok) {
+    const statusLabel = testResult.status
+      ? `状态 ${testResult.status}`
+      : '连接状态未知';
     return {
       label: '测试失败',
       tone: 'error',
-      detail: testResult.message || '最近一次测试未通过，请检查模型和网络。',
+      detail:
+        `${statusLabel}${testResult.httpStatus ? ` · HTTP ${testResult.httpStatus}` : ''}` ||
+        testResult.message ||
+        '最近一次测试未通过，请检查模型和网络。',
     };
   }
   if (isProviderConfigured(provider)) {
@@ -425,9 +431,46 @@ function ProviderEditorModal({
                     setEditingProvider({
                       ...editingProvider,
                       api_key: nextValue,
+                      api_key_action: nextValue.trim()
+                        ? undefined
+                        : editingProvider.api_key_action,
                     }),
                   'sk-...',
                 )}
+                {editingProvider.id && editingProvider.source === 'own' ? (
+                  <div className="provider-editor-secret-actions">
+                    <button
+                      type="button"
+                      className="btn-outline btn-sm"
+                      onClick={() =>
+                        setEditingProvider({
+                          ...editingProvider,
+                          api_key: '',
+                          api_key_action: 'clear',
+                        })
+                      }
+                    >
+                      清除密钥
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-outline btn-sm"
+                      onClick={() =>
+                        setEditingProvider({
+                          ...editingProvider,
+                          api_key_action: 'touch',
+                        })
+                      }
+                    >
+                      刷新密钥时间戳
+                    </button>
+                    {editingProvider.api_key_action ? (
+                      <span className="nc-hint">
+                        保存后执行 {editingProvider.api_key_action}
+                      </span>
+                    ) : null}
+                  </div>
+                ) : null}
               </div>
               <div className="form-group">
                 <label>Base URL</label>
@@ -1238,6 +1281,12 @@ export function SettingsProvidersTab(props: SettingsProvidersTabProps) {
                 >
                   {testResults[provider.id].ok ? '✓' : '✗'}{' '}
                   {testResults[provider.id].message}
+                  {testResults[provider.id].status
+                    ? ` · ${testResults[provider.id].status}`
+                    : ''}
+                  {testResults[provider.id].httpStatus
+                    ? ` · HTTP ${testResults[provider.id].httpStatus}`
+                    : ''}
                   {testResults[provider.id].latencyMs !== undefined
                     ? ` (${testResults[provider.id].latencyMs}ms)`
                     : ''}

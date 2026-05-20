@@ -15,11 +15,15 @@ const { updateConversationMeta } = vi.hoisted(() => ({
 const {
   getConversationMessages,
   getConversationSummaryByJid,
+  getRegisteredGroup,
   getMessageCount,
+  isProviderVisibleToUser,
 } = vi.hoisted(() => ({
   getConversationMessages: vi.fn(() => []),
   getConversationSummaryByJid: vi.fn(() => null),
+  getRegisteredGroup: vi.fn(() => null),
   getMessageCount: vi.fn(() => 0),
+  isProviderVisibleToUser: vi.fn(() => false),
 }));
 
 vi.mock('./config-store.js', () => ({
@@ -45,7 +49,8 @@ vi.mock('./db.js', () => ({
   getConversationMessages,
   getConversationSummaryByJid,
   getMessageCount,
-  getRegisteredGroup: vi.fn(() => null),
+  getRegisteredGroup,
+  isProviderVisibleToUser,
   updateConversationMeta,
 }));
 
@@ -99,6 +104,58 @@ async function withServer(
 }
 
 describe('conversation admin routes', () => {
+  it('updates a conversation model override without requiring a provider switch', async () => {
+    getRegisteredGroup.mockResolvedValueOnce({
+      jid: 'web:test',
+      name: 'Test',
+      folder: 'web-test',
+      trigger: '',
+      added_at: 'now',
+      providerId: 'provider-existing',
+      model: 'gpt-4.1',
+    });
+    const setConversationProviderOverride = vi.fn(async () => true);
+    const app = express();
+    app.use(express.json());
+    registerConversationAdminRoutes(app, {
+      requirePermission: allowAllRequirePermission,
+      auditMutation: vi.fn(),
+      readPendingApprovalsForConversation: vi.fn(() => []),
+      writeApprovalDecisionForConversation: vi.fn(),
+      updateConversationAccessPolicy: vi.fn(),
+      resetConversationRuntime: vi.fn(),
+      clearCodexConversationState: vi.fn(),
+      getDefaultConversationAccessPolicy: vi.fn(() => ({
+        mode: 'allowall' as const,
+        directories: [],
+      })),
+      normalizeAccessPolicyInput: vi.fn(() => ({
+        mode: 'allowall' as const,
+        directories: [],
+      })),
+      normalizeAllowedDirectoriesInput: vi.fn(() => []),
+      setConversationProviderOverride,
+    });
+
+    await withServer(app, async (baseUrl) => {
+      const response = await fetch(
+        `${baseUrl}/api/conversations/${encodeURIComponent('web:test')}`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ model: 'gpt-5.4-mini' }),
+        },
+      );
+
+      expect(response.status).toBe(200);
+      expect(setConversationProviderOverride).toHaveBeenCalledWith(
+        'web:test',
+        'provider-existing',
+        'gpt-5.4-mini',
+      );
+    });
+  });
+
   it('rejects assistant and tavern persona on the same conversation create request', async () => {
     const app = express();
     app.use(express.json());

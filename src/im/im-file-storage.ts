@@ -7,6 +7,7 @@ export interface FileStorageAdapter {
   read(key: string): Promise<{ data: Buffer; mime: string }>;
   delete(key: string): Promise<void>;
   exists(key: string): Promise<boolean>;
+  listKeys?(): Promise<Array<{ key: string; mtimeMs: number }>>;
 }
 
 export class LocalFileStorage implements FileStorageAdapter {
@@ -63,5 +64,34 @@ export class LocalFileStorage implements FileStorageAdapter {
     } catch {
       return false;
     }
+  }
+
+  async listKeys(): Promise<Array<{ key: string; mtimeMs: number }>> {
+    await this.initPromise;
+    const result: Array<{ key: string; mtimeMs: number }> = [];
+    const walk = async (dir: string): Promise<void> => {
+      let entries: fs.Dirent[];
+      try {
+        entries = await fsp.readdir(dir, { withFileTypes: true });
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code === 'ENOENT') return;
+        throw err;
+      }
+      for (const entry of entries) {
+        const absolutePath = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          await walk(absolutePath);
+          continue;
+        }
+        if (!entry.isFile()) continue;
+        const stat = await fsp.stat(absolutePath);
+        result.push({
+          key: path.relative(this.root, absolutePath).replace(/\\/g, '/'),
+          mtimeMs: stat.mtimeMs,
+        });
+      }
+    };
+    await walk(this.root);
+    return result;
   }
 }

@@ -174,3 +174,15 @@
 
 - 同步记录本轮 Provider、Workflow、Share/Soul/Tavern/Live2D、IM/E2EE、多渠道、Agent Runner、记忆/知识库、启动恢复和审计落库相关修复后的当前代码基线。
 - 将 feature map 元数据同步到当前已提交代码 `source_head_sha=d5eb7924b9725bf740de921301b1a3fd96e32648`；当前工作区仍包含本轮未提交实现和文档改动，freshness 检查会继续列出脏文件作为提示。
+
+## [2026-05-20] fix | Channels 双路径收敛
+
+- 用户级 `/api/user/channels` 写入的启用实例开始由 `getConfiguredChannelInstances()` 合并进主运行时 channel instance 列表，启动连接与配置重载统一走 `connectRegisteredChannels()` / `reloadChannels()`。
+- `src/conversation/channel-connection-manager.ts` 收敛为兼容 facade，不再维护独立用户级连接池。
+
+## [2026-05-20] optimize | 全模块优化批次
+
+- 增加通用后台 job 状态模型 `job_statuses` / `job_events`，并先接入 task scheduler 的 started/succeeded/failed 记录。
+- 补充 Security/RBAC/Audit 权限矩阵，修正 `review.repo.edit` 被 `includes('view')` 误判为 public view 的权限漏洞。
+- Provider/Assistant 增加密钥更新动作、连接探测诊断字段和会话级 model override；IM/E2EE、上传清理、Subagent nested runtime、Memory/Knowledge loopback、MCP/Skills marketplace、RepoReview/CodeMap observability 和前端 realtime watermark 均完成第一轮优化。
+- 将 feature map 元数据同步到当前已提交代码 `source_head_sha=7e96127385cb6c44ecfc845a1d195157ae448936`；当前工作区包含本轮未提交优化改动，freshness 检查会继续列出脏文件提示。

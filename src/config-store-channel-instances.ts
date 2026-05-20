@@ -9,9 +9,14 @@ import type {
 } from './config-channel-definitions.js';
 import { DEFAULTS } from './config-store-defaults.js';
 import { SYSTEM_USER_ID } from './tenant/tenant-context.js';
+import { getAllEnabledChannelInstances } from './tenant/tenant-db.js';
+import { decryptValue } from './crypto.js';
 import { t } from './i18n/index.js';
+import { createModuleLogger } from './logger.js';
 
 export const CHANNEL_INSTANCES_CONFIG_KEY = 'CHANNEL_INSTANCES';
+
+const channelConfigLog = createModuleLogger('channel-config');
 
 export type ChannelVisibility = 'public' | 'private';
 
@@ -23,6 +28,14 @@ export interface ChannelInstanceConfig {
   visibility: ChannelVisibility;
   owner_id: string;
   config: Record<string, string | boolean>;
+}
+
+interface TenantChannelInstanceRow {
+  id: string;
+  user_id: string;
+  type: string;
+  name: string;
+  config_json: string;
 }
 
 function normalizeBooleanValue(value: unknown, fallback = false): boolean {
@@ -39,6 +52,28 @@ function normalizeStringValue(value: unknown, fallback = ''): string {
   if (typeof value === 'string') return value.trim();
   if (value === null || value === undefined) return fallback;
   return String(value).trim();
+}
+
+function decryptConfigValue(value: unknown): string | boolean {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'string') return decryptValue(value);
+  if (value === null || value === undefined) return '';
+  return String(value);
+}
+
+function parseTenantChannelConfig(
+  row: TenantChannelInstanceRow,
+): Record<string, string | boolean> {
+  const parsed = JSON.parse(row.config_json) as unknown;
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error('config_json must be an object');
+  }
+  return Object.fromEntries(
+    Object.entries(parsed as Record<string, unknown>).map(([key, value]) => [
+      key,
+      decryptConfigValue(value),
+    ]),
+  );
 }
 
 function makeDefaultFieldValue(
@@ -155,15 +190,52 @@ function normalizeInstanceName(
   return `${definition.label} ${index + 1}`;
 }
 
-export async function getConfiguredChannelInstances(): Promise<ChannelInstanceConfig[]> {
+export async function getConfiguredChannelInstances(): Promise<
+  ChannelInstanceConfig[]
+> {
   const rawInstances = await getStoredChannelInstancesRaw();
-  if (!rawInstances) {
-    return await buildLegacyFeishuInstance();
-  }
-  return await normalizeChannelInstances(rawInstances);
+  const configured = rawInstances
+    ? await normalizeChannelInstances(rawInstances)
+    : await buildLegacyFeishuInstance();
+  const userInstances = await getConfiguredUserChannelInstances(configured);
+  return [...configured, ...userInstances];
 }
 
-export async function getSanitizedChannelInstances(): Promise<ChannelInstanceConfig[]> {
+export async function getConfiguredUserChannelInstances(
+  existingInstances: ChannelInstanceConfig[] = [],
+): Promise<ChannelInstanceConfig[]> {
+  const rows = await getAllEnabledChannelInstances();
+  const normalized: ChannelInstanceConfig[] = [];
+  for (const row of rows) {
+    try {
+      const candidate = {
+        id: row.id,
+        type: row.type,
+        name: row.name,
+        enabled: true,
+        visibility: 'private',
+        owner_id: row.user_id,
+        config: parseTenantChannelConfig(row),
+      };
+      const normalizedAll = await normalizeChannelInstances(
+        [...existingInstances, ...normalized, candidate],
+        [...existingInstances, ...normalized],
+      );
+      const instance = normalizedAll[normalizedAll.length - 1];
+      if (instance) normalized.push(instance);
+    } catch (err) {
+      channelConfigLog.warn(
+        { err, instanceId: row.id, type: row.type, userId: row.user_id },
+        'Skipping invalid user channel instance',
+      );
+    }
+  }
+  return normalized;
+}
+
+export async function getSanitizedChannelInstances(): Promise<
+  ChannelInstanceConfig[]
+> {
   const definitions = new Map(
     getResolvedChannelTypeDefinitions().map((entry) => [entry.type, entry]),
   );
@@ -206,14 +278,22 @@ export async function normalizeChannelInstances(
   const perTypeCounts = new Map<string, number>();
   const normalized = rawInstances.map((raw, index) => {
     if (!raw || typeof raw !== 'object') {
-      throw new Error(t('config.channelInstanceInvalid', { index: index + 1 }, undefined));
+      throw new Error(
+        t('config.channelInstanceInvalid', { index: index + 1 }, undefined),
+      );
     }
 
     const record = raw as Record<string, unknown>;
     const type = normalizeStringValue(record.type).toLowerCase();
     const definition = getResolvedChannelTypeDefinition(type);
     if (!definition) {
-      throw new Error(t('config.channelTypeUnsupported', { type: type || `#${index + 1}` }, undefined));
+      throw new Error(
+        t(
+          'config.channelTypeUnsupported',
+          { type: type || `#${index + 1}` },
+          undefined,
+        ),
+      );
     }
 
     const currentCount = perTypeCounts.get(type) || 0;
@@ -259,7 +339,10 @@ export async function normalizeChannelInstances(
     const rawVisibility = normalizeStringValue(record.visibility).toLowerCase();
     const visibility: ChannelVisibility =
       rawVisibility === 'private' ? 'private' : 'public';
-    const ownerId = normalizeStringValue(record.owner_id) || existing?.owner_id || SYSTEM_USER_ID;
+    const ownerId =
+      normalizeStringValue(record.owner_id) ||
+      existing?.owner_id ||
+      SYSTEM_USER_ID;
 
     return {
       id,
@@ -276,7 +359,9 @@ export async function normalizeChannelInstances(
   return normalized;
 }
 
-async function getConfiguredChannelInstancesSafe(): Promise<ChannelInstanceConfig[]> {
+async function getConfiguredChannelInstancesSafe(): Promise<
+  ChannelInstanceConfig[]
+> {
   try {
     const rawInstances = await getStoredChannelInstancesRaw();
     if (!rawInstances) return buildLegacyFeishuInstance();
@@ -301,7 +386,9 @@ export function validateChannelInstances(
   for (const instance of instances) {
     const definition = getResolvedChannelTypeDefinition(instance.type);
     if (!definition) {
-      throw new Error(t('config.channelTypeUnsupported', { type: instance.type }, undefined));
+      throw new Error(
+        t('config.channelTypeUnsupported', { type: instance.type }, undefined),
+      );
     }
 
     typeCounts.set(instance.type, (typeCounts.get(instance.type) || 0) + 1);
@@ -318,7 +405,11 @@ export function validateChannelInstances(
         .map((field) => field.label);
       if (missingFields.length > 0) {
         throw new Error(
-          t('config.channelMissingFields', { name: instance.name, fields: missingFields.join('、') }, undefined),
+          t(
+            'config.channelMissingFields',
+            { name: instance.name, fields: missingFields.join('、') },
+            undefined,
+          ),
         );
       }
     }
@@ -331,7 +422,11 @@ export function validateChannelInstances(
         const conflict = feishuSecrets.get(dedupKey);
         if (conflict) {
           throw new Error(
-            t('config.feishuDuplicateCredentials', { name: instance.name, conflict }, undefined),
+            t(
+              'config.feishuDuplicateCredentials',
+              { name: instance.name, conflict },
+              undefined,
+            ),
           );
         }
         feishuSecrets.set(dedupKey, instance.name);
@@ -342,7 +437,13 @@ export function validateChannelInstances(
   for (const [type, count] of typeCounts) {
     const definition = getResolvedChannelTypeDefinition(type);
     if (definition && !definition.allowMultiple && count > 1) {
-      throw new Error(t('config.channelSingleInstanceOnly', { label: definition.label }, undefined));
+      throw new Error(
+        t(
+          'config.channelSingleInstanceOnly',
+          { label: definition.label },
+          undefined,
+        ),
+      );
     }
   }
 }

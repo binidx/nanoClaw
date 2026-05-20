@@ -36,6 +36,7 @@ import {
   listPersonProfiles,
 } from '../db.js';
 import { logger } from '../logger.js';
+import { startNonOverlappingBackgroundLoop } from '../runtime/background-loop.js';
 import {
   createMemoryIdentityService,
   type MemoryIdentityAlias,
@@ -188,6 +189,8 @@ const MAX_UPLOAD_FILES_PER_REQUEST = 5;
 const MAX_UPLOAD_BYTES_PER_FILE = 5 * 1024 * 1024;
 const MAX_UPLOAD_TEXT_EXCERPT_BYTES = 12 * 1024;
 const MAX_UPLOAD_TEXT_EXCERPT_CHARS = 4000;
+const UPLOAD_CLEANUP_INTERVAL_MS = 60 * 60 * 1000;
+const ORPHAN_UPLOAD_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_MESSAGE_PAGE_SIZE = 50;
 const MAX_MESSAGE_PAGE_SIZE = 200;
 
@@ -551,6 +554,22 @@ export function createWebServer(opts: WebServerOptions) {
     maxUploadFilesPerRequest: MAX_UPLOAD_FILES_PER_REQUEST,
     maxUploadTextExcerptBytes: MAX_UPLOAD_TEXT_EXCERPT_BYTES,
     maxUploadTextExcerptChars: MAX_UPLOAD_TEXT_EXCERPT_CHARS,
+  });
+  startNonOverlappingBackgroundLoop({
+    name: 'conversation-upload-cleanup',
+    intervalMs: UPLOAD_CLEANUP_INTERVAL_MS,
+    runImmediately: true,
+    task: async () => {
+      const summary = await uploadedFileSupport.cleanupOrphanUploadedFiles({
+        maxAgeMs: ORPHAN_UPLOAD_MAX_AGE_MS,
+      });
+      if (summary.deletedFiles.length > 0) {
+        logger.info(
+          { deletedFiles: summary.deletedFiles.length },
+          'conversation upload cleanup removed orphan files',
+        );
+      }
+    },
   });
   const conversationAdminSupport = createConversationAdminSupport();
   const resetConversationRuntimeWithApprovalCleanup = (

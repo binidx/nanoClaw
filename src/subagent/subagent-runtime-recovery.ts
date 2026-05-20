@@ -4,21 +4,22 @@ import path from 'path';
 import {
   HISTORY_FILE_NAME,
   RUNTIME_FILE_NAME,
-  SUBAGENT_DIR_NAME,
   type SubagentRuntimeEntry,
   type SubagentRuntimeRecoverySummary,
   isActiveStatus,
 } from './subagent-runtime-types.js';
 import {
+  listRuntimeRegistryRoots,
   readRuntimeEntry,
   readRuntimeHistory,
   writeJsonFile,
-  getRuntimeRegistryGroupsDir,
 } from './subagent-runtime-fs.js';
 
 const orphanedActiveRuntimeIds = new Set<string>();
 
-export function isOrphanMarkedActiveSubagentRuntime(runtimeId: string): boolean {
+export function isOrphanMarkedActiveSubagentRuntime(
+  runtimeId: string,
+): boolean {
   return orphanedActiveRuntimeIds.has(runtimeId);
 }
 
@@ -67,10 +68,10 @@ function appendRuntimeHistory(
   if (fs.existsSync(historyPath)) {
     items = readRuntimeHistory(historyPath);
   }
-  const nextItems = [entry, ...items.filter((item) => item.id !== entry.id)].slice(
-    0,
-    100,
-  );
+  const nextItems = [
+    entry,
+    ...items.filter((item) => item.id !== entry.id),
+  ].slice(0, 100);
   writeJsonFile(historyPath, nextItems);
 }
 
@@ -82,18 +83,8 @@ export function recoverOrphanedSubagentRuntimes(): SubagentRuntimeRecoverySummar
     stopped: 0,
     removedRuntimeDirs: 0,
   };
-  const groupsDir = getRuntimeRegistryGroupsDir();
-  let groupEntries: fs.Dirent[] = [];
-  try {
-    groupEntries = fs.readdirSync(groupsDir, { withFileTypes: true });
-  } catch {
-    return summary;
-  }
 
-  for (const groupEntry of groupEntries) {
-    if (!groupEntry.isDirectory()) continue;
-    const runtimeRoot = path.join(groupsDir, groupEntry.name, SUBAGENT_DIR_NAME);
-    if (!fs.existsSync(runtimeRoot)) continue;
+  for (const runtimeRoot of listRuntimeRegistryRoots()) {
     let runtimeEntries: fs.Dirent[] = [];
     try {
       runtimeEntries = fs.readdirSync(runtimeRoot, { withFileTypes: true });

@@ -37,6 +37,51 @@ function sanitizeFileName(name: string): string {
     .slice(0, 200);
 }
 
+interface EncryptedUploadMetadata {
+  version: number;
+  algorithm: string;
+  iv: string;
+}
+
+function parseEncryptedFlag(value: unknown): boolean {
+  if (typeof value === 'boolean') return value;
+  if (typeof value !== 'string') return false;
+  return ['1', 'true', 'yes'].includes(value.trim().toLowerCase());
+}
+
+function parseEncryptedUploadMetadata(
+  body: Record<string, unknown>,
+): EncryptedUploadMetadata | null {
+  if (!parseEncryptedFlag(body.encrypted)) return null;
+  const raw = body.encryptedMetadata;
+  let parsed: unknown;
+  if (typeof raw === 'string') {
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return null;
+    }
+  } else {
+    parsed = raw;
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return null;
+  }
+  const record = parsed as Record<string, unknown>;
+  const version = Number(record.version);
+  const algorithm = typeof record.algorithm === 'string' ? record.algorithm : '';
+  const iv = typeof record.iv === 'string' ? record.iv : '';
+  if (version !== 1) return null;
+  if (algorithm !== 'AES-GCM-256') return null;
+  if (
+    !/^[A-Za-z0-9+/]+={0,2}$/.test(iv) ||
+    Buffer.from(iv, 'base64').length !== 12
+  ) {
+    return null;
+  }
+  return { version, algorithm, iv };
+}
+
 export interface ImFileRouteOptions {
   storage: FileStorageAdapter;
   fileTtlMs: number;
@@ -81,6 +126,25 @@ export function registerImFileRoutes(
           return;
         }
 
+        const encryptedRoom = await isRoomEncrypted(chatJid);
+        const encryptedMetadata = parseEncryptedUploadMetadata(
+          (req.body || {}) as Record<string, unknown>,
+        );
+        if (encryptedRoom && !encryptedMetadata) {
+          res.status(400).json({
+            ok: false,
+            error: 'Encrypted rooms require encrypted attachment metadata',
+          });
+          return;
+        }
+        if (!encryptedRoom && encryptedMetadata) {
+          res.status(400).json({
+            ok: false,
+            error: 'Encrypted attachment uploads require an E2EE room',
+          });
+          return;
+        }
+
         const file = req.file;
         if (!file) {
           res.status(400).json({ ok: false, error: 'No file provided' });
@@ -91,6 +155,18 @@ export function registerImFileRoutes(
           res.status(400).json({
             ok: false,
             error: `Unsupported file type: ${file.mimetype}`,
+          });
+          return;
+        }
+
+        if (
+          encryptedRoom &&
+          (file.mimetype !== 'application/octet-stream' ||
+            sanitizeFileName(file.originalname || '') !== 'encrypted.bin')
+        ) {
+          res.status(400).json({
+            ok: false,
+            error: 'Encrypted room attachments must upload ciphertext only',
           });
           return;
         }
@@ -106,23 +182,27 @@ export function registerImFileRoutes(
             : null;
 
         await opts.storage.save(storageKey, file.buffer, file.mimetype);
-
-        await dba
-          .prepare(
-            `INSERT INTO im_attachments (id, chat_jid, message_id, file_name, mime_type, size, storage_key, uploaded_by, expires_at, created_at)
-           VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?)`,
-          )
-          .run(
-            id,
-            chatJid,
-            safeName,
-            file.mimetype,
-            file.size,
-            storageKey,
-            userId,
-            expiresAt,
-            now,
-          );
+        try {
+          await dba
+            .prepare(
+              `INSERT INTO im_attachments (id, chat_jid, message_id, file_name, mime_type, size, storage_key, uploaded_by, expires_at, created_at)
+             VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?)`,
+            )
+            .run(
+              id,
+              chatJid,
+              safeName,
+              file.mimetype,
+              file.size,
+              storageKey,
+              userId,
+              expiresAt,
+              now,
+            );
+        } catch (err) {
+          await opts.storage.delete(storageKey).catch(() => undefined);
+          throw err;
+        }
 
         res.json({
           ok: true,
@@ -132,6 +212,14 @@ export function registerImFileRoutes(
             mimeType: file.mimetype,
             size: file.size,
             url: `/api/im/files/${id}`,
+            ...(encryptedMetadata
+              ? {
+                  encrypted: {
+                    version: encryptedMetadata.version,
+                    algorithm: encryptedMetadata.algorithm,
+                  },
+                }
+              : {}),
           },
         });
       } catch (err) {

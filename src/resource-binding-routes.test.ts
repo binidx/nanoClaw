@@ -11,6 +11,8 @@ const {
   createRepositoryBindingMock,
   removeBindingMock,
   getBindingMock,
+  getRepositoryByIdMock,
+  getWorkteamMock,
 } = vi.hoisted(() => ({
   getAssistantMock: vi.fn(),
   getWorkflowMock: vi.fn(),
@@ -19,6 +21,8 @@ const {
   createRepositoryBindingMock: vi.fn(),
   removeBindingMock: vi.fn(),
   getBindingMock: vi.fn(),
+  getRepositoryByIdMock: vi.fn(),
+  getWorkteamMock: vi.fn(),
 }));
 
 vi.mock('./db.js', () => ({
@@ -37,6 +41,14 @@ vi.mock('./tenant/resource-binding-service.js', () => ({
   getBinding: getBindingMock,
 }));
 
+vi.mock('./db/repositories.js', () => ({
+  getRepositoryById: getRepositoryByIdMock,
+}));
+
+vi.mock('./db/workteam.js', () => ({
+  getWorkteam: getWorkteamMock,
+}));
+
 vi.mock('./tenant/tenant-request.js', () => ({
   getTenantUserId: vi.fn(() => 'test-user'),
 }));
@@ -47,14 +59,30 @@ vi.mock('./logger.js', () => ({
   },
 }));
 
-function createApp() {
+function allowAllGuard() {
+  return async (
+    _req: express.Request,
+    _res: express.Response,
+    next: express.NextFunction,
+  ) => next();
+}
+
+function createApp(
+  opts: {
+    requirePermission?: ReturnType<typeof vi.fn>;
+    auditMutation?: ReturnType<typeof vi.fn>;
+  } = {},
+) {
   const app = express();
   app.use(express.json());
+  const requirePermission =
+    opts.requirePermission || vi.fn(() => allowAllGuard());
+  const auditMutation = opts.auditMutation || vi.fn();
   registerResourceBindingRoutes(app, {
-    requirePermission: vi.fn(() => async (_req, _res, next) => next()),
-    auditMutation: vi.fn(),
+    requirePermission,
+    auditMutation,
   });
-  return app;
+  return { app, requirePermission, auditMutation };
 }
 
 async function withServer(
@@ -100,6 +128,11 @@ describe('resource binding routes', () => {
       user_id: 'test-user',
       name: 'Workflow One',
     });
+    getWorkteamMock.mockResolvedValue({
+      id: 'workteam-1',
+      user_id: 'test-user',
+      name: 'Workteam One',
+    });
     listOwnerBindingsMock.mockResolvedValue([
       {
         id: 'binding-1',
@@ -143,10 +176,15 @@ describe('resource binding routes', () => {
       createdAt: '2026-01-01T00:00:00.000Z',
       repositoryName: 'Demo Repo',
     });
+    getRepositoryByIdMock.mockResolvedValue({
+      id: 'repo-1',
+      name: 'Demo Repo',
+      user_id: 'test-user',
+    });
   });
 
   it('lists workflow bindings', async () => {
-    const app = createApp();
+    const { app, requirePermission } = createApp();
 
     await withServer(app, async (baseUrl) => {
       const response = await fetch(
@@ -163,10 +201,14 @@ describe('resource binding routes', () => {
         ],
       });
     });
+    expect(requirePermission).toHaveBeenCalledWith(
+      'project.view',
+      'workteam.view',
+    );
   });
 
   it('creates workflow bindings', async () => {
-    const app = createApp();
+    const { app, requirePermission, auditMutation } = createApp();
 
     await withServer(app, async (baseUrl) => {
       const response = await fetch(`${baseUrl}/api/resource-bindings`, {
@@ -199,5 +241,92 @@ describe('resource binding routes', () => {
       }),
       'test-user',
     );
+    expect(requirePermission).toHaveBeenCalledWith(
+      'project.manage',
+      'workteam.manage',
+    );
+    expect(auditMutation).toHaveBeenCalledWith(
+      expect.anything(),
+      'resource_binding.create',
+    );
+  });
+
+  it('lists repository resource bindings only after repository.view passes', async () => {
+    const { app, requirePermission } = createApp();
+
+    await withServer(app, async (baseUrl) => {
+      const response = await fetch(
+        `${baseUrl}/api/resource-bindings?resourceType=repository&resourceId=repo-1`,
+      );
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toEqual({ bindings: [] });
+    });
+
+    expect(requirePermission).toHaveBeenCalledWith('repository.view');
+    expect(getRepositoryByIdMock).toHaveBeenCalledWith('repo-1', 'test-user');
+    expect(listResourceBindingsMock).toHaveBeenCalledWith(
+      'repository',
+      'repo-1',
+    );
+  });
+
+  it('does not create or audit bindings when RBAC denies the owner manage permission', async () => {
+    const requirePermission = vi.fn(
+      () => async (_req: express.Request, res: express.Response) => {
+        res.status(403).json({ error: 'Forbidden' });
+      },
+    );
+    const auditMutation = vi.fn();
+    const { app } = createApp({ requirePermission, auditMutation });
+
+    await withServer(app, async (baseUrl) => {
+      const response = await fetch(`${baseUrl}/api/resource-bindings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ownerType: 'workflow',
+          ownerId: 'workflow-1',
+          repositoryId: 'repo-2',
+          bindingKey: 'sdlc',
+        }),
+      });
+
+      expect(response.status).toBe(403);
+    });
+
+    expect(requirePermission).toHaveBeenCalledWith(
+      'project.manage',
+      'workteam.manage',
+    );
+    expect(createRepositoryBindingMock).not.toHaveBeenCalled();
+    expect(auditMutation).not.toHaveBeenCalled();
+  });
+
+  it('does not create or audit bindings for an owner outside the tenant', async () => {
+    getWorkflowMock.mockResolvedValueOnce({
+      id: 'workflow-1',
+      user_id: 'other-user',
+      name: 'Other Workflow',
+    });
+    const auditMutation = vi.fn();
+    const { app } = createApp({ auditMutation });
+
+    await withServer(app, async (baseUrl) => {
+      const response = await fetch(`${baseUrl}/api/resource-bindings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ownerType: 'workflow',
+          ownerId: 'workflow-1',
+          repositoryId: 'repo-2',
+          bindingKey: 'sdlc',
+        }),
+      });
+
+      expect(response.status).toBe(404);
+    });
+
+    expect(createRepositoryBindingMock).not.toHaveBeenCalled();
+    expect(auditMutation).not.toHaveBeenCalled();
   });
 });

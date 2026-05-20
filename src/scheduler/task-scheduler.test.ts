@@ -1,6 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { _initTestDatabase, createTask, getTaskById } from '../db.js';
+import {
+  _initTestDatabase,
+  createTask,
+  getTaskById,
+  listJobEvents,
+  listJobStatuses,
+} from '../db.js';
 import { buildRunnerPromptPreview } from '../prompt/runner-prompt-runtime.js';
 import {
   _resetSchedulerLoopForTests,
@@ -54,6 +60,20 @@ describe('task scheduler', () => {
 
     const task = await getTaskById('task-invalid-folder');
     expect(task?.status).toBe('paused');
+
+    const jobs = await listJobStatuses({
+      source: 'task_scheduler',
+      subjectType: 'scheduled_task',
+      subjectId: 'task-invalid-folder',
+    });
+    expect(jobs).toHaveLength(1);
+    expect(jobs[0]?.status).toBe('failed');
+    expect(jobs[0]?.error).toContain('Invalid group folder');
+
+    const events = await listJobEvents(jobs[0]!.id);
+    expect(events.map((event) => event.event_type)).toEqual(
+      expect.arrayContaining(['started', 'failed']),
+    );
   });
 
   it('pauses due tasks whose registered group no longer exists', async () => {

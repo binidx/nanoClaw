@@ -9,6 +9,7 @@ import { createUserSkill } from '../user/user-skill-service.js';
 import { createUserMcpServer } from '../user/user-mcp-service.js';
 import type { UserSkillView } from '../user/user-skill-service.js';
 import type { UserMcpServerView } from '../user/user-mcp-service.js';
+import { generateInstallId, upsertMarketplaceInstall } from '../db.js';
 import { t } from '../i18n/index.js';
 
 const DEFAULT_GIT_TIMEOUT_MS = 60_000;
@@ -68,7 +69,10 @@ function buildCatalogSources(): RegistryCatalogSource[] {
       .map((entry) =>
         /^https?:\/\//i.test(entry)
           ? ({ kind: 'url', value: entry } satisfies RegistryCatalogSource)
-          : ({ kind: 'local-skill-dir', value: path.resolve(entry) } satisfies RegistryCatalogSource),
+          : ({
+              kind: 'local-skill-dir',
+              value: path.resolve(entry),
+            } satisfies RegistryCatalogSource),
       );
   }
   return [
@@ -236,7 +240,8 @@ export async function fetchRegistryCatalog(options?: {
           anySuccess = true;
           if (!remoteDescription) {
             remoteName = 'Workspace Registry';
-            remoteDescription = 'Built from local OpenClaw and bundled NanoClaw skill sources.';
+            remoteDescription =
+              'Built from local OpenClaw and bundled NanoClaw skill sources.';
           }
           const seenSlugs = new Set(allItems.map((i) => i.slug));
           for (const item of items) {
@@ -245,14 +250,22 @@ export async function fetchRegistryCatalog(options?: {
               allItems.push(item);
             }
           }
-          logger.info({ source: source.value, count: items.length }, 'registry: loaded local skill catalog');
+          logger.info(
+            { source: source.value, count: items.length },
+            'registry: loaded local skill catalog',
+          );
         }
         continue;
       }
 
-      const res = await fetch(source.value, { signal: AbortSignal.timeout(10_000) });
+      const res = await fetch(source.value, {
+        signal: AbortSignal.timeout(10_000),
+      });
       if (!res.ok) {
-        logger.warn({ url: source.value, status: res.status }, 'registry: remote catalog returned non-OK');
+        logger.warn(
+          { url: source.value, status: res.status },
+          'registry: remote catalog returned non-OK',
+        );
         continue;
       }
       const raw = await res.json();
@@ -270,7 +283,10 @@ export async function fetchRegistryCatalog(options?: {
             allItems.push(item);
           }
         }
-        logger.info({ url: source.value, count: data.items.length }, 'registry: fetched remote catalog');
+        logger.info(
+          { url: source.value, count: data.items.length },
+          'registry: fetched remote catalog',
+        );
       }
     } catch (err) {
       logger.warn({ err, source }, 'registry: failed to load catalog source');
@@ -294,11 +310,15 @@ export async function fetchRegistryCatalog(options?: {
   return applyFilters(fallback, options);
 }
 
-function normalizeCatalogItem(raw: Record<string, unknown>): RegistryCatalogItem | null {
+function normalizeCatalogItem(
+  raw: Record<string, unknown>,
+): RegistryCatalogItem | null {
   const slug = typeof raw.slug === 'string' ? raw.slug : '';
   const name = typeof raw.name === 'string' ? raw.name : '';
   if (!slug || !name) return null;
-  const source = raw.source as { kind?: string; repo?: string; ref?: string; path?: string } | undefined;
+  const source = raw.source as
+    | { kind?: string; repo?: string; ref?: string; path?: string }
+    | undefined;
   if (!source?.repo) return null;
   return {
     slug,
@@ -307,15 +327,25 @@ function normalizeCatalogItem(raw: Record<string, unknown>): RegistryCatalogItem
     type: (['skill', 'mcp', 'bundle'] as const).includes(raw.type as 'skill')
       ? (raw.type as 'skill' | 'mcp' | 'bundle')
       : 'skill',
-    source: { kind: 'github', repo: source.repo, ref: source.ref, path: source.path },
-    tags: Array.isArray(raw.tags) ? (raw.tags as string[]).filter((t) => typeof t === 'string') : [],
+    source: {
+      kind: 'github',
+      repo: source.repo,
+      ref: source.ref,
+      path: source.path,
+    },
+    tags: Array.isArray(raw.tags)
+      ? (raw.tags as string[]).filter((t) => typeof t === 'string')
+      : [],
     author: typeof raw.author === 'string' ? raw.author : undefined,
     version: typeof raw.version === 'string' ? raw.version : undefined,
     stars: typeof raw.stars === 'number' ? raw.stars : undefined,
     iconUrl: typeof raw.iconUrl === 'string' ? raw.iconUrl : undefined,
-    sourceLabel: typeof raw.sourceLabel === 'string' ? raw.sourceLabel : 'GitHub',
+    sourceLabel:
+      typeof raw.sourceLabel === 'string' ? raw.sourceLabel : 'GitHub',
     installNotes: Array.isArray(raw.installNotes)
-      ? raw.installNotes.filter((item): item is string => typeof item === 'string')
+      ? raw.installNotes.filter(
+          (item): item is string => typeof item === 'string',
+        )
       : undefined,
   };
 }
@@ -332,7 +362,10 @@ function normalizeCatalog(raw: unknown): RegistryCatalog | null {
     name: typeof obj.name === 'string' ? obj.name : 'Registry',
     description: typeof obj.description === 'string' ? obj.description : '',
     items,
-    updatedAt: typeof obj.updatedAt === 'string' ? obj.updatedAt : new Date().toISOString(),
+    updatedAt:
+      typeof obj.updatedAt === 'string'
+        ? obj.updatedAt
+        : new Date().toISOString(),
   };
 }
 
@@ -377,9 +410,7 @@ export async function installFromRegistry(
     throw new Error(`Registry item not found: ${slug}`);
   }
 
-  const tmpDir = fs.mkdtempSync(
-    path.join(os.tmpdir(), 'nanoclaw-registry-'),
-  );
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'nanoclaw-registry-'));
 
   try {
     let repoRoot = tmpDir;
@@ -465,6 +496,22 @@ export async function installFromRegistry(
       );
     }
 
+    const now = new Date().toISOString();
+    for (const result of results) {
+      await upsertMarketplaceInstall({
+        id: generateInstallId(),
+        user_id: userId,
+        source_id: null,
+        entry_name: entry.slug,
+        entry_type: result.type,
+        installed_version: entry.version || null,
+        target_id: result.item.id,
+        status: 'installed',
+        created_at: now,
+        updated_at: now,
+      });
+    }
+
     return results;
   } finally {
     try {
@@ -526,33 +573,41 @@ async function downloadTarball(
   return false;
 }
 
-async function extractTarball(res: Response, targetDir: string): Promise<boolean> {
+async function extractTarball(
+  res: Response,
+  targetDir: string,
+): Promise<boolean> {
   const tarPath = path.join(targetDir, '__archive.tar.gz');
   try {
     const fileStream = createWriteStream(tarPath);
     // @ts-expect-error Node.js ReadableStream compat
     await pipeline(res.body, fileStream);
 
-    const tarResult = spawnSync('tar', [
-      'xzf', tarPath,
-      '--strip-components=1',
-      '-C', targetDir,
-    ], { timeout: 30_000, stdio: 'pipe' });
+    const tarResult = spawnSync(
+      'tar',
+      ['xzf', tarPath, '--strip-components=1', '-C', targetDir],
+      { timeout: 30_000, stdio: 'pipe' },
+    );
 
     if (tarResult.status !== 0) {
-      logger.warn({ stderr: tarResult.stderr?.toString() }, 'registry: tar extract failed');
+      logger.warn(
+        { stderr: tarResult.stderr?.toString() },
+        'registry: tar extract failed',
+      );
       return false;
     }
     return true;
   } finally {
-    try { fs.unlinkSync(tarPath); } catch { /* best effort */ }
+    try {
+      fs.unlinkSync(tarPath);
+    } catch {
+      /* best effort */
+    }
   }
 }
 
 function cloneRepo(repo: string, targetDir: string, ref?: string): void {
-  const url = repo.startsWith('http')
-    ? repo
-    : `https://github.com/${repo}.git`;
+  const url = repo.startsWith('http') ? repo : `https://github.com/${repo}.git`;
 
   const args = ['clone', '--depth', '1'];
   if (ref) args.push('--branch', ref);
@@ -589,6 +644,9 @@ async function fetchRepoContent(
     logger.info({ repo, ref }, 'registry: installed via tarball download');
     return;
   }
-  logger.info({ repo }, 'registry: tarball unavailable, falling back to git clone');
+  logger.info(
+    { repo },
+    'registry: tarball unavailable, falling back to git clone',
+  );
   cloneRepo(repo, targetDir, ref);
 }

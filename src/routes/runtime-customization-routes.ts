@@ -92,7 +92,9 @@ async function updateEnabledSkills(
 
 function getRegistryHook<T extends Function>(name: string): T | null {
   try {
-    const candidate = (subagentRuntimeRegistry as Record<string, unknown>)[name];
+    const candidate = (subagentRuntimeRegistry as Record<string, unknown>)[
+      name
+    ];
     return typeof candidate === 'function' ? (candidate as T) : null;
   } catch {
     return null;
@@ -100,9 +102,10 @@ function getRegistryHook<T extends Function>(name: string): T | null {
 }
 
 function normalizeControlResult(result: unknown, acceptedStatus: string) {
-  const normalized = result && typeof result === 'object'
-    ? (result as Record<string, unknown>)
-    : {};
+  const normalized =
+    result && typeof result === 'object'
+      ? (result as Record<string, unknown>)
+      : {};
   const status = String(normalized.status || '').trim();
   return {
     ...normalized,
@@ -129,13 +132,18 @@ export function registerRuntimeCustomizationRoutes(
   app: Express,
   opts: RuntimeCustomizationRouteOptions,
 ): void {
-  const guard = opts.requirePermission('system.settings', 'system.settings.edit');
+  const guard = opts.requirePermission(
+    'system.settings',
+    'system.settings.edit',
+  );
   const installGuard =
     opts.requireLocalCapability?.('localInstall') ||
     opts.requirePermission('local.install');
 
   app.get('/api/mcp-servers', guard, async (_req, res) => {
-    res.json({ servers: await Promise.resolve(opts.getManagedMcpServersForResponse()) });
+    res.json({
+      servers: await Promise.resolve(opts.getManagedMcpServersForResponse()),
+    });
   });
 
   app.put('/api/mcp-servers', guard, installGuard, async (req, res) => {
@@ -184,7 +192,7 @@ export function registerRuntimeCustomizationRoutes(
     }
   });
 
-  app.put('/api/extensions/marketplaces', guard, (req, res) => {
+  app.put('/api/extensions/marketplaces', guard, async (req, res) => {
     try {
       opts.auditMutation(req, 'extensions.marketplaces.update', 'high');
       const body = (req.body || {}) as { sources?: unknown };
@@ -193,11 +201,15 @@ export function registerRuntimeCustomizationRoutes(
         return;
       }
       if (!opts.persistExtensionMarketplaceSources) {
-        res.status(501).json({ error: 'Extension marketplace persistence unavailable' });
+        res
+          .status(501)
+          .json({ error: 'Extension marketplace persistence unavailable' });
         return;
       }
       res.json({
-        sources: opts.persistExtensionMarketplaceSources(body.sources as any[]),
+        sources: await Promise.resolve(
+          opts.persistExtensionMarketplaceSources(body.sources as any[]),
+        ),
       });
     } catch (err) {
       res.status(400).json({
@@ -212,7 +224,9 @@ export function registerRuntimeCustomizationRoutes(
   app.post('/api/extensions/marketplaces/catalog', guard, async (req, res) => {
     try {
       if (!opts.getExtensionMarketplaceCatalog) {
-        res.status(501).json({ error: 'Extension marketplace catalog unavailable' });
+        res
+          .status(501)
+          .json({ error: 'Extension marketplace catalog unavailable' });
         return;
       }
       const body = (req.body || {}) as { sourceId?: unknown; source?: unknown };
@@ -255,9 +269,7 @@ export function registerRuntimeCustomizationRoutes(
         res.status(501).json({ error: 'Extension install unavailable' });
         return;
       }
-      res.json(
-        await opts.installMarketplaceExtensionFromInput(req.body || {}),
-      );
+      res.json(await opts.installMarketplaceExtensionFromInput(req.body || {}));
     } catch (err) {
       res.status(400).json({
         error:
@@ -282,44 +294,59 @@ export function registerRuntimeCustomizationRoutes(
     }
   });
 
-  app.delete('/api/extensions/installs/:installId', guard, installGuard, (req, res) => {
-    try {
-      opts.auditMutation(req, 'extensions.uninstall', 'high');
-      if (!opts.uninstallExtensionFromInput) {
-        res.status(501).json({ error: 'Extension uninstall unavailable' });
-        return;
+  app.delete(
+    '/api/extensions/installs/:installId',
+    guard,
+    installGuard,
+    (req, res) => {
+      try {
+        opts.auditMutation(req, 'extensions.uninstall', 'high');
+        if (!opts.uninstallExtensionFromInput) {
+          res.status(501).json({ error: 'Extension uninstall unavailable' });
+          return;
+        }
+        const installId = decodeURIComponent(
+          routePathParam(req.params.installId),
+        ).trim();
+        if (!installId) {
+          res.status(400).json({ error: 'installId is required' });
+          return;
+        }
+        res.json(opts.uninstallExtensionFromInput({ installId }));
+      } catch (err) {
+        const message =
+          err instanceof Error ? err.message : 'Failed to uninstall extension';
+        res
+          .status(/^extension install not found:/i.test(message) ? 404 : 400)
+          .json({
+            error: message,
+          });
       }
-      const installId = decodeURIComponent(routePathParam(req.params.installId)).trim();
-      if (!installId) {
-        res.status(400).json({ error: 'installId is required' });
-        return;
-      }
-      res.json(opts.uninstallExtensionFromInput({ installId }));
-    } catch (err) {
-      const message =
-        err instanceof Error ? err.message : 'Failed to uninstall extension';
-      res.status(/^extension install not found:/i.test(message) ? 404 : 400).json({
-        error:
-          message,
-      });
-    }
-  });
+    },
+  );
 
-  app.post('/api/extensions/installs/reconcile', guard, installGuard, (req, res) => {
-    try {
-      opts.auditMutation(req, 'extensions.installs.reconcile', 'high');
-      if (!opts.reconcileExtensionInstalls) {
-        res.status(501).json({ error: 'Extension reconcile unavailable' });
-        return;
+  app.post(
+    '/api/extensions/installs/reconcile',
+    guard,
+    installGuard,
+    (req, res) => {
+      try {
+        opts.auditMutation(req, 'extensions.installs.reconcile', 'high');
+        if (!opts.reconcileExtensionInstalls) {
+          res.status(501).json({ error: 'Extension reconcile unavailable' });
+          return;
+        }
+        res.json(opts.reconcileExtensionInstalls());
+      } catch (err) {
+        res.status(400).json({
+          error:
+            err instanceof Error
+              ? err.message
+              : 'Failed to reconcile extensions',
+        });
       }
-      res.json(opts.reconcileExtensionInstalls());
-    } catch (err) {
-      res.status(400).json({
-        error:
-          err instanceof Error ? err.message : 'Failed to reconcile extensions',
-      });
-    }
-  });
+    },
+  );
 
   app.get('/api/skills', guard, async (_req, res) => {
     try {
@@ -334,7 +361,9 @@ export function registerRuntimeCustomizationRoutes(
 
   app.get('/api/skills/:skillId', guard, (req, res) => {
     try {
-      const skillId = decodeURIComponent(routePathParam(req.params.skillId)).trim();
+      const skillId = decodeURIComponent(
+        routePathParam(req.params.skillId),
+      ).trim();
       if (!skillId) {
         res.status(400).json({ error: 'skillId is required' });
         return;
@@ -500,7 +529,9 @@ export function registerRuntimeCustomizationRoutes(
 
   app.get('/api/subagents/config', guard, async (_req, res) => {
     try {
-      const config = parseSubagentsConfig(await getConfig(WEB_SUBAGENTS_CONFIG_KEY));
+      const config = parseSubagentsConfig(
+        await getConfig(WEB_SUBAGENTS_CONFIG_KEY),
+      );
       res.json(config);
     } catch (err) {
       logger.error({ err }, 'Failed to read subagents config');
@@ -560,15 +591,16 @@ export function registerRuntimeCustomizationRoutes(
   app.post('/api/subagents/runtime/:subagentId/stop', guard, (req, res) => {
     try {
       opts.auditMutation(req, 'subagents.runtime.stop', 'high');
-      const subagentId = decodeURIComponent(routePathParam(req.params.subagentId)).trim();
+      const subagentId = decodeURIComponent(
+        routePathParam(req.params.subagentId),
+      ).trim();
       if (!subagentId) {
         res.status(400).json({ error: 'subagentId is required' });
         return;
       }
 
-      const result = subagentRuntimeRegistry.requestStopSubagentRuntime(
-        subagentId,
-      );
+      const result =
+        subagentRuntimeRegistry.requestStopSubagentRuntime(subagentId);
       const status = String(
         (result as { status?: string }).status || '',
       ).trim();
@@ -596,132 +628,138 @@ export function registerRuntimeCustomizationRoutes(
     }
   });
 
-  app.post('/api/subagents/runtime/:subagentId/message', guard, async (req, res) => {
-    try {
-      opts.auditMutation(req, 'subagents.runtime.message', 'high');
-      const subagentId = decodeURIComponent(routePathParam(req.params.subagentId)).trim();
-      const prompt =
-        typeof req.body?.prompt === 'string' ? req.body.prompt.trim() : '';
-      if (!subagentId) {
-        res.status(400).json({ error: 'subagentId is required' });
-        return;
-      }
-      if (!prompt) {
-        res.status(400).json({ error: 'prompt is required' });
-        return;
-      }
+  app.post(
+    '/api/subagents/runtime/:subagentId/message',
+    guard,
+    async (req, res) => {
+      try {
+        opts.auditMutation(req, 'subagents.runtime.message', 'high');
+        const subagentId = decodeURIComponent(
+          routePathParam(req.params.subagentId),
+        ).trim();
+        const prompt =
+          typeof req.body?.prompt === 'string' ? req.body.prompt.trim() : '';
+        if (!subagentId) {
+          res.status(400).json({ error: 'subagentId is required' });
+          return;
+        }
+        if (!prompt) {
+          res.status(400).json({ error: 'prompt is required' });
+          return;
+        }
 
-      const requestMessageSubagentRuntime = getRegistryHook<
-        (
-          subagentId: string,
-          prompt: string,
-          options?: { waitForResponse?: boolean },
-        ) => Promise<unknown> | unknown
-      >('requestMessageSubagentRuntime');
-      if (!requestMessageSubagentRuntime) {
-        const fallback = resolveReadOnlyRuntimeResponse(subagentId);
-        if (fallback.kind === 'not_found') {
+        const requestMessageSubagentRuntime = getRegistryHook<
+          (
+            subagentId: string,
+            prompt: string,
+            options?: { waitForResponse?: boolean },
+          ) => Promise<unknown> | unknown
+        >('requestMessageSubagentRuntime');
+        if (!requestMessageSubagentRuntime) {
+          const fallback = resolveReadOnlyRuntimeResponse(subagentId);
+          if (fallback.kind === 'not_found') {
+            res.status(404).json({ error: 'Sub-agent runtime not found' });
+            return;
+          }
+          res.json(fallback.payload);
+          return;
+        }
+
+        const result = await requestMessageSubagentRuntime(subagentId, prompt, {
+          waitForResponse: false,
+        });
+        const status = String(
+          ((result as { status?: unknown })?.status as string) || '',
+        ).trim();
+        if (!(result as { ok?: boolean }).ok && status === 'not_found') {
           res.status(404).json({ error: 'Sub-agent runtime not found' });
           return;
         }
-        res.json(fallback.payload);
-        return;
-      }
+        if (status === 'not_controllable') {
+          res.json({
+            ok: true,
+            status: 'not_controllable',
+            entry: (result as { entry?: unknown }).entry,
+          });
+          return;
+        }
 
-      const result = await requestMessageSubagentRuntime(subagentId, prompt, {
-        waitForResponse: false,
-      });
-      const status = String(
-        ((result as { status?: unknown })?.status as string) || '',
-      ).trim();
-      if (
-        !(result as { ok?: boolean }).ok &&
-        status === 'not_found'
-      ) {
-        res.status(404).json({ error: 'Sub-agent runtime not found' });
-        return;
+        res.json(normalizeControlResult(result, 'message_requested'));
+      } catch (err) {
+        logger.error({ err }, 'Failed to request subagent message');
+        res.status(500).json({ error: 'Internal error' });
       }
-      if (status === 'not_controllable') {
-        res.json({
-          ok: true,
-          status: 'not_controllable',
-          entry: (result as { entry?: unknown }).entry,
-        });
-        return;
-      }
+    },
+  );
 
-      res.json(normalizeControlResult(result, 'message_requested'));
-    } catch (err) {
-      logger.error({ err }, 'Failed to request subagent message');
-      res.status(500).json({ error: 'Internal error' });
-    }
-  });
+  app.post(
+    '/api/subagents/runtime/:subagentId/steer',
+    guard,
+    async (req, res) => {
+      try {
+        opts.auditMutation(req, 'subagents.runtime.steer', 'high');
+        const subagentId = decodeURIComponent(
+          routePathParam(req.params.subagentId),
+        ).trim();
+        const prompt =
+          typeof req.body?.prompt === 'string' ? req.body.prompt.trim() : '';
+        const reason =
+          typeof req.body?.reason === 'string' ? req.body.reason.trim() : '';
+        if (!subagentId) {
+          res.status(400).json({ error: 'subagentId is required' });
+          return;
+        }
+        if (!prompt) {
+          res.status(400).json({ error: 'prompt is required' });
+          return;
+        }
 
-  app.post('/api/subagents/runtime/:subagentId/steer', guard, async (req, res) => {
-    try {
-      opts.auditMutation(req, 'subagents.runtime.steer', 'high');
-      const subagentId = decodeURIComponent(routePathParam(req.params.subagentId)).trim();
-      const prompt =
-        typeof req.body?.prompt === 'string' ? req.body.prompt.trim() : '';
-      const reason =
-        typeof req.body?.reason === 'string' ? req.body.reason.trim() : '';
-      if (!subagentId) {
-        res.status(400).json({ error: 'subagentId is required' });
-        return;
-      }
-      if (!prompt) {
-        res.status(400).json({ error: 'prompt is required' });
-        return;
-      }
+        const requestSteerSubagentRuntime = getRegistryHook<
+          (
+            subagentId: string,
+            prompt: string,
+            options?: { waitForResponse?: boolean },
+          ) => Promise<unknown> | unknown
+        >('requestSteerSubagentRuntime');
+        if (!requestSteerSubagentRuntime) {
+          const fallback = resolveReadOnlyRuntimeResponse(subagentId);
+          if (fallback.kind === 'not_found') {
+            res.status(404).json({ error: 'Sub-agent runtime not found' });
+            return;
+          }
+          res.json(fallback.payload);
+          return;
+        }
 
-      const requestSteerSubagentRuntime = getRegistryHook<
-        (
-          subagentId: string,
-          prompt: string,
-          options?: { waitForResponse?: boolean },
-        ) => Promise<unknown> | unknown
-      >('requestSteerSubagentRuntime');
-      if (!requestSteerSubagentRuntime) {
-        const fallback = resolveReadOnlyRuntimeResponse(subagentId);
-        if (fallback.kind === 'not_found') {
+        const steerPrompt = reason ? `${prompt}\n\nReason: ${reason}` : prompt;
+        const result = await requestSteerSubagentRuntime(
+          subagentId,
+          steerPrompt,
+          { waitForResponse: false },
+        );
+        const status = String(
+          ((result as { status?: unknown })?.status as string) || '',
+        ).trim();
+        if (!(result as { ok?: boolean }).ok && status === 'not_found') {
           res.status(404).json({ error: 'Sub-agent runtime not found' });
           return;
         }
-        res.json(fallback.payload);
-        return;
-      }
+        if (status === 'not_controllable') {
+          res.json({
+            ok: true,
+            status: 'not_controllable',
+            entry: (result as { entry?: unknown }).entry,
+          });
+          return;
+        }
 
-      const steerPrompt = reason ? `${prompt}\n\nReason: ${reason}` : prompt;
-      const result = await requestSteerSubagentRuntime(
-        subagentId,
-        steerPrompt,
-        { waitForResponse: false },
-      );
-      const status = String(
-        ((result as { status?: unknown })?.status as string) || '',
-      ).trim();
-      if (
-        !(result as { ok?: boolean }).ok &&
-        status === 'not_found'
-      ) {
-        res.status(404).json({ error: 'Sub-agent runtime not found' });
-        return;
+        res.json(normalizeControlResult(result, 'steer_requested'));
+      } catch (err) {
+        logger.error({ err }, 'Failed to request subagent steer');
+        res.status(500).json({ error: 'Internal error' });
       }
-      if (status === 'not_controllable') {
-        res.json({
-          ok: true,
-          status: 'not_controllable',
-          entry: (result as { entry?: unknown }).entry,
-        });
-        return;
-      }
-
-      res.json(normalizeControlResult(result, 'steer_requested'));
-    } catch (err) {
-      logger.error({ err }, 'Failed to request subagent steer');
-      res.status(500).json({ error: 'Internal error' });
-    }
-  });
+    },
+  );
 
   app.get('/api/maintenance/orphans', guard, async (_req, res) => {
     try {

@@ -915,14 +915,22 @@ export function registerConversationAdminRoutes(
         opts.resetConversationRuntime?.(jid, updated.folder);
       }
 
-      if (providerId !== undefined) {
+      if (providerId !== undefined || model !== undefined) {
         const nextProviderId = providerId?.trim() || null;
         if (nextProviderId && !await isProviderVisibleToUser(nextProviderId, getTenantUserId(req), 'llm')) {
           res.status(403).json({ error: 'No access to selected provider' });
           return;
         }
+        const existingGroup =
+          providerId === undefined ? await getRegisteredGroup(jid) : null;
         const ok = await Promise.resolve(
-          opts.setConversationProviderOverride?.(jid, nextProviderId, model ?? null) ?? false,
+          opts.setConversationProviderOverride?.(
+            jid,
+            providerId === undefined
+              ? existingGroup?.providerId ?? null
+              : nextProviderId,
+            model === undefined ? existingGroup?.model ?? null : model,
+          ) ?? false,
         );
         if (!ok) {
           res.status(404).json({ error: 'Conversation group not found' });

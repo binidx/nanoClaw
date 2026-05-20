@@ -116,6 +116,40 @@ describe('config-store runtime helpers', () => {
     expect(sanitized[0]?.config.replyInThread).toBe(true);
   });
 
+  it('merges enabled user channel instances into runtime channel config', async () => {
+    const tenantDb = await import('./tenant/tenant-db.js');
+    await tenantDb.upsertChannelInstance('user-a', {
+      id: 'telegram-user-a',
+      type: 'telegram',
+      name: 'User A Telegram',
+      enabled: true,
+      configJson: JSON.stringify({
+        botToken: 'tg-token-a',
+        apiBase: 'https://telegram.example.test',
+      }),
+    });
+
+    const configStore = await import('./config-store.js');
+    const instances = await configStore.getConfiguredChannelInstances();
+
+    expect(instances).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'telegram-user-a',
+          type: 'telegram',
+          name: 'User A Telegram',
+          owner_id: 'user-a',
+          visibility: 'private',
+          enabled: true,
+          config: expect.objectContaining({
+            botToken: 'tg-token-a',
+            apiBase: 'https://telegram.example.test',
+          }),
+        }),
+      ]),
+    );
+  });
+
   it('rejects duplicate feishu credentials across instances', async () => {
     const configStore = await import('./config-store.js');
     await expect(
@@ -147,7 +181,9 @@ describe('config-store runtime helpers', () => {
           },
         },
       ]),
-    ).rejects.toThrow(/相同的 App ID \/ App Secret 组合/);
+    ).rejects.toThrow(
+      /相同的 App ID \/ App Secret 组合|feishuDuplicateCredentials/,
+    );
   });
 
   it('uses merged registry metadata instead of replacing built-ins wholesale', async () => {

@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 
+import { dba } from '../db/engine-access.js';
 import type { AgentUploadedFile } from '../types.js';
 import { t } from '../i18n/index.js';
 import { SYSTEM_USER_ID } from '../tenant/tenant-context.js';
@@ -40,6 +41,19 @@ export interface UploadedFileSupportOptions {
   maxUploadTextExcerptBytes: number;
   maxUploadTextExcerptChars: number;
 }
+
+export interface UploadedFileCleanupSummary {
+  scannedFiles: number;
+  deletedFiles: string[];
+  referencedFiles: number;
+}
+
+export interface UploadedFileCleanupOptions {
+  maxAgeMs?: number;
+  now?: Date;
+}
+
+const DEFAULT_ORPHAN_UPLOAD_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
 function sanitizeUploadFileName(input: string): string {
   const base = path.basename(input || '').trim();
@@ -112,6 +126,78 @@ function normalizeUploadRelativePath(relativePath: string): string | null {
     return null;
   }
   return segments.join('/');
+}
+
+function collectRelativePathsFromJson(value: unknown, target: Set<string>): void {
+  if (typeof value !== 'string' || !value.trim()) return;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    return;
+  }
+  if (!Array.isArray(parsed)) return;
+  for (const item of parsed) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) continue;
+    const raw = (item as Record<string, unknown>).relativePath;
+    if (typeof raw !== 'string') continue;
+    const normalized = normalizeUploadRelativePath(raw);
+    if (normalized) target.add(normalized);
+  }
+}
+
+async function collectReferencedUploadPaths(): Promise<Set<string>> {
+  const referenced = new Set<string>();
+  const messageRows = (await dba
+    .prepare(
+      `SELECT uploaded_files_json FROM messages WHERE uploaded_files_json IS NOT NULL`,
+    )
+    .all()) as Array<{ uploaded_files_json: string | null }>;
+  for (const row of messageRows) {
+    collectRelativePathsFromJson(row.uploaded_files_json, referenced);
+  }
+
+  const pendingRows = (await dba
+    .prepare(`SELECT files_json FROM pending_uploads`)
+    .all()) as Array<{ files_json: string | null }>;
+  for (const row of pendingRows) {
+    collectRelativePathsFromJson(row.files_json, referenced);
+  }
+  return referenced;
+}
+
+async function listUploadFiles(root: string): Promise<string[]> {
+  let entries: fs.Dirent[];
+  try {
+    entries = await fs.promises.readdir(root, { withFileTypes: true });
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return [];
+    throw err;
+  }
+
+  const files: string[] = [];
+  for (const entry of entries) {
+    const absolutePath = path.join(root, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...(await listUploadFiles(absolutePath)));
+    } else if (entry.isFile()) {
+      files.push(absolutePath);
+    }
+  }
+  return files;
+}
+
+async function removeEmptyUploadParents(root: string, startDir: string): Promise<void> {
+  const normalizedRoot = path.resolve(root);
+  let current = path.resolve(startDir);
+  while (current !== normalizedRoot && current.startsWith(`${normalizedRoot}${path.sep}`)) {
+    try {
+      await fs.promises.rmdir(current);
+    } catch {
+      return;
+    }
+    current = path.dirname(current);
+  }
 }
 
 function inferUploadMimeTypeFromFileName(fileName: string): string {
@@ -357,9 +443,40 @@ export function createUploadedFileSupport(opts: UploadedFileSupportOptions) {
       relativePath: file.relativePath,
     }));
 
+  const cleanupOrphanUploadedFiles = async (
+    cleanupOptions: UploadedFileCleanupOptions = {},
+  ): Promise<UploadedFileCleanupSummary> => {
+    const uploadsRoot = path.resolve(opts.chatUploadsRoot);
+    const referenced = await collectReferencedUploadPaths();
+    const nowMs = (cleanupOptions.now || new Date()).getTime();
+    const maxAgeMs =
+      cleanupOptions.maxAgeMs ?? DEFAULT_ORPHAN_UPLOAD_MAX_AGE_MS;
+    const cutoffMs = nowMs - maxAgeMs;
+    const absoluteFiles = await listUploadFiles(uploadsRoot);
+    const deletedFiles: string[] = [];
+
+    for (const absolutePath of absoluteFiles) {
+      const relativeRaw = path.relative(uploadsRoot, absolutePath);
+      const relativePath = normalizeUploadRelativePath(relativeRaw);
+      if (!relativePath || referenced.has(relativePath)) continue;
+      const stat = await fs.promises.stat(absolutePath);
+      if (stat.mtimeMs > cutoffMs) continue;
+      await fs.promises.unlink(absolutePath);
+      deletedFiles.push(relativePath);
+      await removeEmptyUploadParents(uploadsRoot, path.dirname(absolutePath));
+    }
+
+    return {
+      scannedFiles: absoluteFiles.length,
+      deletedFiles,
+      referencedFiles: referenced.size,
+    };
+  };
+
   return {
     buildTextExcerpt,
     buildUploadedFilesDisplayContent,
+    cleanupOrphanUploadedFiles,
     normalizeUploadChatFolder,
     resolveStoredUploadFile,
     resolveUploadRelativeRoot,

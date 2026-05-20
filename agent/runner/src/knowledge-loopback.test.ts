@@ -74,4 +74,21 @@ describe('agent runner knowledge loopback', () => {
     expect(result).toBeNull();
     expect(fetchMock).not.toHaveBeenCalled();
   });
+
+  it('fails closed when the available KB allowlist is explicitly empty', async () => {
+    vi.stubEnv('NANOCLAW_INTERNAL_API_BASE', 'http://127.0.0.1:3377');
+    vi.stubEnv('NANOCLAW_INTERNAL_API_TOKEN', 'secret-token');
+    vi.stubEnv('NANOCLAW_USER_ID', 'runtime-user');
+    vi.stubEnv('NANOCLAW_AVAILABLE_KB_IDS', '[]');
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock as typeof fetch);
+
+    const { searchKnowledgeBaseViaApi } = await import(
+      './internal-memory-api.js'
+    );
+    const result = await searchKnowledgeBaseViaApi('private-topic', 5);
+
+    expect(result).toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
 });

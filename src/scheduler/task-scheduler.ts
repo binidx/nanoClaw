@@ -9,12 +9,14 @@ import {
 } from '../agent/agent-runner.js';
 import {
   claimTaskExecution,
+  completeJobStatus,
   getConversationOwnerUserId,
   getDefaultProviderForUser,
   getDueTasks,
   getTaskById,
   getTaskSnapshots,
   logTaskRun,
+  startJobStatus,
   updateTask,
   updateTaskAfterRun,
 } from '../db.js';
@@ -295,6 +297,22 @@ async function runTask(
   deps: SchedulerDependencies,
 ): Promise<void> {
   const startTime = Date.now();
+  const startedAt = new Date(startTime).toISOString();
+  const job = await startJobStatus({
+    source: 'task_scheduler',
+    subjectType: 'scheduled_task',
+    subjectId: task.id,
+    runKey: `${task.id}:${startedAt}`,
+    title: task.title || task.prompt.slice(0, 80),
+    startedAt,
+    message: 'Scheduled task run started',
+    metadata: {
+      chatJid: task.chat_jid,
+      groupFolder: task.group_folder,
+      scheduleType: task.schedule_type,
+      contextMode: task.context_mode,
+    },
+  });
   let groupDir: string;
   try {
     groupDir = resolveGroupFolderPath(task.group_folder);
@@ -313,6 +331,16 @@ async function runTask(
       status: 'error',
       result: null,
       error,
+    });
+    await completeJobStatus(job.id, {
+      status: 'failed',
+      error,
+      durationMs: Date.now() - startTime,
+      message: 'Scheduled task failed before agent start',
+      result: {
+        taskStatus: 'paused',
+        reason: 'invalid_group_folder',
+      },
     });
     return;
   }
@@ -342,6 +370,16 @@ async function runTask(
       status: 'error',
       result: null,
       error,
+    });
+    await completeJobStatus(job.id, {
+      status: 'failed',
+      error,
+      durationMs: Date.now() - startTime,
+      message: 'Scheduled task failed before agent start',
+      result: {
+        taskStatus: 'paused',
+        reason: 'missing_group',
+      },
     });
     return;
   }
@@ -475,6 +513,18 @@ async function runTask(
       },
       'Task run failed',
     );
+    await completeJobStatus(job.id, {
+      status: 'failed',
+      error,
+      durationMs,
+      message: 'Scheduled task run failed',
+      result: {
+        nextRun: failurePlan.nextRun,
+        retryScheduled: failurePlan.retryScheduled,
+        taskStatus: failurePlan.status || task.status,
+        consecutiveFailures: failurePlan.consecutiveFailures,
+      },
+    });
     return;
   }
 
@@ -486,6 +536,17 @@ async function runTask(
     status: nextRun === null ? 'completed' : task.status,
     consecutiveFailures: 0,
     lastError: null,
+  });
+  await completeJobStatus(job.id, {
+    status: 'succeeded',
+    durationMs,
+    message: 'Scheduled task run completed',
+    result: {
+      result,
+      resultSummary,
+      nextRun,
+      taskStatus: nextRun === null ? 'completed' : task.status,
+    },
   });
 }
 

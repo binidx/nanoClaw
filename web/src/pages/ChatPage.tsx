@@ -427,6 +427,7 @@ interface ChatPageProps {
   setConversationProvider: (
     jid: string,
     providerId: string | null,
+    model?: string | null,
   ) => void | Promise<void>;
   conversationSidebarCollapsed: boolean;
   toggleConversationSidebar: () => void;
@@ -993,6 +994,31 @@ export function ChatPage({
 
     return options;
   }, [providers, activeConv]);
+  const selectedProviderId =
+    activeConv?.conversationProviderId || activeProviderId || null;
+  const selectedProvider = useMemo(
+    () =>
+      selectedProviderId
+        ? providers.find((provider) => provider.id === selectedProviderId)
+        : undefined,
+    [providers, selectedProviderId],
+  );
+  const [modelOverrideDraft, setModelOverrideDraft] = useState(
+    activeConv?.conversationModel || '',
+  );
+  useEffect(() => {
+    setModelOverrideDraft(activeConv?.conversationModel || '');
+  }, [activeConv?.jid, activeConv?.conversationModel]);
+  const saveModelOverride = useCallback(() => {
+    if (!activeConv) return;
+    const nextModel = modelOverrideDraft.trim() || null;
+    if ((activeConv.conversationModel || null) === nextModel) return;
+    void setConversationProvider(
+      activeConv.jid,
+      activeConv.conversationProviderId || null,
+      nextModel,
+    );
+  }, [activeConv, modelOverrideDraft, setConversationProvider]);
 
   const location = useLocation();
   const scrolledHashRef = useRef<string>('');
@@ -1857,6 +1883,7 @@ export function ChatPage({
                   void setConversationProvider(
                     activeConv.jid,
                     nextValue === '__default__' ? null : nextValue,
+                    activeConv.conversationModel || null,
                   );
                 }}
                 ariaLabel={t('header.provider.switch')}
@@ -1867,6 +1894,30 @@ export function ChatPage({
             ) : (
               <span className="provider-badge">{activeProviderAlias}</span>
             )}
+            {activeConv ? (
+              <input
+                className="chat-model-override-input"
+                value={modelOverrideDraft}
+                onChange={(event) => setModelOverrideDraft(event.target.value)}
+                onBlur={saveModelOverride}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.currentTarget.blur();
+                  }
+                  if (event.key === 'Escape') {
+                    setModelOverrideDraft(activeConv.conversationModel || '');
+                    event.currentTarget.blur();
+                  }
+                }}
+                placeholder={selectedProvider?.model || 'model override'}
+                aria-label="Conversation model override"
+                title={
+                  modelOverrideDraft.trim()
+                    ? '会话级模型覆盖，留空则使用 Provider 默认模型'
+                    : `使用默认模型 ${selectedProvider?.model || '未配置'}`
+                }
+              />
+            ) : null}
           </div>
         </div>
         <div className="chat-header-actions">

@@ -9,35 +9,165 @@ import {
   upsertChannelInstance,
   deleteChannelInstance,
 } from '../tenant/tenant-db.js';
-import { encryptValue } from '../crypto.js';
+import { decryptValue, encryptValue } from '../crypto.js';
+import {
+  normalizeChannelInstances,
+  type ChannelInstanceConfig,
+} from '../config-store-channel-instances.js';
+import { reloadChannels } from '../runtime/runtime-channels.js';
 import { logger } from '../logger.js';
 
 export interface ChannelInstanceRouteOptions {
   requirePermission: RequirePermissionFn;
+  reloadChannels?: () => Promise<{
+    disconnected: string[];
+    connected: string[];
+    errors: string[];
+  }>;
+}
+
+type UserChannelConfigValue = string | boolean;
+type UserChannelConfig = Record<string, UserChannelConfigValue>;
+
+function isSensitiveConfigKey(key: string): boolean {
+  const lower = key.toLowerCase();
+  return (
+    lower.includes('token') ||
+    lower.includes('secret') ||
+    lower.includes('password') ||
+    lower.includes('key')
+  );
+}
+
+function decryptConfig(configJson: string): UserChannelConfig {
+  const parsed = JSON.parse(configJson) as unknown;
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return {};
+  }
+  return Object.fromEntries(
+    Object.entries(parsed as Record<string, unknown>).map(([key, value]) => [
+      key,
+      typeof value === 'string'
+        ? decryptValue(value)
+        : typeof value === 'boolean'
+          ? value
+          : String(value ?? ''),
+    ]),
+  );
+}
+
+function encryptConfig(
+  config: UserChannelConfig,
+): Record<string, string | boolean> {
+  return Object.fromEntries(
+    Object.entries(config).map(([key, value]) => [
+      key,
+      isSensitiveConfigKey(key) && typeof value === 'string'
+        ? encryptValue(value)
+        : value,
+    ]),
+  );
+}
+
+function sanitizeConfig(config: UserChannelConfig): UserChannelConfig {
+  return Object.fromEntries(
+    Object.entries(config).map(([key, value]) => {
+      if (!isSensitiveConfigKey(key) || typeof value !== 'string') {
+        return [key, value];
+      }
+      return [key, value.length > 4 ? `${value.slice(0, 4)}****` : '****'];
+    }),
+  );
+}
+
+async function getExistingUserInstances(
+  userId: string,
+): Promise<ChannelInstanceConfig[]> {
+  const rows = await getChannelInstancesForUser(userId);
+  const instances: ChannelInstanceConfig[] = [];
+  for (const row of rows) {
+    instances.push({
+      id: row.id,
+      type: row.type,
+      name: row.name,
+      enabled: row.enabled !== 0,
+      visibility: 'private',
+      owner_id: userId,
+      config: decryptConfig(row.config_json),
+    });
+  }
+  return instances;
+}
+
+async function normalizeUserChannelPayload(
+  userId: string,
+  input: {
+    id: string;
+    type?: string;
+    name?: string;
+    enabled?: boolean;
+    config?: Record<string, unknown>;
+  },
+): Promise<ChannelInstanceConfig> {
+  const existing = await getExistingUserInstances(userId);
+  const existingInstance = existing.find((entry) => entry.id === input.id);
+  const [normalized] = await normalizeChannelInstances(
+    [
+      {
+        id: input.id,
+        type: input.type ?? existingInstance?.type,
+        name: input.name ?? existingInstance?.name,
+        enabled: input.enabled ?? existingInstance?.enabled ?? true,
+        visibility: 'private',
+        owner_id: userId,
+        config: input.config ?? {},
+      },
+    ],
+    existing,
+  );
+  if (!normalized) {
+    throw new Error('Invalid channel instance');
+  }
+  return normalized;
+}
+
+async function reloadUserChannels(
+  opts: ChannelInstanceRouteOptions,
+): Promise<{ disconnected: string[]; connected: string[]; errors: string[] }> {
+  const reload = opts.reloadChannels ?? reloadChannels;
+  try {
+    return await reload();
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    logger.warn(
+      { err },
+      'User channel instance saved but runtime reload failed',
+    );
+    return { disconnected: [], connected: [], errors: [message] };
+  }
 }
 
 export function registerChannelInstanceRoutes(
   app: Express,
   opts: ChannelInstanceRouteOptions,
 ): void {
-  const guard = opts.requirePermission('channel.own', 'channel.personal.create');
-  app.get('/api/user/channels', guard, async (req, res) => {
+  const listGuard = opts.requirePermission('channel.own');
+  const createGuard = opts.requirePermission('channel.personal.create');
+  const editGuard = opts.requirePermission('channel.personal.edit');
+
+  app.get('/api/user/channels', listGuard, async (req, res) => {
     try {
       const userId = getTenantUserId(req);
       const instances = await getChannelInstancesForUser(userId);
-      const safe = instances.map((inst) => {
-        let parsedConfig: Record<string, unknown> = {};
-        try { parsedConfig = JSON.parse(inst.config_json); } catch { /* */ }
-        // Mask sensitive fields
-        for (const key of Object.keys(parsedConfig)) {
-          const lower = key.toLowerCase();
-          if (lower.includes('token') || lower.includes('secret') || lower.includes('password')) {
-            const val = String(parsedConfig[key] || '');
-            parsedConfig[key] = val.length > 4 ? `${val.slice(0, 4)}****` : '****';
-          }
-        }
-        return { ...inst, config_json: undefined, config: parsedConfig };
-      });
+      const safe = instances.map((inst) => ({
+        id: inst.id,
+        type: inst.type,
+        name: inst.name,
+        enabled: inst.enabled !== 0,
+        visibility: 'private',
+        owner_id: userId,
+        config: sanitizeConfig(decryptConfig(inst.config_json)),
+      }));
       res.json(safe);
     } catch (err) {
       logger.error({ err }, 'Failed to list channel instances');
@@ -45,14 +175,14 @@ export function registerChannelInstanceRoutes(
     }
   });
 
-  app.post('/api/user/channels', guard, async (req, res) => {
+  app.post('/api/user/channels', createGuard, async (req, res) => {
     try {
       const userId = getTenantUserId(req);
       const { type, name, enabled, config } = req.body as {
         type?: string;
         name?: string;
         enabled?: boolean;
-        config?: Record<string, string>;
+        config?: Record<string, unknown>;
       };
 
       if (!type || !name) {
@@ -60,85 +190,97 @@ export function registerChannelInstanceRoutes(
         return;
       }
 
-      // Encrypt sensitive fields in config
-      const encryptedConfig: Record<string, string> = {};
-      if (config) {
-        for (const [k, v] of Object.entries(config)) {
-          const lower = k.toLowerCase();
-          if (lower.includes('token') || lower.includes('secret') || lower.includes('password') || lower.includes('key')) {
-            encryptedConfig[k] = encryptValue(v);
-          } else {
-            encryptedConfig[k] = v;
-          }
-        }
-      }
-
       const id = crypto.randomUUID();
-      await upsertChannelInstance(userId, {
+      const normalized = await normalizeUserChannelPayload(userId, {
         id,
         type,
         name,
         enabled,
-        configJson: JSON.stringify(encryptedConfig),
+        config,
+      });
+      await upsertChannelInstance(userId, {
+        id,
+        type: normalized.type,
+        name: normalized.name,
+        enabled: normalized.enabled,
+        configJson: JSON.stringify(encryptConfig(normalized.config)),
       });
 
-      await auditAdminAction(req, AUDIT_ACTIONS.CHANNEL_CREATE, { targetType: 'channel_instances', targetId: id, targetName: name });
-      res.json({ ok: true, id });
+      await auditAdminAction(req, AUDIT_ACTIONS.CHANNEL_CREATE, {
+        targetType: 'channel_instances',
+        targetId: id,
+        targetName: name,
+      });
+      const reload = await reloadUserChannels(opts);
+      res.json({ ok: true, id, reload });
     } catch (err) {
       logger.error({ err }, 'Failed to create channel instance');
-      res.status(500).json({ error: 'Internal error' });
+      res.status(400).json({
+        error: err instanceof Error ? err.message : 'Invalid channel instance',
+      });
     }
   });
 
-  app.put('/api/user/channels/:id', guard, async (req, res) => {
+  app.put('/api/user/channels/:id', editGuard, async (req, res) => {
     try {
       const userId = getTenantUserId(req);
       const rawId = req.params.id;
       const channelId =
-        typeof rawId === 'string' ? rawId : Array.isArray(rawId) ? rawId[0] ?? '' : '';
+        typeof rawId === 'string'
+          ? rawId
+          : Array.isArray(rawId)
+            ? (rawId[0] ?? '')
+            : '';
       const { type, name, enabled, config } = req.body as {
         type?: string;
         name?: string;
         enabled?: boolean;
-        config?: Record<string, string>;
+        config?: Record<string, unknown>;
       };
 
-      const encryptedConfig: Record<string, string> = {};
-      if (config) {
-        for (const [k, v] of Object.entries(config)) {
-          const lower = k.toLowerCase();
-          if (lower.includes('token') || lower.includes('secret') || lower.includes('password') || lower.includes('key')) {
-            encryptedConfig[k] = encryptValue(v);
-          } else {
-            encryptedConfig[k] = v;
-          }
-        }
-      }
+      const normalized = await normalizeUserChannelPayload(userId, {
+        id: channelId,
+        type,
+        name,
+        enabled,
+        config,
+      });
 
       await upsertChannelInstance(userId, {
         id: channelId,
-        type: type || 'unknown',
-        name: name || 'unnamed',
-        enabled,
-        configJson: JSON.stringify(encryptedConfig),
+        type: normalized.type,
+        name: normalized.name,
+        enabled: normalized.enabled,
+        configJson: JSON.stringify(encryptConfig(normalized.config)),
       });
 
-      res.json({ ok: true });
+      const reload = await reloadUserChannels(opts);
+      res.json({ ok: true, reload });
     } catch (err) {
       logger.error({ err }, 'Failed to update channel instance');
-      res.status(500).json({ error: 'Internal error' });
+      res.status(400).json({
+        error: err instanceof Error ? err.message : 'Invalid channel instance',
+      });
     }
   });
 
-  app.delete('/api/user/channels/:id', guard, async (req, res) => {
+  app.delete('/api/user/channels/:id', editGuard, async (req, res) => {
     try {
       const userId = getTenantUserId(req);
       const rawId = req.params.id;
       const channelId =
-        typeof rawId === 'string' ? rawId : Array.isArray(rawId) ? rawId[0] ?? '' : '';
+        typeof rawId === 'string'
+          ? rawId
+          : Array.isArray(rawId)
+            ? (rawId[0] ?? '')
+            : '';
       await deleteChannelInstance(userId, channelId);
-      await auditAdminAction(req, AUDIT_ACTIONS.CHANNEL_DELETE, { targetType: 'channel_instances', targetId: channelId });
-      res.json({ ok: true });
+      await auditAdminAction(req, AUDIT_ACTIONS.CHANNEL_DELETE, {
+        targetType: 'channel_instances',
+        targetId: channelId,
+      });
+      const reload = await reloadUserChannels(opts);
+      res.json({ ok: true, reload });
     } catch (err) {
       logger.error({ err }, 'Failed to delete channel instance');
       res.status(500).json({ error: 'Internal error' });

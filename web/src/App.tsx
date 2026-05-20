@@ -81,7 +81,10 @@ import {
   ensureOptimisticWaitingTurn,
   clearOptimisticTurns,
 } from './app-helpers';
-import { normalizeConversationSendAck } from './conversation-realtime';
+import {
+  applyConversationRealtimeWatermark,
+  normalizeConversationSendAck,
+} from './conversation-realtime';
 import { useAppBootstrap } from './hooks/useAppBootstrap';
 import { UIProvider, useUI } from './contexts/UIContext';
 import { useAuth } from './hooks/useAuth';
@@ -1599,14 +1602,20 @@ function AppShell() {
   );
 
   const setConversationProvider = useCallback(
-    async (jid: string, providerId: string | null) => {
+    async (jid: string, providerId: string | null, model?: string | null) => {
       try {
+        const payload: { providerId: string | null; model?: string | null } = {
+          providerId,
+        };
+        if (model !== undefined) {
+          payload.model = model;
+        }
         const res = await fetch(
           `${API}/api/conversations/${encodeURIComponent(jid)}`,
           {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ providerId }),
+            body: JSON.stringify(payload),
           },
         );
         if (!res.ok) return;
@@ -2739,14 +2748,11 @@ function AppShell() {
         await res.json().catch(() => ({})),
       );
       updateConversationChatState(activeJid, (state) => ({
-        ...state,
-        lastEventSeq:
-          typeof ack.last_event_seq === 'number'
-            ? Math.max(
-                state.lastEventSeq ?? Number.NEGATIVE_INFINITY,
-                ack.last_event_seq,
-              )
-            : state.lastEventSeq,
+        ...applyConversationRealtimeWatermark(
+          state,
+          ack.last_event_seq,
+          'send_ack',
+        ),
         pendingMessages: state.pendingMessages.map((message) =>
           message.clientId === localId
             ? {

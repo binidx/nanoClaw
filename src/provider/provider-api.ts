@@ -24,6 +24,36 @@ export type {
   ProviderGeneratedTextResult,
 } from './provider-adapters.js';
 
+function classifyProviderConnectionError(
+  err: unknown,
+): ProviderConnectivityResult['status'] {
+  if (err instanceof Error) {
+    if (err.name === 'TimeoutError' || /timeout|aborted/i.test(err.message)) {
+      return 'timeout';
+    }
+    if (/base URL|required|model|configured|invalid/i.test(err.message)) {
+      return 'configuration_error';
+    }
+    if (/fetch|network|ECONN|ENOTFOUND|EAI_AGAIN|socket/i.test(err.message)) {
+      return 'network_error';
+    }
+  }
+  return 'unknown_error';
+}
+
+function enrichProviderConnectivityResult(
+  provider: AiProvider,
+  result: ProviderConnectivityResult,
+): ProviderConnectivityResult {
+  return {
+    ...result,
+    status: result.status || (result.ok ? 'success' : 'unknown_error'),
+    providerType: result.providerType || provider.type,
+    capability: result.capability || provider.capability || 'llm',
+    model: result.model || provider.model || undefined,
+  };
+}
+
 export function normalizeCodexApiBase(baseUrl: string): string {
   const trimmed = (baseUrl || '').replace(/\/+$/, '');
   if (!trimmed) throw new Error('Codex provider base URL is required');
@@ -429,8 +459,11 @@ export async function testAiProviderConnection(
     if (!embeddingProvider) {
       return {
         ok: false,
+        status: 'configuration_error',
         message: t('errors.auto_83e291', {}, undefined),
         model: runtimeProvider.model || undefined,
+        providerType: runtimeProvider.type,
+        capability: 'embedding',
       };
     }
     const startedAt = Date.now();
@@ -443,19 +476,41 @@ export async function testAiProviderConnection(
       ]);
       return {
         ok: true,
+        status: 'success',
         message: 'embedding ok',
         model: runtimeProvider.model || undefined,
         latencyMs: Date.now() - startedAt,
+        providerType: runtimeProvider.type,
+        capability: 'embedding',
       };
     } catch (err) {
       return {
         ok: false,
+        status: classifyProviderConnectionError(err),
         message: err instanceof Error ? err.message : 'Embedding test failed',
         model: runtimeProvider.model || undefined,
         latencyMs: Date.now() - startedAt,
+        providerType: runtimeProvider.type,
+        capability: 'embedding',
       };
     }
   }
   const adapter = getProviderAdapter(runtimeProvider.type);
-  return adapter.testConnection(runtimeProvider, timeoutMs);
+  const startedAt = Date.now();
+  try {
+    return enrichProviderConnectivityResult(
+      runtimeProvider,
+      await adapter.testConnection(runtimeProvider, timeoutMs),
+    );
+  } catch (err) {
+    return {
+      ok: false,
+      status: classifyProviderConnectionError(err),
+      message: err instanceof Error ? err.message : 'Provider test failed',
+      model: runtimeProvider.model || undefined,
+      latencyMs: Date.now() - startedAt,
+      providerType: runtimeProvider.type,
+      capability: runtimeProvider.capability || 'llm',
+    };
+  }
 }

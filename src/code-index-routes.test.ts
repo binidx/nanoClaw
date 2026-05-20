@@ -1421,6 +1421,24 @@ describe('code-index routes', () => {
     expect(queryResponse.statusCode).toBe(200);
     const queryPayload = JSON.parse(queryResponse.body);
     expect(queryPayload.artifact?.id).toBeTruthy();
+    expect(queryPayload.artifact?.observability).toMatchObject({
+      source: 'code-index.graph.query',
+      kind: 'query',
+      status: 'ready',
+      nodeCount: expect.any(Number),
+      edgeCount: expect.any(Number),
+      selectedFiles: ['src/auth/login.ts'],
+      selectedFileCount: 1,
+      confidence: {
+        overall: expect.any(Number),
+      },
+      planner: {
+        strategy: expect.any(String),
+      },
+    });
+    expect(queryPayload.artifact.observability.durationMs).toBeGreaterThanOrEqual(
+      0,
+    );
 
     const listResponse = await inject(app, {
       method: 'GET',
@@ -1433,6 +1451,12 @@ describe('code-index routes', () => {
         expect.objectContaining({
           id: queryPayload.artifact.id,
           question: 'where is login implemented',
+          observability: expect.objectContaining({
+            source: 'code-index.graph.query',
+            kind: 'query',
+            status: 'ready',
+            selectedFiles: ['src/auth/login.ts'],
+          }),
         }),
       ]),
     );
@@ -1446,6 +1470,12 @@ describe('code-index routes', () => {
       artifact: {
         id: queryPayload.artifact.id,
         question: 'where is login implemented',
+        observability: {
+          source: 'code-index.graph.query',
+          kind: 'query',
+          status: 'ready',
+          selectedFileCount: 1,
+        },
       },
     });
   });

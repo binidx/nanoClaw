@@ -511,6 +511,7 @@ export function buildWorkflowProjectGraphQuestion(input: {
 export async function prepareProjectGraphContext(
   input: PrepareProjectGraphContextInput,
 ): Promise<PreparedProjectGraphContext> {
+  const startedAt = Date.now();
   const question = String(input.question || '').trim();
   if (!question) {
     const missing: PreparedProjectGraphContext = {
@@ -687,6 +688,7 @@ export async function prepareProjectGraphContext(
           contextFilterStats: prepared.contextFilterStats,
           communities: prepared.communities,
         },
+        durationMs: Date.now() - startedAt,
         payload: prepared,
       });
     }

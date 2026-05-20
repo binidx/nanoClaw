@@ -4,9 +4,12 @@ import path from 'path';
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const testDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'nanoclaw-registry-test-'));
+const testDataDir = fs.mkdtempSync(
+  path.join(os.tmpdir(), 'nanoclaw-registry-test-'),
+);
 const createdSkills: Array<Record<string, unknown>> = [];
 const createdMcps: Array<Record<string, unknown>> = [];
+const installRecords: Array<Record<string, unknown>> = [];
 
 vi.mock('../logger.js', () => ({
   logger: {
@@ -18,66 +21,77 @@ vi.mock('../logger.js', () => ({
 }));
 
 vi.mock('../user/user-skill-service.js', () => ({
-  createUserSkill: vi.fn(async (_userId: string, input: Record<string, unknown>) => {
-    createdSkills.push(input);
-    return {
-      id: `skill-${createdSkills.length}`,
-      userId: 'user-a',
-      name: input.name,
-      description: input.description ?? null,
-      summary: null,
-      skillContent: input.skillContent ?? null,
-      enabled: true,
-      visibility: 'private',
-      sourceType: input.sourceType ?? 'registry',
-      sourceRef: input.sourceRef ?? null,
-      iconUrl: null,
-      tags: Array.isArray(input.tags) ? input.tags : [],
-      metadata: input.metadata ?? { capabilities: [] },
-      healthStatus: {
-        state: 'ready',
-        summary: 'ready',
-        checkedAt: new Date().toISOString(),
-        issues: [],
-      },
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      isOwner: true,
-    };
-  }),
+  createUserSkill: vi.fn(
+    async (_userId: string, input: Record<string, unknown>) => {
+      createdSkills.push(input);
+      return {
+        id: `skill-${createdSkills.length}`,
+        userId: 'user-a',
+        name: input.name,
+        description: input.description ?? null,
+        summary: null,
+        skillContent: input.skillContent ?? null,
+        enabled: true,
+        visibility: 'private',
+        sourceType: input.sourceType ?? 'registry',
+        sourceRef: input.sourceRef ?? null,
+        iconUrl: null,
+        tags: Array.isArray(input.tags) ? input.tags : [],
+        metadata: input.metadata ?? { capabilities: [] },
+        healthStatus: {
+          state: 'ready',
+          summary: 'ready',
+          checkedAt: new Date().toISOString(),
+          issues: [],
+        },
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        isOwner: true,
+      };
+    },
+  ),
 }));
 
 vi.mock('../user/user-mcp-service.js', () => ({
-  createUserMcpServer: vi.fn(async (_userId: string, input: Record<string, unknown>) => {
-    createdMcps.push(input);
-    return {
-      id: `mcp-${createdMcps.length}`,
-      userId: 'user-a',
-      name: input.name,
-      description: input.description ?? null,
-      command: input.command ?? '',
-      args: Array.isArray(input.args) ? input.args : [],
-      env: typeof input.env === 'object' && input.env ? input.env : {},
-      transport: 'stdio',
-      url: null,
-      cwd: null,
-      enabled: true,
-      visibility: 'private',
-      sourceType: input.sourceType ?? 'registry',
-      sourceRef: input.sourceRef ?? null,
-      iconUrl: null,
-      tags: Array.isArray(input.tags) ? input.tags : [],
-      metadata: input.metadata ?? { capabilities: [] },
-      healthStatus: {
-        state: 'ready',
-        summary: 'ready',
-        checkedAt: new Date().toISOString(),
-        issues: [],
-      },
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      isOwner: true,
-    };
+  createUserMcpServer: vi.fn(
+    async (_userId: string, input: Record<string, unknown>) => {
+      createdMcps.push(input);
+      return {
+        id: `mcp-${createdMcps.length}`,
+        userId: 'user-a',
+        name: input.name,
+        description: input.description ?? null,
+        command: input.command ?? '',
+        args: Array.isArray(input.args) ? input.args : [],
+        env: typeof input.env === 'object' && input.env ? input.env : {},
+        transport: 'stdio',
+        url: null,
+        cwd: null,
+        enabled: true,
+        visibility: 'private',
+        sourceType: input.sourceType ?? 'registry',
+        sourceRef: input.sourceRef ?? null,
+        iconUrl: null,
+        tags: Array.isArray(input.tags) ? input.tags : [],
+        metadata: input.metadata ?? { capabilities: [] },
+        healthStatus: {
+          state: 'ready',
+          summary: 'ready',
+          checkedAt: new Date().toISOString(),
+          issues: [],
+        },
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        isOwner: true,
+      };
+    },
+  ),
+}));
+
+vi.mock('../db.js', () => ({
+  generateInstallId: () => `inst-${installRecords.length + 1}`,
+  upsertMarketplaceInstall: vi.fn(async (record: Record<string, unknown>) => {
+    installRecords.push(record);
   }),
 }));
 
@@ -86,6 +100,7 @@ describe('registry service', () => {
     vi.resetModules();
     createdSkills.length = 0;
     createdMcps.length = 0;
+    installRecords.length = 0;
     fs.rmSync(testDataDir, { recursive: true, force: true });
     fs.mkdirSync(testDataDir, { recursive: true });
   });
@@ -130,7 +145,8 @@ describe('registry service', () => {
     );
 
     process.env.NANOCLAW_REGISTRY_CATALOG_URLS = skillsRoot;
-    const { fetchRegistryCatalog, installFromRegistry } = await import('./registry-service.js');
+    const { fetchRegistryCatalog, installFromRegistry } =
+      await import('./registry-service.js');
     const catalog = await fetchRegistryCatalog({ forceRefresh: true });
     const target = catalog.items.find((item) => item.name === 'Mcporter');
     expect(target).toBeTruthy();
@@ -142,6 +158,15 @@ describe('registry service', () => {
       visibility: 'private',
       sourceType: 'registry',
       sourceRef: `${target!.slug}@latest`,
+    });
+    expect(installRecords[0]).toMatchObject({
+      id: 'inst-1',
+      user_id: 'user-a',
+      source_id: null,
+      entry_name: target!.slug,
+      entry_type: 'skill',
+      target_id: 'skill-1',
+      status: 'installed',
     });
   });
 });

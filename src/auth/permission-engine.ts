@@ -132,9 +132,13 @@ async function checkResourceAccess(
   return (levelHierarchy[row.access_level] ?? 0) >= requiredNum;
 }
 
+function actionHasSegment(action: string, segment: string): boolean {
+  return action.split('.').includes(segment);
+}
+
 function actionToAccessLevel(action: string): string {
-  if (action.includes('delete') || action.includes('manage')) return 'manager';
-  if (action.includes('edit') || action.includes('create') || action.includes('send')) return 'editor';
+  if (actionHasSegment(action, 'delete') || actionHasSegment(action, 'manage')) return 'manager';
+  if (actionHasSegment(action, 'edit') || actionHasSegment(action, 'create') || actionHasSegment(action, 'send')) return 'editor';
   return 'viewer';
 }
 
@@ -197,7 +201,7 @@ export async function evaluate(
     logger.warn({ err, userId, action, resource }, 'Resource access check failed');
   }
 
-  if (resource.visibility === 'public' && action.includes('view')) {
+  if (resource.visibility === 'public' && actionHasSegment(action, 'view')) {
     return { allowed: true, reason: 'public_resource' };
   }
 

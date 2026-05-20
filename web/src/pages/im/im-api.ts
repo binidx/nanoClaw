@@ -381,11 +381,19 @@ export const sendMessage = (
 export async function uploadImFile(
   chatJid: string,
   file: File,
-  metadata?: { fileName?: string; mimeType?: string },
+  metadata?: {
+    fileName?: string;
+    mimeType?: string;
+    encrypted?: { version: number; algorithm: string; iv: string };
+  },
 ): Promise<ImAttachment> {
   const form = new FormData();
   form.append('chatJid', chatJid);
   form.append('file', file, metadata?.fileName || file.name);
+  if (metadata?.encrypted) {
+    form.append('encrypted', 'true');
+    form.append('encryptedMetadata', JSON.stringify(metadata.encrypted));
+  }
   const res = await fetch(`${API_BASE}/files/upload`, {
     method: 'POST',
     body: form,

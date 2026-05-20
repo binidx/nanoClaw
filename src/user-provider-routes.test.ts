@@ -22,6 +22,7 @@ const {
   updateProvider,
   createProvider,
   deleteProvider,
+  testAiProviderConnection,
 } = vi.hoisted(() => ({
   getProvidersForUser: vi.fn(() => []),
   getProvider: vi.fn(),
@@ -35,6 +36,7 @@ const {
   updateProvider: vi.fn(),
   createProvider: vi.fn(),
   deleteProvider: vi.fn(),
+  testAiProviderConnection: vi.fn(async () => ({ ok: true, status: 'success', message: 'ok' })),
 }));
 
 vi.mock('./db.js', () => ({
@@ -52,7 +54,7 @@ vi.mock('./db.js', () => ({
   updateProvider,
 }));
 
-vi.mock('./tenant-request.js', () => ({
+vi.mock('./tenant/tenant-request.js', () => ({
   getTenantUserId: () => 'user-current',
 }));
 
@@ -61,18 +63,24 @@ vi.mock('./crypto.js', () => ({
   maskApiKey: (value: string) => `****${value.slice(-4)}`,
 }));
 
-vi.mock('./provider-registry.js', () => ({
+vi.mock('./provider/provider-registry.js', () => ({
   isValidProviderType: (type: string, capability?: string) =>
     capability === 'embedding'
       ? ['openai', 'zhipu', 'ollama'].includes(type)
       : ['openai', 'codex', 'claude'].includes(type),
 }));
 
-vi.mock('./provider-api.js', () => ({
-  testAiProviderConnection: vi.fn(async () => ({ ok: true, message: 'ok' })),
+vi.mock('./provider/provider-api.js', () => ({
+  testAiProviderConnection,
 }));
 
 vi.mock('./logger.js', () => ({
+  createModuleLogger: vi.fn(() => ({
+    error: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    debug: vi.fn(),
+  })),
   logger: {
     error: vi.fn(),
     info: vi.fn(),
@@ -143,6 +151,7 @@ describe('user provider routes', () => {
     updateProvider.mockResolvedValue(undefined);
     createProvider.mockResolvedValue(undefined);
     deleteProvider.mockResolvedValue(undefined);
+    testAiProviderConnection.mockResolvedValue({ ok: true, status: 'success', message: 'ok' });
   });
 
   it('sets and clears the current user default provider preference', async () => {
@@ -295,6 +304,136 @@ describe('user provider routes', () => {
         ok: true,
         requiresKnowledgeReembed: true,
         knowledgeBaseRefs: 2,
+      });
+    });
+  });
+
+  it('clears an owned provider API key only through an explicit secret action', async () => {
+    getProvider.mockResolvedValue({
+      id: 'provider-own',
+      alias: 'Mine',
+      type: 'openai',
+      capability: 'llm',
+      api_key: 'enc:old-key',
+      base_url: null,
+      model: 'gpt-4.1',
+      dimensions: null,
+      extra_config: null,
+      is_default: 0,
+      user_id: 'user-current',
+      visibility: 'private',
+      created_by: 'user-current',
+      updated_by: 'user-current',
+      created_at: 'now',
+      updated_at: 'now',
+      deleted_at: null,
+    });
+
+    const app = buildApp();
+    await withServer(app, async (baseUrl) => {
+      const response = await fetch(`${baseUrl}/api/user/providers/provider-own`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          alias: 'Mine',
+          api_key: '',
+          api_key_action: 'clear',
+        }),
+      });
+      expect(response.status).toBe(200);
+      expect(updateProvider).toHaveBeenCalledWith(
+        'provider-own',
+        expect.objectContaining({
+          api_key: null,
+          updated_by: 'user-current',
+        }),
+      );
+      await expect(response.json()).resolves.toMatchObject({
+        ok: true,
+        apiKeyAction: 'clear',
+        apiKeyChanged: true,
+      });
+    });
+  });
+
+  it('rejects rotate secret action without a new unmasked API key', async () => {
+    getProvider.mockResolvedValue({
+      id: 'provider-own',
+      alias: 'Mine',
+      type: 'openai',
+      capability: 'llm',
+      api_key: 'enc:old-key',
+      base_url: null,
+      model: 'gpt-4.1',
+      dimensions: null,
+      extra_config: null,
+      is_default: 0,
+      user_id: 'user-current',
+      visibility: 'private',
+      created_by: 'user-current',
+      updated_by: 'user-current',
+      created_at: 'now',
+      updated_at: 'now',
+      deleted_at: null,
+    });
+
+    const app = buildApp();
+    await withServer(app, async (baseUrl) => {
+      const response = await fetch(`${baseUrl}/api/user/providers/provider-own`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          api_key: '********',
+          api_key_action: 'rotate',
+        }),
+      });
+      expect(response.status).toBe(400);
+      expect(updateProvider).not.toHaveBeenCalled();
+    });
+  });
+
+  it('returns diagnostic provider probe status', async () => {
+    getProvider.mockResolvedValue({
+      id: 'provider-own',
+      alias: 'Mine',
+      type: 'openai',
+      capability: 'llm',
+      api_key: 'enc:key',
+      base_url: null,
+      model: 'gpt-4.1',
+      dimensions: null,
+      extra_config: null,
+      is_default: 0,
+      user_id: 'user-current',
+      visibility: 'private',
+      created_by: 'user-current',
+      updated_by: 'user-current',
+      created_at: 'now',
+      updated_at: 'now',
+      deleted_at: null,
+    });
+    isProviderVisibleToUser.mockResolvedValue(true);
+    testAiProviderConnection.mockResolvedValue({
+      ok: false,
+      status: 'http_error',
+      message: 'API error 401',
+      httpStatus: 401,
+      providerType: 'openai',
+      capability: 'llm',
+    });
+
+    const app = buildApp();
+    await withServer(app, async (baseUrl) => {
+      const response = await fetch(`${baseUrl}/api/user/providers/provider-own/test`, {
+        method: 'POST',
+      });
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toMatchObject({
+        ok: false,
+        status: 'http_error',
+        httpStatus: 401,
+        providerType: 'openai',
+        capability: 'llm',
       });
     });
   });

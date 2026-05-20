@@ -2,9 +2,7 @@ import fs from 'fs';
 import path from 'path';
 
 import {
-  HISTORY_FILE_NAME,
   RUNTIME_FILE_NAME,
-  SUBAGENT_DIR_NAME,
   type IndexedSubagentRuntimeRecord,
   type SubagentRunRecord,
   type SubagentRunRegistrySnapshot,
@@ -34,11 +32,12 @@ import {
 } from './subagent-runtime-types.js';
 import {
   getRunRegistryPath,
+  getRuntimeRootHistoryPath,
+  listRuntimeRegistryRoots,
   parseRuntimeEntry,
   readRuntimeEntry,
   readRuntimeHistory,
   writeJsonFile,
-  getRuntimeRegistryGroupsDir,
 } from './subagent-runtime-fs.js';
 import { isOrphanMarkedActiveSubagentRuntime } from './subagent-runtime-recovery.js';
 
@@ -75,7 +74,8 @@ function withEntryMetadata(
   runtimeDir?: string,
 ): IndexedSubagentRuntimeRecord {
   const active = isActiveStatus(entry.status);
-  const fromLiveRuntime = source === 'runtime' && typeof runtimeDir === 'string';
+  const fromLiveRuntime =
+    source === 'runtime' && typeof runtimeDir === 'string';
   const isOrphanedActiveRuntime = isOrphanMarkedActiveSubagentRuntime(entry.id);
   const controlState: SubagentRuntimeControlState =
     fromLiveRuntime &&
@@ -84,18 +84,17 @@ function withEntryMetadata(
     !isOrphanedActiveRuntime
       ? 'controllable'
       : 'read_only';
-  const controlReason: SubagentRuntimeControlReason =
-    fromLiveRuntime
-      ? active
-        ? isOrphanedActiveRuntime
-          ? 'legacy_active_runtime'
-          : controlState === 'controllable'
-            ? 'active_runtime'
-            : 'provider_read_only_runtime'
-        : 'inactive_runtime'
-      : active
+  const controlReason: SubagentRuntimeControlReason = fromLiveRuntime
+    ? active
+      ? isOrphanedActiveRuntime
         ? 'legacy_active_runtime'
-        : 'history_only';
+        : controlState === 'controllable'
+          ? 'active_runtime'
+          : 'provider_read_only_runtime'
+      : 'inactive_runtime'
+    : active
+      ? 'legacy_active_runtime'
+      : 'history_only';
   const normalizedEntry: SubagentRuntimeEntry = {
     ...entry,
     runtimeKind:
@@ -205,9 +204,7 @@ function getCurrentRunRegistrySnapshot(): SubagentRunRegistrySnapshot {
   );
 }
 
-function readPersistedRunRegistrySnapshot():
-  | SubagentRunRegistrySnapshot
-  | null {
+function readPersistedRunRegistrySnapshot(): SubagentRunRegistrySnapshot | null {
   const filePath = getRunRegistryPath();
   if (!fs.existsSync(filePath)) return null;
   try {
@@ -329,23 +326,19 @@ function applyRelationMetadata(
 
 function scanSubagentRuntimeIndex(): Map<string, IndexedSubagentRuntimeRecord> {
   const itemsById = new Map<string, IndexedSubagentRuntimeRecord>();
-  const groupsDir = getRuntimeRegistryGroupsDir();
 
   try {
-    const groupEntries = fs.readdirSync(groupsDir, { withFileTypes: true });
-    for (const groupEntry of groupEntries) {
-      if (!groupEntry.isDirectory()) continue;
-      const runtimeRoot = path.join(
-        groupsDir,
-        groupEntry.name,
-        SUBAGENT_DIR_NAME,
-      );
-      if (!fs.existsSync(runtimeRoot)) continue;
-      const historyFile = path.join(runtimeRoot, HISTORY_FILE_NAME);
+    for (const runtimeRoot of listRuntimeRegistryRoots()) {
+      const historyFile = getRuntimeRootHistoryPath(runtimeRoot);
       for (const historyEntry of readRuntimeHistory(historyFile)) {
-        upsertIndexedEntry(itemsById, withEntryMetadata(historyEntry, 'history'));
+        upsertIndexedEntry(
+          itemsById,
+          withEntryMetadata(historyEntry, 'history'),
+        );
       }
-      const runtimeEntries = fs.readdirSync(runtimeRoot, { withFileTypes: true });
+      const runtimeEntries = fs.readdirSync(runtimeRoot, {
+        withFileTypes: true,
+      });
       for (const runtimeEntry of runtimeEntries) {
         if (!runtimeEntry.isDirectory()) continue;
         const runtimeDir = path.join(runtimeRoot, runtimeEntry.name);
@@ -391,7 +384,8 @@ function normalizeListQuery(
       typeof query.groupFolder === 'string'
         ? query.groupFolder.trim()
         : undefined,
-    chatJid: typeof query.chatJid === 'string' ? query.chatJid.trim() : undefined,
+    chatJid:
+      typeof query.chatJid === 'string' ? query.chatJid.trim() : undefined,
     status: query.status,
     activeOnly: query.activeOnly === true,
     limit: Number.isFinite(query.limit)
@@ -416,7 +410,8 @@ function normalizeRunListQuery(
       typeof query.groupFolder === 'string'
         ? query.groupFolder.trim()
         : undefined,
-    chatJid: typeof query.chatJid === 'string' ? query.chatJid.trim() : undefined,
+    chatJid:
+      typeof query.chatJid === 'string' ? query.chatJid.trim() : undefined,
     status: query.status,
     activeOnly: query.activeOnly === true,
     limit: Number.isFinite(query.limit)
@@ -463,7 +458,8 @@ function filterEntries(
       : null;
   return items.filter((item) => {
     if (query.provider && item.provider !== query.provider) return false;
-    if (query.groupFolder && item.groupFolder !== query.groupFolder) return false;
+    if (query.groupFolder && item.groupFolder !== query.groupFolder)
+      return false;
     if (query.chatJid && item.chatJid !== query.chatJid) return false;
     if (query.activeOnly && !isActiveStatus(item.status)) return false;
     if (statusSet && !statusSet.has(item.status)) return false;
@@ -475,7 +471,9 @@ function buildPagedSnapshot(
   items: SubagentRuntimeEntry[],
   query: ReturnType<typeof normalizeListQuery>,
 ): SubagentRuntimeSnapshot {
-  const activeCount = items.filter((item) => isActiveStatus(item.status)).length;
+  const activeCount = items.filter((item) =>
+    isActiveStatus(item.status),
+  ).length;
   const cursor = parseCursor(query.cursor);
   const itemsAfterCursor = items.filter((item) => isAfterCursor(item, cursor));
   const pagedItems = itemsAfterCursor.slice(0, query.limit);
@@ -534,7 +532,8 @@ function filterRunRecords(
     : null;
   return items.filter((item) => {
     if (query.provider && item.provider !== query.provider) return false;
-    if (query.groupFolder && item.groupFolder !== query.groupFolder) return false;
+    if (query.groupFolder && item.groupFolder !== query.groupFolder)
+      return false;
     if (query.chatJid && item.chatJid !== query.chatJid) return false;
     if (query.activeOnly && !isActiveStatus(item.status)) return false;
     if (statusSet && !statusSet.has(item.status)) return false;
@@ -551,7 +550,10 @@ function filterRunRecords(
     ) {
       return false;
     }
-    if (query.parentRuntimeId && item.parentRuntimeId !== query.parentRuntimeId) {
+    if (
+      query.parentRuntimeId &&
+      item.parentRuntimeId !== query.parentRuntimeId
+    ) {
       return false;
     }
     if (query.originTurnId && item.originTurnId !== query.originTurnId) {
@@ -576,7 +578,9 @@ function buildRunPagedSnapshot(
   query: ReturnType<typeof normalizeRunListQuery>,
 ): SubagentRunSnapshot {
   const cursor = parseCursor(query.cursor);
-  const itemsAfterCursor = items.filter((item) => isRunAfterCursor(item, cursor));
+  const itemsAfterCursor = items.filter((item) =>
+    isRunAfterCursor(item, cursor),
+  );
   const pagedItems = itemsAfterCursor.slice(0, query.limit);
   const nextCursor =
     itemsAfterCursor.length > pagedItems.length &&
@@ -595,9 +599,7 @@ function buildRunPagedSnapshot(
   };
 }
 
-function getFilteredEntries(
-  queryOrLimit?: number | SubagentRuntimeListQuery,
-): {
+function getFilteredEntries(queryOrLimit?: number | SubagentRuntimeListQuery): {
   query: ReturnType<typeof normalizeListQuery>;
   items: SubagentRuntimeEntry[];
   index: Map<string, IndexedSubagentRuntimeRecord>;
@@ -668,7 +670,10 @@ export function listSubagentRuns(
     };
   }
   const snapshot = loadRunRegistrySnapshot();
-  const items = filterRunRecords([...snapshot.runs].sort(compareRunRecords), query);
+  const items = filterRunRecords(
+    [...snapshot.runs].sort(compareRunRecords),
+    query,
+  );
   return buildRunPagedSnapshot(snapshot, items, query);
 }
 

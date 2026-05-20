@@ -161,7 +161,7 @@ export function registerInternalKnowledgeRoutes(
 
         const kbIdsBody = req.body?.kb_ids;
         let kbIdsForSearch: string[];
-        if (Array.isArray(kbIdsBody) && kbIdsBody.length > 0) {
+        if (Array.isArray(kbIdsBody)) {
           const visibleSet = new Set(visibleIds);
           kbIdsForSearch = kbIdsBody.filter(
             (kid: unknown) => typeof kid === 'string' && visibleSet.has(kid),

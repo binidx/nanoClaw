@@ -10,6 +10,7 @@ export * from './sessions.js';
 export * from './memory.js';
 export * from './conversations.js';
 export * from './tasks.js';
+export * from './job-status.js';
 export * from './assistants.js';
 export * from './config.js';
 export * from './stock-analysis.js';

@@ -5,7 +5,16 @@ import { fileURLToPath } from 'url';
 import { deleteConfig, getConfig, setConfig } from '../db.js';
 import { logger } from '../logger.js';
 import { normalizeSkillId } from '../runtime/runtime-customization.js';
-import type { ExtensionInstallRecord, ExtensionMarketplaceSource } from './extension-marketplace-types.js';
+import { getCurrentUserId } from '../tenant/tenant-context.js';
+import {
+  listAllMarketplaceSources,
+  replaceAdminMarketplaceSources,
+  type MarketplaceSourceInput,
+} from './marketplace-source-service.js';
+import type {
+  ExtensionInstallRecord,
+  ExtensionMarketplaceSource,
+} from './extension-marketplace-types.js';
 import {
   WEB_EXTENSION_INSTALLS_CONFIG_KEY,
   WEB_EXTENSION_MARKETPLACES_CONFIG_KEY,
@@ -129,6 +138,8 @@ function parseExtensionMarketplaceSourcesConfig(
       name: toOptionalString(entry.name) || id,
       source,
       enabled: entry.enabled === undefined ? true : Boolean(entry.enabled),
+      origin: 'legacy_config',
+      readOnly: true,
     });
   }
   return output;
@@ -174,6 +185,8 @@ function getBundledMarketplaceSources(): ExtensionMarketplaceSource[] {
       name: 'Agent Reach',
       source: sourceRoot,
       enabled: true,
+      origin: 'bundled_legacy',
+      readOnly: true,
     },
   ];
 }
@@ -191,6 +204,54 @@ function mergeMarketplaceSources(
   return Array.from(merged.values()).sort((a, b) => a.id.localeCompare(b.id));
 }
 
+async function getAdminMarketplaceSources(): Promise<
+  ExtensionMarketplaceSource[]
+> {
+  const records = await listAllMarketplaceSources(false);
+  return records.map((entry) => ({
+    id: entry.id,
+    name: entry.name,
+    source: entry.source,
+    enabled: entry.enabled,
+    origin: 'admin_registry',
+    readOnly: false,
+  }));
+}
+
+function isSameMarketplaceSource(
+  left: ExtensionMarketplaceSource,
+  right: ExtensionMarketplaceSource,
+): boolean {
+  return (
+    left.id === right.id &&
+    left.source.trim() === right.source.trim() &&
+    left.name.trim() === right.name.trim() &&
+    (left.enabled !== false) === (right.enabled !== false)
+  );
+}
+
+async function getLegacyReadOnlyMarketplaceSources(): Promise<
+  ExtensionMarketplaceSource[]
+> {
+  try {
+    return mergeMarketplaceSources(
+      parseExtensionMarketplaceSourcesConfig(
+        await getConfig(WEB_EXTENSION_MARKETPLACES_CONFIG_KEY),
+      ),
+    ).map((entry) => ({
+      ...entry,
+      readOnly: true,
+      origin: entry.origin ?? 'legacy_config',
+    }));
+  } catch (err) {
+    logger.warn(
+      { err },
+      'Failed to parse legacy extension marketplace sources',
+    );
+    return mergeMarketplaceSources([]);
+  }
+}
+
 function parseExtensionInstallsConfig(
   raw: string | undefined,
 ): ExtensionInstallRecord[] {
@@ -206,84 +267,88 @@ function parseExtensionInstallsConfig(
   }
   return parsed
     .filter(isRecord)
-    .map((entry): ExtensionInstallRecord => ({
-      id: normalizeInstallId(String(entry.id || '')),
-      canonicalId:
-        normalizeSkillId(String(entry.canonicalId || entry.id || '')) ||
-        normalizeInstallId(String(entry.id || '')),
-      name: toOptionalString(entry.name) || String(entry.id || ''),
-      version: toOptionalString(entry.version),
-      sourceType: entry.sourceType === 'marketplace' ? 'marketplace' : 'import',
-      sourceKind:
-        entry.sourceKind === 'github' ||
-        entry.sourceKind === 'git' ||
-        entry.sourceKind === 'git_subdir' ||
-        entry.sourceKind === 'remote_file' ||
-        entry.sourceKind === 'local_path'
-          ? entry.sourceKind
-          : deriveSourceKindFromRef(
-              toOptionalString(entry.resolvedSource) ||
-                toOptionalString(entry.sourceRef) ||
-                '',
-              entry.sourceType === 'marketplace' ? 'marketplace' : 'import',
-            ),
-      sourceRef: toOptionalString(entry.sourceRef) || '',
-      resolvedSource:
-        toOptionalString(entry.resolvedSource) ||
-        toOptionalString(entry.sourceRef) ||
-        '',
-      contentHash: toOptionalString(entry.contentHash) || '',
-      trustState:
-        entry.trustState === 'trusted' ||
-        entry.trustState === 'local' ||
-        entry.trustState === 'needs_review'
-          ? entry.trustState
-          : deriveTrustState({
-              sourceType:
+    .map(
+      (entry): ExtensionInstallRecord => ({
+        id: normalizeInstallId(String(entry.id || '')),
+        canonicalId:
+          normalizeSkillId(String(entry.canonicalId || entry.id || '')) ||
+          normalizeInstallId(String(entry.id || '')),
+        name: toOptionalString(entry.name) || String(entry.id || ''),
+        version: toOptionalString(entry.version),
+        sourceType:
+          entry.sourceType === 'marketplace' ? 'marketplace' : 'import',
+        sourceKind:
+          entry.sourceKind === 'github' ||
+          entry.sourceKind === 'git' ||
+          entry.sourceKind === 'git_subdir' ||
+          entry.sourceKind === 'remote_file' ||
+          entry.sourceKind === 'local_path'
+            ? entry.sourceKind
+            : deriveSourceKindFromRef(
+                toOptionalString(entry.resolvedSource) ||
+                  toOptionalString(entry.sourceRef) ||
+                  '',
                 entry.sourceType === 'marketplace' ? 'marketplace' : 'import',
-              sourceKind:
-                entry.sourceKind === 'github' ||
-                entry.sourceKind === 'git' ||
-                entry.sourceKind === 'git_subdir' ||
-                entry.sourceKind === 'remote_file' ||
-                entry.sourceKind === 'local_path'
-                  ? entry.sourceKind
-                  : deriveSourceKindFromRef(
-                      toOptionalString(entry.resolvedSource) ||
-                        toOptionalString(entry.sourceRef) ||
-                        '',
-                      entry.sourceType === 'marketplace'
-                        ? 'marketplace'
-                        : 'import',
-                    ),
-            }),
-      marketplaceName: toOptionalString(entry.marketplaceName),
-      marketplaceSource: toOptionalString(entry.marketplaceSource),
-      marketplaceEntry: toOptionalString(entry.marketplaceEntry),
-      installedSkillIds: Array.isArray(entry.installedSkillIds)
-        ? entry.installedSkillIds
-            .map((item) => String(item || '').trim())
-            .filter(Boolean)
-        : [],
-      installedMcpServerIds: Array.isArray(entry.installedMcpServerIds)
-        ? entry.installedMcpServerIds
-            .map((item) => String(item || '').trim())
-            .filter(Boolean)
-        : [],
-      agentCount:
-        typeof entry.agentCount === 'number' && Number.isFinite(entry.agentCount)
-          ? Math.max(0, Math.trunc(entry.agentCount))
-          : 0,
-      installedAt:
-        toOptionalString(entry.installedAt) || new Date(0).toISOString(),
-      status:
-        entry.status === 'needs_attention' ? 'needs_attention' : 'installed',
-      warnings: Array.isArray(entry.warnings)
-        ? entry.warnings
-            .map((item) => String(item || '').trim())
-            .filter(Boolean)
-        : [],
-    }))
+              ),
+        sourceRef: toOptionalString(entry.sourceRef) || '',
+        resolvedSource:
+          toOptionalString(entry.resolvedSource) ||
+          toOptionalString(entry.sourceRef) ||
+          '',
+        contentHash: toOptionalString(entry.contentHash) || '',
+        trustState:
+          entry.trustState === 'trusted' ||
+          entry.trustState === 'local' ||
+          entry.trustState === 'needs_review'
+            ? entry.trustState
+            : deriveTrustState({
+                sourceType:
+                  entry.sourceType === 'marketplace' ? 'marketplace' : 'import',
+                sourceKind:
+                  entry.sourceKind === 'github' ||
+                  entry.sourceKind === 'git' ||
+                  entry.sourceKind === 'git_subdir' ||
+                  entry.sourceKind === 'remote_file' ||
+                  entry.sourceKind === 'local_path'
+                    ? entry.sourceKind
+                    : deriveSourceKindFromRef(
+                        toOptionalString(entry.resolvedSource) ||
+                          toOptionalString(entry.sourceRef) ||
+                          '',
+                        entry.sourceType === 'marketplace'
+                          ? 'marketplace'
+                          : 'import',
+                      ),
+              }),
+        marketplaceName: toOptionalString(entry.marketplaceName),
+        marketplaceSource: toOptionalString(entry.marketplaceSource),
+        marketplaceEntry: toOptionalString(entry.marketplaceEntry),
+        installedSkillIds: Array.isArray(entry.installedSkillIds)
+          ? entry.installedSkillIds
+              .map((item) => String(item || '').trim())
+              .filter(Boolean)
+          : [],
+        installedMcpServerIds: Array.isArray(entry.installedMcpServerIds)
+          ? entry.installedMcpServerIds
+              .map((item) => String(item || '').trim())
+              .filter(Boolean)
+          : [],
+        agentCount:
+          typeof entry.agentCount === 'number' &&
+          Number.isFinite(entry.agentCount)
+            ? Math.max(0, Math.trunc(entry.agentCount))
+            : 0,
+        installedAt:
+          toOptionalString(entry.installedAt) || new Date(0).toISOString(),
+        status:
+          entry.status === 'needs_attention' ? 'needs_attention' : 'installed',
+        warnings: Array.isArray(entry.warnings)
+          ? entry.warnings
+              .map((item) => String(item || '').trim())
+              .filter(Boolean)
+          : [],
+      }),
+    )
     .filter(
       (entry) =>
         entry.id &&
@@ -317,10 +382,14 @@ function serializeExtensionInstallsConfig(
         marketplaceSource: entry.marketplaceSource?.trim() || undefined,
         marketplaceEntry: entry.marketplaceEntry?.trim() || undefined,
         installedSkillIds: Array.from(
-          new Set(entry.installedSkillIds.map((id) => id.trim()).filter(Boolean)),
+          new Set(
+            entry.installedSkillIds.map((id) => id.trim()).filter(Boolean),
+          ),
         ).sort((a, b) => a.localeCompare(b)),
         installedMcpServerIds: Array.from(
-          new Set(entry.installedMcpServerIds.map((id) => id.trim()).filter(Boolean)),
+          new Set(
+            entry.installedMcpServerIds.map((id) => id.trim()).filter(Boolean),
+          ),
         ).sort((a, b) => a.localeCompare(b)),
         agentCount: Math.max(0, Math.trunc(entry.agentCount || 0)),
         installedAt: entry.installedAt,
@@ -341,11 +410,13 @@ function serializeExtensionInstallsConfig(
   );
 }
 
-export async function getExtensionMarketplaceSourcesForResponse(): Promise<ExtensionMarketplaceSource[]> {
+export async function getExtensionMarketplaceSourcesForResponse(): Promise<
+  ExtensionMarketplaceSource[]
+> {
   try {
-    return mergeMarketplaceSources(parseExtensionMarketplaceSourcesConfig(
-      await getConfig(WEB_EXTENSION_MARKETPLACES_CONFIG_KEY),
-    ));
+    const legacySources = await getLegacyReadOnlyMarketplaceSources();
+    const adminSources = await getAdminMarketplaceSources();
+    return mergeMarketplaceSources([...legacySources, ...adminSources]);
   } catch (err) {
     logger.warn({ err }, 'Failed to parse extension marketplace sources');
     return mergeMarketplaceSources([]);
@@ -358,18 +429,36 @@ export async function persistExtensionMarketplaceSources(
   const normalized = parseExtensionMarketplaceSourcesConfig(
     serializeExtensionMarketplaceSourcesConfig(sources),
   );
-  if (normalized.length === 0) {
-    await deleteConfig(WEB_EXTENSION_MARKETPLACES_CONFIG_KEY);
-  } else {
-    await setConfig(
-      WEB_EXTENSION_MARKETPLACES_CONFIG_KEY,
-      serializeExtensionMarketplaceSourcesConfig(normalized),
-    );
+  const legacySources = await getLegacyReadOnlyMarketplaceSources();
+  const existingAdminById = new Map(
+    (await getAdminMarketplaceSources()).map((entry) => [entry.id, entry]),
+  );
+  const adminInputs: MarketplaceSourceInput[] = [];
+  for (const source of normalized) {
+    const legacy = legacySources.find((entry) => entry.id === source.id);
+    const existingAdmin = existingAdminById.get(source.id);
+    if (!existingAdmin && legacy) {
+      if (!isSameMarketplaceSource(source, legacy)) {
+        throw new Error(
+          `Marketplace source is read-only legacy config: ${source.id}`,
+        );
+      }
+      continue;
+    }
+    adminInputs.push({
+      id: source.id,
+      name: source.name,
+      source: source.source,
+      enabled: source.enabled,
+    });
   }
-  return normalized;
+  await replaceAdminMarketplaceSources(getCurrentUserId(), adminInputs);
+  return getExtensionMarketplaceSourcesForResponse();
 }
 
-export async function getExtensionInstallsForResponse(): Promise<ExtensionInstallRecord[]> {
+export async function getExtensionInstallsForResponse(): Promise<
+  ExtensionInstallRecord[]
+> {
   try {
     return parseExtensionInstallsConfig(
       await getConfig(WEB_EXTENSION_INSTALLS_CONFIG_KEY),

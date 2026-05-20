@@ -4,7 +4,8 @@ import os from 'os';
 import { DATA_DIR } from '../config.js';
 
 export const MANAGED_EXTENSIONS_ROOT = path.join(DATA_DIR, 'extensions');
-export const WEB_EXTENSION_MARKETPLACES_CONFIG_KEY = 'WEB_EXTENSION_MARKETPLACES';
+export const WEB_EXTENSION_MARKETPLACES_CONFIG_KEY =
+  'WEB_EXTENSION_MARKETPLACES';
 export const WEB_EXTENSION_INSTALLS_CONFIG_KEY = 'WEB_EXTENSION_INSTALLS';
 export const CLAUDE_KNOWN_MARKETPLACES_PATH = path.join(
   os.homedir(),
@@ -99,6 +100,8 @@ export interface ExtensionMarketplaceSource {
   name: string;
   source: string;
   enabled: boolean;
+  origin?: 'admin_registry' | 'legacy_config' | 'bundled_legacy';
+  readOnly?: boolean;
 }
 
 export interface ExtensionCatalogEntry {
@@ -155,7 +158,8 @@ export interface ExtensionReconcileResult {
 }
 
 export function resolveArchiveKind(value: string): 'zip' | 'tar' | null {
-  const normalized = value.trim().toLowerCase().split('?')[0]?.split('#')[0] || '';
+  const normalized =
+    value.trim().toLowerCase().split('?')[0]?.split('#')[0] || '';
   if (normalized.endsWith('.zip')) {
     return 'zip';
   }

@@ -528,6 +528,7 @@ export function registerConversationMessageRoutes(
   });
 
   app.post('/api/files/upload', sendGuard, async (req, res) => {
+    const createdUploadPaths: string[] = [];
     try {
       const body = (req.body || {}) as {
         chatJid?: unknown;
@@ -588,6 +589,7 @@ export function registerConversationMessageRoutes(
         const persistedName = `${Date.now().toString(36)}_${id.slice(0, 8)}_${safeName}`;
         const absolutePath = path.join(chatUploadDir, persistedName);
         await fsp.writeFile(absolutePath, bytes);
+        createdUploadPaths.push(absolutePath);
 
         const relativePath = path.posix.join(
           uploadRelativeRoot,
@@ -611,6 +613,11 @@ export function registerConversationMessageRoutes(
         return;
       }
       logger.error({ err }, 'Failed to upload files');
+      await Promise.all(
+        createdUploadPaths.map((filePath) =>
+          fsp.unlink(filePath).catch(() => undefined),
+        ),
+      );
       res
         .status(400)
         .json({ error: err instanceof Error ? err.message : 'Upload failed' });

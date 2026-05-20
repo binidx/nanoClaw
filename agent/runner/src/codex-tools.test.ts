@@ -451,6 +451,100 @@ describe('codex persistent subagent tools', () => {
     expect(deleteOutput).toContain('stopped');
   });
 
+  it('keeps descendant runtime records under the inherited top-level runtime root', async () => {
+    vi.stubEnv('NANOCLAW_SUBAGENTS_ENABLED', '1');
+    vi.stubEnv('NANOCLAW_SUBAGENTS_MAX_DEPTH', '3');
+    vi.stubEnv('NANOCLAW_SUBAGENT_DEPTH', '1');
+    vi.stubEnv('NANOCLAW_CURRENT_SUBAGENT_RUNTIME_ID', 'parent-runtime');
+
+    const tempRoot = path.join(process.cwd(), 'tmp');
+    fs.mkdirSync(tempRoot, { recursive: true });
+    const tempDir = fs.mkdtempSync(path.join(tempRoot, 'nanoclaw-subagents-'));
+    createdPaths.push(tempDir);
+    const topRuntimeRoot = path.join(tempDir, '.nanoclaw-subagents');
+    const nestedGroupDir = path.join(topRuntimeRoot, 'parent-runtime', 'group');
+    fs.mkdirSync(nestedGroupDir, { recursive: true });
+    vi.stubEnv('NANOCLAW_GROUP_DIR', nestedGroupDir);
+    vi.stubEnv('NANOCLAW_SUBAGENT_RUNTIME_ROOT', topRuntimeRoot);
+
+    let childInputRaw = '';
+    const realEnd = fakeProc.stdin.end.bind(fakeProc.stdin);
+    vi.spyOn(fakeProc.stdin, 'end').mockImplementation(((chunk?: any) => {
+      if (chunk) childInputRaw += chunk.toString();
+      return realEnd(chunk);
+    }) as any);
+
+    const createPromise = executeTool(
+      'TeamCreate',
+      {
+        prompt: 'Inspect a nested module',
+        name: 'Grandchild',
+        keep_alive: true,
+      },
+      process.cwd(),
+      {
+        agentInput: {
+          groupFolder: 'team-room',
+          chatJid: 'team@g.us',
+          isMain: false,
+          workingDirectory: process.cwd(),
+        },
+        secrets: {
+          AI_PROVIDER: 'codex',
+          CODEX_BASE_URL: 'https://example.com',
+          CODEX_API_KEY: 'test-key',
+          CODEX_MODEL: 'gpt-5.4',
+        },
+      },
+    );
+
+    await Promise.resolve();
+    fakeProc.emit('spawn');
+    emitStructuredOutput(fakeProc, {
+      status: 'success',
+      requestId: JSON.parse(childInputRaw).requestId,
+      result: 'nested result',
+    });
+    await createPromise;
+
+    const runtimeIds = fs
+      .readdirSync(topRuntimeRoot)
+      .filter((entry) => entry !== 'parent-runtime');
+    expect(runtimeIds).toHaveLength(1);
+    const [agentId] = runtimeIds;
+    expect(
+      fs.existsSync(
+        path.join(
+          nestedGroupDir,
+          '.nanoclaw-subagents',
+          agentId!,
+          'runtime.json',
+        ),
+      ),
+    ).toBe(false);
+    expect(
+      fs.existsSync(path.join(topRuntimeRoot, agentId!, 'runtime.json')),
+    ).toBe(true);
+
+    const spawnEnv = vi.mocked(spawn).mock.calls[0]?.[2]
+      ?.env as NodeJS.ProcessEnv;
+    expect(spawnEnv.NANOCLAW_SUBAGENT_RUNTIME_ROOT).toBe(topRuntimeRoot);
+    expect(spawnEnv.NANOCLAW_GROUP_DIR).toBe(
+      path.join(topRuntimeRoot, agentId!, 'group'),
+    );
+
+    const runtimeMetadata = JSON.parse(
+      fs.readFileSync(
+        path.join(topRuntimeRoot, agentId!, 'runtime.json'),
+        'utf8',
+      ),
+    ) as { parentRuntimeId?: string; depth?: number };
+    expect(runtimeMetadata).toMatchObject({
+      parentRuntimeId: 'parent-runtime',
+      depth: 2,
+    });
+  });
+
   it('times out TeamCreate when the initial managed subagent result never arrives', async () => {
     vi.useFakeTimers();
     try {

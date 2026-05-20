@@ -49,6 +49,7 @@ For quick repo context, `CLAUDE.md` remains a compact product map, not policy.
 - The supported Codex provider concurrency surface is `NANOCLAW_CODEX_PROVIDER_CONCURRENCY=parallel|limit|global` plus `NANOCLAW_CODEX_PROVIDER_MAX_CONCURRENT=<n>` for `limit` mode.
 - `parallel` is the default, `limit` is optional backpressure, and `global` is rollback-only emergency mode.
 - Keep provider concurrency and parent timeout handling in sync; do not roll back only one side of that change.
+- Codex subagent descendants must inherit the same `NANOCLAW_SUBAGENT_RUNTIME_ROOT` so registry/recovery can find all runtime records from the top-level group root. Recovery also scans legacy nested `.nanoclaw-subagents` directories.
 - Do not create overlapping write ownership between workers.
 
 ## GStack Workflow

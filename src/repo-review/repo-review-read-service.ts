@@ -25,7 +25,14 @@ import {
   type RepoReviewRepository,
   type RepoReviewRun,
 } from './repo-review-service.js';
-import type { RepoReviewProgressStep } from './repo-review-model.js';
+import type {
+  RepoReviewExecutionStats,
+  RepoReviewObservabilityConfidenceSummary,
+  RepoReviewObservabilityPlannerSummary,
+  RepoReviewProgressSnapshot,
+  RepoReviewProgressStep,
+  RepoReviewRunObservabilitySummary,
+} from './repo-review-model.js';
 
 export interface RepoReviewRunSummaryQuery {
   repositoryId?: string;
@@ -136,7 +143,121 @@ function normalizeLegacyRepoReviewText(value: unknown): string {
   return text;
 }
 
-function normalizeSummaryReviewProgress(value: unknown) {
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function numberValue(value: unknown): number {
+  const number = Number(value);
+  return Number.isFinite(number) && number >= 0 ? number : 0;
+}
+
+function normalizeStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const entry of value) {
+    const normalized = stringValue(entry);
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    result.push(normalized);
+  }
+  return result;
+}
+
+function normalizeObservabilityConfidence(
+  value: unknown,
+): RepoReviewObservabilityConfidenceSummary | undefined {
+  const record = asRecord(value);
+  const overall = Number(record.overall);
+  if (!Number.isFinite(overall)) return undefined;
+  const seedScore = Number(record.seedScore);
+  const graphScore = Number(record.graphScore);
+  const contextScore = Number(record.contextScore);
+  return {
+    overall: Math.max(0, overall),
+    ...(Number.isFinite(seedScore)
+      ? { seedScore: Math.max(0, seedScore) }
+      : {}),
+    ...(Number.isFinite(graphScore)
+      ? { graphScore: Math.max(0, graphScore) }
+      : {}),
+    ...(Number.isFinite(contextScore)
+      ? { contextScore: Math.max(0, contextScore) }
+      : {}),
+  };
+}
+
+function normalizeObservabilityPlanner(
+  value: unknown,
+): RepoReviewObservabilityPlannerSummary | undefined {
+  const record = asRecord(value);
+  const strategy = stringValue(record.strategy);
+  if (!strategy) return undefined;
+  const forcedSeedCount = numberValue(record.forcedSeedCount);
+  const communityHintCount = numberValue(record.communityHintCount);
+  const workerCount = numberValue(record.workerCount);
+  const splitGroups = numberValue(record.splitGroups);
+  return {
+    strategy,
+    ...(forcedSeedCount > 0 ? { forcedSeedCount } : {}),
+    ...(communityHintCount > 0 ? { communityHintCount } : {}),
+    ...(workerCount > 0 ? { workerCount } : {}),
+    ...(splitGroups > 0 ? { splitGroups } : {}),
+  };
+}
+
+function normalizeSummaryExecutionStats(
+  value: unknown,
+): Partial<RepoReviewExecutionStats> {
+  const record = asRecord(value);
+  const codeMapContextStatus = stringValue(record.codeMapContextStatus);
+  const codeIndexContextStatus = stringValue(record.codeIndexContextStatus);
+  const projectGraphConfidence = normalizeObservabilityConfidence(
+    record.projectGraphConfidence,
+  );
+  const projectGraphPlanner = normalizeObservabilityPlanner(
+    record.projectGraphPlanner,
+  );
+  return {
+    diffFiles: numberValue(record.diffFiles),
+    diffBytes: numberValue(record.diffBytes),
+    splitGroups: numberValue(record.splitGroups),
+    promptBytesBuilt: numberValue(record.promptBytesBuilt),
+    modelCallCount: numberValue(record.modelCallCount),
+    workerCount: numberValue(record.workerCount),
+    completedWorkerCount: numberValue(record.completedWorkerCount),
+    failedWorkerCount: numberValue(record.failedWorkerCount),
+    timedOutWorkerCount: numberValue(record.timedOutWorkerCount),
+    mainReadonlyToolCallCount: numberValue(record.mainReadonlyToolCallCount),
+    subagentToolCallCount: numberValue(record.subagentToolCallCount),
+    ...(codeMapContextStatus
+      ? {
+          codeMapContextStatus:
+            codeMapContextStatus as RepoReviewExecutionStats['codeMapContextStatus'],
+        }
+      : {}),
+    ...(codeIndexContextStatus
+      ? {
+          codeIndexContextStatus:
+            codeIndexContextStatus as RepoReviewExecutionStats['codeIndexContextStatus'],
+        }
+      : {}),
+    projectGraphNodeCount: numberValue(record.projectGraphNodeCount),
+    projectGraphEdgeCount: numberValue(record.projectGraphEdgeCount),
+    projectGraphSelectedFiles: normalizeStringArray(
+      record.projectGraphSelectedFiles,
+    ).slice(0, 50),
+    ...(projectGraphConfidence ? { projectGraphConfidence } : {}),
+    ...(projectGraphPlanner ? { projectGraphPlanner } : {}),
+  };
+}
+
+function normalizeSummaryReviewProgress(
+  value: unknown,
+): RepoReviewProgressSnapshot | undefined {
   if (!value || typeof value !== 'object' || Array.isArray(value))
     return undefined;
   const record = value as Record<string, unknown>;
@@ -217,6 +338,68 @@ function normalizeSummaryReviewProgress(value: unknown) {
   };
 }
 
+function buildRepoReviewRunObservabilitySummary(input: {
+  source: string;
+  status: string;
+  durationMs: number;
+  diffBytes: number;
+  changedFiles: string[];
+  executionStats: Partial<RepoReviewExecutionStats>;
+  reviewProgress?: RepoReviewProgressSnapshot;
+}): RepoReviewRunObservabilitySummary {
+  const stats = input.executionStats;
+  const selectedFiles =
+    stats.projectGraphSelectedFiles && stats.projectGraphSelectedFiles.length > 0
+      ? stats.projectGraphSelectedFiles
+      : input.changedFiles.slice(0, 50);
+  const workerCount = numberValue(stats.workerCount);
+  const splitGroups = numberValue(stats.splitGroups);
+  const planner =
+    stats.projectGraphPlanner ||
+    (workerCount > 0 || splitGroups > 0
+      ? ({
+          strategy: workerCount > 0 ? 'worker' : 'direct',
+          ...(workerCount > 0 ? { workerCount } : {}),
+          ...(splitGroups > 0 ? { splitGroups } : {}),
+        } satisfies RepoReviewObservabilityPlannerSummary)
+      : undefined);
+  return {
+    source: input.source,
+    kind: 'repo_review_run',
+    status: input.status,
+    durationMs: Math.max(0, input.durationMs),
+    nodeCount: numberValue(stats.projectGraphNodeCount),
+    edgeCount: numberValue(stats.projectGraphEdgeCount),
+    selectedFileCount: selectedFiles.length,
+    selectedFiles,
+    ...(stats.projectGraphConfidence
+      ? { confidence: stats.projectGraphConfidence }
+      : {}),
+    ...(planner ? { planner } : {}),
+    metrics: {
+      diffFiles:
+        numberValue(stats.diffFiles) || Math.max(0, input.changedFiles.length),
+      diffBytes: numberValue(stats.diffBytes) || Math.max(0, input.diffBytes),
+      promptBytesBuilt: numberValue(stats.promptBytesBuilt),
+      modelCallCount: numberValue(stats.modelCallCount),
+      workerCount,
+      completedWorkerCount: numberValue(stats.completedWorkerCount),
+      failedWorkerCount: numberValue(stats.failedWorkerCount),
+      timedOutWorkerCount: numberValue(stats.timedOutWorkerCount),
+      readonlyToolCallCount:
+        numberValue(stats.mainReadonlyToolCallCount) +
+        numberValue(stats.subagentToolCallCount),
+      progressStepCount: input.reviewProgress?.steps?.length || 0,
+      ...(stats.codeMapContextStatus
+        ? { codeMapContextStatus: stats.codeMapContextStatus }
+        : {}),
+      ...(stats.codeIndexContextStatus
+        ? { codeIndexContextStatus: stats.codeIndexContextStatus }
+        : {}),
+    },
+  };
+}
+
 async function normalizeSummaryRunRecord(
   record: ReviewRunRecord,
   profileHint?: ReviewProfileRecord | null,
@@ -239,6 +422,20 @@ async function normalizeSummaryRunRecord(
   const reviewProgress = normalizeSummaryReviewProgress(
     callbackContext?.reviewProgress,
   );
+  const executionStats = normalizeSummaryExecutionStats(
+    callbackContext?.executionStats,
+  );
+  const changedFiles = normalizeStringArray(parsed.changedFiles);
+  const durationMs = Number(record.duration_ms || 0);
+  const observability = buildRepoReviewRunObservabilitySummary({
+    source: record.source,
+    status: record.status,
+    durationMs,
+    diffBytes: record.diff_bytes,
+    changedFiles,
+    executionStats,
+    reviewProgress,
+  });
 
   return {
     id: record.id,
@@ -278,7 +475,8 @@ async function normalizeSummaryRunRecord(
     suggestions: [],
     changedFiles: [],
     diffBytes: record.diff_bytes,
-    durationMs: Number(record.duration_ms || 0),
+    observability,
+    durationMs,
     platformStatus: record.platform_status || '',
     chatDeliveryStatus: record.chat_delivery_status || '',
     platformStatusDeliveryStatus: record.platform_status_delivery_status || '',

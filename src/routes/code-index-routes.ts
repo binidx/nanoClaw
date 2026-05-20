@@ -1316,6 +1316,7 @@ export function registerCodeIndexRoutes(
             .json({ error: t('errors.auto_ec3333', {}, req.locale) });
           return;
         }
+        const queryStartedAt = Date.now();
         const result = queryProjectGraph(graph, question, {
           mode: req.body?.mode === 'dfs' ? 'dfs' : 'bfs',
           depth: Number(req.body?.depth) || 2,
@@ -1329,6 +1330,7 @@ export function registerCodeIndexRoutes(
             ? req.body.seedNodeIds
             : undefined,
         });
+        const durationMs = Date.now() - queryStartedAt;
         const artifact = saveProjectGraphQueryArtifact({
           repositoryId,
           branch,
@@ -1345,6 +1347,7 @@ export function registerCodeIndexRoutes(
             confidence: result.confidence,
             contextFilterStats: result.contextFilterStats,
           },
+          durationMs,
           payload: {
             question,
             options: {
@@ -1593,6 +1596,7 @@ export function registerCodeIndexRoutes(
           },
         }),
       };
+      const askStartedAt = Date.now();
       const result = queryProjectGraph(graph, question, {
         ...queryOptions,
       });
@@ -1659,6 +1663,7 @@ export function registerCodeIndexRoutes(
           confidence: result.confidence,
           contextFilterStats: result.contextFilterStats,
         },
+        durationMs: Date.now() - askStartedAt,
         payload: {
           question,
           answer,

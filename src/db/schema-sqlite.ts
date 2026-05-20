@@ -257,6 +257,44 @@ export function createSchema(database: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_task_run_logs ON task_run_logs(task_id, run_at);
     CREATE INDEX IF NOT EXISTS idx_task_run_logs_task_run_desc ON task_run_logs(task_id, run_at DESC);
 
+    CREATE TABLE IF NOT EXISTS job_statuses (
+      id TEXT PRIMARY KEY,
+      source TEXT NOT NULL,
+      subject_type TEXT NOT NULL,
+      subject_id TEXT NOT NULL,
+      run_key TEXT,
+      status TEXT NOT NULL,
+      title TEXT,
+      started_at TEXT,
+      finished_at TEXT,
+      duration_ms INTEGER,
+      result_json TEXT,
+      error TEXT,
+      metadata_json TEXT,
+      user_id TEXT NOT NULL DEFAULT '__system__',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_job_statuses_subject_created
+      ON job_statuses(source, subject_type, subject_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_job_statuses_status_updated
+      ON job_statuses(status, updated_at DESC);
+
+    CREATE TABLE IF NOT EXISTS job_events (
+      id TEXT PRIMARY KEY,
+      job_id TEXT NOT NULL,
+      event_type TEXT NOT NULL,
+      status TEXT,
+      message TEXT,
+      data_json TEXT,
+      user_id TEXT NOT NULL DEFAULT '__system__',
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_job_events_job_created
+      ON job_events(job_id, created_at ASC);
+    CREATE INDEX IF NOT EXISTS idx_job_events_type_created
+      ON job_events(event_type, created_at DESC);
+
     CREATE TABLE IF NOT EXISTS router_state (
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL
@@ -3934,6 +3972,50 @@ export function createSchema(database: Database.Database): void {
   );
   database.exec(
     `CREATE INDEX IF NOT EXISTS idx_scheduled_tasks_created ON scheduled_tasks(deleted_at, created_at DESC)`,
+  );
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS job_statuses (
+      id TEXT PRIMARY KEY,
+      source TEXT NOT NULL,
+      subject_type TEXT NOT NULL,
+      subject_id TEXT NOT NULL,
+      run_key TEXT,
+      status TEXT NOT NULL,
+      title TEXT,
+      started_at TEXT,
+      finished_at TEXT,
+      duration_ms INTEGER,
+      result_json TEXT,
+      error TEXT,
+      metadata_json TEXT,
+      user_id TEXT NOT NULL DEFAULT '__system__',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `);
+  database.exec(
+    `CREATE INDEX IF NOT EXISTS idx_job_statuses_subject_created ON job_statuses(source, subject_type, subject_id, created_at DESC)`,
+  );
+  database.exec(
+    `CREATE INDEX IF NOT EXISTS idx_job_statuses_status_updated ON job_statuses(status, updated_at DESC)`,
+  );
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS job_events (
+      id TEXT PRIMARY KEY,
+      job_id TEXT NOT NULL,
+      event_type TEXT NOT NULL,
+      status TEXT,
+      message TEXT,
+      data_json TEXT,
+      user_id TEXT NOT NULL DEFAULT '__system__',
+      created_at TEXT NOT NULL
+    )
+  `);
+  database.exec(
+    `CREATE INDEX IF NOT EXISTS idx_job_events_job_created ON job_events(job_id, created_at ASC)`,
+  );
+  database.exec(
+    `CREATE INDEX IF NOT EXISTS idx_job_events_type_created ON job_events(event_type, created_at DESC)`,
   );
   database.exec(
     `CREATE INDEX IF NOT EXISTS idx_knowledge_bases_user_created ON knowledge_bases(user_id, deleted_at, created_at DESC)`,

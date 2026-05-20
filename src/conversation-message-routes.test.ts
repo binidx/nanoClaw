@@ -404,6 +404,99 @@ describe('conversation message routes', () => {
     expect(response.rawPayload).toEqual(Buffer.from('fake-png'));
   });
 
+  it('removes files already written when a multi-file upload later fails', async () => {
+    const uploadsRoot = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'nanoclaw-conversation-upload-rollback-'),
+    );
+    const uploadedFileSupport = createUploadedFileSupport({
+      chatUploadsRoot: uploadsRoot,
+      maxUploadFilesPerRequest: 5,
+      maxUploadTextExcerptBytes: 1024,
+      maxUploadTextExcerptChars: 1024,
+    });
+    const chatJid = 'web:test-upload-rollback';
+    await storeChatMetadata(
+      chatJid,
+      '2026-05-06T10:00:00.000Z',
+      'Web User',
+      'web',
+      false,
+    );
+    await setRegisteredGroup(chatJid, {
+      name: 'Upload Rollback',
+      folder: 'test-upload-rollback',
+      trigger: '@Andy',
+      added_at: '2026-05-06T10:00:00.000Z',
+    });
+
+    const app = express();
+    app.use(express.json());
+    registerConversationMessageRoutes(app, {
+      requirePermission: allowAllRequirePermission,
+      decorateConversationSummary: (conversation) => conversation,
+      parseBoundedInteger: (value, fallback, options) => {
+        const parsed = Number.parseInt(String(value ?? ''), 10);
+        if (!Number.isFinite(parsed)) return fallback;
+        const min = options?.min ?? Number.MIN_SAFE_INTEGER;
+        const max = options?.max ?? Number.MAX_SAFE_INTEGER;
+        return Math.max(min, Math.min(max, parsed));
+      },
+      defaultMessagePageSize: 50,
+      maxMessagePageSize: 200,
+      readPendingApprovalsForConversation: () => [],
+      parseUploadedFileContexts: uploadedFileSupport.parseUploadedFileContexts,
+      buildUploadedFilesDisplayContent:
+        uploadedFileSupport.buildUploadedFilesDisplayContent,
+      toAgentUploadedFiles: uploadedFileSupport.toAgentUploadedFiles,
+      persistWebCommandInboundMessage: vi.fn(),
+      executeSlashCommand: vi.fn(async () => ({
+        handled: false,
+        success: false,
+        output: '',
+      })),
+      persistWebCommandAssistantMessage: vi.fn(),
+      formatSlashCommandResultOutput: (result) => result.output,
+      handleWebInput: vi.fn(),
+      parseUploadRequestFiles: uploadedFileSupport.parseUploadRequestFiles,
+      resolveStoredUploadFile: uploadedFileSupport.resolveStoredUploadFile,
+      resolveUploadRelativeRoot: uploadedFileSupport.resolveUploadRelativeRoot,
+      chatUploadsRoot: uploadsRoot,
+      maxUploadBytesPerFile: 4,
+      sanitizeUploadFileName: uploadedFileSupport.sanitizeUploadFileName,
+      buildTextExcerpt: uploadedFileSupport.buildTextExcerpt,
+      selectDirectoryNative: async () => null,
+    });
+
+    const response = await inject(app, {
+      method: 'POST',
+      url: '/api/files/upload',
+      headers: { 'Content-Type': 'application/json' },
+      payload: {
+        chatJid,
+        files: [
+          {
+            name: 'small.txt',
+            mimeType: 'text/plain',
+            contentBase64: Buffer.from('ok').toString('base64'),
+          },
+          {
+            name: 'large.txt',
+            mimeType: 'text/plain',
+            contentBase64: Buffer.from('too-large').toString('base64'),
+          },
+        ],
+      },
+    });
+
+    expect(response.statusCode).toBe(400);
+    const writtenFiles = fs.readdirSync(uploadsRoot, {
+      recursive: true,
+    });
+    expect(writtenFiles.filter((entry) => String(entry).endsWith('.txt'))).toEqual(
+      [],
+    );
+  });
+
   it('serves generated image previews from the conversation workspace', async () => {
     await storeChatMetadata(
       'web:test-image',

@@ -1,14 +1,17 @@
 import express from 'express';
 import inject from 'light-my-request';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   _initTestDatabase,
   storeChatMetadata,
   storeMessageDirect,
 } from './db.js';
-import { getShareById } from './db/shares.js';
-import { registerShareRoutes } from './routes/share-routes.js';
+import { createShare, getShareById } from './db/shares.js';
+import {
+  registerPublicShareRoutes,
+  registerShareRoutes,
+} from './routes/share-routes.js';
 import { runWithTenantAsync } from './tenant/tenant-context.js';
 
 const allowAllRequirePermission: import('./auth/auth-middleware.js').RequirePermissionFn =
@@ -25,6 +28,12 @@ function createApp(getUserId: () => string) {
     next();
   });
   registerShareRoutes(app, { requirePermission: allowAllRequirePermission });
+  return app;
+}
+
+function createPublicApp() {
+  const app = express();
+  registerPublicShareRoutes(app);
   return app;
 }
 
@@ -140,5 +149,65 @@ describe('share routes', () => {
     });
 
     expect(response.statusCode).toBe(403);
+  });
+
+  it('serves public share tokens without requiring an authenticated route guard', async () => {
+    await createShare(
+      'share-token-public',
+      'web:public-share',
+      'Public Share',
+      JSON.stringify([{ kind: 'assistant_message', text: 'public answer' }]),
+      'Assistant',
+      'user-share-owner',
+      'user-share-owner',
+    );
+    const app = createPublicApp();
+
+    const response = await inject(app, {
+      method: 'GET',
+      url: '/api/share/share-token-public',
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(JSON.parse(response.body)).toMatchObject({
+      id: 'share-token-public',
+      title: 'Public Share',
+      assistantName: 'Assistant',
+      createdBy: 'user-share-owner',
+      entries: [{ kind: 'assistant_message', text: 'public answer' }],
+    });
+    await vi.waitFor(async () => {
+      const share = await getShareById('share-token-public');
+      expect(share?.view_count).toBe(1);
+    });
+  });
+
+  it('does not let a user delete another user share token', async () => {
+    await createShare(
+      'share-token-owned',
+      'web:owned-share',
+      'Owned Share',
+      JSON.stringify([{ kind: 'assistant_message', text: 'owned answer' }]),
+      'Assistant',
+      'user-share-owner',
+      'user-share-owner',
+    );
+    let currentUserId = 'user-share-other';
+    const app = createApp(() => currentUserId);
+
+    const response = await inject(app, {
+      method: 'DELETE',
+      url: '/api/share/share-token-owned',
+    });
+
+    expect(response.statusCode).toBe(404);
+    expect(await getShareById('share-token-owned')).toBeTruthy();
+    currentUserId = 'user-share-owner';
+    const ownerResponse = await inject(app, {
+      method: 'DELETE',
+      url: '/api/share/share-token-owned',
+    });
+    expect(ownerResponse.statusCode).toBe(200);
+    expect(await getShareById('share-token-owned')).toBeNull();
   });
 });

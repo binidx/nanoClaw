@@ -46,6 +46,7 @@ export {
   type ChannelInstanceConfig,
   type ChannelVisibility,
   getConfiguredChannelInstances,
+  getConfiguredUserChannelInstances,
   getSanitizedChannelInstances,
   getSanitizedChannelInstancesForUser,
   normalizeChannelInstances,

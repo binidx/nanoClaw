@@ -261,6 +261,29 @@
   z-index: 95;
 }
 
+.chat-model-override-input {
+  width: 156px;
+  min-height: 24px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(2, 132, 199, 0.18);
+  background: rgba(240, 249, 255, 0.72);
+  color: var(--text-primary);
+  font-size: 11px;
+  font-weight: 600;
+  outline: none;
+}
+
+.chat-model-override-input::placeholder {
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.chat-model-override-input:focus {
+  border-color: rgba(2, 132, 199, 0.42);
+  box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.16);
+}
+
 .messages-area {
   flex: 1;
   display: flex;
@@ -1510,6 +1533,10 @@
     display: none;
   }
 
+  .app-shell.mobile .chat-model-override-input {
+    display: none;
+  }
+
   .app-shell.mobile .msg-bubble {
     max-width: 78vw;
   }
@@ -1759,6 +1786,12 @@
   background: rgba(79, 70, 229, 0.22);
   border-color: rgba(139, 155, 255, 0.28);
   color: #c7d2fe;
+}
+
+[data-theme='dark'] .chat-model-override-input {
+  background: rgba(14, 165, 233, 0.12);
+  border-color: rgba(125, 211, 252, 0.24);
+  color: #e0f2fe;
 }
 
 [data-theme='dark'] .interrupt-btn {

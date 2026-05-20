@@ -114,6 +114,13 @@ Skills 是 AI 可读的 Markdown 指令集合。v2 支持：
 | DELETE | `/api/admin/marketplace-sources/:id` | 删除 |
 | GET | `/api/marketplace-sources` | 公开端点：列出已启用市场源 |
 
+### 配置写入边界
+
+- v2 市场源的唯一写入位置是 `marketplace_sources` 表，写入口为 `/api/admin/marketplace-sources` 和兼容保存接口 `/api/extensions/marketplaces`。
+- `/api/extensions/marketplaces` 会同时读取 v2 管理员市场源、旧 `WEB_EXTENSION_MARKETPLACES` config 和内置 Agent Reach 源；旧 config 与内置源会以 `readOnly=true` 返回，只用于兼容展示和安装，不会在保存时写回全局 config。
+- 用户级 registry 安装只写 `user_mcp_servers` / `user_skills`，并在 `marketplace_installs` 中记录目标用户和目标条目；它不写 legacy `WEB_MCP_SERVERS`、`WEB_ENABLED_SKILLS` 或 `WEB_EXTENSION_INSTALLS`。
+- legacy `/api/extensions/install` 与 `/api/extensions/import` 仍属于全局 managed 扩展安装路径，会写全局 managed Skills/MCP 和 `WEB_EXTENSION_INSTALLS`，不能用于需要用户级隔离的安装流。
+
 ### 内置 Agent Reach 市场源
 
 - 系统会额外暴露一个内置的 `Agent Reach` 市场源，用来把 Agent Reach 风格的互联网工具路由沉淀成可安装 Skill bundle。
@@ -144,8 +151,6 @@ Skills 是 AI 可读的 Markdown 指令集合。v2 支持：
 - `public-library` 仍只聚合用户主动分享出来的 `shared` 内容，语义不同于商店。
 - `NANOCLAW_REGISTRY_CATALOG_URLS` 支持同时配置远程 JSON catalog 和本地 skill 目录。
 - 对 `/proj/openclaw`，推荐直接挂本地 `skills` / `extensions` 目录作为 skill 源，而不是假设存在 NanoClaw 兼容的远程 registry JSON。
-
-注意：上面的 Agent Reach 内置源属于 legacy extension marketplace 配置路径；v2 `/api/admin/marketplace-sources` / `/api/marketplace-sources` 当前只读取 DB 中的管理员市场源，不会自动把 legacy 内置源并入该列表。
 
 ## AI 访问方案
 

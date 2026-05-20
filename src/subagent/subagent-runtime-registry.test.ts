@@ -155,15 +155,7 @@ describe('subagent runtime registry', () => {
       status: 'stop_requested',
     });
     expect(
-      fs.existsSync(
-        path.join(
-          runtimeRoot,
-          'live-1',
-          'ipc',
-          'input',
-          '_close',
-        ),
-      ),
+      fs.existsSync(path.join(runtimeRoot, 'live-1', 'ipc', 'input', '_close')),
     ).toBe(true);
 
     const archivedResult = requestStopSubagentRuntime('archived-2');
@@ -231,24 +223,12 @@ describe('subagent runtime registry', () => {
     });
     expect(
       fs.existsSync(
-        path.join(
-          runtimeRoot,
-          'agent-child',
-          'ipc',
-          'input',
-          '_close',
-        ),
+        path.join(runtimeRoot, 'agent-child', 'ipc', 'input', '_close'),
       ),
     ).toBe(true);
     expect(
       fs.existsSync(
-        path.join(
-          runtimeRoot,
-          'team-root',
-          'ipc',
-          'input',
-          '_close',
-        ),
+        path.join(runtimeRoot, 'team-root', 'ipc', 'input', '_close'),
       ),
     ).toBe(false);
 
@@ -265,24 +245,12 @@ describe('subagent runtime registry', () => {
     });
     expect(
       fs.existsSync(
-        path.join(
-          runtimeRoot,
-          'team-root',
-          'ipc',
-          'input',
-          '_close',
-        ),
+        path.join(runtimeRoot, 'team-root', 'ipc', 'input', '_close'),
       ),
     ).toBe(true);
     expect(
       fs.existsSync(
-        path.join(
-          runtimeRoot,
-          'other-turn',
-          'ipc',
-          'input',
-          '_close',
-        ),
+        path.join(runtimeRoot, 'other-turn', 'ipc', 'input', '_close'),
       ),
     ).toBe(false);
   });
@@ -500,6 +468,84 @@ describe('subagent runtime registry', () => {
     });
   });
 
+  it('discovers and stops grandchild runtimes in nested runtime roots', () => {
+    const runtimeRoot = path.join(
+      tempGroupsDir,
+      'alpha-room',
+      '.nanoclaw-subagents',
+    );
+    const childRuntimeRoot = path.join(
+      runtimeRoot,
+      'parent',
+      'group',
+      '.nanoclaw-subagents',
+    );
+    const grandchildRuntimeRoot = path.join(
+      childRuntimeRoot,
+      'child',
+      'group',
+      '.nanoclaw-subagents',
+    );
+
+    writeJson(
+      path.join(runtimeRoot, 'parent', 'runtime.json'),
+      createRuntimeEntry('parent', {
+        mode: 'team',
+        status: 'idle',
+        depth: 1,
+        updatedAt: '2026-03-18T00:12:00.000Z',
+      }),
+    );
+    writeJson(
+      path.join(childRuntimeRoot, 'child', 'runtime.json'),
+      createRuntimeEntry('child', {
+        mode: 'team',
+        parentRuntimeId: 'parent',
+        status: 'idle',
+        depth: 2,
+        updatedAt: '2026-03-18T00:11:00.000Z',
+      }),
+    );
+    writeJson(
+      path.join(grandchildRuntimeRoot, 'grandchild', 'runtime.json'),
+      createRuntimeEntry('grandchild', {
+        mode: 'agent',
+        parentRuntimeId: 'child',
+        status: 'running',
+        depth: 3,
+        updatedAt: '2026-03-18T00:10:00.000Z',
+      }),
+    );
+
+    expect(getSubagentRuntime('grandchild')).toMatchObject({
+      id: 'grandchild',
+      parentRuntimeId: 'child',
+      controlState: 'controllable',
+    });
+    expect(
+      listSubagentRunDescendants('parent', { limit: 10 }).items.map(
+        (item) => item.runtimeId,
+      ),
+    ).toEqual(['child', 'grandchild']);
+
+    const stopResult = requestStopSubagentRuntime('grandchild');
+    expect(stopResult).toMatchObject({
+      ok: true,
+      status: 'stop_requested',
+    });
+    expect(
+      fs.existsSync(
+        path.join(
+          grandchildRuntimeRoot,
+          'grandchild',
+          'ipc',
+          'input',
+          '_close',
+        ),
+      ),
+    ).toBe(true);
+  });
+
   it('supports persisted run queries by controller, requester, and descendants', () => {
     const runtimeRoot = path.join(
       tempGroupsDir,
@@ -635,10 +681,11 @@ describe('subagent runtime registry', () => {
     const prompts = fs
       .readdirSync(inputDir)
       .filter((entry) => entry.endsWith('.json'))
-      .map((entry) =>
-        JSON.parse(fs.readFileSync(path.join(inputDir, entry), 'utf8')) as {
-          prompt?: string;
-        },
+      .map(
+        (entry) =>
+          JSON.parse(fs.readFileSync(path.join(inputDir, entry), 'utf8')) as {
+            prompt?: string;
+          },
       )
       .map((payload) => payload.prompt || '');
     expect(prompts.some((prompt) => prompt.includes('[STEER]'))).toBe(true);
@@ -726,6 +773,63 @@ describe('subagent runtime registry', () => {
       status: 'failed',
     });
     expect(history[0]?.activeRequestId).toBeUndefined();
+  });
+
+  it('recovers stale grandchild runtimes in nested runtime roots', () => {
+    const runtimeRoot = path.join(
+      tempGroupsDir,
+      'alpha-room',
+      '.nanoclaw-subagents',
+    );
+    const nestedRuntimeRoot = path.join(
+      runtimeRoot,
+      'parent',
+      'group',
+      '.nanoclaw-subagents',
+      'child',
+      'group',
+      '.nanoclaw-subagents',
+    );
+    writeJson(
+      path.join(runtimeRoot, 'parent', 'runtime.json'),
+      createRuntimeEntry('parent', {
+        mode: 'team',
+        status: 'completed',
+        updatedAt: '2026-03-18T00:12:00.000Z',
+      }),
+    );
+    writeJson(
+      path.join(nestedRuntimeRoot, 'grandchild-stale', 'runtime.json'),
+      createRuntimeEntry('grandchild-stale', {
+        mode: 'team',
+        parentRuntimeId: 'child',
+        status: 'running',
+        depth: 3,
+        pid: undefined,
+        updatedAt: '2026-03-18T00:13:00.000Z',
+      }),
+    );
+
+    const summary = recoverOrphanedSubagentRuntimes();
+    expect(summary).toMatchObject({
+      recovered: 1,
+      failed: 0,
+      removedRuntimeDirs: 1,
+    });
+    expect(
+      fs.existsSync(
+        path.join(nestedRuntimeRoot, 'grandchild-stale', 'runtime.json'),
+      ),
+    ).toBe(false);
+
+    const history = JSON.parse(
+      fs.readFileSync(path.join(nestedRuntimeRoot, 'history.json'), 'utf8'),
+    ) as SubagentRuntimeEntry[];
+    expect(history[0]).toMatchObject({
+      id: 'grandchild-stale',
+      status: 'failed',
+      parentRuntimeId: 'child',
+    });
   });
 
   it('downgrades alive orphan runtimes to read-only instead of removing them', () => {
