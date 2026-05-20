@@ -22,45 +22,43 @@ export function SettingsKnowledgeTab(props: SettingsKnowledgeTabProps) {
   const { t } = useTranslation('settings');
 
   return (
-    <div className="settings-general-layout">
-      <div className="settings-section">
-        <div className="settings-subsection">
-          <h3>{t('settings.knowledge.kbLimitsTitle')}</h3>
-          <div className="settings-hint">
-            {t('settings.knowledge.kbLimitsHint')}
-          </div>
-
-          {knowledgeConfigKeys.length > 0 ? (
-            knowledgeConfigKeys.map(renderBasicConfigField)
-          ) : (
-            <div className="settings-hint" style={{ opacity: 0.6 }}>
-              {t('settings.knowledge.noKbParams')}
-            </div>
-          )}
+    <div className="settings-tab-stack settings-general-layout">
+      <div className="settings-subsection">
+        <h3>{t('settings.knowledge.kbLimitsTitle')}</h3>
+        <div className="settings-hint">
+          {t('settings.knowledge.kbLimitsHint')}
         </div>
 
-        {memoryConfigKeys.length > 0 && (
-          <div className="settings-subsection">
-            <h3>{t('settings.knowledge.memoryPolicyTitle')}</h3>
-            <div className="settings-hint">
-              {t('settings.knowledge.memoryPolicyHint')}
-            </div>
-            {memoryConfigKeys.map(renderBasicConfigField)}
+        {knowledgeConfigKeys.length > 0 ? (
+          knowledgeConfigKeys.map(renderBasicConfigField)
+        ) : (
+          <div className="settings-hint" style={{ opacity: 0.6 }}>
+            {t('settings.knowledge.noKbParams')}
           </div>
         )}
+      </div>
 
-        <div className="settings-save-row">
-          <button
-            className="btn-primary"
-            onClick={saveBasicSettings}
-            disabled={savingBasicConfig}
-          >
-            {savingBasicConfig ? t('settings.knowledge.saving') : t('settings.knowledge.saveConfig')}
-          </button>
-          {basicConfigMessage && (
-            <span className="settings-save-message">{basicConfigMessage}</span>
-          )}
+      {memoryConfigKeys.length > 0 && (
+        <div className="settings-subsection">
+          <h3>{t('settings.knowledge.memoryPolicyTitle')}</h3>
+          <div className="settings-hint">
+            {t('settings.knowledge.memoryPolicyHint')}
+          </div>
+          {memoryConfigKeys.map(renderBasicConfigField)}
         </div>
+      )}
+
+      <div className="settings-save-row">
+        <button
+          className="btn-primary"
+          onClick={saveBasicSettings}
+          disabled={savingBasicConfig}
+        >
+          {savingBasicConfig ? t('settings.knowledge.saving') : t('settings.knowledge.saveConfig')}
+        </button>
+        {basicConfigMessage && (
+          <span className="settings-save-message">{basicConfigMessage}</span>
+        )}
       </div>
     </div>
   );

@@ -44,7 +44,8 @@ export function SettingsChannelsTab(props: SettingsChannelsTabProps) {
   } = props;
 
   return (
-  <div className="settings-section">
+  <div className="settings-tab-stack">
+  <section className="settings-subsection">
     <div className="section-header">
       <div>
         <h3>{t('settings.channels.pageTitle')}</h3>
@@ -243,6 +244,7 @@ export function SettingsChannelsTab(props: SettingsChannelsTabProps) {
         {channelConfigMessage}
       </div>
     )}
+  </section>
   </div>
 
   );

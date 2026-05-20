@@ -1,22 +1,7 @@
-import { Suspense, lazy, type ReactNode } from 'react';
+import { Suspense, lazy } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { SettingsTab } from '../../app-types';
-import {
-  IconBook,
-  IconCalendar,
-  IconChannel,
-  IconEdit,
-  IconFolder,
-  IconPuzzle,
-  IconSearch,
-  IconSettings,
-  IconStar,
-  IconTerminal,
-  IconUsers,
-  IconWand,
-  IconX,
-} from '../../components/AppIcons';
-import { SectionNav } from '../../components/common/SectionNav';
+import { AppSelect } from '../../components/AppSelect';
 import { AppsPageV2 } from '../AppsPageV2';
 import {
   SettingsExtensionsTab,
@@ -161,92 +146,62 @@ export function SettingsPage(props: SettingsPageProps) {
   const settingsSections: Array<{
     key: SettingsTab;
     label: string;
-    description: string;
-    icon: ReactNode;
   }> = [
     {
       key: 'providers',
       label: t('settings.page.AI_模型'),
-      description: '管理模型提供商、默认模型与连接状态。',
-      icon: <IconWand />,
     },
     {
       key: 'channels',
       label: t('settings.page.channels'),
-      description: '配置聊天渠道实例、接入方式与可见范围。',
-      icon: <IconChannel />,
     },
     {
       key: 'prompt',
       label: t('settings.page.prompt'),
-      description: '统一管理系统提示词、上下文模板与预览调试。',
-      icon: <IconEdit />,
     },
     {
       key: 'web-search',
       label: t('settings.page.webSearch'),
-      description: '控制搜索、抓取和网页能力的默认策略。',
-      icon: <IconSearch />,
     },
     {
       key: 'general',
       label: t('settings.page.general'),
-      description: '调整全局运行参数、目录模板与默认权限。',
-      icon: <IconSettings />,
     },
     {
       key: 'knowledge',
       label: t('settings.page.知识库'),
-      description: '配置知识库、文档索引与长期记忆相关开关。',
-      icon: <IconBook />,
     },
     {
       key: 'subagent',
       label: t('settings.page.子代理'),
-      description: '管理子代理深度、并发容量与运行控制。',
-      icon: <IconPuzzle />,
     },
     {
       key: 'security',
       label: t('settings.page.security'),
-      description: '配置登录、安全边界与命令白名单。',
-      icon: <IconUsers />,
     },
     {
       key: 'diagnostics',
       label: t('settings.page.diagnostics'),
-      description: '查看运行健康、工作区清理与记忆诊断。',
-      icon: <IconTerminal />,
     },
     {
       key: 'browser',
       label: t('settings.page.browser'),
-      description: '管理浏览器自动化、连接模式与调试参数。',
-      icon: <IconSearch />,
     },
     {
       key: 'live2d',
       label: t('settings.page.live2d'),
-      description: '配置 Live2D 形象与对话伴随体验。',
-      icon: <IconStar />,
     },
     {
       key: 'ssh-keys',
       label: t('settings.page.sshKeys'),
-      description: '集中管理本机 SSH 密钥与访问入口。',
-      icon: <IconFolder />,
     },
     {
       key: 'trash',
       label: t('settings.page.回收站'),
-      description: '清理回收站与已删除资源。',
-      icon: <IconX />,
     },
     {
       key: 'audit-log',
       label: t('settings.page.审计日志'),
-      description: '查看管理员关键操作和系统审计记录。',
-      icon: <IconCalendar />,
     },
   ];
   const visibleSections = settingsSections.filter(
@@ -254,9 +209,10 @@ export function SettingsPage(props: SettingsPageProps) {
   );
   const currentSection =
     visibleSections.find((section) => section.key === s.settingsTab) ?? null;
-  const pageSummary = s.hideSettingsTabs
-    ? '集中管理当前模块的配置与运行状态。'
-    : '配置 NanoClaw 的全局运行环境与安全策略。';
+  const sectionOptions = visibleSections.map((section) => ({
+    value: section.key,
+    label: section.label,
+  }));
   const tabFallback = (
     <div className="provider-empty">{t('settings.page.loading')}</div>
   );
@@ -267,60 +223,27 @@ export function SettingsPage(props: SettingsPageProps) {
     >
       <div className="page-header settings-hero">
         <div className="page-header-copy">
-          <h2>{s.pageTitle}</h2>
-          <p>{pageSummary}</p>
+          <h2>{currentSection?.label || s.pageTitle}</h2>
         </div>
         {!s.hideSettingsTabs && currentSection && (
           <div className="page-header-actions settings-hero-actions">
-            <span className="settings-hero-chip">
-              {visibleSections.length} 个模块
-            </span>
-            <span className="settings-hero-chip is-active">
-              {currentSection.label}
-            </span>
+            <AppSelect
+              className="settings-module-select"
+              value={currentSection.key}
+              onChange={(value) => s.setSettingsTab(value as SettingsTab)}
+              aria-label={t('settings.page.navigation')}
+              options={sectionOptions}
+              menuMatchTrigger
+            />
           </div>
         )}
       </div>
       <div
-        className={`page-body settings-body${s.hideSettingsTabs ? ' is-compact' : ''}`}
+        className={`page-body settings-body is-compact settings-body-full`}
       >
-        {!s.hideSettingsTabs && visibleSections.length > 0 ? (
-          <aside className="settings-rail">
-            <SectionNav
-              className="settings-section-nav"
-              ariaLabel={t('settings.page.navigation')}
-              activeKey={currentSection?.key ?? s.settingsTab}
-              onChange={(key) => s.setSettingsTab(key as SettingsTab)}
-              orientation="vertical"
-              items={visibleSections.map((section) => ({
-                key: section.key,
-                label: section.label,
-                icon: section.icon,
-              }))}
-            />
-            {currentSection ? (
-              <div className="settings-rail-summary">
-                <div className="settings-rail-kicker">当前分类</div>
-                <h3>{currentSection.label}</h3>
-                <p>{currentSection.description}</p>
-              </div>
-            ) : null}
-          </aside>
-        ) : null}
         <section className="settings-stage">
-          <div className="settings-stage-panel">
-            {currentSection ? (
-              <div className="settings-stage-header">
-                <div>
-                  <div className="settings-section-kicker">当前分类</div>
-                  <h3>{currentSection.label}</h3>
-                  <p className="settings-stage-description">
-                    {currentSection.description}
-                  </p>
-                </div>
-              </div>
-            ) : null}
-            <div className="settings-stage-body">
+          <div className="settings-stage-panel settings-stage-panel--flush">
+            <div className="settings-stage-body settings-stage-body--workspace">
               {s.settingsTab === 'providers' && (
                 <Suspense fallback={tabFallback}>
                   <SettingsProvidersTab

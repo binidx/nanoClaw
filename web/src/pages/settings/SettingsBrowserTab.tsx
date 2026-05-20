@@ -24,12 +24,11 @@ export function SettingsBrowserTab(props: SettingsBrowserTabProps) {
   } = props;
 
   return (
-  <>
+  <div className="settings-tab-stack">
     <BrowserControlPanel apiBase={apiBase} />
 
     {browserControlConfigKeys.length > 0 && (
-      <div className="settings-section">
-        <div className="settings-subsection">
+      <div className="settings-subsection">
           <h3>{t('settings.browser.controlConfig')}</h3>
           <div className="settings-hint">
             {t('settings.browser.managedBrowserHint')}
@@ -49,9 +48,8 @@ export function SettingsBrowserTab(props: SettingsBrowserTabProps) {
               <span className="settings-save-message">{basicConfigMessage}</span>
             )}
           </div>
-        </div>
       </div>
     )}
-  </>
+  </div>
   );
 }

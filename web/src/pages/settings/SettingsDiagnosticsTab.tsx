@@ -64,25 +64,6 @@ export function SettingsDiagnosticsTab(props: SettingsDiagnosticsTabProps) {
       </div>
     </div>
 
-        <div className="settings-subsection">
-          <h3>{t('settings.diagnostics.currentRuntimeInfo')}</h3>
-          <div className="settings-runtime-summary-grid">
-            {runtimeInfoItems.map((item) => (
-              <div
-                key={item.label}
-                className="status-detail-item settings-runtime-stat"
-              >
-                <span className="status-detail-label">
-                  {item.label}
-                </span>
-                <strong className="status-detail-value">
-                  {item.value}
-                </strong>
-              </div>
-            ))}
-          </div>
-        </div>
-
     <div className="settings-subsection">
       <h3>{t('settings.diagnostics.memoryConsolidationHealth')}</h3>
       <p className="settings-hint">

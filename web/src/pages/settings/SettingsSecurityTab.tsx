@@ -85,9 +85,8 @@ export function SettingsSecurityTab(props: SettingsSecurityTabProps) {
     !getStringValue(basicConfig, 'WEB_LOGIN_USERNAME').trim();
 
   return (
-  <>
-  <div className="settings-section">
-    <div className="settings-subsection">
+  <div className="settings-tab-stack">
+    <section className="settings-subsection">
       <div className="section-header">
         <h3>{t('settings.security.a99839')}</h3>
       </div>
@@ -178,12 +177,10 @@ export function SettingsSecurityTab(props: SettingsSecurityTabProps) {
           {senderTrustMessage}
         </div>
       ) : null}
-    </div>
-  </div>
+    </section>
 
-  {authConfigKeys.length > 0 && (
-    <div className="settings-section">
-      <div className="settings-subsection">
+    {authConfigKeys.length > 0 && (
+      <section className="settings-subsection">
         <h3>{t('settings.security.c66643')}</h3>
         <div className="settings-hint">
           {t('settings.security.80224a')}{t('settings.security.2424a3')}
@@ -206,12 +203,10 @@ export function SettingsSecurityTab(props: SettingsSecurityTabProps) {
             <span className="settings-save-message">{basicConfigMessage}</span>
           )}
         </div>
-      </div>
-    </div>
-  )}
+      </section>
+    )}
 
-  <div className="settings-section">
-    <div className="settings-subsection">
+    <section className="settings-subsection">
       <h3>{t('settings.security.e913e2')}</h3>
       <div className="settings-hint">
         {t('settings.security.305250')}{t('settings.security.4583c3')}
@@ -351,8 +346,7 @@ export function SettingsSecurityTab(props: SettingsSecurityTabProps) {
           <span className="settings-save-message">{basicConfigMessage}</span>
         )}
       </div>
-    </div>
+    </section>
   </div>
-  </>
   );
 }
