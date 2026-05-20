@@ -50,7 +50,7 @@ function isKbAccessibleToAgent(
   return isKbVisibleToUser(kb, userId) || assistantBoundKbIds.has(kb.id);
 }
 
-async function resolveAgentAccessibleKbs(
+export async function resolveAgentAccessibleKbs(
   userId: string,
   chatJid?: string,
 ): Promise<Array<{

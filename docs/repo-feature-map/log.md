@@ -127,6 +127,12 @@
 - `web/src/pages/WorkteamPage.tsx` 列表页收敛为 workflow 卡片网格，详情页恢复新增节点、拖拽、连线、删边、删节点、返回工作流、删除 workflow、简化配置与只读运行查看。
 - 将 feature map 元数据同步到当前已提交代码 `source_head_sha=becad113d7dc577b4424663ddf46b6aa06340707`。
 
+## [2026-05-20] update | 统一 RAG 检索入口
+
+- 新增 `src/retrieval/*` 作为 knowledge / memory 共用检索编排层，提供 query variants、候选融合、trace、本地 rerank 与文本 MMR。
+- 新增 `/api/retrieval/search` 与 `/internal/retrieval/search`，保留旧 `knowledge/search` 兼容路径；内部路由复用 agent 可访问 KB 解析。
+- 新增 `src/rag-eval/*` 的 Ragas-style 本地指标工具和对应测试，作为后续评测集 / run 持久化的基础。
+
 ## [2026-05-18] update | 代码智能图谱优化文档
 
 - 新增 `docs/代码智能图谱优化文档.md`，系统说明 CodeMap / CodeIndex / CodeLLM 的重新分工、ProjectGraph 检索层设计、当前效果与 graphify 的差距，以及面向项目问答 / Repo Review / 工作流复用的后续演进路线。

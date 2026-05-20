@@ -92,6 +92,7 @@ import { registerSystemReadRoutes } from '../routes/system-read-routes.js';
 import { registerInternalMemoryRoutes } from '../routes/internal-memory-routes.js';
 import { registerInternalReviewRoutes } from '../routes/internal-review-routes.js';
 import { registerInternalKnowledgeRoutes } from '../routes/internal-knowledge-routes.js';
+import { registerInternalRetrievalRoutes } from '../routes/internal-retrieval-routes.js';
 import { registerRuntimeCustomizationRoutes } from '../routes/runtime-customization-routes.js';
 import { registerBrowserRoutes } from '../routes/browser-routes.js';
 import { getBrowserService } from '../browser/service.js';
@@ -116,6 +117,7 @@ import { registerSoulRoutes } from '../routes/soul-routes.js';
 import { registerTavernRoutes } from '../routes/tavern-routes.js';
 import { registerPromptRoutes } from '../routes/prompt-routes.js';
 import { registerKnowledgeRoutes } from '../routes/knowledge-routes.js';
+import { registerRetrievalRoutes } from '../routes/retrieval-routes.js';
 import { createPermissionMiddleware } from '../auth/auth-middleware.js';
 import { localeMiddleware } from '../i18n/middleware.js';
 import { registerAvailableProviderRoutes } from '../routes/available-provider-routes.js';
@@ -659,6 +661,9 @@ export function createWebServer(opts: WebServerOptions) {
   registerInternalKnowledgeRoutes(app, {
     requireInternalApi,
   });
+  registerInternalRetrievalRoutes(app, {
+    requireInternalApi,
+  });
 
   // Serve React frontend
   const webDistPath = path.join(process.cwd(), 'web', 'dist');
@@ -794,6 +799,7 @@ export function createWebServer(opts: WebServerOptions) {
   });
   registerPromptRoutes(app, { requirePermission, auditMutation });
   registerKnowledgeRoutes(app, { requirePermission });
+  registerRetrievalRoutes(app, { requirePermission });
   registerUserProviderRoutes(app, { requirePermission });
   registerAvailableProviderRoutes(app, { requirePermission });
   registerChannelInstanceRoutes(app, { requirePermission });
