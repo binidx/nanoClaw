@@ -20,7 +20,13 @@ interface ProjectGraphPanelProps {
 
 const DEFAULT_CONFIG: ProjectGraphConfig = {
   enabled: true,
-  scanners: ['overview', 'docs', 'runtime_config'],
+  scanners: [
+    'overview',
+    'docs',
+    'runtime_config',
+    'service_dependencies',
+    'database_usage',
+  ],
   skillIds: [],
   mcpServerIds: [],
   includePaths: [],
@@ -169,6 +175,8 @@ export function ProjectGraphPanel({
           fact.kind,
         ),
       ),
+      dependencies: facts.filter((fact) => fact.kind === 'service_dependency'),
+      tables: facts.filter((fact) => fact.kind === 'database_table'),
       config: facts.filter((fact) => fact.kind === 'scanner_config'),
     };
   }, [overview]);
@@ -265,15 +273,15 @@ export function ProjectGraphPanel({
         </div>
         <div className="repo-review-workspace-card repo-review-workspace-card--framework">
           <div className="repo-review-workspace-card-topline">
-            <span>事实</span>
+            <span>依赖</span>
             <span className="repo-review-source-pill tone-success">
-              {overview?.facts.length || 0}
+              {groupedFacts.dependencies.length}
             </span>
           </div>
           <strong className="repo-review-workspace-card-value">
-            {overview?.edges.length || 0} 条关系
+            {groupedFacts.tables.length} 张表
           </strong>
-          <div className="settings-hint">服务、配置、负责人、代码证据。</div>
+          <div className="settings-hint">代码扫描出的服务调用和库表候选。</div>
         </div>
         <div className="repo-review-workspace-card repo-review-workspace-card--framework">
           <div className="repo-review-workspace-card-topline">
@@ -397,6 +405,32 @@ export function ProjectGraphPanel({
               />
             </label>
           </div>
+        </div>
+      </div>
+
+      <div className="repo-review-framework-content-grid">
+        <div className="repo-review-card">
+          <div className="repo-review-card-header">
+            <div>
+              <h4>服务依赖候选</h4>
+              <div className="settings-hint">
+                Feign、Dubbo 和 HTTP client 扫描结果，低置信项需要人工确认。
+              </div>
+            </div>
+          </div>
+          <ProjectGraphFactList facts={groupedFacts.dependencies} />
+        </div>
+
+        <div className="repo-review-card">
+          <div className="repo-review-card-header">
+            <div>
+              <h4>数据资产候选</h4>
+              <div className="settings-hint">
+                SQL、MyBatis 和 JPA 表名扫描结果，按读写/维护关系入图。
+              </div>
+            </div>
+          </div>
+          <ProjectGraphFactList facts={groupedFacts.tables} />
         </div>
       </div>
 

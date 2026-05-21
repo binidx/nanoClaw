@@ -1,5 +1,6 @@
 import type { RepositoryInfo } from '../repo-review/repository-service.js';
-import { loadCodeIndexReviewContextData } from '../db/code-index-db.js';
+import { loadCodeIndexSnapshot } from '../db/code-index-db.js';
+import type { CodeIndexChunkRecord } from '../code-intelligence/code-index-types.js';
 import {
   createProjectGraphRun,
   finishProjectGraphRun,
@@ -92,7 +93,13 @@ const SCANNER_VERSION = 'project-graph-v1';
 
 export const DEFAULT_PROJECT_GRAPH_CONFIG: ProjectGraphConfig = {
   enabled: true,
-  scanners: ['overview', 'docs', 'runtime_config'],
+  scanners: [
+    'overview',
+    'docs',
+    'runtime_config',
+    'service_dependencies',
+    'database_usage',
+  ],
   skillIds: [],
   mcpServerIds: [],
   includePaths: [],
@@ -335,6 +342,151 @@ function inferTechStack(input: {
   return Array.from(stack).filter(Boolean);
 }
 
+interface ProjectGraphCandidate {
+  name: string;
+  relation: string;
+  confidence: ProjectGraphConfidence;
+  evidence: ProjectGraphEvidence[];
+  metadata?: Record<string, unknown>;
+}
+
+function normalizeCandidateName(value: string): string {
+  return value
+    .trim()
+    .replace(/^['"`]+|['"`]+$/g, '')
+    .replace(/^\$\{|\}$/g, '')
+    .trim();
+}
+
+function urlToServiceName(value: string): string {
+  const raw = normalizeCandidateName(value);
+  try {
+    const parsed = new URL(raw);
+    return parsed.host || raw;
+  } catch {
+    return raw;
+  }
+}
+
+function pushCandidate(
+  map: Map<string, ProjectGraphCandidate>,
+  input: ProjectGraphCandidate,
+): void {
+  const key = `${input.relation}\0${input.name}`;
+  const existing = map.get(key);
+  if (!existing) {
+    map.set(key, input);
+    return;
+  }
+  existing.evidence.push(...input.evidence);
+}
+
+export function extractServiceDependencyCandidates(
+  chunks: CodeIndexChunkRecord[],
+): ProjectGraphCandidate[] {
+  const candidates = new Map<string, ProjectGraphCandidate>();
+  const feignRegex =
+    /@FeignClient\s*\([^)]*(?:name|value|contextId)\s*=\s*["']([^"']+)["'][^)]*\)/g;
+  const dubboRegex =
+    /@(?:DubboReference|Reference)\s*\([^)]*(?:interfaceName|url|group|version|id)\s*=\s*["']([^"']+)["'][^)]*\)/g;
+  const httpRegex =
+    /\b(?:fetch|axios\.(?:get|post|put|delete|patch)|baseURL\s*:|url\s*:)\s*\(?\s*["'`]((?:https?:\/\/|\/api\/)[^"'`)\s]+)["'`]/g;
+
+  for (const chunk of chunks) {
+    const evidence: ProjectGraphEvidence = {
+      label: chunk.filePath,
+      filePath: chunk.filePath,
+      line: chunk.startLine,
+      summary: chunk.summary || undefined,
+    };
+    for (const match of chunk.content.matchAll(feignRegex)) {
+      const name = normalizeCandidateName(match[1] || '');
+      if (!name) continue;
+      pushCandidate(candidates, {
+        name,
+        relation: 'calls',
+        confidence: 'medium',
+        evidence: [evidence],
+        metadata: { protocol: 'feign' },
+      });
+    }
+    for (const match of chunk.content.matchAll(dubboRegex)) {
+      const name = normalizeCandidateName(match[1] || '');
+      if (!name) continue;
+      pushCandidate(candidates, {
+        name,
+        relation: 'calls',
+        confidence: 'medium',
+        evidence: [evidence],
+        metadata: { protocol: 'dubbo' },
+      });
+    }
+    for (const match of chunk.content.matchAll(httpRegex)) {
+      const name = urlToServiceName(match[1] || '');
+      if (!name) continue;
+      pushCandidate(candidates, {
+        name,
+        relation: 'calls',
+        confidence: name.startsWith('/api/') ? 'low' : 'medium',
+        evidence: [evidence],
+        metadata: { protocol: 'http' },
+      });
+    }
+  }
+
+  return Array.from(candidates.values()).slice(0, 50);
+}
+
+export function extractDatabaseTableCandidates(
+  chunks: CodeIndexChunkRecord[],
+): ProjectGraphCandidate[] {
+  const candidates = new Map<string, ProjectGraphCandidate>();
+  const tableAnnotationRegex =
+    /@(?:TableName|Table)\s*\([^)]*(?:name\s*=\s*)?["']([a-zA-Z_][\w.]+)["'][^)]*\)/g;
+  const sqlTableRegex =
+    /\b(from|join|update|into|table)\s+([a-zA-Z_][\w.]*)/gi;
+
+  for (const chunk of chunks) {
+    const evidence: ProjectGraphEvidence = {
+      label: chunk.filePath,
+      filePath: chunk.filePath,
+      line: chunk.startLine,
+      summary: chunk.summary || undefined,
+    };
+    for (const match of chunk.content.matchAll(tableAnnotationRegex)) {
+      const name = normalizeCandidateName(match[1] || '');
+      if (!name) continue;
+      pushCandidate(candidates, {
+        name,
+        relation: 'owns_table',
+        confidence: 'medium',
+        evidence: [evidence],
+        metadata: { source: 'table_annotation' },
+      });
+    }
+    for (const match of chunk.content.matchAll(sqlTableRegex)) {
+      const keyword = String(match[1] || '').toLowerCase();
+      const name = normalizeCandidateName(match[2] || '');
+      if (!name) continue;
+      const relation =
+        keyword === 'from' || keyword === 'join'
+          ? 'reads_table'
+          : keyword === 'table'
+            ? 'migrates_table'
+            : 'writes_table';
+      pushCandidate(candidates, {
+        name,
+        relation,
+        confidence: 'medium',
+        evidence: [evidence],
+        metadata: { keyword },
+      });
+    }
+  }
+
+  return Array.from(candidates.values()).slice(0, 100);
+}
+
 function formatEvidenceFromFiles(
   files: Array<{ relativePath: string; summary: string; rank: number }>,
   limit: number,
@@ -416,7 +568,7 @@ export async function runProjectGraphScan(input: {
   userId: string;
 }): Promise<ProjectGraphOverview> {
   const branch = input.repository.defaultTargetBranch || 'main';
-  const indexData = await loadCodeIndexReviewContextData(
+  const indexData = await loadCodeIndexSnapshot(
     input.repository.id,
     branch,
   );
@@ -430,6 +582,7 @@ export async function runProjectGraphScan(input: {
 
   try {
     const files = indexData?.files || [];
+    const chunks = indexData?.chunks || [];
     const topFiles = files
       .slice()
       .sort((left, right) => right.rank - left.rank)
@@ -445,6 +598,18 @@ export async function runProjectGraphScan(input: {
       filePaths,
     });
     const evidence = formatEvidenceFromFiles(topFiles, 8);
+    const serviceName =
+      input.config.serviceNames.production ||
+      input.config.serviceNames.testing ||
+      input.repository.name;
+    const enabledScanners = new Set(input.config.scanners);
+    const serviceDependencies = enabledScanners.has('service_dependencies')
+      ? extractServiceDependencyCandidates(chunks)
+      : [];
+    const databaseTables = enabledScanners.has('database_usage')
+      ? extractDatabaseTableCandidates(chunks)
+      : [];
+
     const facts = [
       fact({
         kind: 'project_overview',
@@ -509,13 +674,35 @@ export async function runProjectGraphScan(input: {
         locked: true,
         evidence: [],
       }),
+      ...serviceDependencies.map((candidate) =>
+        fact({
+          kind: 'service_dependency',
+          name: candidate.name,
+          value: {
+            relation: candidate.relation,
+            ...candidate.metadata,
+          },
+          source: 'code_index' as const,
+          confidence: candidate.confidence,
+          evidence: candidate.evidence,
+        }),
+      ),
+      ...databaseTables.map((candidate) =>
+        fact({
+          kind: 'database_table',
+          name: candidate.name,
+          value: {
+            relation: candidate.relation,
+            ...candidate.metadata,
+          },
+          source: 'code_index' as const,
+          confidence: candidate.confidence,
+          evidence: candidate.evidence,
+        }),
+      ),
     ];
 
     const edges = [];
-    const serviceName =
-      input.config.serviceNames.production ||
-      input.config.serviceNames.testing ||
-      input.repository.name;
     edges.push(
       edge({
         fromKind: 'project',
@@ -535,6 +722,32 @@ export async function runProjectGraphScan(input: {
           toKind: 'log_service',
           toName: name,
           confidence: 'high',
+        }),
+      );
+    }
+    for (const candidate of serviceDependencies) {
+      edges.push(
+        edge({
+          fromKind: 'service',
+          fromName: serviceName,
+          relation: candidate.relation,
+          toKind: 'service',
+          toName: candidate.name,
+          confidence: candidate.confidence,
+          evidence: candidate.evidence,
+        }),
+      );
+    }
+    for (const candidate of databaseTables) {
+      edges.push(
+        edge({
+          fromKind: 'service',
+          fromName: serviceName,
+          relation: candidate.relation,
+          toKind: 'table',
+          toName: candidate.name,
+          confidence: candidate.confidence,
+          evidence: candidate.evidence,
         }),
       );
     }

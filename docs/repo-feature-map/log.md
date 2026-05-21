@@ -7,6 +7,7 @@
 - 新增项目级索引图谱入口，复用仓库工作台与 `repo_features(feature_type='project_graph')` 保存扫描器、Skills/MCP、服务名、负责人和外部绑定配置。
 - 新增 `src/project-graph/project-graph-service.ts` 与 `src/db/project-graph.ts`，落库 `project_graph_runs/facts/edges/documents`，初版扫描消费仓库配置与 Code Index 摘要生成项目画像、关系和文档草稿。
 - 仓库页新增 `Project Graph` tab，入口为 `web/src/components/repository/ProjectGraphPanel.tsx`，支持保存配置和触发扫描。
+- 扫描器补充 Feign/Dubbo/HTTP 服务依赖候选和 SQL/MyBatis/JPA 表资产候选，均以 `code_index` 来源、置信度和文件证据入图，供后续工单诊断人工确认。
 
 ## [2026-05-21] update | Workflow 条件路由与 runner profile 迁移入口
 

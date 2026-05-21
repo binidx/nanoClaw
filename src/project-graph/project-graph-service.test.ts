@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  extractDatabaseTableCandidates,
+  extractServiceDependencyCandidates,
   getProjectGraphConfigFromRepository,
   normalizeProjectGraphConfig,
 } from './project-graph-service.js';
@@ -89,5 +91,99 @@ describe('project graph service config', () => {
     expect(config.scanners).toEqual(['overview']);
     expect(config.owners).toEqual(['team-platform']);
     expect(config.serviceNames.production).toBe('billing-prod');
+  });
+});
+
+describe('project graph code scanners', () => {
+  it('extracts service dependency candidates from Feign, Dubbo, and HTTP snippets', () => {
+    const candidates = extractServiceDependencyCandidates([
+      {
+        id: 'chunk-1',
+        filePath: 'src/main/java/demo/BillingClient.java',
+        chunkIndex: 0,
+        startLine: 10,
+        endLine: 30,
+        content: `
+          @FeignClient(name = "order-service")
+          interface OrderClient {}
+          @DubboReference(interfaceName = "com.demo.InventoryService")
+          private InventoryService inventoryService;
+        `,
+        tokenCount: 30,
+        summary: 'service clients',
+        contentHash: 'a',
+        summarySource: 'fallback',
+      },
+      {
+        id: 'chunk-2',
+        filePath: 'web/src/api.ts',
+        chunkIndex: 0,
+        startLine: 1,
+        endLine: 20,
+        content: `axios.get("https://risk.example.com/api/check")`,
+        tokenCount: 10,
+        summary: 'http client',
+        contentHash: 'b',
+        summarySource: 'fallback',
+      },
+    ]);
+
+    expect(candidates).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: 'order-service', relation: 'calls' }),
+        expect.objectContaining({
+          name: 'com.demo.InventoryService',
+          relation: 'calls',
+        }),
+        expect.objectContaining({
+          name: 'risk.example.com',
+          relation: 'calls',
+        }),
+      ]),
+    );
+  });
+
+  it('extracts database table candidates from SQL and table annotations', () => {
+    const candidates = extractDatabaseTableCandidates([
+      {
+        id: 'chunk-1',
+        filePath: 'src/main/java/demo/OrderMapper.java',
+        chunkIndex: 0,
+        startLine: 5,
+        endLine: 40,
+        content: `
+          @TableName("billing_order")
+          class BillingOrder {}
+          SELECT * FROM billing_order JOIN user_account ON user_account.id = billing_order.user_id
+          UPDATE billing_order SET status = ?
+          INSERT INTO billing_event(id) VALUES (?)
+        `,
+        tokenCount: 60,
+        summary: 'mapper sql',
+        contentHash: 'c',
+        summarySource: 'fallback',
+      },
+    ]);
+
+    expect(candidates).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: 'billing_order',
+          relation: 'owns_table',
+        }),
+        expect.objectContaining({
+          name: 'billing_order',
+          relation: 'reads_table',
+        }),
+        expect.objectContaining({
+          name: 'billing_order',
+          relation: 'writes_table',
+        }),
+        expect.objectContaining({
+          name: 'billing_event',
+          relation: 'writes_table',
+        }),
+      ]),
+    );
   });
 });
