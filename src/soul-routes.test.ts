@@ -4,16 +4,20 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import {
   _initTestDatabase,
+  addUserMemory,
   addMemorySkill,
   getMemorySkill,
   getUserMemories,
+  listMemoryDocuments,
   listMemorySkills,
   listPersonaInsights,
   listUserMemoryObservations,
   searchMemoryDocuments,
+  upsertMemoryDocuments,
 } from './db.js';
 import { registerSoulRoutes } from './routes/soul-routes.js';
 import { getUserByUsername } from './user/user-service.js';
+import type { UserMemoryRecord } from './types.js';
 
 const allowAllRequirePermission: import('./auth/auth-middleware.js').RequirePermissionFn =
   () => async (_req, _res, next) => {
@@ -150,6 +154,80 @@ describe('soul routes', () => {
     expect(await listUserMemoryObservations(user!.id)).toHaveLength(1);
     expect(await listPersonaInsights(user!.id)).toHaveLength(1);
     expect(await listMemorySkills({ userId: user!.id })).toHaveLength(1);
+  });
+
+  it('repairs current user memory projections from the Soul API', async () => {
+    const app = createApp();
+    await inject(app, {
+      method: 'GET',
+      url: '/api/soul/memories',
+    });
+    const user = await getUserByUsername('soul-import-user');
+    expect(user).toBeTruthy();
+    const memory: UserMemoryRecord = {
+      id: 'soul-projection-memory',
+      user_id: user!.id,
+      scope: 'global',
+      conversation_id: null,
+      category: 'preference',
+      content: 'User wants memory UI to expose projection health.',
+      importance: 7,
+      confidence: 0.9,
+      source: 'manual',
+      tier: 'durable',
+      promoted_from: null,
+      last_verified_at: null,
+      source_event_id: null,
+      valid_from: '2026-05-20T00:00:00.000Z',
+      valid_to: null,
+      access_count: 0,
+      last_accessed_at: null,
+      expires_at: null,
+      created_at: '2026-05-20T00:00:00.000Z',
+      updated_at: '2026-05-20T00:00:00.000Z',
+    };
+    await addUserMemory(memory);
+    await upsertMemoryDocuments([
+      {
+        doc_id: 'user-memory:soul-orphan-projection',
+        scope: 'global',
+        owner_type: 'global',
+        owner_id: user!.id,
+        path_ref: 'user_memory:soul-orphan-projection',
+        source_type: 'user_memory',
+        title: 'orphaned user memory',
+        body: 'This projection should be removed by repair.',
+        metadata_json: JSON.stringify({ memoryId: 'soul-orphan-projection' }),
+        updated_at: '2026-05-20T00:01:00.000Z',
+      },
+    ]);
+
+    const response = await inject(app, {
+      method: 'POST',
+      url: '/api/soul/memory-documents/repair',
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(JSON.parse(response.body)).toMatchObject({
+      ok: true,
+      checkedMemories: 1,
+      projectedDocuments: 1,
+      deletedOrphans: 1,
+      after: {
+        missingDocuments: 0,
+        orphanDocuments: 0,
+      },
+    });
+    expect(
+      (
+        await listMemoryDocuments({
+          ownerType: 'global',
+          ownerId: user!.id,
+          sourceType: 'user_memory',
+          limit: 10,
+        })
+      ).map((document) => document.path_ref),
+    ).toEqual(['user_memory:soul-projection-memory']);
   });
 
   it('does not update or delete another user memory skill', async () => {

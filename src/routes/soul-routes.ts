@@ -38,6 +38,7 @@ import {
   runConsolidation,
   promoteObservationById,
 } from '../soul/soul-consolidation.js';
+import { repairUserMemoryProjections } from '../memory/user-memory-documents.js';
 import { SOUL_PRESETS } from '../soul/soul-presets.js';
 import { t } from '../i18n/index.js';
 
@@ -735,6 +736,20 @@ export function registerSoulRoutes(app: Express, opts: SoulRouteOptions): void {
         limit: Math.min(limit, 500),
       });
       res.json({ ok: true, documents });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: String(err) });
+    }
+  });
+
+  app.post('/api/soul/memory-documents/repair', manageGuard, async (req, res) => {
+    try {
+      const userId = await resolveUserId(req.headers.cookie, opts);
+      if (!userId) {
+        res.status(401).json({ ok: false, error: 'Unauthorized' });
+        return;
+      }
+      const result = await repairUserMemoryProjections({ userId });
+      res.json({ ok: true, ...result });
     } catch (err) {
       res.status(500).json({ ok: false, error: String(err) });
     }

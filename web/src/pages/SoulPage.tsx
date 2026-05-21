@@ -372,6 +372,7 @@ export function SoulPage({ apiBase }: SoulPageProps) {
   const [notice, setNotice] = useState<NoticeState | null>(null);
   const [loading, setLoading] = useState(true);
   const [consolidating, setConsolidating] = useState(false);
+  const [repairingProjections, setRepairingProjections] = useState(false);
 
   const [memoryEvents, setMemoryEvents] = useState<MemoryEvent[]>([]);
   const [memoryDocuments, setMemoryDocuments] = useState<MemoryDocument[]>([]);
@@ -634,6 +635,27 @@ export function SoulPage({ apiBase }: SoulPageProps) {
     } catch (err) { showNotice('error', String(err)); }
   };
 
+  const handleRepairMemoryProjections = async () => {
+    setRepairingProjections(true);
+    try {
+      const data = await apiFetch('/api/soul/memory-documents/repair', {
+        method: 'POST',
+      });
+      if (data.ok) {
+        await Promise.all([fetchMemoryDocuments(), fetchMemoryEvents()]);
+        const repaired = Number(data.projectedDocuments || 0);
+        const deleted = Number(data.deletedOrphans || 0);
+        showNotice('success', t('检索投影已修复: {{repaired}} 条，清理 {{deleted}} 条', { repaired, deleted }));
+      } else {
+        showNotice('error', data.error || t('修复失败'));
+      }
+    } catch (err) {
+      showNotice('error', String(err));
+    } finally {
+      setRepairingProjections(false);
+    }
+  };
+
   const handleDeleteSkill = async (skillId: string) => {
     try {
       const data = await apiFetch(`/api/soul/memory-skills/${skillId}`, { method: 'DELETE' });
@@ -807,6 +829,15 @@ export function SoulPage({ apiBase }: SoulPageProps) {
       .filter((doc) => doc.path_ref)
       .map((doc) => [doc.path_ref as string, doc]),
   );
+  const memoryIds = new Set(memories.map((memory) => memory.id));
+  const missingProjectionCount = memories.filter(
+    (memory) => !memoryDocumentsByPath.has(`user_memory:${memory.id}`),
+  ).length;
+  const orphanProjectionCount = memoryDocuments.filter((doc) => {
+    const pathRef = doc.path_ref || '';
+    if (!pathRef.startsWith('user_memory:')) return true;
+    return !memoryIds.has(pathRef.slice('user_memory:'.length));
+  }).length;
   const eventById = new Map(memoryEvents.map((event) => [event.id, event]));
   const lastRecallByMemoryId = new Map<string, MemoryEvent>();
   for (const event of memoryEvents) {
@@ -1194,7 +1225,18 @@ export function SoulPage({ apiBase }: SoulPageProps) {
                 <div className="settings-section-kicker">{t('检索投影')} ({memoryDocuments.length})</div>
                 <p className="settings-general-panel-copy">
                   {t('来自当前用户持久记忆的检索投影，不是事实源')}
+                  {missingProjectionCount > 0 || orphanProjectionCount > 0
+                    ? ` · ${t('缺失')} ${missingProjectionCount} / ${t('孤儿')} ${orphanProjectionCount}`
+                    : ''}
                 </p>
+                <button
+                  type="button"
+                  className="btn btn-sm btn-secondary soul-btn-compact"
+                  onClick={handleRepairMemoryProjections}
+                  disabled={repairingProjections}
+                >
+                  {repairingProjections ? t('修复中') : t('修复投影')}
+                </button>
               </div>
               <div className="settings-subsection">
                 {memoryDocuments.length === 0 ? (
