@@ -162,6 +162,15 @@ describe('agent runner memory tools', () => {
     expect(searchOutput).toContain('user:memory/memory-1');
     expect(getOutput).toContain('user:memory/memory-1#L1-L1');
     expect(getOutput).toContain('Alice prefers concise status updates.');
+    const userSearchCall = fetchMock.mock.calls.find((call) =>
+      String(call[0]).endsWith('/internal/memory/user/search'),
+    );
+    expect(JSON.parse(String(userSearchCall?.[1]?.body || '{}'))).toMatchObject({
+      userId: 'memory-user',
+      query: 'concise status',
+      conversationId: 'memory-tools@g.us',
+    });
+    expect(JSON.parse(String(userSearchCall?.[1]?.body || '{}')).scope).toBeUndefined();
     expect(
       fetchMock.mock.calls.some((call) =>
         String(call[0]).endsWith('/internal/memory/recall'),

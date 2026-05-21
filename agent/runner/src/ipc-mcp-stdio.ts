@@ -1168,13 +1168,13 @@ server.tool(
 if (isMemoryReadAvailable(memoryConfig)) {
   server.tool(
     'memory_search',
-    'Search MEMORY.md and memory/*.md in the NanoClaw group/global workspace before answering questions about prior work, decisions, preferences, dates, or todos.',
+    'Search NanoClaw user memories and group/global memory files before answering questions about prior work, decisions, preferences, dates, or todos.',
     {
       query: z.string().describe('The memory query to search for'),
       scope: z
         .enum(['group', 'global', 'all'])
         .optional()
-        .describe('Search scope. all searches both group and global memory'),
+        .describe('File-memory search scope. User memories search global plus the current conversation by default.'),
       max_results: z
         .number()
         .int()
@@ -1197,7 +1197,7 @@ if (isMemoryReadAvailable(memoryConfig)) {
 
   server.tool(
     'memory_get',
-    'Read a snippet from an allowed memory file path, such as group:MEMORY.md or global:memory/2026-03-17.md.',
+    'Read a snippet from a path ref returned by memory_search, including user:memory/<id> or file refs such as group:MEMORY.md.',
     {
       path: z.string().describe('Path ref returned by memory_search'),
       from: z

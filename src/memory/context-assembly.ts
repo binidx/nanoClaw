@@ -1029,6 +1029,16 @@ export async function assembleAgentContextEnvelope(
             entry.source_type === 'post_compaction_context',
         ),
       );
+      const durablePromptEntries = await (async () => {
+        const groupFolder = recentEntriesRaw.find((entry) => entry.group_folder)?.group_folder || '';
+        if (!groupFolder) return [] as ContextEntryRecord[];
+        return collectDurablePromptEntries({
+          chatJid,
+          groupFolder,
+          query: buildCurrentMemoryQuery(sourceMessages),
+          maxEntries: memoryConfig.promptMaxSnippets,
+        });
+      })();
       const summaryEntries: ContextEntryRecord[] = [];
       if (latestToolSummary && toolSummaryCoveredIds.size > 0) {
         summaryEntries.push(latestToolSummary);
@@ -1040,7 +1050,10 @@ export async function assembleAgentContextEnvelope(
       const laneEntries: LanePromptEntries = {
         recentChatEntries,
         recentToolEntries,
-        memoryRecallEntries,
+        memoryRecallEntries: dedupeRecallEntries([
+          ...memoryRecallEntries,
+          ...durablePromptEntries,
+        ]),
         summaryEntries,
         activeChatCompactionId: latestSummary?.id || null,
         activeToolSummaryId: latestToolSummary?.id || null,

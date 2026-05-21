@@ -3,15 +3,14 @@ import type { Express, RequestHandler } from 'express';
 import {
   getConversationIdentityBinding,
   recordMemorySearchEvent,
-  recordMemoryEvent,
   searchMemoryDocuments,
   storeMemoryRecallEntry,
   searchUserMemories,
-  addUserMemory,
   touchUserMemoryAccess,
   getUserMemories,
 } from '../db.js';
 import { logger } from '../logger.js';
+import { addUnifiedMemory } from '../soul/soul-service.js';
 import {
   type IndexedMemoryScope as MemoryScope,
   refreshIndexedMemoryPathRefsForSearch,
@@ -507,8 +506,10 @@ export function registerInternalMemoryRoutes(
           res.status(400).json({ error: 'userId and query are required' });
           return;
         }
+        const normalizedScope =
+          scope === 'global' || scope === 'conversation' ? scope : undefined;
         const memories = await searchUserMemories(userId, query, {
-          scope,
+          scope: normalizedScope,
           conversationId,
           limit: maxResults ?? 10,
         });
@@ -537,46 +538,15 @@ export function registerInternalMemoryRoutes(
           res.status(400).json({ error: 'userId and content are required' });
           return;
         }
-        const crypto = await import('crypto');
-        const now = new Date().toISOString();
-        const eventId = await recordMemoryEvent({
-          user_id: userId,
-          scope: scope === 'conversation' ? 'conversation' : 'global',
-          action_type: 'ADD',
-          target_type: 'user_memory',
-          target_id: null,
-          conversation_id: conversationId ?? null,
-          source_message_id: null,
-          before_snapshot: null,
-          after_snapshot: JSON.stringify({ content: content.trim().slice(0, 500) }),
-          decision_reason: 'agent_tool',
-          metadata_json: JSON.stringify({ category: category || 'general' }),
-        }).catch(() => null);
-        const record = {
-          id: crypto.randomUUID(),
-          user_id: userId,
-          scope: (scope === 'conversation' ? 'conversation' : 'global') as
-            | 'global'
-            | 'conversation',
-          conversation_id: conversationId ?? null,
+        const record = await addUnifiedMemory(userId, {
           category: (category || 'general') as import('../types.js').UserMemoryCategory,
           content: content.trim(),
           importance: 5,
-          confidence: 0.5,
-          source: 'agent_tool' as const,
-          tier: 'durable' as const,
-          promoted_from: null,
-          last_verified_at: null,
-          source_event_id: eventId ?? null,
-          valid_from: null,
-          valid_to: null,
-          access_count: 0,
-          last_accessed_at: null,
-          expires_at: null,
-          created_at: now,
-          updated_at: now,
-        };
-        await addUserMemory(record);
+          source: 'agent_tool',
+          scope: scope === 'conversation' ? 'conversation' : 'global',
+          conversationId: conversationId ?? undefined,
+          tier: 'durable',
+        });
         res.json({ ok: true, id: record.id });
       } catch (err) {
         logger.error({ err }, 'Failed to save user memory');

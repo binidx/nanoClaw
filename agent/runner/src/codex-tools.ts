@@ -397,9 +397,9 @@ export const BASE_CODEX_TOOLS_RESPONSES: ResponsesToolDef[] = [
     type: 'function',
     name: 'memory_search',
     description:
-      'Search workspace memory files (MEMORY.md and memory/*.md).\n' +
+      'Search NanoClaw user memories and workspace memory files (MEMORY.md and memory/*.md).\n' +
       'Use before answering questions about prior work, decisions, preferences, or dates.\n' +
-      'Try scope="all" to search both group and global memory.\n' +
+      'Try scope="all" to search both group and global file memory; user memory searches global plus current conversation by default.\n' +
       'Returns ranked snippets with path references for memory_get follow-up.',
     parameters: {
       type: 'object',
@@ -413,7 +413,7 @@ export const BASE_CODEX_TOOLS_RESPONSES: ResponsesToolDef[] = [
           type: 'string',
           enum: ['group', 'global', 'all'],
           description:
-            'Search scope. all searches both group and global memory.',
+            'File-memory search scope. User memories are searched separately from file scopes.',
         },
         max_results: {
           type: 'number',
@@ -428,7 +428,7 @@ export const BASE_CODEX_TOOLS_RESPONSES: ResponsesToolDef[] = [
     type: 'function',
     name: 'memory_get',
     description:
-      'Read a memory file snippet by explicit path ref, such as group:MEMORY.md or global:memory/2026-03-17.md.',
+      'Read a memory snippet by explicit path ref returned from memory_search, such as user:memory/<id>, group:MEMORY.md, or global:memory/2026-03-17.md.',
     parameters: {
       type: 'object',
       properties: {

@@ -714,6 +714,11 @@ export function registerSoulRoutes(app: Express, opts: SoulRouteOptions): void {
 
   app.get('/api/soul/memory-documents', viewGuard, async (req, res) => {
     try {
+      const userId = await resolveUserId(req.headers.cookie, opts);
+      if (!userId) {
+        res.status(401).json({ ok: false, error: 'Unauthorized' });
+        return;
+      }
       const scope =
         typeof req.query.scope === 'string'
           ? (req.query.scope as 'group' | 'global' | 'workspace')
@@ -724,6 +729,9 @@ export function registerSoulRoutes(app: Express, opts: SoulRouteOptions): void {
           : 200;
       const documents = await listMemoryDocuments({
         scope,
+        ownerType: 'global',
+        ownerId: userId,
+        sourceType: 'user_memory',
         limit: Math.min(limit, 500),
       });
       res.json({ ok: true, documents });

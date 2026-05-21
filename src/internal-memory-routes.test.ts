@@ -10,7 +10,9 @@ import {
   bindConversationIdentity,
   createPersonProfile,
   getContextEntries,
+  getUserMemories,
   listMemoryDocuments,
+  listMemoryEvents,
   storeChatMetadata,
 } from './db.js';
 import { registerInternalMemoryRoutes } from './routes/internal-memory-routes.js';
@@ -143,6 +145,59 @@ describe('internal memory routes', () => {
     expect(payload.results.map((entry) => entry.path)).toContain(
       'global:memory/2026-03-17.md',
     );
+  });
+
+  it('saves user memory through the unified projection path', async () => {
+    const app = express();
+    app.use(express.json());
+    registerInternalMemoryRoutes(app, {
+      requireInternalApi: (_req, _res, next) => next(),
+    });
+
+    const response = await inject(app, {
+      method: 'POST',
+      url: '/internal/memory/user/save',
+      payload: {
+        userId: 'memory-user',
+        content: 'User prefers concise Chinese answers.',
+        category: 'preference',
+        scope: 'group',
+        conversationId: 'web:memory-user',
+      },
+      headers: {
+        'content-type': 'application/json',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const payload = response.json() as { ok: boolean; id: string };
+    expect(payload.ok).toBe(true);
+    const memories = await getUserMemories('memory-user', { timeScope: 'all' });
+    expect(memories).toEqual([
+      expect.objectContaining({
+        id: payload.id,
+        scope: 'global',
+        content: 'User prefers concise Chinese answers.',
+      }),
+    ]);
+    expect(
+      await listMemoryDocuments({
+        ownerType: 'global',
+        ownerId: 'memory-user',
+        sourceType: 'user_memory',
+      }),
+    ).toEqual([
+      expect.objectContaining({
+        path_ref: `user_memory:${payload.id}`,
+        source_type: 'user_memory',
+      }),
+    ]);
+    expect(await listMemoryEvents({ targetType: 'user_memory', targetId: payload.id })).toEqual([
+      expect.objectContaining({
+        action_type: 'ADD',
+        decision_reason: 'source=agent_tool',
+      }),
+    ]);
   });
 
   it('searches bound identity memory before returning regular file hits', async () => {

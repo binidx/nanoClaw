@@ -274,6 +274,10 @@ function isExpired(value: string | null | undefined): boolean {
   return !!value && new Date(value).getTime() <= Date.now();
 }
 
+function isFuture(value: string | null | undefined): boolean {
+  return !!value && new Date(value).getTime() > Date.now();
+}
+
 export function SoulPage({ apiBase }: SoulPageProps) {
   const { t } = useTranslation('soul');
 
@@ -382,7 +386,7 @@ export function SoulPage({ apiBase }: SoulPageProps) {
   const [memorySubTab, setMemorySubTab] = useState<MemorySubTab>('memories');
   const memorySubTabs: Tab[] = [
     { key: 'memories', label: t('持久记忆'), badge: memories.length },
-    { key: 'documents', label: t('文件记忆'), badge: memoryDocuments.length },
+    { key: 'documents', label: t('检索投影'), badge: memoryDocuments.length },
     { key: 'skills', label: t('技能记忆'), badge: memorySkills.length },
   ];
   const [memoryCategoryFilter, setMemoryCategoryFilter] = useState<string>('all');
@@ -1076,7 +1080,9 @@ export function SoulPage({ apiBase }: SoulPageProps) {
                       const projection = memoryDocumentsByPath.get(`user_memory:${mem.id}`);
                       const lastRecall = lastRecallByMemoryId.get(mem.id);
                       const sourceEvent = mem.source_event_id ? eventById.get(mem.source_event_id) : null;
-                      const statusLabel = mem.valid_to
+                      const statusLabel = isFuture(mem.valid_from)
+                        ? t('尚未生效')
+                        : mem.valid_to
                         ? t('已截止')
                         : isExpired(mem.expires_at)
                           ? t('已过期')
@@ -1087,7 +1093,7 @@ export function SoulPage({ apiBase }: SoulPageProps) {
                           {badge(CATEGORY_OPTIONS.find((c) => c.value === mem.category)?.label || mem.category)}
                           {mem.tier === 'core' && badge(t('核心'), 'var(--accent-bg, #1a2a3a)')}
                           {badge(SCOPE_LABELS[mem.scope] || mem.scope)}
-                          {badge(statusLabel, mem.valid_to || isExpired(mem.expires_at)
+                          {badge(statusLabel, isFuture(mem.valid_from) || mem.valid_to || isExpired(mem.expires_at)
                             ? 'var(--error-bg, #3a1a1a)'
                             : 'var(--success-bg, #1a3a2a)')}
                           <span className="soul-flex-1">{mem.content}</span>
@@ -1185,14 +1191,14 @@ export function SoulPage({ apiBase }: SoulPageProps) {
             {memorySubTab === 'documents' && (
             <section className="settings-section settings-general-panel soul-panel-mb">
               <div className="settings-general-panel-header">
-                <div className="settings-section-kicker">{t('文件记忆')} ({memoryDocuments.length})</div>
+                <div className="settings-section-kicker">{t('检索投影')} ({memoryDocuments.length})</div>
                 <p className="settings-general-panel-copy">
-                  {t('来自 user_memories、MEMORY.md 和 identity 文档的检索投影')}
+                  {t('来自当前用户持久记忆的检索投影，不是事实源')}
                 </p>
               </div>
               <div className="settings-subsection">
                 {memoryDocuments.length === 0 ? (
-                  <p className="soul-empty-hint">{t('暂无文件记忆')}</p>
+                  <p className="soul-empty-hint">{t('暂无检索投影')}</p>
                 ) : (
                   <div className="soul-list-stack">
                     {memoryDocuments.map((doc) => (
@@ -1237,7 +1243,7 @@ export function SoulPage({ apiBase }: SoulPageProps) {
               <div className="settings-general-panel-header">
                 <div className="settings-section-kicker">{t('技能记忆')} ({memorySkills.length})</div>
                 <p className="settings-general-panel-copy">
-                  {t('可复用的操作流程，AI 会在匹配场景时自动调用')}
+                  {t('可复用的操作流程。当前仅支持管理，运行时自动调用尚未接入')}
                 </p>
               </div>
               <div className="settings-subsection">

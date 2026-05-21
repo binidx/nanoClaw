@@ -617,7 +617,7 @@ export async function searchMemoryRuntime(
 ): Promise<MemorySearchResult[]> {
   // Try per-user DB memory first
   const userResults = await searchUserMemoryViaApi(query, {
-    scope: options?.scope === 'all' ? undefined : options?.scope,
+    scope: options?.scope === 'global' ? 'global' : undefined,
     maxResults: options?.maxResults,
   });
   if (userResults !== null && userResults.length > 0) {
@@ -628,6 +628,10 @@ export async function searchMemoryRuntime(
       lineEnd: 1,
       score: m.importance / 10,
       snippet: `[${m.category}] ${m.content}`,
+      sourceType: 'user_memory',
+      memoryClass: 'user_memory',
+      ownerType: 'global',
+      ownerId: readEnv('NANOCLAW_USER_ID') || null,
     }));
     for (const m of userResults) {
       touchUserMemoryRecallViaApi(m.id).catch(() => {});

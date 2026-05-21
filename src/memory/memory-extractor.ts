@@ -30,6 +30,7 @@ import type {
   InsightType,
   MemoryExtractionLogRecord,
 } from '../types.js';
+import { projectUserMemoryToDocument } from './user-memory-documents.js';
 
 // ---------------------------------------------------------------------------
 // Regex pre-filter: cheap first pass before calling LLM
@@ -90,7 +91,7 @@ export async function extractFromMessages(
   existingContext: string,
 ): Promise<ExtractedItem[]> {
   const userInput = messages.join('\n---\n');
-  const prompt = `${EXTRACTION_PROMPT}${existingContext}\n\n' + t('prompts.userMessageLabel', {}, undefined) + '\n${userInput}`;
+  const prompt = `${EXTRACTION_PROMPT}${existingContext}\n\n${t('prompts.userMessageLabel', {}, undefined)}\n${userInput}`;
   const resolvedPrompt = await resolvePromptText({
     promptKey: 'memory.extractor',
     variables: {
@@ -323,6 +324,7 @@ export async function mergeExtractedMemories(
           importance: Math.max(match.importance, item.importance),
           confidence: boostedConfidence,
         });
+        await projectUserMemoryToDocument(match.id);
       } else {
         const now = new Date().toISOString();
         const eventId = await recordMemoryEvent({
@@ -361,6 +363,7 @@ export async function mergeExtractedMemories(
           updated_at: now,
         };
         await addUserMemory(record);
+        await projectUserMemoryToDocument(record.id);
       }
       saved++;
     } catch (err) {

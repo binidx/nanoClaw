@@ -23,6 +23,7 @@ import crypto from 'crypto';
 import { t } from '../i18n/index.js';
 
 import { SYSTEM_USER_ID } from '../tenant/tenant-context.js';
+import { projectUserMemoryToDocument } from './user-memory-documents.js';
 
 const FLUSH_TIMEOUT_MS = 30_000;
 
@@ -89,7 +90,7 @@ export async function runPreCompactionFlush(
     ? t('prompts.knownMemoriesHeader', {}, undefined) + '\n' + existingMemories.map((m) => `- [${m.category}] ${m.content}`).join('\n')
     : '';
 
-  const prompt = `${FLUSH_PROMPT}${existingSummary}\n\n' + t('prompts.conversationContentLabel', {}, undefined) + '\n${conversationText}`;
+  const prompt = `${FLUSH_PROMPT}${existingSummary}\n\n${t('prompts.conversationContentLabel', {}, undefined)}\n${conversationText}`;
   const resolvedPrompt = await resolvePromptText({
     promptKey: 'memory.pre_compaction_flush',
     targetUserId: userId,
@@ -161,6 +162,7 @@ export async function runPreCompactionFlush(
             content: item.content,
             importance: Math.max(match.importance, item.importance),
           });
+          await projectUserMemoryToDocument(match.id);
         } else {
           const now = new Date().toISOString();
           const eventId = await recordMemoryEvent({
@@ -199,6 +201,7 @@ export async function runPreCompactionFlush(
             updated_at: now,
           };
           await addUserMemory(record);
+          await projectUserMemoryToDocument(record.id);
         }
         saved++;
       } catch (err) {

@@ -10,6 +10,7 @@ import {
   compactContextEntries,
   createPersonProfile,
   getContextEntries,
+  listMemoryEvents,
   setConfig,
   storeChatMetadata,
   storeContextEntries,
@@ -400,7 +401,7 @@ describe('agent context assembly', () => {
     );
   });
 
-  it('does not auto-inject bound identity memory without an explicit memory recall entry', async () => {
+  it('auto-injects bound identity memory and records a recall event', async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'nanoclaw-context-memory-'));
     createdPaths.push(root);
     const globalDir = path.join(root, 'global');
@@ -450,8 +451,21 @@ describe('agent context assembly', () => {
       },
     ]);
 
-    expect(prompt.text).not.toContain('用户偏好简洁回复');
+    expect(prompt.text).toContain('memory_source="identity_memory"');
+    expect(prompt.text).toContain('用户偏好简洁回复');
     expect(prompt.text).toContain('上一条普通历史消息');
+    expect(
+      await listMemoryEvents({
+        actionType: 'RECALL',
+        targetType: 'memory_document',
+        targetId: 'global:memory/identity/ady.md',
+      }),
+    ).toEqual([
+      expect.objectContaining({
+        conversation_id: chatJid,
+        decision_reason: 'prompt_injection',
+      }),
+    ]);
   });
 
   it('does not create a compaction summary as a side effect of prompt assembly', async () => {
