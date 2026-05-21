@@ -496,5 +496,26 @@ describe('internal memory routes', () => {
         })
       ).map((document) => document.path_ref),
     ).toEqual(['user_memory:projection-memory']);
+    expect(
+      (await listMemoryEvents({ targetType: 'memory_document', limit: 10 }))
+        .map((event) => ({
+          action: event.action_type,
+          targetId: event.target_id,
+          reason: event.decision_reason,
+        })),
+    ).toEqual(
+      expect.arrayContaining([
+        {
+          action: 'ADD',
+          targetId: 'user-memory:projection-memory',
+          reason: 'repair_user_memory_projection',
+        },
+        {
+          action: 'DELETE',
+          targetId: 'user-memory:orphan-projection',
+          reason: 'repair_user_memory_projection_orphan',
+        },
+      ]),
+    );
   });
 });

@@ -4,6 +4,7 @@ import {
   getUserMemoryProjectionStats,
   listUserMemoriesForProjectionRepair,
   listUserMemoryProjectionDocuments,
+  recordMemoryEvent,
   upsertMemoryDocuments,
 } from '../db.js';
 import type { MemoryDocumentRecord, UserMemoryRecord } from '../types.js';
@@ -89,14 +90,19 @@ export async function repairUserMemoryProjections(options?: {
     userId,
     limit: options?.limit,
   });
+  const projectionDocumentsBefore = await listUserMemoryProjectionDocuments({ userId });
+  const existingProjectionPathRefs = new Set(
+    projectionDocumentsBefore
+      .map((document) => document.path_ref)
+      .filter((pathRef): pathRef is string => Boolean(pathRef)),
+  );
   const documents = memories.map(buildUserMemoryDocument);
   await upsertMemoryDocuments(documents);
 
   const sourceIds = new Set(memories.map((memory) => memory.id));
-  const projectionDocuments = await listUserMemoryProjectionDocuments({ userId });
   const orphanDocIds = options?.limit
     ? []
-    : projectionDocuments
+    : projectionDocumentsBefore
         .filter((document) => {
           const pathRef = String(document.path_ref || '');
           if (!pathRef.startsWith('user_memory:')) return true;
@@ -111,6 +117,66 @@ export async function repairUserMemoryProjections(options?: {
       sourceType: 'user_memory',
     });
   }
+
+  const memoryById = new Map(memories.map((memory) => [memory.id, memory]));
+  const createdDocuments = documents.filter(
+    (document) => document.path_ref && !existingProjectionPathRefs.has(document.path_ref),
+  );
+  await Promise.all(
+    createdDocuments.map((document) => {
+      const memoryId = document.path_ref?.startsWith('user_memory:')
+        ? document.path_ref.slice('user_memory:'.length)
+        : '';
+      const memory = memoryById.get(memoryId);
+      return recordMemoryEvent({
+        user_id: memory?.user_id || userId || document.owner_id || null,
+        scope: memory?.scope || document.scope,
+        action_type: 'ADD',
+        target_type: 'memory_document',
+        target_id: document.doc_id,
+        conversation_id: memory?.conversation_id || null,
+        source_message_id: null,
+        before_snapshot: null,
+        after_snapshot: JSON.stringify({
+          docId: document.doc_id,
+          pathRef: document.path_ref,
+          sourceType: document.source_type,
+          sourceMemoryId: memoryId || null,
+        }),
+        decision_reason: 'repair_user_memory_projection',
+        metadata_json: JSON.stringify({
+          source: 'user_memory_projection_repair',
+        }),
+      });
+    }),
+  );
+  const orphanDocumentsById = new Map(
+    projectionDocumentsBefore.map((document) => [document.doc_id, document]),
+  );
+  await Promise.all(
+    orphanDocIds.map((docId) => {
+      const document = orphanDocumentsById.get(docId);
+      return recordMemoryEvent({
+        user_id: userId || document?.owner_id || null,
+        scope: document?.scope || 'global',
+        action_type: 'DELETE',
+        target_type: 'memory_document',
+        target_id: docId,
+        conversation_id: null,
+        source_message_id: null,
+        before_snapshot: JSON.stringify({
+          docId,
+          pathRef: document?.path_ref || null,
+          sourceType: document?.source_type || 'user_memory',
+        }),
+        after_snapshot: null,
+        decision_reason: 'repair_user_memory_projection_orphan',
+        metadata_json: JSON.stringify({
+          source: 'user_memory_projection_repair',
+        }),
+      });
+    }),
+  );
 
   const after = await getUserMemoryProjectionStats({ userId });
   return {
