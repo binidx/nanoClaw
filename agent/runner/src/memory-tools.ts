@@ -611,48 +611,94 @@ export function searchMemory(
     .slice(0, maxResults);
 }
 
+function normalizeSearchLimit(
+  options?: { maxResults?: number },
+): number {
+  const runtimeConfig = getMemoryRuntimeConfig();
+  return Math.max(
+    1,
+    Math.min(
+      options?.maxResults ?? runtimeConfig.searchMaxResults,
+      MAX_SEARCH_RESULTS,
+    ),
+  );
+}
+
+function mergeMemorySearchResults(
+  groups: Array<MemorySearchResult[] | null | undefined>,
+  maxResults: number,
+): MemorySearchResult[] {
+  const byPath = new Map<string, MemorySearchResult>();
+  for (const result of groups.flatMap((group) => group || [])) {
+    const key = `${result.path}:${result.lineStart}:${result.lineEnd}`;
+    const existing = byPath.get(key);
+    if (!existing || result.score > existing.score) {
+      byPath.set(key, result);
+    }
+  }
+  return [...byPath.values()]
+    .sort((left, right) => {
+      if (right.score !== left.score) return right.score - left.score;
+      const leftClass = left.memoryClass || left.sourceType || '';
+      const rightClass = right.memoryClass || right.sourceType || '';
+      if (leftClass !== rightClass) return leftClass.localeCompare(rightClass);
+      return left.path.localeCompare(right.path);
+    })
+    .slice(0, maxResults);
+}
+
 export async function searchMemoryRuntime(
   query: string,
   options?: { scope?: MemoryScope; maxResults?: number },
 ): Promise<MemorySearchResult[]> {
-  // Try per-user DB memory first
+  const maxResults = normalizeSearchLimit(options);
+
   const userResults = await searchUserMemoryViaApi(query, {
     scope: options?.scope === 'global' ? 'global' : undefined,
-    maxResults: options?.maxResults,
+    maxResults,
   });
-  if (userResults !== null && userResults.length > 0) {
-    const mapped: MemorySearchResult[] = userResults.map((m) => ({
-      path: `user:memory/${m.id}`,
-      scope: 'group' as const,
-      lineStart: 1,
-      lineEnd: 1,
-      score: m.importance / 10,
-      snippet: `[${m.category}] ${m.content}`,
-      sourceType: 'user_memory',
-      memoryClass: 'user_memory',
-      ownerType: 'global',
-      ownerId: readEnv('NANOCLAW_USER_ID') || null,
-    }));
-    for (const m of userResults) {
-      touchUserMemoryRecallViaApi(m.id).catch(() => {});
-    }
-    rememberRecentMemorySearchHits(query, mapped);
-    return mapped;
-  }
+  const mappedUserResults: MemorySearchResult[] = (userResults || []).map((m) => ({
+    path: `user:memory/${m.id}`,
+    scope: 'group' as const,
+    lineStart: 1,
+    lineEnd: 1,
+    score: m.importance / 10,
+    snippet: `[${m.category}] ${m.content}`,
+    sourceType: 'user_memory',
+    memoryClass: 'user_memory',
+    ownerType: 'global',
+    ownerId: readEnv('NANOCLAW_USER_ID') || null,
+  }));
 
-  // Fallback to indexed file-based search
   const indexedResults = await searchIndexedMemory({
     query,
     scope: options?.scope,
-    maxResults: options?.maxResults,
+    maxResults,
   });
   if (indexedResults !== null) {
-    rememberRecentMemorySearchHits(query, indexedResults);
-    return indexedResults;
+    const merged = mergeMemorySearchResults(
+      [mappedUserResults, indexedResults],
+      maxResults,
+    );
+    for (const result of merged) {
+      const memoryId = parseUserMemoryPathRef(result.path);
+      if (memoryId) touchUserMemoryRecallViaApi(memoryId).catch(() => {});
+    }
+    rememberRecentMemorySearchHits(query, merged);
+    return merged;
   }
-  const fallbackResults = searchMemory(query, options);
-  rememberRecentMemorySearchHits(query, fallbackResults);
-  return fallbackResults;
+
+  const fallbackResults = searchMemory(query, { ...options, maxResults });
+  const merged = mergeMemorySearchResults(
+    [mappedUserResults, fallbackResults],
+    maxResults,
+  );
+  for (const result of merged) {
+    const memoryId = parseUserMemoryPathRef(result.path);
+    if (memoryId) touchUserMemoryRecallViaApi(memoryId).catch(() => {});
+  }
+  rememberRecentMemorySearchHits(query, merged);
+  return merged;
 }
 
 function renderMemorySearchResponse(response: {

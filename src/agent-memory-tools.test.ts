@@ -108,6 +108,81 @@ describe('agent runner memory tools', () => {
     expect(results[0]?.snippet).toContain('Friday night');
   });
 
+  it('fuses user memories with indexed file memory instead of short-circuiting', async () => {
+    vi.stubEnv('NANOCLAW_INTERNAL_API_BASE', 'http://127.0.0.1:3377');
+    vi.stubEnv('NANOCLAW_INTERNAL_API_TOKEN', 'secret-token');
+    vi.stubEnv('NANOCLAW_USER_ID', 'memory-user');
+    vi.stubEnv('NANOCLAW_CHAT_JID', 'memory-tools@g.us');
+    vi.stubEnv('NANOCLAW_GROUP_FOLDER', 'memory-tools-group');
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/internal/memory/user/search')) {
+        return {
+          ok: true,
+          json: async () => ({
+            memories: [
+              {
+                id: 'memory-1',
+                category: 'preference',
+                content: 'Alice prefers concise deployment status updates.',
+                importance: 8,
+                scope: 'global',
+              },
+            ],
+          }),
+        };
+      }
+      if (url.endsWith('/internal/memory/search')) {
+        return {
+          ok: true,
+          json: async () => ({
+            results: [
+              {
+                path: 'group:MEMORY.md',
+                scope: 'group',
+                lineStart: 1,
+                lineEnd: 2,
+                score: 0.92,
+                snippet:
+                  '000001|# Durable Notes\n000002|Deployment window is Friday night.',
+                sourceType: 'memory_file',
+                memoryClass: 'group_durable',
+                ownerType: 'group',
+                ownerId: 'memory-tools-group',
+              },
+            ],
+          }),
+        };
+      }
+      return {
+        ok: true,
+        json: async () => ({}),
+      };
+    });
+    vi.stubGlobal('fetch', fetchMock as typeof fetch);
+
+    const { searchMemoryRuntime } = await importMemoryTools();
+    const results = await searchMemoryRuntime('deployment status', {
+      scope: 'all',
+      maxResults: 3,
+    });
+
+    expect(results.map((result) => result.path)).toEqual([
+      'group:MEMORY.md',
+      'user:memory/memory-1',
+    ]);
+    expect(
+      fetchMock.mock.calls.some((call) =>
+        String(call[0]).endsWith('/internal/memory/user/search'),
+      ),
+    ).toBe(true);
+    expect(
+      fetchMock.mock.calls.some((call) =>
+        String(call[0]).endsWith('/internal/memory/search'),
+      ),
+    ).toBe(true);
+  });
+
   it('lets memory_get read user:memory refs returned by memory_search', async () => {
     const { groupDir, globalDir } = createMemoryWorkspace();
     vi.stubEnv('NANOCLAW_GROUP_DIR', groupDir);
