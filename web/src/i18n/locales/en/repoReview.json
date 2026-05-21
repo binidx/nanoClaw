@@ -634,6 +634,7 @@
   "tab.config": "Configuration",
   "tab.profile": "Profiles",
   "tab.runs": "Runs",
+  "tab.projectGraph": "Project Graph",
   "tab.codemap": "Code Map",
   "panel.description": "Manage repository review configuration, profiles, branch reviews, and delivery settings.",
   "drawer.newWorkspace": "New Workspace",

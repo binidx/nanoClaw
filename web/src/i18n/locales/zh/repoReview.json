@@ -634,6 +634,7 @@
   "tab.config": "配置",
   "tab.profile": "Profile",
   "tab.runs": "运行记录",
+  "tab.projectGraph": "项目图谱",
   "tab.codemap": "代码地图",
   "panel.description": "管理仓库审查配置、Profile、分支审查和投递设置。",
   "drawer.newWorkspace": "新建工作区",

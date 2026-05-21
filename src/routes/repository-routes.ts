@@ -13,6 +13,11 @@ import {
   removeRepository,
   setFeature,
 } from '../repo-review/repository-service.js';
+import {
+  getProjectGraphOverview,
+  normalizeProjectGraphConfig,
+  runProjectGraphScan,
+} from '../project-graph/project-graph-service.js';
 import { t } from '../i18n/index.js';
 
 export interface RepositoryRouteOptions {
@@ -217,6 +222,117 @@ export function registerRepositoryRoutes(
         }
         const features = await getFeatures(id, userId);
         res.json({ features });
+      } catch {
+        res.status(500).json({ error: t('server.internalError', {}, req.locale) });
+      }
+    },
+  );
+
+  app.get(
+    '/api/repositories/:id/project-graph',
+    viewGuard,
+    async (req: Request, res: Response) => {
+      try {
+        const userId = getTenantUserId(req);
+        const repo = await getRepository(paramId(req.params.id), userId);
+        if (!repo) {
+          res.status(404).json({ error: 'Not found' });
+          return;
+        }
+        res.json(await getProjectGraphOverview(repo));
+      } catch {
+        res.status(500).json({ error: t('server.internalError', {}, req.locale) });
+      }
+    },
+  );
+
+  app.get(
+    '/api/repositories/:id/project-graph/runs',
+    viewGuard,
+    async (req: Request, res: Response) => {
+      try {
+        const userId = getTenantUserId(req);
+        const repo = await getRepository(paramId(req.params.id), userId);
+        if (!repo) {
+          res.status(404).json({ error: 'Not found' });
+          return;
+        }
+        const overview = await getProjectGraphOverview(repo);
+        res.json({ runs: overview.runs });
+      } catch {
+        res.status(500).json({ error: t('server.internalError', {}, req.locale) });
+      }
+    },
+  );
+
+  app.patch(
+    '/api/repositories/:id/project-graph/config',
+    updateGuard,
+    async (req: Request, res: Response) => {
+      try {
+        opts.auditMutation(req, 'repository.projectGraph.config.update');
+        const userId = getTenantUserId(req);
+        const id = paramId(req.params.id);
+        const repo = await getRepository(id, userId);
+        if (!repo) {
+          res.status(404).json({ error: 'Not found' });
+          return;
+        }
+        const config = normalizeProjectGraphConfig(req.body?.config ?? req.body);
+        await setFeature(
+          id,
+          'project_graph',
+          config.enabled,
+          config as unknown as Record<string, unknown>,
+        );
+        const updatedRepo = await getRepository(id, userId);
+        res.json(await getProjectGraphOverview(updatedRepo ?? repo));
+      } catch {
+        res.status(500).json({ error: t('server.internalError', {}, req.locale) });
+      }
+    },
+  );
+
+  app.post(
+    '/api/repositories/:id/project-graph/scan',
+    updateGuard,
+    async (req: Request, res: Response) => {
+      try {
+        opts.auditMutation(req, 'repository.projectGraph.scan', 'normal');
+        const userId = getTenantUserId(req);
+        const id = paramId(req.params.id);
+        const repo = await getRepository(id, userId);
+        if (!repo) {
+          res.status(404).json({ error: 'Not found' });
+          return;
+        }
+        const requestedConfig = req.body?.config
+          ? normalizeProjectGraphConfig(req.body.config)
+          : null;
+        const featureConfig =
+          requestedConfig ||
+          normalizeProjectGraphConfig(
+            repo.features.find((item) => item.featureType === 'project_graph')
+              ?.config,
+          );
+        if (requestedConfig) {
+          await setFeature(
+            id,
+            'project_graph',
+            featureConfig.enabled,
+            featureConfig as unknown as Record<string, unknown>,
+          );
+        }
+        const updatedRepo = requestedConfig
+          ? await getRepository(id, userId)
+          : repo;
+        res.json(
+          await runProjectGraphScan({
+            repository: updatedRepo ?? repo,
+            config: featureConfig,
+            userId,
+          }),
+        );
       } catch {
         res.status(500).json({ error: t('server.internalError', {}, req.locale) });
       }

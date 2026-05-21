@@ -552,6 +552,68 @@ export function buildMySQLSchema(autoPk: string): string {
       UNIQUE INDEX idx_repo_features_repo_type (repository_id, feature_type)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+    CREATE TABLE IF NOT EXISTS project_graph_runs (
+      id VARCHAR(64) PRIMARY KEY,
+      repository_id VARCHAR(64) NOT NULL,
+      branch VARCHAR(128) NOT NULL,
+      status VARCHAR(32) NOT NULL,
+      scanner_version VARCHAR(64) NOT NULL,
+      source_head_sha VARCHAR(64) NOT NULL DEFAULT '',
+      started_at VARCHAR(64) NOT NULL,
+      completed_at VARCHAR(64),
+      duration_ms INT NOT NULL DEFAULT 0,
+      error_message TEXT,
+      created_by VARCHAR(64) NOT NULL,
+      created_at VARCHAR(64) NOT NULL,
+      INDEX idx_project_graph_runs_repo_created (repository_id, created_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+    CREATE TABLE IF NOT EXISTS project_graph_facts (
+      id VARCHAR(64) PRIMARY KEY,
+      repository_id VARCHAR(64) NOT NULL,
+      run_id VARCHAR(64) NOT NULL,
+      kind VARCHAR(64) NOT NULL,
+      name VARCHAR(255) NOT NULL,
+      value_json MEDIUMTEXT NOT NULL,
+      source VARCHAR(32) NOT NULL,
+      confidence VARCHAR(16) NOT NULL,
+      locked INT NOT NULL DEFAULT 0,
+      evidence_json MEDIUMTEXT NOT NULL,
+      created_at VARCHAR(64) NOT NULL,
+      updated_at VARCHAR(64) NOT NULL,
+      INDEX idx_project_graph_facts_repo_run (repository_id, run_id, kind)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+    CREATE TABLE IF NOT EXISTS project_graph_edges (
+      id VARCHAR(64) PRIMARY KEY,
+      repository_id VARCHAR(64) NOT NULL,
+      run_id VARCHAR(64) NOT NULL,
+      from_kind VARCHAR(64) NOT NULL,
+      from_name VARCHAR(255) NOT NULL,
+      relation VARCHAR(64) NOT NULL,
+      to_kind VARCHAR(64) NOT NULL,
+      to_name VARCHAR(255) NOT NULL,
+      confidence VARCHAR(16) NOT NULL,
+      evidence_json MEDIUMTEXT NOT NULL,
+      created_at VARCHAR(64) NOT NULL,
+      INDEX idx_project_graph_edges_repo_run (repository_id, run_id, relation)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+    CREATE TABLE IF NOT EXISTS project_graph_documents (
+      id VARCHAR(64) PRIMARY KEY,
+      repository_id VARCHAR(64) NOT NULL,
+      run_id VARCHAR(64) NOT NULL,
+      doc_type VARCHAR(64) NOT NULL,
+      title VARCHAR(255) NOT NULL,
+      status VARCHAR(32) NOT NULL,
+      content MEDIUMTEXT NOT NULL,
+      source VARCHAR(32) NOT NULL,
+      confidence VARCHAR(16) NOT NULL,
+      created_at VARCHAR(64) NOT NULL,
+      updated_at VARCHAR(64) NOT NULL,
+      INDEX idx_project_graph_documents_repo_run (repository_id, run_id, doc_type)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
     CREATE TABLE IF NOT EXISTS review_digest_runs (
       id VARCHAR(64) PRIMARY KEY,
       repository_id VARCHAR(64) NOT NULL,

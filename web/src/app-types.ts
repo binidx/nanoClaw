@@ -1203,6 +1203,92 @@ export interface RepositoryRelationships {
   runnerProfile: RepositoryRunnerProfileRelationship | null;
 }
 
+export interface ProjectGraphConfig {
+  enabled: boolean;
+  scanners: string[];
+  skillIds: string[];
+  mcpServerIds: string[];
+  includePaths: string[];
+  excludePaths: string[];
+  serviceNames: {
+    production: string;
+    testing: string;
+    nacosKeys: string[];
+    logServiceNames: string[];
+  };
+  owners: string[];
+  businessDomain: string;
+  systemAliases: string[];
+  databaseBindings: string[];
+  logBindings: string[];
+}
+
+export interface ProjectGraphRun {
+  id: string;
+  repository_id: string;
+  branch: string;
+  status: 'running' | 'completed' | 'failed';
+  scanner_version: string;
+  source_head_sha: string;
+  started_at: string;
+  completed_at: string | null;
+  duration_ms: number;
+  error_message: string | null;
+  created_by: string;
+  created_at: string;
+}
+
+export interface ProjectGraphEvidence {
+  label: string;
+  filePath?: string;
+  line?: number;
+  summary?: string;
+}
+
+export interface ProjectGraphFact {
+  id: string;
+  kind: string;
+  name: string;
+  value: Record<string, unknown>;
+  source: string;
+  confidence: 'high' | 'medium' | 'low';
+  locked: boolean;
+  evidence: ProjectGraphEvidence[];
+  updatedAt: string;
+}
+
+export interface ProjectGraphEdge {
+  id: string;
+  fromKind: string;
+  fromName: string;
+  relation: string;
+  toKind: string;
+  toName: string;
+  confidence: 'high' | 'medium' | 'low';
+  evidence: ProjectGraphEvidence[];
+}
+
+export interface ProjectGraphDocument {
+  id: string;
+  docType: string;
+  title: string;
+  status: string;
+  content: string;
+  source: string;
+  confidence: 'high' | 'medium' | 'low';
+  updatedAt: string;
+}
+
+export interface ProjectGraphOverview {
+  repositoryId: string;
+  config: ProjectGraphConfig;
+  latestRun: ProjectGraphRun | null;
+  facts: ProjectGraphFact[];
+  edges: ProjectGraphEdge[];
+  documents: ProjectGraphDocument[];
+  runs: ProjectGraphRun[];
+}
+
 export interface StatusLocalCapability {
   id: 'terminal' | 'browserControl' | 'localInstall' | string;
   configKey: string;

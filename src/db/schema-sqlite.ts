@@ -662,6 +662,72 @@ export function createSchema(database: Database.Database): void {
     );
     CREATE UNIQUE INDEX IF NOT EXISTS idx_repo_features_repo_type ON repo_features(repository_id, feature_type);
 
+    CREATE TABLE IF NOT EXISTS project_graph_runs (
+      id TEXT PRIMARY KEY,
+      repository_id TEXT NOT NULL,
+      branch TEXT NOT NULL,
+      status TEXT NOT NULL,
+      scanner_version TEXT NOT NULL,
+      source_head_sha TEXT NOT NULL DEFAULT '',
+      started_at TEXT NOT NULL,
+      completed_at TEXT,
+      duration_ms INTEGER NOT NULL DEFAULT 0,
+      error_message TEXT,
+      created_by TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_project_graph_runs_repo_created
+      ON project_graph_runs(repository_id, created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS project_graph_facts (
+      id TEXT PRIMARY KEY,
+      repository_id TEXT NOT NULL,
+      run_id TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      name TEXT NOT NULL,
+      value_json TEXT NOT NULL,
+      source TEXT NOT NULL,
+      confidence TEXT NOT NULL,
+      locked INTEGER NOT NULL DEFAULT 0,
+      evidence_json TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_project_graph_facts_repo_run
+      ON project_graph_facts(repository_id, run_id, kind);
+
+    CREATE TABLE IF NOT EXISTS project_graph_edges (
+      id TEXT PRIMARY KEY,
+      repository_id TEXT NOT NULL,
+      run_id TEXT NOT NULL,
+      from_kind TEXT NOT NULL,
+      from_name TEXT NOT NULL,
+      relation TEXT NOT NULL,
+      to_kind TEXT NOT NULL,
+      to_name TEXT NOT NULL,
+      confidence TEXT NOT NULL,
+      evidence_json TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_project_graph_edges_repo_run
+      ON project_graph_edges(repository_id, run_id, relation);
+
+    CREATE TABLE IF NOT EXISTS project_graph_documents (
+      id TEXT PRIMARY KEY,
+      repository_id TEXT NOT NULL,
+      run_id TEXT NOT NULL,
+      doc_type TEXT NOT NULL,
+      title TEXT NOT NULL,
+      status TEXT NOT NULL,
+      content TEXT NOT NULL,
+      source TEXT NOT NULL,
+      confidence TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_project_graph_documents_repo_run
+      ON project_graph_documents(repository_id, run_id, doc_type);
+
     CREATE TABLE IF NOT EXISTS review_digest_runs (
       id TEXT PRIMARY KEY,
       repository_id TEXT NOT NULL,

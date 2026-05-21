@@ -1,5 +1,7 @@
 import type {
   RepositoryInfo,
+  ProjectGraphConfig,
+  ProjectGraphOverview,
   RepositoryRelationships,
   RepoFeatureInfo,
   ResourceBindingInfo,
@@ -76,6 +78,57 @@ export async function setRepoFeature(
     body: JSON.stringify({ featureType, enabled, config }),
   });
   if (!res.ok) throw new Error(`Failed to set feature: ${res.statusText}`);
+  return res.json();
+}
+
+export async function fetchProjectGraphOverview(
+  apiBase: string,
+  repositoryId: string,
+): Promise<ProjectGraphOverview> {
+  const res = await fetch(
+    `${apiBase}/api/repositories/${encodeURIComponent(repositoryId)}/project-graph`,
+  );
+  if (!res.ok) {
+    throw new Error(`Failed to fetch project graph: ${res.statusText}`);
+  }
+  return res.json();
+}
+
+export async function saveProjectGraphConfig(
+  apiBase: string,
+  repositoryId: string,
+  config: ProjectGraphConfig,
+): Promise<ProjectGraphOverview> {
+  const res = await fetch(
+    `${apiBase}/api/repositories/${encodeURIComponent(repositoryId)}/project-graph/config`,
+    {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ config }),
+    },
+  );
+  if (!res.ok) {
+    throw new Error(`Failed to save project graph config: ${res.statusText}`);
+  }
+  return res.json();
+}
+
+export async function scanProjectGraph(
+  apiBase: string,
+  repositoryId: string,
+  config?: ProjectGraphConfig,
+): Promise<ProjectGraphOverview> {
+  const res = await fetch(
+    `${apiBase}/api/repositories/${encodeURIComponent(repositoryId)}/project-graph/scan`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(config ? { config } : {}),
+    },
+  );
+  if (!res.ok) {
+    throw new Error(`Failed to scan project graph: ${res.statusText}`);
+  }
   return res.json();
 }
 

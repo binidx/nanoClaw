@@ -2,6 +2,12 @@
 
 按时间记录功能 Map 的摄入、查询、健康检查和重要修正。格式保持短小，便于 Agent 快速回溯。
 
+## [2026-05-21] update | 项目索引图谱 MVP
+
+- 新增项目级索引图谱入口，复用仓库工作台与 `repo_features(feature_type='project_graph')` 保存扫描器、Skills/MCP、服务名、负责人和外部绑定配置。
+- 新增 `src/project-graph/project-graph-service.ts` 与 `src/db/project-graph.ts`，落库 `project_graph_runs/facts/edges/documents`，初版扫描消费仓库配置与 Code Index 摘要生成项目画像、关系和文档草稿。
+- 仓库页新增 `Project Graph` tab，入口为 `web/src/components/repository/ProjectGraphPanel.tsx`，支持保存配置和触发扫描。
+
 ## [2026-05-21] update | Workflow 条件路由与 runner profile 迁移入口
 
 - Workflow Workbench 稳定边界新增 `src/workflow/runner-profiles.ts` / `src/workflow/runner-profile-registry.ts`，Workflow 仓库绑定节点执行可复用 runner profile env 注入能力。

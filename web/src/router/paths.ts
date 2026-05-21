@@ -1,6 +1,11 @@
 import type { NavPage } from '../app-types';
 
-export type RepositoryDetailTab = 'overview' | 'profile' | 'runs' | 'config';
+export type RepositoryDetailTab =
+  | 'overview'
+  | 'profile'
+  | 'runs'
+  | 'project-graph'
+  | 'config';
 export type RepositoryRouteTab = RepositoryDetailTab | 'codemap';
 
 // reviews 不在主导航暴露，但保留为合法路径作为“高级审查管理”隐藏入口
@@ -14,6 +19,7 @@ const REPOSITORY_ROUTE_TABS: ReadonlySet<string> = new Set<RepositoryRouteTab>([
   'overview',
   'profile',
   'runs',
+  'project-graph',
   'config',
   'codemap',
 ]);

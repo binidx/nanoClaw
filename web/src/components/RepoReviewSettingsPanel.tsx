@@ -89,6 +89,7 @@ import i18n from '../i18n';
 import type { CodeMapStats } from './code-map/code-map-api';
 import { fetchCodeMapStats, rebuildCodeMap } from './code-map/code-map-api';
 import { RepositoryRelationshipsPanel } from './repository/RepositoryRelationshipsPanel';
+import { ProjectGraphPanel } from './repository/ProjectGraphPanel';
 import { CodeMapPage } from '../pages/CodeMapPage';
 import '../pages/WorkteamPage.css';
 
@@ -227,7 +228,13 @@ type RepoReviewSettingsPanelProps = {
   embedded?: boolean;
 };
 
-type RepoReviewPanelTab = 'overview' | 'profile' | 'runs' | 'config' | 'codemap';
+type RepoReviewPanelTab =
+  | 'overview'
+  | 'profile'
+  | 'runs'
+  | 'project-graph'
+  | 'config'
+  | 'codemap';
 
 function stripBranchStateVisibility(
   item: RepoReviewBranchStateItem & { visible: boolean },
@@ -4149,6 +4156,10 @@ export function RepoReviewSettingsPanel({
                             },
                             { key: 'runs', label: t('repoReview.tab.runs') },
                             {
+                              key: 'project-graph',
+                              label: t('repoReview.tab.projectGraph'),
+                            },
+                            {
                               key: 'codemap',
                               label: t('repoReview.tab.codemap'),
                             },
@@ -5387,6 +5398,18 @@ export function RepoReviewSettingsPanel({
                           </div>
                         ) : null}
                       </>
+                    )}
+
+                  {/* Tab: CodeMap */}
+                  {!creatingRepository &&
+                    selectedRepository &&
+                    !repositoryEditorOpen &&
+                    repoDetailTab === 'project-graph' && (
+                      <ProjectGraphPanel
+                        apiBase={apiBase}
+                        repositoryId={selectedRepository.id}
+                        repositoryName={selectedRepository.name}
+                      />
                     )}
 
                   {/* Tab: CodeMap */}
