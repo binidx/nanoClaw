@@ -28,6 +28,7 @@ import {
 } from '../db.js';
 import { listAssistantRepoBindings } from '../assistant-repo.js';
 import { createRepositoryBinding } from '../resource-binding-service.js';
+import { getRepository as getRepositoryInfo } from '../repo-review/repository-service.js';
 import {
   type AssistantConfig,
   normalizeAssistantConfig,
@@ -45,6 +46,10 @@ import { getTenantUserId } from '../tenant/tenant-request.js';
 import { listRepositories } from '../db/repositories.js';
 import { dba } from '../db/engine-access.js';
 import { t } from '../i18n/index.js';
+import {
+  buildProjectGraphResourceContext,
+  getProjectGraphOverview,
+} from '../project-graph/project-graph-service.js';
 
 function containsLocalizedFragment(
   message: string,
@@ -276,6 +281,32 @@ async function buildAssistantResourcePayload(
     ),
   });
   const repoBindings = await listAssistantRepoBindings(assistant.id);
+  const repoBindingViews = await Promise.all(
+    repoBindings.map(async (binding) => {
+      const repository = await getRepositoryInfo(binding.repository_id);
+      let projectGraph: ReturnType<typeof buildProjectGraphResourceContext> | null =
+        null;
+      if (repository) {
+        projectGraph = buildProjectGraphResourceContext(
+          await getProjectGraphOverview(repository),
+        );
+      }
+      return {
+        id: binding.id,
+        repositoryId: binding.repository_id,
+        repositoryName: binding.name,
+        repositoryUrl: binding.repo_url,
+        description: binding.description,
+        defaultBranch: binding.default_branch,
+        branchFilter: binding.branch_filter,
+        activeBranch: binding.active_branch,
+        localPath: binding.local_path,
+        worktreePath: binding.worktree_path,
+        enabled: binding.enabled === 1,
+        projectGraph,
+      };
+    }),
+  );
   return {
     assistantId: assistant.id,
     availableSkills: (await Promise.resolve(opts.listAvailableManagedSkills())).map((skill) => ({
@@ -295,18 +326,22 @@ async function buildAssistantResourcePayload(
       envKeyCount: Object.keys(server.env || {}).length,
     })),
     mcpBindings,
-    repoBindings: repoBindings.map((binding) => ({
-      id: binding.id,
-      repositoryName: binding.name,
-      repositoryUrl: binding.repo_url,
-      description: binding.description,
-      defaultBranch: binding.default_branch,
-      branchFilter: binding.branch_filter,
-      activeBranch: binding.active_branch,
-      localPath: binding.local_path,
-      worktreePath: binding.worktree_path,
-      enabled: binding.enabled === 1,
-    })),
+    repoBindings: repoBindingViews,
+    projectGraphResourceHints: {
+      skillIds: Array.from(
+        new Set(repoBindingViews.flatMap((binding) => binding.projectGraph?.skillIds || [])),
+      ),
+      mcpServerIds: Array.from(
+        new Set(
+          repoBindingViews.flatMap(
+            (binding) => binding.projectGraph?.mcpServerIds || [],
+          ),
+        ),
+      ),
+      repositoryIds: repoBindingViews
+        .filter((binding) => binding.projectGraph?.enabled)
+        .map((binding) => binding.repositoryId),
+    },
   };
 }
 

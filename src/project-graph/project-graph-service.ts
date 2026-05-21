@@ -48,6 +48,31 @@ export interface ProjectGraphOverview {
   runs: ProjectGraphRunRecord[];
 }
 
+export interface ProjectGraphResourceContext {
+  repositoryId: string;
+  enabled: boolean;
+  latestRunStatus: string;
+  latestRunAt: string | null;
+  serviceNames: string[];
+  logServiceNames: string[];
+  nacosKeys: string[];
+  owners: string[];
+  businessDomain: string;
+  skillIds: string[];
+  mcpServerIds: string[];
+  downstreamServices: string[];
+  tables: Array<{
+    name: string;
+    relation: string;
+    confidence: ProjectGraphConfidence;
+  }>;
+  documents: Array<{
+    docType: string;
+    title: string;
+    status: string;
+  }>;
+}
+
 export interface ProjectGraphFactInfo {
   id: string;
   kind: string;
@@ -251,6 +276,115 @@ export async function getProjectGraphOverview(
     documents: documents.map(toDocumentInfo),
     runs,
   };
+}
+
+function uniqueStrings(items: string[]): string[] {
+  return Array.from(new Set(items.map((item) => item.trim()).filter(Boolean)));
+}
+
+export function buildProjectGraphResourceContext(
+  overview: ProjectGraphOverview,
+): ProjectGraphResourceContext {
+  const config = overview.config;
+  return {
+    repositoryId: overview.repositoryId,
+    enabled: config.enabled,
+    latestRunStatus: overview.latestRun?.status || 'missing',
+    latestRunAt: overview.latestRun?.created_at || null,
+    serviceNames: uniqueStrings([
+      config.serviceNames.production,
+      config.serviceNames.testing,
+      ...config.systemAliases,
+    ]),
+    logServiceNames: uniqueStrings(config.serviceNames.logServiceNames),
+    nacosKeys: uniqueStrings(config.serviceNames.nacosKeys),
+    owners: uniqueStrings(config.owners),
+    businessDomain: config.businessDomain,
+    skillIds: uniqueStrings(config.skillIds),
+    mcpServerIds: uniqueStrings(config.mcpServerIds),
+    downstreamServices: uniqueStrings(
+      overview.edges
+        .filter((edgeItem) => edgeItem.relation === 'calls')
+        .map((edgeItem) => edgeItem.toName),
+    ).slice(0, 20),
+    tables: overview.facts
+      .filter((factItem) => factItem.kind === 'database_table')
+      .map((factItem) => ({
+        name: factItem.name,
+        relation: String(factItem.value.relation || ''),
+        confidence: factItem.confidence,
+      }))
+      .slice(0, 30),
+    documents: overview.documents
+      .map((documentItem) => ({
+        docType: documentItem.docType,
+        title: documentItem.title,
+        status: documentItem.status,
+      }))
+      .slice(0, 20),
+  };
+}
+
+export function formatProjectGraphContextsForAssistant(
+  contexts: Array<{
+    repositoryName: string;
+    context: ProjectGraphResourceContext;
+  }>,
+): string {
+  const enabled = contexts.filter((item) => item.context.enabled);
+  if (!enabled.length) return '';
+  const lines = [
+    'Project graph context is available for bound repositories. Treat these entries as repository-scoped routing, runtime, data, and extension hints. Verify low-confidence code-derived facts before acting.',
+  ];
+  for (const item of enabled) {
+    const context = item.context;
+    lines.push(`- Repository: ${item.repositoryName}`);
+    if (context.serviceNames.length) {
+      lines.push(`  Services: ${context.serviceNames.join(', ')}`);
+    }
+    if (context.owners.length || context.businessDomain) {
+      lines.push(
+        `  Ownership: ${[
+          context.businessDomain ? `domain=${context.businessDomain}` : '',
+          context.owners.length ? `owners=${context.owners.join(', ')}` : '',
+        ]
+          .filter(Boolean)
+          .join('; ')}`,
+      );
+    }
+    if (context.logServiceNames.length) {
+      lines.push(`  Log service names: ${context.logServiceNames.join(', ')}`);
+    }
+    if (context.nacosKeys.length) {
+      lines.push(`  Config keys: ${context.nacosKeys.join(', ')}`);
+    }
+    if (context.downstreamServices.length) {
+      lines.push(
+        `  Downstream services: ${context.downstreamServices.join(', ')}`,
+      );
+    }
+    if (context.tables.length) {
+      lines.push(
+        `  Tables: ${context.tables
+          .slice(0, 12)
+          .map((table) => `${table.name}(${table.relation || 'related'})`)
+          .join(', ')}`,
+      );
+    }
+    if (context.skillIds.length || context.mcpServerIds.length) {
+      lines.push(
+        `  Suggested extensions: ${[
+          context.skillIds.length ? `skills=${context.skillIds.join(', ')}` : '',
+          context.mcpServerIds.length
+            ? `mcp=${context.mcpServerIds.join(', ')}`
+            : '',
+        ]
+          .filter(Boolean)
+          .join('; ')}`,
+      );
+    }
+  }
+  return lines.join('\n');
 }
 
 function json(value: unknown): string {

@@ -420,6 +420,12 @@ function normalizeAssistantResources(
           typeof (entry as { id?: unknown }).id === 'string',
       )
     : [];
+  const projectGraphResourceHints =
+    record.projectGraphResourceHints &&
+    typeof record.projectGraphResourceHints === 'object' &&
+    !Array.isArray(record.projectGraphResourceHints)
+      ? (record.projectGraphResourceHints as AssistantResources['projectGraphResourceHints'])
+      : undefined;
   return {
     assistantId:
       typeof record.assistantId === 'string' && record.assistantId.trim()
@@ -430,6 +436,7 @@ function normalizeAssistantResources(
     availableMcpTemplates,
     mcpBindings,
     repoBindings,
+    projectGraphResourceHints,
   };
 }
 
@@ -1753,6 +1760,7 @@ export function AssistantsPage({
     );
     const bindings = selectedResources?.mcpBindings || [];
     const repoBindings = selectedResources?.repoBindings || [];
+    const projectGraphHints = selectedResources?.projectGraphResourceHints;
     const pendingSecretBindings = bindings.filter(
       (binding) =>
         !binding.secretStatus.configured || binding.usesTemplateEnvFallback,
@@ -1792,6 +1800,10 @@ export function AssistantsPage({
             <div className="assistant-modal-summary-card">
               <strong>{repoBindingCount}</strong>
               <span>{t('assistants.仓库绑定')}</span>
+            </div>
+            <div className="assistant-modal-summary-card">
+              <strong>{projectGraphHints?.repositoryIds.length || 0}</strong>
+              <span>{t('assistants.项目图谱')}</span>
             </div>
             <div className="assistant-modal-summary-card">
               <strong>{configuredSecretCount}</strong>
@@ -2275,6 +2287,45 @@ export function AssistantsPage({
                         binding.localPath ||
                         t('assistants.未生成')}
                     </span>
+                    {binding.projectGraph?.enabled ? (
+                      <>
+                        <span>
+                          {t('assistants.项目图谱：')}
+                          {binding.projectGraph.latestRunStatus}
+                        </span>
+                        {binding.projectGraph.serviceNames.length ? (
+                          <span>
+                            {t('assistants.服务：')}
+                            {binding.projectGraph.serviceNames.join(', ')}
+                          </span>
+                        ) : null}
+                        {binding.projectGraph.skillIds.length ||
+                        binding.projectGraph.mcpServerIds.length ? (
+                          <span>
+                            {t('assistants.推荐扩展：')}
+                            {[
+                              binding.projectGraph.skillIds.length
+                                ? `skills ${binding.projectGraph.skillIds.join(', ')}`
+                                : '',
+                              binding.projectGraph.mcpServerIds.length
+                                ? `mcp ${binding.projectGraph.mcpServerIds.join(', ')}`
+                                : '',
+                            ]
+                              .filter(Boolean)
+                              .join(' · ')}
+                          </span>
+                        ) : null}
+                        {binding.projectGraph.tables.length ? (
+                          <span>
+                            {t('assistants.数据表：')}
+                            {binding.projectGraph.tables
+                              .slice(0, 6)
+                              .map((table) => table.name)
+                              .join(', ')}
+                          </span>
+                        ) : null}
+                      </>
+                    ) : null}
                   </div>
                 </div>
               ))}

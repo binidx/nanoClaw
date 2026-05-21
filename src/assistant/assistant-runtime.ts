@@ -4,6 +4,12 @@ import {
   listAssistantRepoBindings,
   type AssistantRepoBinding,
 } from './assistant-repo.js';
+import { getRepository as getRepositoryInfo } from '../repo-review/repository-service.js';
+import {
+  buildProjectGraphResourceContext,
+  formatProjectGraphContextsForAssistant,
+  getProjectGraphOverview,
+} from '../project-graph/project-graph-service.js';
 import {
   type AiProvider,
   type AssistantSummary,
@@ -274,6 +280,27 @@ export async function resolveAssistantRuntimeConfig(
     .map((b) => b.worktree_path || b.local_path)
     .filter(Boolean) as string[];
   const repoProjectRoot = repoBindingDirectories[0] || undefined;
+  const projectGraphContexts: Array<{
+    repositoryName: string;
+    context: ReturnType<typeof buildProjectGraphResourceContext>;
+  }> = [];
+  for (const binding of enabledRepoBindings) {
+    try {
+      const repository = await getRepositoryInfo(binding.repository_id);
+      if (!repository) continue;
+      projectGraphContexts.push({
+        repositoryName: repository.name,
+        context: buildProjectGraphResourceContext(
+          await getProjectGraphOverview(repository),
+        ),
+      });
+    } catch {
+      // Project graph context is optional; repo roots should still resolve.
+    }
+  }
+  const projectGraphInstructions = formatProjectGraphContextsForAssistant(
+    projectGraphContexts,
+  );
 
   const assistantProviderIdStr = assistant?.config.providerId?.trim() || null;
   const effectiveProviderId = convProviderId || assistantProviderIdStr;
@@ -307,10 +334,15 @@ export async function resolveAssistantRuntimeConfig(
       options.disableSoul
         ? undefined
         : await buildConversationSoulSystemPrompt(options.soulPrompt) || undefined,
-    instructionsAppend: await buildResolvedAssistantInstructionsAppend({
-      assistant,
-      customInstructions: group.agentConfig?.customInstructions,
-    }),
+    instructionsAppend: [
+      await buildResolvedAssistantInstructionsAppend({
+        assistant,
+        customInstructions: group.agentConfig?.customInstructions,
+      }),
+      projectGraphInstructions,
+    ]
+      .filter(Boolean)
+      .join('\n\n') || undefined,
     instructionsMode: assistant.config.rules.mode || 'append',
     providerAlias: provider?.alias || null,
   };

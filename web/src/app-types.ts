@@ -778,6 +778,7 @@ export interface AssistantMcpBindingSummary {
 
 export interface AssistantRepoBindingSummary {
   id: string;
+  repositoryId: string;
   repositoryName: string;
   repositoryUrl: string;
   description?: string | null;
@@ -787,6 +788,7 @@ export interface AssistantRepoBindingSummary {
   localPath: string | null;
   worktreePath: string | null;
   enabled: boolean;
+  projectGraph?: ProjectGraphResourceContext | null;
 }
 
 export interface AssistantResources {
@@ -796,6 +798,11 @@ export interface AssistantResources {
   availableMcpTemplates: AssistantMcpTemplateSummary[];
   mcpBindings: AssistantMcpBindingSummary[];
   repoBindings: AssistantRepoBindingSummary[];
+  projectGraphResourceHints?: {
+    skillIds: string[];
+    mcpServerIds: string[];
+    repositoryIds: string[];
+  };
 }
 
 export interface AssistantBindingSecretsResponse {
@@ -1287,6 +1294,31 @@ export interface ProjectGraphOverview {
   edges: ProjectGraphEdge[];
   documents: ProjectGraphDocument[];
   runs: ProjectGraphRun[];
+}
+
+export interface ProjectGraphResourceContext {
+  repositoryId: string;
+  enabled: boolean;
+  latestRunStatus: string;
+  latestRunAt: string | null;
+  serviceNames: string[];
+  logServiceNames: string[];
+  nacosKeys: string[];
+  owners: string[];
+  businessDomain: string;
+  skillIds: string[];
+  mcpServerIds: string[];
+  downstreamServices: string[];
+  tables: Array<{
+    name: string;
+    relation: string;
+    confidence: 'high' | 'medium' | 'low';
+  }>;
+  documents: Array<{
+    docType: string;
+    title: string;
+    status: string;
+  }>;
 }
 
 export interface StatusLocalCapability {

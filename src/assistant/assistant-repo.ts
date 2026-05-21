@@ -25,6 +25,7 @@ import type { RepositoryRecord } from '../db/repositories.js';
 export interface AssistantRepoBinding {
   id: string;
   assistant_id: string;
+  repository_id: string;
   repo_url: string;
   name: string;
   description: string | null;
@@ -78,6 +79,7 @@ function toBinding(
   return {
     id: rb.id,
     assistant_id: rb.owner_id,
+    repository_id: rb.resource_id,
     repo_url: repo?.clone_url ?? '',
     name: config.display_name ?? repo?.name ?? '',
     description: config.description ?? null,
