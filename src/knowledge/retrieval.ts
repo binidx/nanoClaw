@@ -32,6 +32,19 @@ export interface KnowledgeSearchResult {
   chunkIndex: number;
   filename?: string;
   kbName?: string;
+  headingPath?: string | null;
+  contextLabel?: string | null;
+  chunkType?: string | null;
+  adjacentChunks?: Array<{
+    chunkId: string;
+    documentId: string;
+    content: string;
+    chunkIndex: number;
+    direction: 'previous' | 'next';
+    headingPath?: string | null;
+    contextLabel?: string | null;
+    chunkType?: string | null;
+  }>;
   docPath?: string | null;
   publishedAt?: string | null;
   docSummary?: string | null;
@@ -874,6 +887,58 @@ async function enrichSearchResults(
   }
 }
 
+async function attachAdjacentChunkContext(
+  results: KnowledgeSearchResult[],
+  chunkLinkMap: Map<string, { prevChunkId: string | null; nextChunkId: string | null }>,
+): Promise<void> {
+  if (results.length === 0 || chunkLinkMap.size === 0) return;
+
+  const resultIds = new Set(results.map((result) => result.chunkId));
+  const adjacentIds = new Set<string>();
+  for (const result of results) {
+    const links = chunkLinkMap.get(result.chunkId);
+    if (!links) continue;
+    if (links.prevChunkId && !resultIds.has(links.prevChunkId)) adjacentIds.add(links.prevChunkId);
+    if (links.nextChunkId && !resultIds.has(links.nextChunkId)) adjacentIds.add(links.nextChunkId);
+  }
+  if (adjacentIds.size === 0) return;
+
+  const adjacentRows = await getKnowledgeChunksByIds([...adjacentIds]);
+  const adjacentMap = new Map(adjacentRows.map((chunk) => [chunk.id, chunk]));
+  for (const result of results) {
+    const links = chunkLinkMap.get(result.chunkId);
+    if (!links) continue;
+    const adjacentChunks: NonNullable<KnowledgeSearchResult['adjacentChunks']> = [];
+    const previous = links.prevChunkId ? adjacentMap.get(links.prevChunkId) : null;
+    if (previous && previous.document_id === result.documentId) {
+      adjacentChunks.push({
+        chunkId: previous.id,
+        documentId: previous.document_id,
+        content: previous.content,
+        chunkIndex: previous.chunk_index,
+        direction: 'previous',
+        headingPath: previous.heading_path ?? null,
+        contextLabel: previous.context_label ?? null,
+        chunkType: previous.chunk_type ?? 'paragraph',
+      });
+    }
+    const next = links.nextChunkId ? adjacentMap.get(links.nextChunkId) : null;
+    if (next && next.document_id === result.documentId) {
+      adjacentChunks.push({
+        chunkId: next.id,
+        documentId: next.document_id,
+        content: next.content,
+        chunkIndex: next.chunk_index,
+        direction: 'next',
+        headingPath: next.heading_path ?? null,
+        contextLabel: next.context_label ?? null,
+        chunkType: next.chunk_type ?? 'paragraph',
+      });
+    }
+    if (adjacentChunks.length > 0) result.adjacentChunks = adjacentChunks;
+  }
+}
+
 export async function searchKnowledge(
   query: string,
   opts?: { kbIds?: string[]; topK?: number; minScore?: number },
@@ -1041,8 +1106,13 @@ export async function searchKnowledge(
     .filter((chunk): chunk is NonNullable<typeof chunk> => Boolean(chunk));
 
   const output: KnowledgeSearchResult[] = [];
+  const chunkLinkMap = new Map<string, { prevChunkId: string | null; nextChunkId: string | null }>();
   for (const c of chunks) {
     if (c.kb_id && !enabledKbIds.has(c.kb_id)) continue;
+    chunkLinkMap.set(c.id, {
+      prevChunkId: c.prev_chunk_id ?? null,
+      nextChunkId: c.next_chunk_id ?? null,
+    });
     output.push({
       chunkId: c.id,
       documentId: c.document_id,
@@ -1051,10 +1121,14 @@ export async function searchKnowledge(
       chunkIndex: c.chunk_index,
       filename: c.filename ?? undefined,
       kbName: c.kb_name ?? undefined,
+      headingPath: c.heading_path ?? null,
+      contextLabel: c.context_label ?? null,
+      chunkType: c.chunk_type ?? 'paragraph',
     });
   }
 
   output.sort((a, b) => b.score - a.score);
+  await attachAdjacentChunkContext(output, chunkLinkMap);
   await enrichSearchResults(output, kbEnhancementMap);
   const wikiResults = await wikiPromise;
   const totalMs = Date.now() - startedAt;

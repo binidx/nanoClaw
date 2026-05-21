@@ -139,6 +139,12 @@
 - 新增 `/api/retrieval/search` 与 `/internal/retrieval/search`，保留旧 `knowledge/search` 兼容路径；内部路由复用 agent 可访问 KB 解析。
 - 新增 `src/rag-eval/*` 的 Ragas-style 本地指标工具和对应测试，作为后续评测集 / run 持久化的基础。
 
+## [2026-05-21] optimize | 知识库 RAG 第二轮结构化 chunk 上下文
+
+- `knowledge_chunks` 增加 `heading_path`、`context_label`、`prev_chunk_id`、`next_chunk_id`、`parent_chunk_id`、`chunk_type`，三套数据库 schema 与启动迁移同步补齐。
+- `src/knowledge/chunker.ts` 开始识别 Markdown 标题、列表、表格和代码块，索引管线写入标题路径和相邻 chunk 指针，embedding 文本也带上文档与 chunk 结构上下文。
+- `searchKnowledge()` 返回命中 chunk 的结构元数据和同文档前后相邻片段；统一 retrieval 与 Agent 知识库工具会把这些上下文交给 LLM，作为不引入额外 rerank 模型的上下文增强。
+
 ## [2026-05-18] update | 代码智能图谱优化文档
 
 - 新增 `docs/代码智能图谱优化文档.md`，系统说明 CodeMap / CodeIndex / CodeLLM 的重新分工、ProjectGraph 检索层设计、当前效果与 graphify 的差距，以及面向项目问答 / Repo Review / 工作流复用的后续演进路线。

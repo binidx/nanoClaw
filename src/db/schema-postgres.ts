@@ -1366,6 +1366,12 @@ export function buildPostgresSchema(autoPk: string): string {
       chunk_index INT NOT NULL,
       content TEXT NOT NULL,
       token_count INT NOT NULL DEFAULT 0,
+      heading_path TEXT,
+      context_label TEXT,
+      prev_chunk_id TEXT,
+      next_chunk_id TEXT,
+      parent_chunk_id TEXT,
+      chunk_type TEXT NOT NULL DEFAULT 'paragraph',
       created_at TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_knowledge_chunks_doc
@@ -3619,5 +3625,23 @@ export async function runPostgresMigrations(engine: DbEngine): Promise<void> {
   );
   await safeMigrate(
     `ALTER TABLE knowledge_bases ADD COLUMN IF NOT EXISTS overview_dirty_at TEXT`,
+  );
+  await safeMigrate(
+    `ALTER TABLE knowledge_chunks ADD COLUMN IF NOT EXISTS heading_path TEXT`,
+  );
+  await safeMigrate(
+    `ALTER TABLE knowledge_chunks ADD COLUMN IF NOT EXISTS context_label TEXT`,
+  );
+  await safeMigrate(
+    `ALTER TABLE knowledge_chunks ADD COLUMN IF NOT EXISTS prev_chunk_id TEXT`,
+  );
+  await safeMigrate(
+    `ALTER TABLE knowledge_chunks ADD COLUMN IF NOT EXISTS next_chunk_id TEXT`,
+  );
+  await safeMigrate(
+    `ALTER TABLE knowledge_chunks ADD COLUMN IF NOT EXISTS parent_chunk_id TEXT`,
+  );
+  await safeMigrate(
+    `ALTER TABLE knowledge_chunks ADD COLUMN IF NOT EXISTS chunk_type TEXT NOT NULL DEFAULT 'paragraph'`,
   );
 }

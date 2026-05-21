@@ -23,6 +23,7 @@ import {
   computeWikiTitleMultiplier,
   searchKnowledge,
 } from './knowledge/retrieval.js';
+import { chunkText } from './knowledge/chunker.js';
 import {
   _initTestDatabase,
   createKnowledgeBase,
@@ -161,5 +162,152 @@ describe('knowledge wiki ranking helpers', () => {
       }),
     ]);
     expect(fakeEmbeddingProvider.embedQuery).toHaveBeenCalled();
+  });
+
+  it('preserves markdown heading context while chunking', () => {
+    const chunks = chunkText(
+      [
+        '# 产品手册',
+        '',
+        '## 退款规则',
+        '',
+        '退款申请必须在 15 个工作日内提交。',
+        '',
+        '- 需要订单号',
+        '- 需要支付凭证',
+      ].join('\n'),
+      { chunkSize: 40, chunkOverlap: 0 },
+    );
+
+    expect(chunks).toContainEqual(expect.objectContaining({
+      headingPath: '产品手册',
+      chunkType: 'heading',
+    }));
+    expect(chunks).toContainEqual(expect.objectContaining({
+      headingPath: '产品手册 > 退款规则',
+      content: expect.stringContaining('退款申请必须在 15 个工作日内提交'),
+    }));
+    expect(chunks.some((chunk) => chunk.chunkType === 'list')).toBe(true);
+  });
+
+  it('attaches adjacent chunks and heading metadata to retrieved chunks', async () => {
+    _initTestDatabase();
+    await createKnowledgeSearchEngine(getActiveEngine().dialect).initialize(getActiveEngine());
+    await createProvider({
+      id: 'embed-provider',
+      alias: 'Fake Embedding',
+      type: 'openai_compatible',
+      capability: 'embedding',
+      api_key: 'fake-key',
+      base_url: 'https://embedding.example.com/v1',
+      model: 'Qwen3-Embedding-8B-4bit-DWQ',
+      dimensions: 2,
+      extra_config: null,
+      is_default: 0,
+      user_id: '__system__',
+      visibility: 'private',
+    });
+    await createKnowledgeBase({
+      ...BASE_KB,
+      id: 'kb-adjacent',
+      name: 'Adjacent KB',
+    });
+    await createKnowledgeDocument({
+      ...docRecord('kb-adjacent'),
+      id: 'doc-adjacent',
+      filename: 'refund-policy.md',
+      chunk_count: 3,
+    });
+    await insertKnowledgeChunks([
+      {
+        id: 'chunk-prev',
+        document_id: 'doc-adjacent',
+        chunk_index: 0,
+        content: '退款政策适用于线上订单。',
+        token_count: 16,
+        heading_path: '产品手册 > 退款规则',
+        context_label: '产品手册 > 退款规则',
+        prev_chunk_id: null,
+        next_chunk_id: 'chunk-hit',
+        parent_chunk_id: null,
+        chunk_type: 'paragraph',
+        created_at: '2026-05-21T00:00:00.000Z',
+      },
+      {
+        id: 'chunk-hit',
+        document_id: 'doc-adjacent',
+        chunk_index: 1,
+        content: '退款申请必须在 15 个工作日内提交。',
+        token_count: 20,
+        heading_path: '产品手册 > 退款规则',
+        context_label: '产品手册 > 退款规则',
+        prev_chunk_id: 'chunk-prev',
+        next_chunk_id: 'chunk-next',
+        parent_chunk_id: null,
+        chunk_type: 'paragraph',
+        created_at: '2026-05-21T00:00:00.000Z',
+      },
+      {
+        id: 'chunk-next',
+        document_id: 'doc-adjacent',
+        chunk_index: 2,
+        content: '超过时限的申请会被自动拒绝。',
+        token_count: 18,
+        heading_path: '产品手册 > 退款规则',
+        context_label: '产品手册 > 退款规则',
+        prev_chunk_id: 'chunk-hit',
+        next_chunk_id: null,
+        parent_chunk_id: null,
+        chunk_type: 'paragraph',
+        created_at: '2026-05-21T00:00:00.000Z',
+      },
+    ]);
+    await upsertEmbeddingVector(
+      'vec-prev',
+      'knowledge',
+      'chunk-prev',
+      'embed-provider',
+      'hash-prev',
+      serializeEmbedding([0, 1]),
+      2,
+      'fake-embedding',
+    );
+    await upsertEmbeddingVector(
+      'vec-hit',
+      'knowledge',
+      'chunk-hit',
+      'embed-provider',
+      'hash-hit',
+      serializeEmbedding([1, 0]),
+      2,
+      'fake-embedding',
+    );
+    await upsertEmbeddingVector(
+      'vec-next',
+      'knowledge',
+      'chunk-next',
+      'embed-provider',
+      'hash-next',
+      serializeEmbedding([0, 1]),
+      2,
+      'fake-embedding',
+    );
+
+    const result = await searchKnowledge('完全不匹配的关键词', {
+      kbIds: ['kb-adjacent'],
+      topK: 1,
+      minScore: 0.2,
+    });
+
+    expect(result.chunks).toEqual([
+      expect.objectContaining({
+        chunkId: 'chunk-hit',
+        headingPath: '产品手册 > 退款规则',
+        adjacentChunks: [
+          expect.objectContaining({ chunkId: 'chunk-prev', direction: 'previous' }),
+          expect.objectContaining({ chunkId: 'chunk-next', direction: 'next' }),
+        ],
+      }),
+    ]);
   });
 });

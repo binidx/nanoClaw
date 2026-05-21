@@ -1620,12 +1620,26 @@ Use knowledge_list first if you're unsure which knowledge base to search.${kbHin
         const chunkResults: Array<{
           chunkId: string; content: string; score: number;
           filename?: string; kbName?: string; chunkIndex: number;
+          headingPath?: string | null; contextLabel?: string | null; chunkType?: string | null;
+          adjacentChunks?: Array<{
+            content: string;
+            chunkIndex: number;
+            direction: 'previous' | 'next';
+            headingPath?: string | null;
+          }>;
         }> = Array.isArray(rawJson)
           ? rawJson
           : (payload && Array.isArray(payload.chunks))
             ? payload.chunks as Array<{
               chunkId: string; content: string; score: number;
               filename?: string; kbName?: string; chunkIndex: number;
+              headingPath?: string | null; contextLabel?: string | null; chunkType?: string | null;
+              adjacentChunks?: Array<{
+                content: string;
+                chunkIndex: number;
+                direction: 'previous' | 'next';
+                headingPath?: string | null;
+              }>;
             }>
             : [];
         if (wikiResults.length === 0 && chunkResults.length === 0) {
@@ -1650,9 +1664,15 @@ Use knowledge_list first if you're unsure which knowledge base to search.${kbHin
         }
         if (chunkResults.length > 0) {
           const additionalChunks = chunkResults.filter((result) => !evidenceChunkIds.has(result.chunkId));
-          const formattedChunks = additionalChunks.map((r, i) =>
-            `[C${i + 1}] (score: ${r.score.toFixed(3)}) [${r.kbName || 'unknown'}/${r.filename || 'unknown'}]\n${r.content}`,
-          ).join('\n\n---\n\n');
+          const formattedChunks = additionalChunks.map((r, i) => {
+            const adjacentText = Array.isArray(r.adjacentChunks) && r.adjacentChunks.length > 0
+              ? `\nAdjacent context:\n${r.adjacentChunks.map((chunk) =>
+                `  - ${chunk.direction === 'previous' ? 'Previous' : 'Next'} #${Number(chunk.chunkIndex) + 1}${chunk.headingPath ? ` (${chunk.headingPath})` : ''}\n    ${chunk.content}`,
+              ).join('\n')}`
+              : '';
+            const heading = r.headingPath ? ` | heading=${r.headingPath}` : '';
+            return `[C${i + 1}] (score: ${r.score.toFixed(3)}) [${r.kbName || 'unknown'}/${r.filename || 'unknown'}${heading}]\n${r.content}${adjacentText}`;
+          }).join('\n\n---\n\n');
           if (formattedChunks) {
             sections.push(`Additional source chunks:\n\n${formattedChunks}`);
           }

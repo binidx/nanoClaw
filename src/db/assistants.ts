@@ -1513,13 +1513,27 @@ export async function insertKnowledgeChunks(
   if (chunks.length === 0) return;
   const BATCH = 50;
   const sql = adaptSql(`INSERT INTO knowledge_chunks
-    (id, document_id, chunk_index, content, token_count, created_at)
-    VALUES (?, ?, ?, ?, ?, ?)`);
+    (id, document_id, chunk_index, content, token_count, heading_path, context_label,
+     prev_chunk_id, next_chunk_id, parent_chunk_id, chunk_type, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
   for (let i = 0; i < chunks.length; i += BATCH) {
     const batch = chunks.slice(i, i + BATCH);
     await Promise.all(
       batch.map((c) =>
-        dba.prepare(sql).run(c.id, c.document_id, c.chunk_index, c.content, c.token_count, c.created_at),
+        dba.prepare(sql).run(
+          c.id,
+          c.document_id,
+          c.chunk_index,
+          c.content,
+          c.token_count,
+          c.heading_path ?? null,
+          c.context_label ?? null,
+          c.prev_chunk_id ?? null,
+          c.next_chunk_id ?? null,
+          c.parent_chunk_id ?? null,
+          c.chunk_type || 'paragraph',
+          c.created_at,
+        ),
       ),
     );
   }

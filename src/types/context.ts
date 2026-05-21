@@ -618,6 +618,12 @@ export interface KnowledgeChunkRecord {
   chunk_index: number;
   content: string;
   token_count: number;
+  heading_path?: string | null;
+  context_label?: string | null;
+  prev_chunk_id?: string | null;
+  next_chunk_id?: string | null;
+  parent_chunk_id?: string | null;
+  chunk_type?: string | null;
   created_at: string;
 }
 

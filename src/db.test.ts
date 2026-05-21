@@ -555,6 +555,18 @@ describe('schema migrations', () => {
       expect(knowledgeDocuments).toContain(column);
     }
 
+    const knowledgeChunks = tableSql('knowledge_chunks');
+    for (const column of [
+      `heading_path TEXT`,
+      `context_label TEXT`,
+      `prev_chunk_id TEXT`,
+      `next_chunk_id TEXT`,
+      `parent_chunk_id TEXT`,
+      `chunk_type TEXT NOT NULL DEFAULT 'paragraph'`,
+    ]) {
+      expect(knowledgeChunks).toContain(column);
+    }
+
     expect(schema).toContain(
       'CREATE INDEX IF NOT EXISTS idx_chats_user_id',
     );

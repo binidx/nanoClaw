@@ -1331,6 +1331,12 @@ export function createSchema(database: Database.Database): void {
       chunk_index INTEGER NOT NULL,
       content TEXT NOT NULL,
       token_count INTEGER NOT NULL DEFAULT 0,
+      heading_path TEXT,
+      context_label TEXT,
+      prev_chunk_id TEXT,
+      next_chunk_id TEXT,
+      parent_chunk_id TEXT,
+      chunk_type TEXT NOT NULL DEFAULT 'paragraph',
       created_at TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_knowledge_chunks_doc
@@ -4344,6 +4350,23 @@ export function createSchema(database: Database.Database): void {
     );
   } catch {
     /* column already exists */
+  }
+
+  // ── Knowledge chunks: structural context metadata for better RAG assembly ──
+  const knowledgeChunkContextColumns = [
+    'heading_path TEXT',
+    'context_label TEXT',
+    'prev_chunk_id TEXT',
+    'next_chunk_id TEXT',
+    'parent_chunk_id TEXT',
+    "chunk_type TEXT NOT NULL DEFAULT 'paragraph'",
+  ];
+  for (const column of knowledgeChunkContextColumns) {
+    try {
+      database.exec(`ALTER TABLE knowledge_chunks ADD COLUMN ${column}`);
+    } catch {
+      /* column already exists */
+    }
   }
 
   // ── Wiki page: human-edit lock (PR Q-Edit) ──

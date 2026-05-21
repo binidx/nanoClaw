@@ -339,8 +339,19 @@ function deduplicateChunks(chunks: import('./chunker.js').TextChunk[], docId: st
       chunk_index: c.index,
       content: c.content,
       token_count: c.tokenEstimate,
+      heading_path: c.headingPath ?? null,
+      context_label: c.contextLabel ?? c.headingPath ?? null,
+      prev_chunk_id: null,
+      next_chunk_id: null,
+      parent_chunk_id: null,
+      chunk_type: c.chunkType ?? 'paragraph',
       created_at: now,
     });
+  }
+
+  for (let i = 0; i < records.length; i++) {
+    records[i].prev_chunk_id = records[i - 1]?.id ?? null;
+    records[i].next_chunk_id = records[i + 1]?.id ?? null;
   }
 
   if (records.length < chunks.length) {
@@ -351,13 +362,16 @@ function deduplicateChunks(chunks: import('./chunker.js').TextChunk[], docId: st
 
 function buildKnowledgeChunkEmbeddingText(
   doc: Pick<KnowledgeDocumentRecord, 'filename' | 'doc_path' | 'source_url' | 'published_at'>,
-  chunk: Pick<KnowledgeChunkRecord, 'content' | 'chunk_index'>,
+  chunk: Pick<KnowledgeChunkRecord, 'content' | 'chunk_index' | 'heading_path' | 'context_label' | 'chunk_type'>,
 ): string {
   const contextLines = [
     doc.filename ? `Document: ${doc.filename}` : null,
     doc.doc_path ? `Path: ${doc.doc_path}` : null,
     doc.source_url ? `Source URL: ${doc.source_url}` : null,
     doc.published_at ? `Published at: ${doc.published_at}` : null,
+    chunk.heading_path ? `Heading: ${chunk.heading_path}` : null,
+    chunk.context_label ? `Context: ${chunk.context_label}` : null,
+    chunk.chunk_type ? `Chunk type: ${chunk.chunk_type}` : null,
     `Chunk: ${chunk.chunk_index + 1}`,
   ].filter((line): line is string => Boolean(line));
   return `${contextLines.join('\n')}\n\n${chunk.content}`;

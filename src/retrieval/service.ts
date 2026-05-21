@@ -59,6 +59,20 @@ function normalizeMemoryScope(input?: RetrievalMemoryScope): RetrievalMemoryScop
   };
 }
 
+function buildKnowledgeCandidateContent(chunk: Awaited<ReturnType<typeof searchKnowledge>>['chunks'][number]): string {
+  const sections: string[] = [];
+  if (chunk.headingPath) sections.push(`[Heading] ${chunk.headingPath}`);
+  if (chunk.contextLabel && chunk.contextLabel !== chunk.headingPath) {
+    sections.push(`[Context] ${chunk.contextLabel}`);
+  }
+  const previous = (chunk.adjacentChunks ?? []).find((adjacent) => adjacent.direction === 'previous');
+  const next = (chunk.adjacentChunks ?? []).find((adjacent) => adjacent.direction === 'next');
+  if (previous) sections.push(`[Previous chunk]\n${previous.content}`);
+  sections.push(`[Matched chunk]\n${chunk.content}`);
+  if (next) sections.push(`[Next chunk]\n${next.content}`);
+  return sections.join('\n\n');
+}
+
 async function collectKnowledgeCandidates(input: {
   queryVariant: string;
   kbIds?: string[];
@@ -80,7 +94,7 @@ async function collectKnowledgeCandidates(input: {
       source: 'knowledge_chunk',
       sourceType: 'knowledge_chunk',
       title: chunk.filename,
-      content: chunk.content,
+      content: buildKnowledgeCandidateContent(chunk),
       rawScore: chunk.score,
       score: chunk.score,
       rank,
@@ -91,6 +105,10 @@ async function collectKnowledgeCandidates(input: {
         chunkIndex: chunk.chunkIndex,
         filename: chunk.filename,
         kbName: chunk.kbName,
+        headingPath: chunk.headingPath,
+        contextLabel: chunk.contextLabel,
+        chunkType: chunk.chunkType,
+        adjacentChunks: chunk.adjacentChunks,
         docPath: chunk.docPath,
         publishedAt: chunk.publishedAt,
         docSummary: chunk.docSummary,
