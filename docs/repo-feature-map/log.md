@@ -10,6 +10,7 @@
 - 扫描器补充 Feign/Dubbo/HTTP 服务依赖候选和 SQL/MyBatis/JPA 表资产候选，均以 `code_index` 来源、置信度和文件证据入图，供后续工单诊断人工确认。
 - Assistant 资源层开始消费仓库项目图谱：仓库绑定返回项目图谱摘要、推荐 Skill/MCP、服务/配置/表线索，并在运行时把启用的项目图谱作为通用上下文注入，供任意助手能力组合使用。
 - Assistant 资源页新增项目图谱推荐资源同步：把仓库图谱配置的 Skills/MCP 按可用性状态同步为助手底层能力绑定，未知或停用资源只提示不自动创建，保持通用积木式组合。
+- 新增 `/api/capabilities/catalog` 通用能力目录，把 Assistant、Repository、Project Graph、Skills、MCP 与 Workflow 编译成节点和关系，作为后续任意页面/Workflow 拼装底层能力的统一入口。
 
 ## [2026-05-21] update | Workflow 条件路由与 runner profile 迁移入口
 
