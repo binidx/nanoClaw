@@ -63,11 +63,22 @@ function buildUserMemoryDocument(memory: UserMemoryRecord): MemoryDocumentRecord
   };
 }
 
+function isCurrentUserMemory(memory: UserMemoryRecord, queryTime = new Date().toISOString()): boolean {
+  if (memory.valid_from && memory.valid_from > queryTime) return false;
+  if (memory.valid_to && memory.valid_to <= queryTime) return false;
+  if (memory.expires_at && memory.expires_at <= queryTime) return false;
+  return true;
+}
+
 export async function projectUserMemoryToDocument(
   memoryId: string,
 ): Promise<MemoryDocumentRecord | null> {
   const memory = await getUserMemoryById(memoryId);
   if (!memory) return null;
+  if (!isCurrentUserMemory(memory)) {
+    await deleteUserMemoryProjection(memoryId);
+    return null;
+  }
   const document = buildUserMemoryDocument(memory);
   await upsertMemoryDocuments([document]);
   return document;
@@ -89,6 +100,7 @@ export async function repairUserMemoryProjections(options?: {
   const memories = await listUserMemoriesForProjectionRepair({
     userId,
     limit: options?.limit,
+    timeScope: 'current',
   });
   const projectionDocumentsBefore = await listUserMemoryProjectionDocuments({ userId });
   const existingProjectionPathRefs = new Set(

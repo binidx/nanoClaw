@@ -425,6 +425,15 @@ describe('internal memory routes', () => {
       updated_at: '2026-05-20T00:00:00.000Z',
     };
     await addUserMemory(memory);
+    await addUserMemory({
+      ...memory,
+      id: 'projection-expired-memory',
+      content: 'This older preference should no longer be searchable.',
+      valid_from: '2026-05-01T00:00:00.000Z',
+      valid_to: '2026-05-20T00:00:00.000Z',
+      created_at: '2026-05-01T00:00:00.000Z',
+      updated_at: '2026-05-01T00:00:00.000Z',
+    });
     await upsertMemoryDocuments([
       {
         doc_id: 'user-memory:orphan-projection',
@@ -438,14 +447,26 @@ describe('internal memory routes', () => {
         metadata_json: JSON.stringify({ memoryId: 'orphan-projection' }),
         updated_at: '2026-05-20T00:01:00.000Z',
       },
+      {
+        doc_id: 'user-memory:projection-expired-memory',
+        scope: 'global',
+        owner_type: 'global',
+        owner_id: 'projection-user',
+        path_ref: 'user_memory:projection-expired-memory',
+        source_type: 'user_memory',
+        title: 'expired user memory',
+        body: 'This projection has a backing user memory, but it is no longer current.',
+        metadata_json: JSON.stringify({ memoryId: 'projection-expired-memory' }),
+        updated_at: '2026-05-20T00:02:00.000Z',
+      },
     ]);
 
     const beforeStats = await getMemorySearchStats();
     expect(beforeStats.userMemoryProjection).toMatchObject({
       sourceMemories: 1,
-      projectedDocuments: 1,
+      projectedDocuments: 2,
       missingDocuments: 1,
-      orphanDocuments: 1,
+      orphanDocuments: 2,
     });
 
     const app = express();
@@ -480,7 +501,7 @@ describe('internal memory routes', () => {
       ok: true,
       checkedMemories: 1,
       projectedDocuments: 1,
-      deletedOrphans: 1,
+      deletedOrphans: 2,
       after: {
         missingDocuments: 0,
         orphanDocuments: 0,
@@ -513,6 +534,11 @@ describe('internal memory routes', () => {
         {
           action: 'DELETE',
           targetId: 'user-memory:orphan-projection',
+          reason: 'repair_user_memory_projection_orphan',
+        },
+        {
+          action: 'DELETE',
+          targetId: 'user-memory:projection-expired-memory',
           reason: 'repair_user_memory_projection_orphan',
         },
       ]),

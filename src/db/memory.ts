@@ -76,11 +76,28 @@ type MemorySearchEventType =
 
 export async function getUserMemoryProjectionStats(options?: {
   userId?: string;
+  timeScope?: 'current' | 'all';
+  queryTime?: string;
 }): Promise<MemorySearchStatsSnapshot['userMemoryProjection']> {
   const userId = normalizeMemoryText(options?.userId || '');
   const memoryParams: string[] = [];
-  const memoryWhere = userId ? 'WHERE user_id = ?' : '';
-  if (userId) memoryParams.push(userId);
+  const memoryClauses: string[] = [];
+  if (userId) {
+    memoryClauses.push('user_id = ?');
+    memoryParams.push(userId);
+  }
+  if ((options?.timeScope ?? 'current') === 'current') {
+    const qt = options?.queryTime ?? new Date().toISOString();
+    memoryClauses.push('(valid_from IS NULL OR valid_from <= ?)');
+    memoryParams.push(qt);
+    memoryClauses.push('(valid_to IS NULL OR valid_to > ?)');
+    memoryParams.push(qt);
+    memoryClauses.push('(expires_at IS NULL OR expires_at > ?)');
+    memoryParams.push(qt);
+  }
+  const memoryWhere = memoryClauses.length > 0
+    ? `WHERE ${memoryClauses.join(' AND ')}`
+    : '';
   const memoryRows = await dba
     .prepare(`SELECT id FROM user_memories ${memoryWhere}`)
     .all(...memoryParams) as Array<{ id: string }>;

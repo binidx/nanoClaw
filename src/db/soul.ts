@@ -211,12 +211,23 @@ export async function getUserMemories(
 export async function listUserMemoriesForProjectionRepair(options?: {
   userId?: string;
   limit?: number;
+  timeScope?: 'current' | 'all';
+  queryTime?: string;
 }): Promise<UserMemoryRecord[]> {
   const conditions: string[] = [];
   const params: unknown[] = [];
   if (options?.userId) {
     conditions.push('user_id = ?');
     params.push(options.userId);
+  }
+  if ((options?.timeScope ?? 'current') === 'current') {
+    const qt = options?.queryTime ?? new Date().toISOString();
+    conditions.push('(valid_from IS NULL OR valid_from <= ?)');
+    params.push(qt);
+    conditions.push('(valid_to IS NULL OR valid_to > ?)');
+    params.push(qt);
+    conditions.push('(expires_at IS NULL OR expires_at > ?)');
+    params.push(qt);
   }
   const limit = options?.limit
     ? Math.max(1, Math.min(Math.trunc(options.limit), 10000))
