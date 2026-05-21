@@ -28,7 +28,7 @@ import {
   upsertEmbeddingVector,
 } from './db.js';
 import { serializeEmbedding } from './embedding/vector-store.js';
-import { syncWikiClaimsForPage } from './knowledge/wiki-claims.js';
+import { loadWikiClaimsWithEvidence, syncWikiClaimsForPage } from './knowledge/wiki-claims.js';
 import type { KnowledgeBaseRecord, KnowledgeDocumentRecord } from './types.js';
 
 function kbRecord(): KnowledgeBaseRecord {
@@ -178,5 +178,111 @@ describe('wiki claim evidence selection', () => {
 
     expect(row?.evidence_chunk_id).toBe('chunk-semantic');
     expect(fakeEmbeddingProvider.embedQuery).toHaveBeenCalled();
+  });
+
+  it('does not select or return superseded documents as wiki claim evidence', async () => {
+    await createProvider({
+      id: 'claim-embed-provider',
+      alias: 'Claim Embedding',
+      type: 'openai_compatible',
+      capability: 'embedding',
+      api_key: 'fake-key',
+      base_url: 'https://embedding.example.com/v1',
+      model: 'Qwen3-Embedding-8B-4bit-DWQ',
+      dimensions: 2,
+      extra_config: null,
+      is_default: 0,
+      user_id: '__system__',
+      visibility: 'private',
+    });
+    const kb = kbRecord();
+    await createKnowledgeBase(kb);
+    await createKnowledgeDocument({
+      ...docRecord('doc-old', kb.id),
+      superseded_by: 'doc-new',
+    });
+    await createKnowledgeDocument(docRecord('doc-new', kb.id));
+    await dba
+      .prepare('UPDATE knowledge_documents SET superseded_by = ? WHERE id = ?')
+      .run('doc-new', 'doc-old');
+    await insertKnowledgeChunks([
+      {
+        id: 'chunk-old',
+        document_id: 'doc-old',
+        chunk_index: 0,
+        content: '新版报销规则要求 10 个工作日内提交。',
+        token_count: 20,
+        created_at: '2026-05-21T00:00:00.000Z',
+      },
+      {
+        id: 'chunk-new',
+        document_id: 'doc-new',
+        chunk_index: 0,
+        content: '新版报销规则要求 10 个工作日内提交。',
+        token_count: 20,
+        created_at: '2026-05-21T00:00:00.000Z',
+      },
+    ]);
+    await upsertEmbeddingVector(
+      'vec-old',
+      'knowledge',
+      'chunk-old',
+      'claim-embed-provider',
+      'hash-old',
+      serializeEmbedding([1, 0]),
+      2,
+      'fake-embedding',
+    );
+    await upsertEmbeddingVector(
+      'vec-new',
+      'knowledge',
+      'chunk-new',
+      'claim-embed-provider',
+      'hash-new',
+      serializeEmbedding([1, 0]),
+      2,
+      'fake-embedding',
+    );
+
+    await dba.prepare(
+      `INSERT INTO knowledge_wiki_pages
+        (id, kb_id, page_type, title, content, source_doc_ids, inbound_links, outbound_links,
+         llm_model, version, edited_by_human, edited_at, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      'wiki-superseded-claim',
+      kb.id,
+      'entity',
+      '报销规则',
+      '# 报销规则\n\n## 核心事实\n- 新版报销规则要求 10 个工作日内提交。\n\n## 来源\n- doc',
+      JSON.stringify(['doc-old', 'doc-new']),
+      '[]',
+      '[]',
+      'gpt-test',
+      1,
+      0,
+      null,
+      '2026-05-21T00:00:00.000Z',
+      '2026-05-21T00:00:00.000Z',
+    );
+
+    await syncWikiClaimsForPage({
+      pageId: 'wiki-superseded-claim',
+      content: '# 报销规则\n\n## 核心事实\n- 新版报销规则要求 10 个工作日内提交。\n\n## 来源\n- doc',
+      sourceDocIds: ['doc-old', 'doc-new'],
+    });
+
+    const row = (await dba
+      .prepare('SELECT id, evidence_chunk_id FROM knowledge_wiki_claims WHERE page_id = ?')
+      .get('wiki-superseded-claim')) as { id: string; evidence_chunk_id: string | null } | undefined;
+
+    expect(row?.evidence_chunk_id).toBe('chunk-new');
+
+    await dba
+      .prepare('UPDATE knowledge_wiki_claims SET evidence_chunk_id = ? WHERE id = ?')
+      .run('chunk-old', row?.id);
+
+    const claimMap = await loadWikiClaimsWithEvidence(['wiki-superseded-claim']);
+    expect(claimMap.get('wiki-superseded-claim')?.[0]?.evidence).toBeNull();
   });
 });

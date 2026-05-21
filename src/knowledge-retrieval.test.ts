@@ -29,6 +29,7 @@ import {
   createKnowledgeBase,
   createKnowledgeDocument,
   createProvider,
+  dba,
   insertKnowledgeChunks,
   upsertEmbeddingVector,
 } from './db.js';
@@ -307,6 +308,106 @@ describe('knowledge wiki ranking helpers', () => {
           expect.objectContaining({ chunkId: 'chunk-prev', direction: 'previous' }),
           expect.objectContaining({ chunkId: 'chunk-next', direction: 'next' }),
         ],
+      }),
+    ]);
+  });
+
+  it('does not attach superseded source documents as wiki fallback evidence', async () => {
+    _initTestDatabase();
+    await createKnowledgeSearchEngine(getActiveEngine().dialect).initialize(getActiveEngine());
+    await createProvider({
+      id: 'embed-provider',
+      alias: 'Fake Embedding',
+      type: 'openai_compatible',
+      capability: 'embedding',
+      api_key: 'fake-key',
+      base_url: 'https://embedding.example.com/v1',
+      model: 'Qwen3-Embedding-8B-4bit-DWQ',
+      dimensions: 2,
+      extra_config: null,
+      is_default: 0,
+      user_id: '__system__',
+      visibility: 'private',
+    });
+    await createKnowledgeBase({
+      ...BASE_KB,
+      id: 'kb-wiki-evidence',
+      name: 'Wiki Evidence KB',
+      enhancement_level: 'wiki_full',
+    });
+    await createKnowledgeDocument({
+      ...docRecord('kb-wiki-evidence'),
+      id: 'doc-old',
+      filename: 'old-refund.md',
+      superseded_by: 'doc-new',
+    });
+    await createKnowledgeDocument({
+      ...docRecord('kb-wiki-evidence'),
+      id: 'doc-new',
+      filename: 'new-refund.md',
+    });
+    await dba
+      .prepare('UPDATE knowledge_documents SET superseded_by = ? WHERE id = ?')
+      .run('doc-new', 'doc-old');
+    await insertKnowledgeChunks([
+      {
+        id: 'chunk-old-refund',
+        document_id: 'doc-old',
+        chunk_index: 0,
+        content: 'Refund rule old version says approval takes 30 days.',
+        token_count: 16,
+        created_at: '2026-05-21T00:00:00.000Z',
+      },
+      {
+        id: 'chunk-new-refund',
+        document_id: 'doc-new',
+        chunk_index: 0,
+        content: 'Refund rule current version says approval takes 10 days.',
+        token_count: 16,
+        created_at: '2026-05-21T00:00:00.000Z',
+      },
+    ]);
+    await dba.prepare(
+      `INSERT INTO knowledge_wiki_pages
+        (id, kb_id, page_type, title, content, source_doc_ids, inbound_links, outbound_links,
+         llm_model, version, edited_by_human, edited_at, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      'wiki-refund-rule',
+      'kb-wiki-evidence',
+      'entity',
+      'Refund rule',
+      '# Refund rule\n\nThe current refund rule is summarized here.',
+      JSON.stringify(['doc-old', 'doc-new']),
+      '[]',
+      '[]',
+      'gpt-test',
+      1,
+      0,
+      null,
+      '2026-05-21T00:00:00.000Z',
+      '2026-05-21T00:00:00.000Z',
+    );
+    const pageRow = (await dba
+      .prepare('SELECT rowid FROM knowledge_wiki_pages WHERE id = ?')
+      .get('wiki-refund-rule')) as { rowid: number };
+    await dba
+      .prepare('INSERT OR REPLACE INTO knowledge_wiki_pages_fts (rowid, title, content) VALUES (?, ?, ?)')
+      .run(pageRow.rowid, 'Refund rule', '# Refund rule\n\nThe current refund rule is summarized here.');
+
+    const result = await searchKnowledge('Refund rule', {
+      kbIds: ['kb-wiki-evidence'],
+      topK: 3,
+      minScore: 0,
+    });
+
+    expect(result.wiki[0]).toMatchObject({
+      pageId: 'wiki-refund-rule',
+    });
+    expect(result.wiki[0]?.evidenceChunks).toEqual([
+      expect.objectContaining({
+        chunkId: 'chunk-new-refund',
+        documentId: 'doc-new',
       }),
     ]);
   });

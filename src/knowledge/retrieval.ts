@@ -397,12 +397,13 @@ async function attachWikiEvidenceChunks(
   for (const result of results) {
     const claims = claimMap.get(result.pageId) ?? [];
     const claimEvidence = claims
+      .filter((claim) => claim.evidence)
       .map((claim) => ({
         claimId: claim.id,
         claimText: claim.claim_text,
         confidence: claim.confidence,
-        chunkId: claim.evidence?.chunkId ?? null,
-        documentId: claim.evidence?.documentId ?? claim.source_doc_id,
+        chunkId: claim.evidence!.chunkId,
+        documentId: claim.evidence!.documentId,
         filename: claim.evidence?.filename ?? undefined,
         content: claim.evidence?.content,
       }))
@@ -436,7 +437,10 @@ async function attachWikiEvidenceChunks(
             d.kb_id AS kb_id,
             kb.name AS kb_name
      FROM knowledge_chunks c
-     INNER JOIN knowledge_documents d ON d.id = c.document_id AND d.deleted_at IS NULL
+     INNER JOIN knowledge_documents d
+       ON d.id = c.document_id
+      AND d.deleted_at IS NULL
+      AND d.superseded_by IS NULL
      INNER JOIN knowledge_bases kb ON kb.id = d.kb_id AND kb.deleted_at IS NULL
      WHERE c.document_id IN (${placeholders})`,
   ).all(...docIds)) as Array<{

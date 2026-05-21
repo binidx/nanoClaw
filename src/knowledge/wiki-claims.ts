@@ -110,6 +110,7 @@ async function loadCandidateChunks(sourceDocIds: string[]): Promise<CandidateChu
          JOIN knowledge_documents d ON d.id = c.document_id
          WHERE c.document_id IN (${placeholders})
            AND d.deleted_at IS NULL
+           AND d.superseded_by IS NULL
          ORDER BY c.document_id, c.chunk_index`,
       ),
     )
@@ -261,14 +262,17 @@ export async function loadWikiClaimsWithEvidence(pageIds: string[]): Promise<Map
                 wc.confidence AS confidence,
                 wc.created_at AS created_at,
                 wc.updated_at AS updated_at,
-                c.document_id AS evidence_document_id,
+                d.id AS evidence_document_id,
                 c.chunk_index AS evidence_chunk_index,
                 c.content AS evidence_content,
                 d.filename AS evidence_filename,
                 d.doc_path AS evidence_doc_path
          FROM knowledge_wiki_claims wc
          LEFT JOIN knowledge_chunks c ON c.id = wc.evidence_chunk_id
-         LEFT JOIN knowledge_documents d ON d.id = c.document_id
+         LEFT JOIN knowledge_documents d
+           ON d.id = c.document_id
+          AND d.deleted_at IS NULL
+          AND d.superseded_by IS NULL
          WHERE wc.page_id IN (${placeholders})
          ORDER BY wc.confidence DESC, wc.created_at ASC`,
       ),
