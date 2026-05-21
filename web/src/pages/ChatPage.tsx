@@ -1405,6 +1405,15 @@ export function ChatPage({
                     <div className="turn-item-body turn-item-body-response">
                       {entry.status === 'in_progress' && !entry.text.trim() ? (
                         <InlineAssistantLoading />
+                      ) : entry.status === 'in_progress' ? (
+                        <div className="msg-text assistant-turn-text assistant-turn-streaming-text">
+                          {getDisplayContent(
+                            entry.text,
+                            true,
+                            activeConv?.channel,
+                            mentionCandidates,
+                          )}
+                        </div>
                       ) : (
                         <MarkdownContent
                           className="msg-text markdown assistant-turn-text"
@@ -1894,7 +1903,7 @@ export function ChatPage({
             ) : (
               <span className="provider-badge">{activeProviderAlias}</span>
             )}
-            {activeConv ? (
+            {activeConv?.conversationModel ? (
               <input
                 className="chat-model-override-input"
                 value={modelOverrideDraft}

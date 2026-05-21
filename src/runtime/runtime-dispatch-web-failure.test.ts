@@ -33,7 +33,8 @@ vi.mock('../assistant/assistant-runtime.js', () => ({
 }));
 
 vi.mock('../channels/web.js', () => ({
-  deriveWebGroupFolder: (jid: string) => `web_${jid.replace(/[^a-z0-9]/gi, '_')}`,
+  deriveWebGroupFolder: (jid: string) =>
+    `web_${jid.replace(/[^a-z0-9]/gi, '_')}`,
   getWebChannel: () => mockGetWebChannel(),
 }));
 
@@ -44,7 +45,9 @@ vi.mock('../config-store.js', async (importOriginal) => {
     getAssistantName: vi.fn(async () => 'Andy'),
     getConfiguredChannelInstances: vi.fn(async () => []),
     getConfigValue: vi.fn(async () => ''),
-    getTriggerPattern: vi.fn((assistantName: string) => new RegExp(`^@${assistantName}\\b`)),
+    getTriggerPattern: vi.fn(
+      (assistantName: string) => new RegExp(`^@${assistantName}\\b`),
+    ),
   };
 });
 
@@ -69,10 +72,13 @@ import {
   _initTestDatabase,
   createAssistant,
   createTavernPersona,
+  getContextEntries,
   getConversationSummaryByJid,
   getConversationTavernBinding,
   getConversationMessages,
   getConversationTurns,
+  storeContextCompaction,
+  storeContextEntries,
   storeAssistantTurnSnapshot,
   storeChatMetadata,
   storeMessage,
@@ -80,8 +86,10 @@ import {
   upsertTavernGlobalConfig,
 } from '../db.js';
 import {
+  _buildAgentPromptInputForTest,
   _getAgentCursorState,
   createWebConversation,
+  interruptConversationReply,
   processGroupMessages,
   regenerateConversationReply,
 } from './runtime-dispatch.js';
@@ -106,6 +114,7 @@ import type { Channel, RegisteredGroup } from '../types.js';
 function createMockWebChannel(): Channel & {
   notifyTurnEvent: ReturnType<typeof vi.fn>;
   notifyMessage: ReturnType<typeof vi.fn>;
+  notifyInterrupted: ReturnType<typeof vi.fn>;
   sendStreamChunk: ReturnType<typeof vi.fn>;
 } {
   return {
@@ -124,10 +133,12 @@ function createMockWebChannel(): Channel & {
     notifyApprovalResolved: vi.fn(),
     notifyAskRequest: vi.fn(),
     notifyAskResolved: vi.fn(),
+    notifyInterrupted: vi.fn(),
     notifyLive2DEmotion: vi.fn(),
   } as unknown as Channel & {
     notifyTurnEvent: ReturnType<typeof vi.fn>;
     notifyMessage: ReturnType<typeof vi.fn>;
+    notifyInterrupted: ReturnType<typeof vi.fn>;
     sendStreamChunk: ReturnType<typeof vi.fn>;
   };
 }
@@ -332,15 +343,17 @@ describe('runtime dispatch web failure handling', () => {
     expect(registeredGroups[chatJid]?.agentConfig?.managedSkillIds).toEqual([
       'imagegen',
     ]);
-    expect(registeredGroups[chatJid]?.agentConfig?.managedMcpServerIds).toEqual([
-      'jira',
-    ]);
+    expect(registeredGroups[chatJid]?.agentConfig?.managedMcpServerIds).toEqual(
+      ['jira'],
+    );
     expect(registeredGroups[chatJid]?.providerId).toBe('provider-tavern');
     expect(registeredGroups[chatJid]?.model).toBe('gpt-image-1');
 
     const messages = await getConversationMessages(chatJid, 10, 0);
     expect(messages.some((message) => message.is_bot_message)).toBe(true);
-    expect(messages.at(-1)?.content).toBe('夜色已经落下。你带着什么故事来找我？');
+    expect(messages.at(-1)?.content).toBe(
+      '夜色已经落下。你带着什么故事来找我？',
+    );
     expect(webChannel.notifyMessage).toHaveBeenCalled();
   });
 
@@ -389,14 +402,31 @@ describe('runtime dispatch web failure handling', () => {
     expect(await processGroupMessages(chatJid)).toBe(true);
 
     const input = mockRunAgentProcess.mock.calls[0]?.[1] as
-      | { prompt?: { stableSystemPrompt?: string; volatileSystemPrompt?: string } }
+      | {
+          prompt?: {
+            stableSystemPrompt?: string;
+            volatileSystemPrompt?: string;
+          };
+        }
       | undefined;
-    expect(input?.prompt?.stableSystemPrompt).toContain('You are a helpful assistant in a user conversation.');
-    expect(input?.prompt?.stableSystemPrompt).toContain('If long-term preferences, identity facts, or prior commitments matter, query memory tools only when needed.');
-    expect(input?.prompt?.stableSystemPrompt).toContain('primary voice and persona policy');
-    expect(input?.prompt?.stableSystemPrompt).not.toContain('You are a helpful coding assistant with access to tools.');
-    expect(input?.prompt?.stableSystemPrompt).not.toContain('## Sub-Agent Policy');
-    expect(input?.prompt?.volatileSystemPrompt || '').toContain('Untrusted conversation history');
+    expect(input?.prompt?.stableSystemPrompt).toContain(
+      'You are a helpful assistant in a user conversation.',
+    );
+    expect(input?.prompt?.stableSystemPrompt).toContain(
+      'If long-term preferences, identity facts, or prior commitments matter, query memory tools only when needed.',
+    );
+    expect(input?.prompt?.stableSystemPrompt).toContain(
+      'primary voice and persona policy',
+    );
+    expect(input?.prompt?.stableSystemPrompt).not.toContain(
+      'You are a helpful coding assistant with access to tools.',
+    );
+    expect(input?.prompt?.stableSystemPrompt).not.toContain(
+      '## Sub-Agent Policy',
+    );
+    expect(input?.prompt?.volatileSystemPrompt || '').toContain(
+      'Untrusted conversation history',
+    );
   });
 
   it('injects tavern persona prompt after soul prompt for tavern conversations', async () => {
@@ -445,9 +475,7 @@ describe('runtime dispatch web failure handling', () => {
     expect(stablePrompt).toContain('You are roleplaying as "Moon Archivist".');
     expect(stablePrompt).toContain('## Personality');
     expect(stablePrompt.indexOf('SOUL_PROMPT')).toBeGreaterThanOrEqual(0);
-    expect(
-      stablePrompt.indexOf('SOUL_PROMPT'),
-    ).toBeLessThan(
+    expect(stablePrompt.indexOf('SOUL_PROMPT')).toBeLessThan(
       stablePrompt.indexOf('You are roleplaying as "Moon Archivist".'),
     );
   });
@@ -598,6 +626,330 @@ describe('runtime dispatch web failure handling', () => {
       },
     });
     expect(enqueueMessageCheck).toHaveBeenCalledWith(chatJid);
+  });
+
+  it('regenerates by deleting duplicate assistant alternatives for the same user turn', async () => {
+    const enqueueMessageCheck = vi
+      .spyOn(queue, 'enqueueMessageCheck')
+      .mockImplementation(() => {});
+
+    const chatJid = 'web:regenerate-duplicate-alternates';
+    const group: RegisteredGroup = {
+      name: 'Web Chat regenerate duplicate alternates',
+      folder: 'web_regenerate_duplicate_alternates',
+      trigger: '@Andy',
+      added_at: '2026-04-16T03:24:10.000Z',
+      requiresTrigger: false,
+      isMain: false,
+    };
+    assignRegisteredGroups({ [chatJid]: group });
+
+    await storeChatMetadata(
+      chatJid,
+      '2026-04-16T03:24:10.000Z',
+      'Owner User',
+      'web',
+      false,
+      'owner-user-id',
+    );
+    await storeMessage({
+      id: 'user-dup',
+      chat_jid: chatJid,
+      sender: 'web_user',
+      sender_name: 'Owner User',
+      content: '@Andy answer again',
+      timestamp: '2026-04-16T03:24:11.000Z',
+      is_from_me: false,
+      is_bot_message: false,
+    });
+    await storeMessageDirectWithTurn(
+      {
+        id: 'bot-dup-1',
+        chat_jid: chatJid,
+        sender: 'Andy',
+        sender_name: 'Andy',
+        content: 'first duplicate reply',
+        timestamp: '2026-04-16T03:24:12.000Z',
+        is_from_me: true,
+        is_bot_message: true,
+      },
+      {
+        id: 'turn-dup-1',
+        timestamp: '2026-04-16T03:24:12.000Z',
+        items: [
+          {
+            id: 'turn-dup-1:assistant',
+            type: 'assistant_message',
+            status: 'completed',
+            text: 'first duplicate reply',
+            timestamp: '2026-04-16T03:24:12.000Z',
+          },
+        ],
+        isLive: false,
+        isCompleted: true,
+        persistedMessageId: 'bot-dup-1',
+      },
+    );
+    await storeMessageDirectWithTurn(
+      {
+        id: 'bot-dup-2',
+        chat_jid: chatJid,
+        sender: 'Andy',
+        sender_name: 'Andy',
+        content: 'second duplicate reply',
+        timestamp: '2026-04-16T03:24:13.000Z',
+        is_from_me: true,
+        is_bot_message: true,
+      },
+      {
+        id: 'turn-dup-2',
+        timestamp: '2026-04-16T03:24:13.000Z',
+        items: [
+          {
+            id: 'turn-dup-2:assistant',
+            type: 'assistant_message',
+            status: 'completed',
+            text: 'second duplicate reply',
+            timestamp: '2026-04-16T03:24:13.000Z',
+          },
+        ],
+        isLive: false,
+        isCompleted: true,
+        persistedMessageId: 'bot-dup-2',
+      },
+    );
+    await storeContextEntries([
+      {
+        id: 'msg:web:regenerate-duplicate-alternates:user-dup',
+        group_folder: group.folder,
+        chat_jid: chatJid,
+        run_id: null,
+        provider: 'claude',
+        role: 'user',
+        source_type: 'chat_message',
+        source_ref: 'user-dup',
+        content_text: '@Andy answer again',
+        content_json: null,
+        token_estimate: 5,
+        created_at: '2026-04-16T03:24:11.000Z',
+      },
+      {
+        id: 'msg:web:regenerate-duplicate-alternates:bot-dup-1',
+        group_folder: group.folder,
+        chat_jid: chatJid,
+        run_id: 'turn-dup-1',
+        provider: 'claude',
+        role: 'assistant',
+        source_type: 'assistant_message',
+        source_ref: 'bot-dup-1',
+        content_text: 'first duplicate reply',
+        content_json: null,
+        token_estimate: 5,
+        created_at: '2026-04-16T03:24:12.000Z',
+      },
+      {
+        id: 'msg:web:regenerate-duplicate-alternates:bot-dup-2',
+        group_folder: group.folder,
+        chat_jid: chatJid,
+        run_id: 'turn-dup-2',
+        provider: 'claude',
+        role: 'assistant',
+        source_type: 'assistant_message',
+        source_ref: 'bot-dup-2',
+        content_text: 'second duplicate reply',
+        content_json: null,
+        token_estimate: 5,
+        created_at: '2026-04-16T03:24:13.000Z',
+      },
+      {
+        id: 'turn:turn-dup-2',
+        group_folder: group.folder,
+        chat_jid: chatJid,
+        run_id: 'turn-dup-2',
+        provider: 'claude',
+        role: 'assistant',
+        source_type: 'assistant_turn',
+        source_ref: 'turn-dup-2',
+        content_text: 'second duplicate reply',
+        content_json: '{}',
+        token_estimate: 5,
+        created_at: '2026-04-16T03:24:13.000Z',
+      },
+      {
+        id: 'tool_context:web:regenerate-duplicate-alternates:turn-dup-2:tool-1',
+        group_folder: group.folder,
+        chat_jid: chatJid,
+        run_id: 'turn-dup-2',
+        provider: 'system',
+        role: 'tool',
+        source_type: 'tool_call_recent',
+        source_ref: 'tool-1',
+        content_text: 'stale tool result from old duplicate reply',
+        content_json: JSON.stringify({ sourceTurnId: 'turn-dup-2' }),
+        token_estimate: 8,
+        created_at: '2026-04-16T03:24:13.100Z',
+      },
+      {
+        id: 'tool_summary:web:regenerate-duplicate-alternates:old',
+        group_folder: group.folder,
+        chat_jid: chatJid,
+        run_id: null,
+        provider: 'system',
+        role: 'summary',
+        source_type: 'tool_call_summary',
+        source_ref: 'tool_context:web:regenerate-duplicate-alternates:turn-dup-2:tool-1',
+        content_text: 'summary of stale tool result from old duplicate reply',
+        content_json: JSON.stringify({
+          sourceEntryIds: [
+            'tool_context:web:regenerate-duplicate-alternates:turn-dup-2:tool-1',
+          ],
+        }),
+        token_estimate: 8,
+        created_at: '2026-04-16T03:24:13.200Z',
+      },
+    ]);
+    await storeContextCompaction({
+      id: 'context-compaction-regenerate-duplicate-alternates',
+      group_folder: group.folder,
+      chat_jid: chatJid,
+      compacted_until: '2026-04-16T03:24:13.000Z',
+      summary_text: 'compacted stale duplicate reply',
+      source_entry_ids_json: JSON.stringify([
+        'msg:web:regenerate-duplicate-alternates:bot-dup-2',
+      ]),
+      created_at: '2026-04-16T03:24:14.000Z',
+    });
+
+    await regenerateConversationReply(chatJid, 'turn-dup-2');
+
+    expect(await getConversationMessages(chatJid, 50, 0)).toMatchObject([
+      { id: 'user-dup', content: '@Andy answer again' },
+    ]);
+    expect(await getConversationTurns(chatJid, 50, 0)).toEqual([]);
+    const contextEntryIds = (await getContextEntries(chatJid, 50)).map(
+      (entry) => entry.id,
+    );
+    expect(contextEntryIds).toEqual([
+      'msg:web:regenerate-duplicate-alternates:user-dup',
+    ]);
+    const prompt = await _buildAgentPromptInputForTest(chatJid, [
+      {
+        id: 'user-after-regenerate',
+        chat_jid: chatJid,
+        sender: 'web_user',
+        sender_name: 'Owner User',
+        content: '@Andy continue',
+        timestamp: '2026-04-16T03:24:15.000Z',
+        is_from_me: false,
+        is_bot_message: false,
+      },
+    ]);
+    expect(prompt.text).not.toContain('first duplicate reply');
+    expect(prompt.text).not.toContain('second duplicate reply');
+    expect(prompt.text).not.toContain('stale tool result');
+    expect(prompt.text).not.toContain('compacted stale duplicate reply');
+    expect(enqueueMessageCheck).toHaveBeenCalledWith(chatJid);
+  });
+
+  it('cleans interrupted turn context so partial assistant state is not reused', async () => {
+    const stopActiveProcess = vi
+      .spyOn(queue, 'stopActiveProcess')
+      .mockReturnValue(true);
+
+    const chatJid = 'web:interrupt-context-cleanup';
+    const group: RegisteredGroup = {
+      name: 'Web Chat interrupt context cleanup',
+      folder: 'web_interrupt_context_cleanup',
+      trigger: '@Andy',
+      added_at: '2026-04-16T03:24:10.000Z',
+      requiresTrigger: false,
+      isMain: false,
+    };
+    assignRegisteredGroups({ [chatJid]: group });
+    await storeChatMetadata(
+      chatJid,
+      '2026-04-16T03:24:10.000Z',
+      'Owner User',
+      'web',
+      false,
+      'owner-user-id',
+    );
+    await storeMessage({
+      id: 'user-interrupt',
+      chat_jid: chatJid,
+      sender: 'web_user',
+      sender_name: 'Owner User',
+      content: '@Andy slow request',
+      timestamp: '2026-04-16T03:24:11.000Z',
+      is_from_me: false,
+      is_bot_message: false,
+    });
+    activeConversationTurnIds.set(chatJid, 'turn-interrupted');
+    await storeAssistantTurnSnapshot(chatJid, {
+      id: 'turn-interrupted',
+      timestamp: '2026-04-16T03:24:12.000Z',
+      items: [
+        {
+          id: 'turn-interrupted:assistant',
+          type: 'assistant_message',
+          status: 'in_progress',
+          text: 'partial assistant text that should disappear',
+          timestamp: '2026-04-16T03:24:12.000Z',
+        },
+      ],
+      isLive: true,
+      isCompleted: false,
+    });
+    await storeContextEntries([
+      {
+        id: 'turn:turn-interrupted',
+        group_folder: group.folder,
+        chat_jid: chatJid,
+        run_id: 'turn-interrupted',
+        provider: 'claude',
+        role: 'assistant',
+        source_type: 'assistant_turn',
+        source_ref: 'turn-interrupted',
+        content_text: 'partial assistant text that should disappear',
+        content_json: '{}',
+        token_estimate: 8,
+        created_at: '2026-04-16T03:24:12.000Z',
+      },
+      {
+        id: 'tool_context:web:interrupt-context-cleanup:turn-interrupted:tool-1',
+        group_folder: group.folder,
+        chat_jid: chatJid,
+        run_id: 'turn-interrupted',
+        provider: 'system',
+        role: 'tool',
+        source_type: 'tool_call_recent',
+        source_ref: 'tool-1',
+        content_text: 'partial tool output from interrupted turn',
+        content_json: JSON.stringify({ sourceTurnId: 'turn-interrupted' }),
+        token_estimate: 8,
+        created_at: '2026-04-16T03:24:12.100Z',
+      },
+    ]);
+
+    await expect(interruptConversationReply(chatJid)).resolves.toBe(true);
+
+    expect(stopActiveProcess).toHaveBeenCalledWith(chatJid);
+    expect(await getConversationTurns(chatJid, 50, 0)).toEqual([]);
+    expect(await getContextEntries(chatJid, 50)).toEqual([]);
+    const prompt = await _buildAgentPromptInputForTest(chatJid, [
+      {
+        id: 'user-after-interrupt',
+        chat_jid: chatJid,
+        sender: 'web_user',
+        sender_name: 'Owner User',
+        content: '@Andy new question',
+        timestamp: '2026-04-16T03:24:13.000Z',
+        is_from_me: false,
+        is_bot_message: false,
+      },
+    ]);
+    expect(prompt.text).not.toContain('partial assistant text');
+    expect(prompt.text).not.toContain('partial tool output');
   });
 
   it('ignores stale active turn markers when regenerating a completed reply', async () => {
@@ -922,9 +1274,9 @@ describe('runtime dispatch web failure handling', () => {
       { id: 'bot-old', content: 'old assistant reply' },
       { id: 'user-new', content: '@Andy new' },
     ]);
-    expect((await getConversationTurns(chatJid, 50, 0)).map((turn) => turn.id)).toEqual([
-      'turn-old',
-    ]);
+    expect(
+      (await getConversationTurns(chatJid, 50, 0)).map((turn) => turn.id),
+    ).toEqual(['turn-old']);
     expect(_getAgentCursorState()).toMatchObject({
       committed: {
         [chatJid]: '2026-04-16T03:24:10.000Z',

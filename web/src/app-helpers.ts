@@ -132,16 +132,30 @@ export function buildConfigSaveMessage(
 
   const parts: string[] = [];
   if (effects?.instant?.length) {
-    parts.push(i18n.t('common.buildConfigSave.instantEffect', { items: effects.instant.join('、') }));
+    parts.push(
+      i18n.t('common.buildConfigSave.instantEffect', {
+        items: effects.instant.join('、'),
+      }),
+    );
   }
   if (effects?.new_agent?.length) {
-    parts.push(i18n.t('common.buildConfigSave.newAgentEffect', { items: effects.new_agent.join('、') }));
+    parts.push(
+      i18n.t('common.buildConfigSave.newAgentEffect', {
+        items: effects.new_agent.join('、'),
+      }),
+    );
   }
   if (effects?.restart?.length) {
-    parts.push(i18n.t('common.buildConfigSave.restartEffect', { items: effects.restart.join('、') }));
+    parts.push(
+      i18n.t('common.buildConfigSave.restartEffect', {
+        items: effects.restart.join('、'),
+      }),
+    );
   }
 
-  return parts.length > 0 ? parts.join('；') : i18n.t('common.buildConfigSave.saved');
+  return parts.length > 0
+    ? parts.join('；')
+    : i18n.t('common.buildConfigSave.saved');
 }
 
 function normalizeComparedMessageContent(
@@ -553,7 +567,9 @@ export function upsertTurnItem(
       ...event.item,
       startedAt:
         event.item.startedAt ||
-        (existingItem?.type === 'tool_call' ? existingItem.startedAt : undefined) ||
+        (existingItem?.type === 'tool_call'
+          ? existingItem.startedAt
+          : undefined) ||
         (event.type === 'item.started' ? event.item.timestamp : undefined),
       completedAt:
         event.item.completedAt ||
@@ -1100,7 +1116,9 @@ export function formatConversationMarkdown(
         ? assistantName
         : message.sender_name || message.sender || 'You';
       lines.push(`## ${sender}`);
-      lines.push(i18n.t('common.export.time', { timestamp: message.timestamp }));
+      lines.push(
+        i18n.t('common.export.time', { timestamp: message.timestamp }),
+      );
       lines.push('');
       lines.push(
         getDisplayContent(
@@ -1127,7 +1145,11 @@ export function formatConversationMarkdown(
       }
       if (turnItem.type === 'reasoning') {
         lines.push(
-          i18n.t('common.export.reasoning', { status: turnItem.status, title: turnItem.title, text: turnItem.text ? `: ${turnItem.text}` : '' }),
+          i18n.t('common.export.reasoning', {
+            status: turnItem.status,
+            title: turnItem.title,
+            text: turnItem.text ? `: ${turnItem.text}` : '',
+          }),
         );
         continue;
       }
@@ -1136,7 +1158,11 @@ export function formatConversationMarkdown(
           ? turnItem.errorText
           : turnItem.resultText || turnItem.argumentsText;
       lines.push(
-        i18n.t('common.export.tool', { status: turnItem.status, title: turnItem.title, detail: detail ? `: ${detail}` : '' }),
+        i18n.t('common.export.tool', {
+          status: turnItem.status,
+          title: turnItem.title,
+          detail: detail ? `: ${detail}` : '',
+        }),
       );
     }
     lines.push('');
@@ -1177,7 +1203,8 @@ export function formatTimelineMarkdown(
     if (entry.kind === 'assistant_message') {
       lines.push(`## ${assistantName}`);
       lines.push(i18n.t('common.export.time', { timestamp: entry.timestamp }));
-      if (entry.status !== 'completed') lines.push(i18n.t('common.export.status', { status: entry.status }));
+      if (entry.status !== 'completed')
+        lines.push(i18n.t('common.export.status', { status: entry.status }));
       lines.push('');
       lines.push(
         getDisplayContent(
@@ -1193,7 +1220,11 @@ export function formatTimelineMarkdown(
 
     if (entry.kind === 'reasoning') {
       lines.push(
-        i18n.t('common.export.reasoning', { status: entry.item.status, title: entry.item.title, text: entry.item.text ? `: ${entry.item.text}` : '' }),
+        i18n.t('common.export.reasoning', {
+          status: entry.item.status,
+          title: entry.item.title,
+          text: entry.item.text ? `: ${entry.item.text}` : '',
+        }),
       );
       continue;
     }
@@ -1204,16 +1235,24 @@ export function formatTimelineMarkdown(
           ? entry.item.errorText
           : entry.item.resultText || entry.item.argumentsText;
       lines.push(
-        i18n.t('common.export.tool', { status: entry.item.status, title: entry.item.title, detail: detail ? `: ${detail}` : '' }),
+        i18n.t('common.export.tool', {
+          status: entry.item.status,
+          title: entry.item.title,
+          detail: detail ? `: ${detail}` : '',
+        }),
       );
       if (entry.approval) {
-        lines.push(i18n.t('common.export.approval', { command: entry.approval.command }));
+        lines.push(
+          i18n.t('common.export.approval', { command: entry.approval.command }),
+        );
       }
       continue;
     }
 
     if (entry.kind === 'approval') {
-      lines.push(i18n.t('common.export.approval', { command: entry.approval.command }));
+      lines.push(
+        i18n.t('common.export.approval', { command: entry.approval.command }),
+      );
       continue;
     }
 
@@ -1376,10 +1415,18 @@ export function applyConversationTurnEvent(
 
 export function applyConversationStreamEvent(
   state: ConversationChatState,
-  payload: { chunk?: string; done?: boolean; timestamp: string; runId?: string },
+  payload: {
+    chunk?: string;
+    done?: boolean;
+    timestamp: string;
+    runId?: string;
+  },
 ) {
   if (payload.done) {
-    if (payload.runId && state.turns.some((turn) => turn.id === payload.runId)) {
+    if (
+      payload.runId &&
+      state.turns.some((turn) => turn.id === payload.runId)
+    ) {
       return {
         ...state,
         turns: completeAssistantTurn(
@@ -1514,13 +1561,18 @@ export function clearConversationTransientReplyState(
 
 export function interruptConversationState(
   state: ConversationChatState,
-  payload?: { reason?: string; timestamp?: string },
+  payload?: { reason?: string; timestamp?: string; turnId?: string },
 ) {
   const timestamp = payload?.timestamp || new Date().toISOString();
   const reason = payload?.reason?.trim() || i18n.t('common.stoppedReply');
-  const hadLiveTurn = state.turns.some((turn) => turn.isLive);
+  const targetTurnId = payload?.turnId?.trim();
+  const hadLiveTurn = state.turns.some(
+    (turn) => turn.isLive && (!targetTurnId || turn.id === targetTurnId),
+  );
   const interruptedTurns = state.turns.map((turn) => {
-    if (!turn.isLive) return turn;
+    if (!turn.isLive || (targetTurnId && turn.id !== targetTurnId)) {
+      return turn;
+    }
     const stripped = stripOptimisticThinkingFromTurn(turn);
     const completedItems = stripped.items.map((item) =>
       item.type === 'assistant_message' && item.status === 'in_progress'
@@ -1570,7 +1622,9 @@ export function interruptConversationState(
   };
 }
 
-export function expireLiveConversationTurns(state: ConversationChatState): ConversationChatState {
+export function expireLiveConversationTurns(
+  state: ConversationChatState,
+): ConversationChatState {
   return {
     ...state,
     turns: state.turns.map((turn) => {

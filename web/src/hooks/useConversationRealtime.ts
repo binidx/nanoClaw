@@ -1,5 +1,6 @@
 import {
   useCallback,
+  useEffect,
   useLayoutEffect,
   useRef,
   type Dispatch,
@@ -63,8 +64,36 @@ type UseConversationRealtimeParams = {
 };
 
 export const MESSAGE_PAGE_SIZE = 50;
+const STREAM_BUFFER_FLUSH_MS = 48;
+const CANCELLED_TURN_TTL_MS = 10 * 60 * 1000;
+const LEGACY_STREAM_INTERRUPT_SUPPRESS_MS = 2_000;
 
 export { shouldIgnoreConversationRealtimeSeq };
+
+type BufferedStreamPatch = {
+  jid: string;
+  chunks: string[];
+  timestamp: string;
+  runId?: string;
+  seq?: number;
+};
+
+function getStreamBufferKey(jid: string, runId?: string): string {
+  return `${jid}\u0000${runId || 'legacy'}`;
+}
+
+function shouldKeepUnpersistedTurn(
+  turn: AssistantTurn,
+  visibleMessageIds?: ReadonlySet<string>,
+): boolean {
+  return (
+    turn.isLive ||
+    !turn.isCompleted ||
+    !turn.persistedMessageId ||
+    visibleMessageIds?.has(turn.persistedMessageId) ||
+    turn.items.some((item) => item.status === 'in_progress')
+  );
+}
 
 export function shouldIgnoreStructuredStreamEvent(): boolean {
   return false;
@@ -76,25 +105,23 @@ export function shouldEagerlyRefreshActiveConversationMessage(params: {
   isBot: boolean;
   seen: boolean;
 }): boolean {
-  return (
-    params.isBot &&
-    params.jid === params.activeJid &&
-    !params.seen
-  );
+  return params.isBot && params.jid === params.activeJid && !params.seen;
 }
 
 export function mergePersistedAndTransientTurns(
   persistedTurns: AssistantTurn[],
   currentTurns: AssistantTurn[],
+  visibleMessageIds?: ReadonlySet<string>,
 ): AssistantTurn[] {
-  const transientById = new Map(
-    currentTurns.map((turn) => [turn.id, turn]),
-  );
+  const transientById = new Map(currentTurns.map((turn) => [turn.id, turn]));
   const merged: AssistantTurn[] = [];
 
   for (const persisted of persistedTurns) {
     const transient = transientById.get(persisted.id);
-    if (transient?.isLive && (!persisted.isCompleted || transient.items.length > 0)) {
+    if (
+      transient?.isLive &&
+      (!persisted.isCompleted || transient.items.length > 0)
+    ) {
       merged.push(transient);
     } else {
       merged.push(persisted);
@@ -103,6 +130,7 @@ export function mergePersistedAndTransientTurns(
   }
 
   for (const [, remaining] of transientById) {
+    if (!shouldKeepUnpersistedTurn(remaining, visibleMessageIds)) continue;
     merged.push(remaining);
   }
 
@@ -125,8 +153,16 @@ export function applyConversationMessagesSnapshot(params: {
 
   return {
     ...reconciled,
-    ...applyConversationRealtimeWatermark(reconciled, data.last_event_seq, 'snapshot'),
-    turns: mergePersistedAndTransientTurns(data.turns, reconciled.turns),
+    ...applyConversationRealtimeWatermark(
+      reconciled,
+      data.last_event_seq,
+      'snapshot',
+    ),
+    turns: mergePersistedAndTransientTurns(
+      data.turns,
+      reconciled.turns,
+      new Set(data.messages.map((message) => message.id)),
+    ),
     approvals: data.approvals ?? state.approvals,
   };
 }
@@ -144,10 +180,124 @@ export function useConversationRealtime({
   setInterruptingConversationJid,
 }: UseConversationRealtimeParams) {
   const activeConversationRef = useRef(activeConversation);
+  const streamBuffersRef = useRef<Map<string, BufferedStreamPatch>>(new Map());
+  const streamFlushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const cancelledTurnIdsRef = useRef<Map<string, number>>(new Map());
+  const legacyStreamSuppressedUntilByJidRef = useRef<Map<string, number>>(
+    new Map(),
+  );
 
   useLayoutEffect(() => {
     activeConversationRef.current = activeConversation;
   }, [activeConversation]);
+
+  const flushBufferedStreams = useCallback(
+    (jid?: string) => {
+      const pending: BufferedStreamPatch[] = [];
+      for (const [key, buffer] of streamBuffersRef.current) {
+        if (jid && buffer.jid !== jid) continue;
+        pending.push(buffer);
+        streamBuffersRef.current.delete(key);
+      }
+
+      for (const buffer of pending) {
+        const chunk = buffer.chunks.join('');
+        if (!chunk) continue;
+        updateConversationChatState(buffer.jid, (state) => {
+          if (shouldIgnoreConversationRealtimeSeq(state, buffer.seq)) {
+            return state;
+          }
+          return applyLastEventSeq(
+            applyConversationStreamEvent(state, {
+              chunk,
+              timestamp: buffer.timestamp,
+              runId: buffer.runId,
+            }),
+            buffer.seq,
+          );
+        });
+      }
+    },
+    [updateConversationChatState],
+  );
+
+  const discardBufferedStreams = useCallback((jid: string, runId?: string) => {
+    if (runId) {
+      streamBuffersRef.current.delete(getStreamBufferKey(jid, runId));
+      return;
+    }
+    for (const [key, buffer] of streamBuffersRef.current) {
+      if (buffer.jid === jid) {
+        streamBuffersRef.current.delete(key);
+      }
+    }
+  }, []);
+
+  const markCancelledTurn = useCallback(
+    (jid: string, turnId?: string) => {
+      const now = Date.now();
+      for (const [key, expiresAt] of cancelledTurnIdsRef.current) {
+        if (expiresAt <= now) cancelledTurnIdsRef.current.delete(key);
+      }
+      if (turnId) {
+        cancelledTurnIdsRef.current.set(
+          getStreamBufferKey(jid, turnId),
+          now + CANCELLED_TURN_TTL_MS,
+        );
+        discardBufferedStreams(jid, turnId);
+      }
+      legacyStreamSuppressedUntilByJidRef.current.set(
+        jid,
+        now + LEGACY_STREAM_INTERRUPT_SUPPRESS_MS,
+      );
+    },
+    [discardBufferedStreams],
+  );
+
+  const isCancelledTurn = useCallback((jid: string, turnId?: string) => {
+    const now = Date.now();
+    if (!turnId) {
+      const suppressUntil =
+        legacyStreamSuppressedUntilByJidRef.current.get(jid);
+      if (!suppressUntil) return false;
+      if (suppressUntil <= now) {
+        legacyStreamSuppressedUntilByJidRef.current.delete(jid);
+        return false;
+      }
+      return true;
+    }
+    const key = getStreamBufferKey(jid, turnId);
+    const expiresAt = cancelledTurnIdsRef.current.get(key);
+    if (!expiresAt) return false;
+    if (expiresAt <= now) {
+      cancelledTurnIdsRef.current.delete(key);
+      return false;
+    }
+    return true;
+  }, []);
+
+  const scheduleStreamFlush = useCallback(() => {
+    if (streamFlushTimerRef.current !== null) return;
+    streamFlushTimerRef.current = setTimeout(() => {
+      streamFlushTimerRef.current = null;
+      flushBufferedStreams();
+    }, STREAM_BUFFER_FLUSH_MS);
+  }, [flushBufferedStreams]);
+
+  useEffect(
+    () => () => {
+      if (streamFlushTimerRef.current !== null) {
+        clearTimeout(streamFlushTimerRef.current);
+        streamFlushTimerRef.current = null;
+      }
+      streamBuffersRef.current.clear();
+      cancelledTurnIdsRef.current.clear();
+      legacyStreamSuppressedUntilByJidRef.current.clear();
+    },
+    [],
+  );
 
   const loadMessages = useCallback(
     async (jid: string, epoch: number) => {
@@ -186,13 +336,7 @@ export function useConversationRealtime({
               channel: conversationChannel,
               conversationName,
             });
-            return {
-              ...snapshot,
-              turns: mergePersistedAndTransientTurns(
-                persistedTurns,
-                snapshot.turns,
-              ),
-            };
+            return snapshot;
           }
           return applyConversationMessagesSnapshot({
             state,
@@ -205,13 +349,7 @@ export function useConversationRealtime({
         /* offline */
       }
     },
-    [
-      activeJidRef,
-      apiBase,
-      epochRef,
-      seenIdsRef,
-      updateConversationChatState,
-    ],
+    [activeJidRef, apiBase, epochRef, seenIdsRef, updateConversationChatState],
   );
 
   const loadOlderMessages = useCallback(
@@ -241,7 +379,9 @@ export function useConversationRealtime({
             const toInsert = olderMsgs.filter((m) => !freshIds.has(m.id));
 
             const existingTurnIds = new Set(state.turns.map((t) => t.id));
-            const dedupedTurns = olderTurns.filter((t) => !existingTurnIds.has(t.id));
+            const dedupedTurns = olderTurns.filter(
+              (t) => !existingTurnIds.has(t.id),
+            );
 
             return {
               ...state,
@@ -272,17 +412,27 @@ export function useConversationRealtime({
 
       if (normalized.kind === 'message') {
         if (currentEpoch !== epochRef.current) return;
+        const messageTurnId =
+          normalized.message.turn_id || normalized.message.run_id;
+        if (
+          normalized.isBot &&
+          isCancelledTurn(normalized.jid, messageTurnId)
+        ) {
+          return;
+        }
+        flushBufferedStreams(normalized.jid);
 
         const msgId =
           normalized.message.id ||
           `ws_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
         const alreadySeen = seenIdsRef.current.has(msgId);
-        const shouldEagerRefresh = shouldEagerlyRefreshActiveConversationMessage({
-          jid: normalized.jid,
-          activeJid,
-          isBot: normalized.isBot,
-          seen: alreadySeen,
-        });
+        const shouldEagerRefresh =
+          shouldEagerlyRefreshActiveConversationMessage({
+            jid: normalized.jid,
+            activeJid,
+            isBot: normalized.isBot,
+            seen: alreadySeen,
+          });
 
         if (!alreadySeen && normalized.jid === activeJid) {
           seenIdsRef.current.add(msgId);
@@ -329,6 +479,11 @@ export function useConversationRealtime({
 
       if (normalized.kind === 'turn_event') {
         if (currentEpoch !== epochRef.current) return;
+        if (isCancelledTurn(normalized.jid, normalized.event.turnId)) {
+          discardBufferedStreams(normalized.jid, normalized.event.turnId);
+          return;
+        }
+        flushBufferedStreams(normalized.jid);
 
         updateConversationChatState(normalized.jid, (state) =>
           applyLastEventSeq(
@@ -348,7 +503,12 @@ export function useConversationRealtime({
 
       if (normalized.kind === 'stream') {
         if (currentEpoch !== epochRef.current) return;
+        if (isCancelledTurn(normalized.jid, normalized.runId)) {
+          discardBufferedStreams(normalized.jid, normalized.runId);
+          return;
+        }
         if (normalized.done) {
+          flushBufferedStreams(normalized.jid);
           if (normalized.jid === activeJid) {
             updateConversationChatState(normalized.jid, (state) =>
               applyLastEventSeq(
@@ -365,16 +525,30 @@ export function useConversationRealtime({
           return;
         }
         if (normalized.jid === activeJid) {
-          updateConversationChatState(normalized.jid, (state) =>
-            applyLastEventSeq(
-              applyConversationStreamEvent(state, {
-                chunk: normalized.chunk,
-                timestamp: normalized.timestamp || new Date().toISOString(),
-                runId: normalized.runId,
-              }),
-              normalized.seq,
-            ),
-          );
+          const key = getStreamBufferKey(normalized.jid, normalized.runId);
+          const existing = streamBuffersRef.current.get(key);
+          const timestamp = normalized.timestamp || new Date().toISOString();
+          const seq =
+            typeof normalized.seq === 'number'
+              ? Math.max(
+                  existing?.seq ?? Number.NEGATIVE_INFINITY,
+                  normalized.seq,
+                )
+              : existing?.seq;
+          if (existing) {
+            existing.chunks.push(normalized.chunk);
+            existing.timestamp = timestamp;
+            existing.seq = seq;
+          } else {
+            streamBuffersRef.current.set(key, {
+              jid: normalized.jid,
+              chunks: [normalized.chunk],
+              timestamp,
+              runId: normalized.runId,
+              seq,
+            });
+          }
+          scheduleStreamFlush();
         }
         return;
       }
@@ -448,11 +622,15 @@ export function useConversationRealtime({
 
       if (normalized.kind === 'interrupted') {
         if (currentEpoch !== epochRef.current) return;
+        const interruptedTurnId = normalized.turnId || normalized.runId;
+        markCancelledTurn(normalized.jid, interruptedTurnId);
+        discardBufferedStreams(normalized.jid, interruptedTurnId);
         updateConversationChatState(normalized.jid, (state) =>
           applyLastEventSeq(
             interruptConversationState(state, {
               timestamp: normalized.timestamp || new Date().toISOString(),
               reason: normalized.reason || i18n.t('common.stoppedReply'),
+              turnId: interruptedTurnId,
             }),
             normalized.seq,
           ),
@@ -467,9 +645,14 @@ export function useConversationRealtime({
     [
       activeJidRef,
       chatStateRef,
+      discardBufferedStreams,
       epochRef,
+      flushBufferedStreams,
+      isCancelledTurn,
       loadMessages,
+      markCancelledTurn,
       scheduleConversationsRefresh,
+      scheduleStreamFlush,
       seenIdsRef,
       setInterruptingConversationJid,
       setUnreadRepliesByJid,

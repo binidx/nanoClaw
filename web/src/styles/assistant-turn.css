@@ -211,6 +211,11 @@
   line-height: 1.72;
 }
 
+.assistant-turn-streaming-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .assistant-reasoning-card {
   background: #ffffff;
   border-color: #e2e8f0;

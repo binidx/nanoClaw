@@ -227,9 +227,19 @@ export class WebChannel implements Channel {
       [key: string]: unknown;
     },
   ) {
-    const { id, content, sender, sender_name, timestamp, is_bot,
-      client_id, run_id, is_from_me, turn_id,
-      ...rest } = msg;
+    const {
+      id,
+      content,
+      sender,
+      sender_name,
+      timestamp,
+      is_bot,
+      client_id,
+      run_id,
+      is_from_me,
+      turn_id,
+      ...rest
+    } = msg;
     return this.emitToConversation(
       jid,
       'message',
@@ -318,10 +328,7 @@ export class WebChannel implements Channel {
     );
   }
 
-  notifyAskRequest(
-    jid: string,
-    askRequest: AgentAskRequestPayload,
-  ): void {
+  notifyAskRequest(jid: string, askRequest: AgentAskRequestPayload): void {
     this.emitToConversation(
       jid,
       'ask_request',
@@ -336,10 +343,7 @@ export class WebChannel implements Channel {
     );
   }
 
-  notifyAskResolved(
-    jid: string,
-    askResolved: AgentAskResolvedPayload,
-  ): void {
+  notifyAskResolved(jid: string, askResolved: AgentAskResolvedPayload): void {
     this.emitToConversation(
       jid,
       'ask_resolved',
@@ -354,11 +358,7 @@ export class WebChannel implements Channel {
     );
   }
 
-  notifyLive2DEmotion(
-    jid: string,
-    emotion: string,
-    turnId: string,
-  ): void {
+  notifyLive2DEmotion(jid: string, emotion: string, turnId: string): void {
     this.emitToConversation(jid, 'live2d_emotion', {
       type: 'live2d_emotion',
       jid,
@@ -369,7 +369,7 @@ export class WebChannel implements Channel {
 
   notifyInterrupted(
     jid: string,
-    payload: { timestamp: string; reason?: string },
+    payload: { timestamp: string; reason?: string; turnId?: string },
   ): void {
     this.emitToConversation(
       jid,
@@ -381,6 +381,7 @@ export class WebChannel implements Channel {
       },
       {
         timestamp: payload.timestamp,
+        runId: payload.turnId,
       },
     );
   }
@@ -415,8 +416,14 @@ export class WebChannel implements Channel {
   }
 
   emitImEvent(jid: string, payload: Record<string, unknown>): void {
-    const roomSeq = typeof payload.room_seq === 'number' ? payload.room_seq : undefined;
-    this.emitToConversation(jid, 'im_event', { ...payload, jid }, { seq: roomSeq });
+    const roomSeq =
+      typeof payload.room_seq === 'number' ? payload.room_seq : undefined;
+    this.emitToConversation(
+      jid,
+      'im_event',
+      { ...payload, jid },
+      { seq: roomSeq },
+    );
   }
 
   async sendStreamChunk(

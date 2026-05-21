@@ -203,7 +203,7 @@ export interface ConversationAdminRouteOptions {
     answer: string,
     answeredBy: string,
   ) => void | Promise<void>;
-  interruptConversationReply?: (jid: string) => boolean;
+  interruptConversationReply?: (jid: string) => boolean | Promise<boolean>;
   regenerateConversationReply?: (
     jid: string,
     turnId?: string,
@@ -764,7 +764,7 @@ export function registerConversationAdminRoutes(
         res.status(501).json({ error: 'Reply interruption is not available' });
         return;
       }
-      const stopped = opts.interruptConversationReply(jid);
+      const stopped = await Promise.resolve(opts.interruptConversationReply(jid));
       if (!stopped) {
         const fixed = await sanitizeStaleTurnsForChat(jid);
         if (fixed === 0) {
@@ -910,7 +910,7 @@ export function registerConversationAdminRoutes(
           res.status(404).json({ error: 'Conversation group not found' });
           return;
         }
-        opts.interruptConversationReply?.(jid);
+        await Promise.resolve(opts.interruptConversationReply?.(jid));
         opts.clearRuntimeApprovalPatchesForConversation?.(jid);
         opts.resetConversationRuntime?.(jid, updated.folder);
       }

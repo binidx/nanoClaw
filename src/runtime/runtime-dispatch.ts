@@ -43,6 +43,7 @@ import {
   getAllPendingUploads,
   updateConversationProvider,
   updateConversationLastMessageTime,
+  deleteConversationContextEntriesForSources,
   deleteConversationMessageById,
   deleteAssistantTurnSnapshot,
   getConversationMessages,
@@ -348,7 +349,7 @@ export const _shouldDispatchRealtimeInboundMessageForTest =
   shouldDispatchRealtimeInboundMessage;
 
 export async function loadState(): Promise<void> {
-  assignLastTimestamp(await getRouterState('last_timestamp') || '');
+  assignLastTimestamp((await getRouterState('last_timestamp')) || '');
   const agentTs = await getRouterState('last_agent_timestamp');
   try {
     assignLastAgentTimestamp(agentTs ? JSON.parse(agentTs) : {});
@@ -358,7 +359,9 @@ export async function loadState(): Promise<void> {
   }
   const pendingAgentTs = await getRouterState(PENDING_AGENT_TIMESTAMP_KEY);
   try {
-    assignPendingAgentTimestamp(pendingAgentTs ? JSON.parse(pendingAgentTs) : {});
+    assignPendingAgentTimestamp(
+      pendingAgentTs ? JSON.parse(pendingAgentTs) : {},
+    );
   } catch {
     agentLog.warn('Corrupted pending_agent_timestamp in DB, resetting');
     assignPendingAgentTimestamp({});
@@ -378,13 +381,19 @@ export async function loadState(): Promise<void> {
       }
       try {
         const files = JSON.parse(row.files_json) as AgentUploadedFile[];
-        chatFiles.set(row.message_id, { files, timestamp: row.upload_timestamp });
+        chatFiles.set(row.message_id, {
+          files,
+          timestamp: row.upload_timestamp,
+        });
       } catch {
         // corrupt record, skip
       }
     }
     if (dbUploads.length > 0) {
-      agentLog.info({ count: dbUploads.length }, 'Hydrated pending uploads from DB');
+      agentLog.info(
+        { count: dbUploads.length },
+        'Hydrated pending uploads from DB',
+      );
     }
   } catch {
     // table may not exist on first run before migration
@@ -393,7 +402,10 @@ export async function loadState(): Promise<void> {
   try {
     const fixedTurns = await sanitizeStaleTurns();
     if (fixedTurns > 0) {
-      agentLog.info({ fixedTurns }, 'Sanitized stale assistant turns from previous unclean shutdown');
+      agentLog.info(
+        { fixedTurns },
+        'Sanitized stale assistant turns from previous unclean shutdown',
+      );
     }
   } catch (err) {
     agentLog.warn({ err }, 'Failed to sanitize stale assistant turns');
@@ -407,7 +419,10 @@ export async function loadState(): Promise<void> {
 
 async function saveState(): Promise<void> {
   await setRouterState('last_timestamp', lastTimestamp);
-  await setRouterState('last_agent_timestamp', JSON.stringify(lastAgentTimestamp));
+  await setRouterState(
+    'last_agent_timestamp',
+    JSON.stringify(lastAgentTimestamp),
+  );
   await setRouterState(
     PENDING_AGENT_TIMESTAMP_KEY,
     JSON.stringify(pendingAgentTimestamp),
@@ -419,7 +434,10 @@ export function advanceLastTimestamp(timestamp: string, persist = true): void {
   assignLastTimestamp(timestamp);
   if (persist) {
     saveState().catch((err) => {
-      agentLog.error({ err }, 'Failed to persist state after advancing timestamp');
+      agentLog.error(
+        { err },
+        'Failed to persist state after advancing timestamp',
+      );
     });
   }
 }
@@ -451,7 +469,10 @@ function acknowledgePendingAgentTimestamp(
   changed = true;
   if (persist && changed) {
     saveState().catch((err) => {
-      agentLog.error({ err }, 'Failed to persist agent timestamp acknowledgment');
+      agentLog.error(
+        { err },
+        'Failed to persist agent timestamp acknowledgment',
+      );
     });
   }
 }
@@ -486,7 +507,11 @@ function stopTurnScopedSubagents(
   chatJid: string,
   turnId: string | undefined,
   modes: Array<'agent' | 'team'>,
-  reason: 'turn_completed' | 'turn_failed' | 'turn_interrupted' | 'turn_replaced',
+  reason:
+    | 'turn_completed'
+    | 'turn_failed'
+    | 'turn_interrupted'
+    | 'turn_replaced',
 ): void {
   const targetTurnId = turnId?.trim();
   if (!targetTurnId) return;
@@ -514,7 +539,10 @@ function clearPendingAgentTimestamp(chatJid: string): void {
   if (!pendingAgentTimestamp[chatJid]) return;
   delete pendingAgentTimestamp[chatJid];
   saveState().catch((err) => {
-    agentLog.error({ err }, 'Failed to persist after clearing pending agent timestamp');
+    agentLog.error(
+      { err },
+      'Failed to persist after clearing pending agent timestamp',
+    );
   });
 }
 
@@ -566,7 +594,10 @@ export function queueUploadedFiles(chatJid: string, message: NewMessage): void {
     upload_timestamp: message.timestamp,
     created_at: new Date().toISOString(),
   }).catch((err) => {
-    agentLog.debug({ err, chatJid }, 'Failed to persist pending upload (non-critical)');
+    agentLog.debug(
+      { err, chatJid },
+      'Failed to persist pending upload (non-critical)',
+    );
   });
 }
 
@@ -585,7 +616,10 @@ function cleanupUploadedFilesForCommittedTimestamp(chatJid: string): void {
   if (chatFiles.size === 0) {
     pendingUploadedFiles.delete(chatJid);
     deletePendingUploadsByChat(chatJid).catch((err) => {
-      agentLog.debug({ err, chatJid }, 'Failed to delete pending uploads (non-critical)');
+      agentLog.debug(
+        { err, chatJid },
+        'Failed to delete pending uploads (non-critical)',
+      );
     });
   }
 }
@@ -617,10 +651,21 @@ function buildUploadContextSegment(
   };
 }
 
-function buildContextPromptText(contextBlocks: PromptSegment[], userPrompt: string): string {
-  const contextLines = contextBlocks.map((block) => block.content).filter(Boolean);
+function buildContextPromptText(
+  contextBlocks: PromptSegment[],
+  userPrompt: string,
+): string {
+  const contextLines = contextBlocks
+    .map((block) => block.content)
+    .filter(Boolean);
   if (contextLines.length === 0) return userPrompt;
-  return [`<recent_context>`, ...contextLines, `</recent_context>`, '', userPrompt].join('\n');
+  return [
+    `<recent_context>`,
+    ...contextLines,
+    `</recent_context>`,
+    '',
+    userPrompt,
+  ].join('\n');
 }
 
 async function resolveCachedStableSystemPrompt(
@@ -633,7 +678,10 @@ async function resolveCachedStableSystemPrompt(
     const raw = await getRouterState(cacheKey);
     if (raw) {
       const parsed = JSON.parse(raw) as { fingerprint?: string; text?: string };
-      if (parsed.fingerprint === fingerprint && typeof parsed.text === 'string') {
+      if (
+        parsed.fingerprint === fingerprint &&
+        typeof parsed.text === 'string'
+      ) {
         return parsed.text;
       }
     }
@@ -749,11 +797,14 @@ async function resolveConversationPromptEnvelope(
   let resolvedUserId: string | undefined;
 
   const boundAssistantId = group.assistantId?.trim() || null;
-  const boundAssistant = boundAssistantId ? await getAssistant(boundAssistantId) : null;
+  const boundAssistant = boundAssistantId
+    ? await getAssistant(boundAssistantId)
+    : null;
   const shouldInheritSoul = boundAssistant
     ? boundAssistant.config?.inheritSoulConfig === true
     : true;
-  const isOrdinaryConversation = !boundAssistantId && !chatJid.startsWith('repo-review:');
+  const isOrdinaryConversation =
+    !boundAssistantId && !chatJid.startsWith('repo-review:');
 
   const latestHumanMsg = [...sourceMessages]
     .reverse()
@@ -779,9 +830,14 @@ async function resolveConversationPromptEnvelope(
         .filter((m) => !m.is_from_me && !m.is_bot_message)
         .map((m) => ({ id: m.id, content: m.content || '' }));
       if (options?.runMemoryExtraction) {
-        runMemoryExtraction(resolvedUserId, humanMessages, chatJid).catch((err) => {
-          agentLog.warn({ err, chatJid }, 'Memory extraction failed (non-critical)');
-        });
+        runMemoryExtraction(resolvedUserId, humanMessages, chatJid).catch(
+          (err) => {
+            agentLog.warn(
+              { err, chatJid },
+              'Memory extraction failed (non-critical)',
+            );
+          },
+        );
       }
 
       if (shouldInheritSoul) {
@@ -823,7 +879,9 @@ async function resolveConversationPromptEnvelope(
 
   const providerType =
     assistantRuntime.providerType ||
-    (resolvedUserId ? (await getDefaultProviderForUser(resolvedUserId))?.type || null : null) ||
+    (resolvedUserId
+      ? (await getDefaultProviderForUser(resolvedUserId))?.type || null
+      : null) ||
     'claude';
   if (isOrdinaryConversation) {
     const baseSegments = await buildConversationBaseSegments({
@@ -833,7 +891,9 @@ async function resolveConversationPromptEnvelope(
     stableSegments.push(...baseSegments.segments);
     resolution.push(...baseSegments.resolution);
   } else {
-    const projectDir = assistantRuntime.projectRootOverride || resolveGroupFolderPath(group.folder);
+    const projectDir =
+      assistantRuntime.projectRootOverride ||
+      resolveGroupFolderPath(group.folder);
     const runnerSegments = await resolveRunnerPromptSegments({
       providerType: providerType === 'codex' ? 'codex' : 'claude',
       targetUserId: resolvedUserId,
@@ -936,7 +996,10 @@ async function resolveConversationPromptEnvelope(
   if (lockedNoticeSegment) {
     stableSegments.push(lockedNoticeSegment);
   }
-  if (assistantInstructionSegment && assistantRuntime.instructionsMode !== 'append') {
+  if (
+    assistantInstructionSegment &&
+    assistantRuntime.instructionsMode !== 'append'
+  ) {
     stableSegments.push(assistantInstructionSegment);
   }
   if (soulSegment) {
@@ -946,7 +1009,10 @@ async function resolveConversationPromptEnvelope(
     stableSegments.push(tavernSegment);
   }
   stableSegments.push(...stableTailSegments);
-  if (assistantInstructionSegment && assistantRuntime.instructionsMode === 'append') {
+  if (
+    assistantInstructionSegment &&
+    assistantRuntime.instructionsMode === 'append'
+  ) {
     stableSegments.push(assistantInstructionSegment);
   }
 
@@ -962,7 +1028,8 @@ async function resolveConversationPromptEnvelope(
         : 'runner.context.history_bridge_notice',
       targetUserId: resolvedUserId,
       variables: {
-        transcript: '...(runner restores the latest visible turns when provider session state is unavailable)...',
+        transcript:
+          '...(runner restores the latest visible turns when provider session state is unavailable)...',
         userPrompt: prompt.userPrompt || prompt.text,
       },
     });
@@ -986,13 +1053,16 @@ async function resolveConversationPromptEnvelope(
   const userPrompt = prompt.userPrompt || prompt.text;
   const contextBlocks = prompt.contextBlocks || [];
   const compiledPrompt = buildCompiledPromptEnvelope({
-    stableSystemPrompt: stableSegments.map((segment) => segment.content).join('\n\n'),
+    stableSystemPrompt: stableSegments
+      .map((segment) => segment.content)
+      .join('\n\n'),
     volatileSystemPrompt: volatileSystemSegments
       .map((segment) => segment.content)
       .join('\n\n'),
     contextBlocks,
     userPrompt,
-    providerInputText: prompt.text || buildContextPromptText(contextBlocks, userPrompt),
+    providerInputText:
+      prompt.text || buildContextPromptText(contextBlocks, userPrompt),
     segments: [
       ...stableSegments,
       ...volatileSystemSegments,
@@ -1025,7 +1095,8 @@ async function resolveConversationPromptEnvelope(
   prompt.volatileSystemPrompt = compiledPrompt.volatileSystemPrompt;
   prompt.userPrompt = compiledPrompt.userPrompt;
   prompt.contextBlocks = compiledPrompt.contextBlocks;
-  prompt.stablePrefixFingerprint = compiledPrompt.stablePrefixFingerprint || undefined;
+  prompt.stablePrefixFingerprint =
+    compiledPrompt.stablePrefixFingerprint || undefined;
   prompt.cacheFingerprint = compiledPrompt.cacheFingerprint || undefined;
 
   const segments: PromptSegment[] = [
@@ -1095,7 +1166,10 @@ async function reconcilePersistedPendingAgentTimestamps(): Promise<void> {
 
   if (changed) {
     saveState().catch((err) => {
-      agentLog.error({ err }, 'Failed to persist after reconciling pending agent timestamps');
+      agentLog.error(
+        { err },
+        'Failed to persist after reconciling pending agent timestamps',
+      );
     });
   }
 }
@@ -1153,7 +1227,10 @@ export const _resolveDispatchCandidateMessages =
 export const _clearPendingUploadedFilesForTest = (chatJid: string): void => {
   pendingUploadedFiles.delete(chatJid);
   deletePendingUploadsByChat(chatJid).catch((err) => {
-    agentLog.debug({ err, chatJid }, 'Failed to delete pending uploads (non-critical)');
+    agentLog.debug(
+      { err, chatJid },
+      'Failed to delete pending uploads (non-critical)',
+    );
   });
 };
 export const _finalizeSuccessfulAgentRun = (chatJid: string): void => {
@@ -1318,7 +1395,7 @@ export async function createWebConversation(
     channel?: string;
     ownerUserId?: string;
   } = {},
-): Promise<{ folder: string; accessPolicy: AccessPolicy; }> {
+): Promise<{ folder: string; accessPolicy: AccessPolicy }> {
   const existing = registeredGroups[jid];
   if (existing) {
     return {
@@ -1385,7 +1462,9 @@ export async function createWebConversation(
     requiresTrigger: false,
     isMain: false,
     ...(agentConfig ? { agentConfig } : {}),
-    ...(tavernConfig?.providerId ? { providerId: tavernConfig.providerId } : {}),
+    ...(tavernConfig?.providerId
+      ? { providerId: tavernConfig.providerId }
+      : {}),
     ...(tavernConfig?.model ? { model: tavernConfig.model } : {}),
   });
   await storeChatMetadata(
@@ -1429,16 +1508,22 @@ export async function createChannelConversation(input: {
   name: string;
   assistantId?: string;
   target?: Record<string, unknown>;
-}): Promise<{ jid: string; name: string; allowedDirectories?: string[] } | null> {
+}): Promise<{
+  jid: string;
+  name: string;
+  allowedDirectories?: string[];
+} | null> {
   const timestamp = new Date().toISOString();
   const assistantId = input.assistantId?.trim() || undefined;
   if (assistantId) {
-    throw new Error('Assistants are currently supported only for Web conversations');
+    throw new Error(
+      'Assistants are currently supported only for Web conversations',
+    );
   }
 
   const resolveRecentFeishuChat = async (
     instanceId: string,
-  ): Promise<{ chatId: string; name: string; isGroup: boolean; } | null> => {
+  ): Promise<{ chatId: string; name: string; isGroup: boolean } | null> => {
     for (const chat of await getAllChats()) {
       if (chat.channel !== 'feishu' || !chat.jid.startsWith('feishu:')) {
         continue;
@@ -1524,7 +1609,10 @@ export async function createChannelConversation(input: {
   };
 
   if (input.type === 'feishu') {
-    const { instanceId, ownerUserId } = await resolveInstance('feishu', t('errors.auto_7714e5', {}, undefined));
+    const { instanceId, ownerUserId } = await resolveInstance(
+      'feishu',
+      t('errors.auto_7714e5', {}, undefined),
+    );
     const knownChat = await resolveRecentFeishuChat(instanceId);
     const chatId =
       String(input.target?.chatId || '').trim() || knownChat?.chatId || '';
@@ -1558,7 +1646,10 @@ export async function createChannelConversation(input: {
   }
 
   if (input.type === 'telegram') {
-    const { instanceId, ownerUserId } = await resolveInstance('telegram', 'Telegram');
+    const { instanceId, ownerUserId } = await resolveInstance(
+      'telegram',
+      'Telegram',
+    );
     const chatId = String(input.target?.chatId || '').trim();
     if (!chatId) {
       throw new Error(t('errors.auto_e7edd9', {}, undefined));
@@ -1584,7 +1675,10 @@ export async function createChannelConversation(input: {
   }
 
   if (input.type === 'discord') {
-    const { instanceId, ownerUserId } = await resolveInstance('discord', 'Discord');
+    const { instanceId, ownerUserId } = await resolveInstance(
+      'discord',
+      'Discord',
+    );
     const channelId = String(input.target?.channelId || '').trim();
     if (!channelId) {
       throw new Error(t('errors.auto_198b66', {}, undefined));
@@ -1658,7 +1752,10 @@ export async function createChannelConversation(input: {
   }
 
   if (input.type === 'whatsapp') {
-    const { instanceId, ownerUserId } = await resolveInstance('whatsapp', 'WhatsApp');
+    const { instanceId, ownerUserId } = await resolveInstance(
+      'whatsapp',
+      'WhatsApp',
+    );
     const chatId = String(input.target?.chatId || '').trim();
     if (!chatId) {
       throw new Error(t('errors.auto_57ca5a', {}, undefined));
@@ -1685,7 +1782,7 @@ export async function createChannelConversation(input: {
 export async function updateConversationAccessPolicy(
   jid: string,
   accessPolicy: AccessPolicy,
-): Promise<{ folder: string; accessPolicy: AccessPolicy; } | null> {
+): Promise<{ folder: string; accessPolicy: AccessPolicy } | null> {
   let current = registeredGroups[jid];
   if (!current) {
     const dbGroup = await getRegisteredGroup(jid);
@@ -1730,7 +1827,7 @@ export async function updateConversationAccessPolicy(
   };
 }
 
-export function interruptConversationReply(jid: string): boolean {
+export async function interruptConversationReply(jid: string): Promise<boolean> {
   const activeTurnId = activeConversationTurnIds.get(jid);
   const stopped = queue.stopActiveProcess(jid);
   if (!stopped) return false;
@@ -1742,6 +1839,13 @@ export function interruptConversationReply(jid: string): boolean {
     'turn_interrupted',
   );
   clearActiveConversationTurn(jid, activeTurnId);
+  if (activeTurnId) {
+    await deleteAssistantTurnSnapshot(jid, activeTurnId);
+    await deleteConversationContextEntriesForSources({
+      chatJid: jid,
+      turnIds: [activeTurnId],
+    });
+  }
 
   interruptedAgentRuns.add(jid);
   finalizeInterruptedAgentRun(jid);
@@ -1749,6 +1853,7 @@ export function interruptConversationReply(jid: string): boolean {
   getWebChannel()?.notifyInterrupted(jid, {
     timestamp: new Date().toISOString(),
     reason: t('errors.auto_1e03dd', {}, undefined),
+    ...(activeTurnId ? { turnId: activeTurnId } : {}),
   });
   return true;
 }
@@ -1762,7 +1867,7 @@ function resolveLatestVisibleAssistantMessage(
 function resolveLatestRegeneratableTurn(input: {
   turns: PersistedAssistantTurn[];
   messages: NewMessage[];
-  requestedTurnId?: string,
+  requestedTurnId?: string;
 }): PersistedAssistantTurn {
   const regeneratableTurns = input.turns.filter(
     (turn) => !turn.isLive && turn.isCompleted && !!turn.persistedMessageId,
@@ -1806,6 +1911,7 @@ function resolveRegenerationWindow(input: {
 }): {
   resetCursorTimestamp: string;
   latestUserTimestamp: string;
+  assistantMessageIdsToDelete: string[];
 } {
   const assistantIndex = input.messages.findIndex(
     (message) => message.id === input.targetAssistantMessageId,
@@ -1814,8 +1920,14 @@ function resolveRegenerationWindow(input: {
     throw new Error('Assistant reply message not found');
   }
 
-  let previousBotIndex = -1;
+  let assistantGroupStartIndex = assistantIndex;
   for (let index = assistantIndex - 1; index >= 0; index -= 1) {
+    if (!input.messages[index]?.is_bot_message) break;
+    assistantGroupStartIndex = index;
+  }
+
+  let previousBotIndex = -1;
+  for (let index = assistantGroupStartIndex - 1; index >= 0; index -= 1) {
     if (input.messages[index]?.is_bot_message) {
       previousBotIndex = index;
       break;
@@ -1837,12 +1949,29 @@ function resolveRegenerationWindow(input: {
     throw new Error('No user input available to regenerate this reply');
   }
 
+  const assistantMessageIdsToDelete: string[] = [];
+  for (
+    let index = latestUserIndex + 1;
+    index < input.messages.length;
+    index += 1
+  ) {
+    const message = input.messages[index];
+    if (!message) continue;
+    if (!message.is_bot_message) break;
+    assistantMessageIdsToDelete.push(message.id);
+  }
+
+  if (!assistantMessageIdsToDelete.includes(input.targetAssistantMessageId)) {
+    assistantMessageIdsToDelete.push(input.targetAssistantMessageId);
+  }
+
   return {
     resetCursorTimestamp:
       firstUserIndex > 0
         ? input.messages[firstUserIndex - 1]?.timestamp || ''
         : '',
     latestUserTimestamp: input.messages[latestUserIndex]!.timestamp,
+    assistantMessageIdsToDelete,
   };
 }
 
@@ -1889,8 +2018,31 @@ export async function regenerateConversationReply(
   });
 
   await resetConversationRuntime(chatJid, group.folder);
-  await deleteAssistantTurnSnapshot(chatJid, targetTurn.id);
-  await deleteConversationMessageById(chatJid, targetMessageId);
+  const assistantMessageIdsToDelete = new Set(
+    regenerationWindow.assistantMessageIdsToDelete,
+  );
+  const turnIdsToDelete = new Set(
+    turns
+      .filter(
+        (turn) =>
+          turn.id === targetTurn.id ||
+          (!!turn.persistedMessageId &&
+            assistantMessageIdsToDelete.has(turn.persistedMessageId)),
+      )
+      .map((turn) => turn.id),
+  );
+
+  for (const turnId of turnIdsToDelete) {
+    await deleteAssistantTurnSnapshot(chatJid, turnId);
+  }
+  for (const messageId of assistantMessageIdsToDelete) {
+    await deleteConversationMessageById(chatJid, messageId);
+  }
+  await deleteConversationContextEntriesForSources({
+    chatJid,
+    messageIds: Array.from(assistantMessageIdsToDelete),
+    turnIds: Array.from(turnIdsToDelete),
+  });
   await updateConversationLastMessageTime(
     chatJid,
     regenerationWindow.latestUserTimestamp,
@@ -1901,7 +2053,10 @@ export async function regenerateConversationReply(
   interruptedAgentRuns.delete(chatJid);
   clearIpcAcknowledgedOutput(chatJid);
   saveState().catch((err) => {
-    agentLog.error({ err, chatJid }, 'Failed to persist regeneration cursor reset');
+    agentLog.error(
+      { err, chatJid },
+      'Failed to persist regeneration cursor reset',
+    );
   });
 
   queue.enqueueMessageCheck(chatJid);
@@ -1979,9 +2134,7 @@ export async function getAvailableGroups(): Promise<AvailableGroup[]> {
  * Process all pending messages for a group.
  * Called by the GroupQueue when it's this group's turn.
  */
-export async function processGroupMessages(
-  chatJid: string,
-): Promise<boolean> {
+export async function processGroupMessages(chatJid: string): Promise<boolean> {
   const group =
     registeredGroups[chatJid] ||
     (await syncRepoReviewConversationBinding(chatJid));
@@ -2036,7 +2189,12 @@ export async function processGroupMessages(
   );
 
   agentLog.info(
-    { group: group.name, chatJid, messageCount: messagesToProcess.length, channel: channel.name },
+    {
+      group: group.name,
+      chatJid,
+      messageCount: messagesToProcess.length,
+      channel: channel.name,
+    },
     'Agent dispatched',
   );
 
@@ -2047,7 +2205,10 @@ export async function processGroupMessages(
   const resetIdleTimer = () => {
     if (idleTimer) clearTimeout(idleTimer);
     idleTimer = setTimeout(() => {
-      agentLog.debug({ group: group.name }, 'Idle timeout, closing agent stdin');
+      agentLog.debug(
+        { group: group.name },
+        'Idle timeout, closing agent stdin',
+      );
       queue.closeStdin(chatJid);
     }, IDLE_TIMEOUT);
   };
@@ -2093,11 +2254,7 @@ export async function processGroupMessages(
     );
     if (!finalizedTurn) return;
     turnPersistenceDrafts.set(liveTurnId, finalizedTurn);
-    await storeAssistantTurnSnapshot(
-      chatJid,
-      finalizedTurn,
-      input.timestamp,
-    );
+    await storeAssistantTurnSnapshot(chatJid, finalizedTurn, input.timestamp);
   };
 
   const deliverVisibleErrorReply = async (visibleError: string) => {
@@ -2134,228 +2291,256 @@ export async function processGroupMessages(
     outputAcknowledged = true;
   };
 
-  const output = await runAgent(group, prompt, chatJid, async (result) => {
-    if (interruptedAgentRuns.has(chatJid)) {
-      return;
-    }
+  const output = await runAgent(
+    group,
+    prompt,
+    chatJid,
+    async (result) => {
+      if (interruptedAgentRuns.has(chatJid)) {
+        return;
+      }
 
-    if (result.event) {
-      const webCh = getWebChannel();
-      if (webCh) {
-        webCh.notifyAgentEvent(chatJid, result.event);
+      if (result.event) {
+        const webCh = getWebChannel();
+        if (webCh) {
+          webCh.notifyAgentEvent(chatJid, result.event);
+        }
+        resetIdleTimer();
       }
-      resetIdleTimer();
-    }
 
-    if (result.turnEvent) {
-      if (liveTurnId !== result.turnEvent.turnId) {
-        stopTurnScopedSubagents(
-          chatJid,
-          liveTurnId,
-          ['agent'],
-          'turn_replaced',
-        );
-        clearActiveConversationTurn(chatJid, liveTurnId);
-        // A long-lived agent process can handle multiple user turns.
-        // Reset per-turn delivery state so a failed turn cannot reuse the
-        // persisted message metadata from a previous successful reply.
-        resetTurnDeliveryState();
-      }
-      liveTurnId = result.turnEvent.turnId;
-      setActiveConversationTurn(chatJid, liveTurnId);
-      const visibleTurnEvent = sanitizeTurnEventForWeb(result.turnEvent);
-      if (visibleTurnEvent) {
-        applyTurnEventToPersistenceDrafts(turnPersistenceDrafts, visibleTurnEvent);
-      }
-      if (visibleTurnEvent?.type === 'turn.failed') {
-        latestTurnError = visibleTurnEvent.error;
-      }
-      if (result.turnEvent.type === 'turn.completed') {
-        stopTurnScopedSubagents(
-          chatJid,
-          result.turnEvent.turnId,
-          ['agent'],
-          'turn_completed',
-        );
-        const completedTurn = turnPersistenceDrafts.get(result.turnEvent.turnId);
-        if (completedTurn) {
-          await storeAssistantTurnSnapshot(
+      if (result.turnEvent) {
+        if (liveTurnId !== result.turnEvent.turnId) {
+          stopTurnScopedSubagents(
             chatJid,
-            completedTurn,
-            completedTurn.timestamp,
+            liveTurnId,
+            ['agent'],
+            'turn_replaced',
+          );
+          clearActiveConversationTurn(chatJid, liveTurnId);
+          // A long-lived agent process can handle multiple user turns.
+          // Reset per-turn delivery state so a failed turn cannot reuse the
+          // persisted message metadata from a previous successful reply.
+          resetTurnDeliveryState();
+        }
+        liveTurnId = result.turnEvent.turnId;
+        setActiveConversationTurn(chatJid, liveTurnId);
+        const visibleTurnEvent = sanitizeTurnEventForWeb(result.turnEvent);
+        if (visibleTurnEvent) {
+          applyTurnEventToPersistenceDrafts(
+            turnPersistenceDrafts,
+            visibleTurnEvent,
           );
         }
-      }
-      if (result.turnEvent.type === 'turn.failed') {
-        stopTurnScopedSubagents(
-          chatJid,
-          result.turnEvent.turnId,
-          ['agent'],
-          'turn_failed',
-        );
-      }
-      const webCh = getWebChannel();
-      if (webCh && visibleTurnEvent) {
-        webCh.notifyTurnEvent(chatJid, visibleTurnEvent);
-      }
-      resetIdleTimer();
-    }
-
-    if (result.approvalRequest) {
-      const webCh = getWebChannel();
-      if (webCh) {
-        webCh.notifyApprovalRequest(chatJid, result.approvalRequest);
-      }
-      resetIdleTimer();
-    }
-
-    if (result.approvalResolved) {
-      const webCh = getWebChannel();
-      if (webCh) {
-        webCh.notifyApprovalResolved(chatJid, result.approvalResolved);
-      }
-      resetIdleTimer();
-    }
-
-    if (result.askRequest) {
-      const webCh = getWebChannel();
-      if (webCh) {
-        webCh.notifyAskRequest(chatJid, result.askRequest);
-      }
-      resetIdleTimer();
-    }
-
-    if (result.askResolved) {
-      const webCh = getWebChannel();
-      if (webCh) {
-        webCh.notifyAskResolved(chatJid, result.askResolved);
-      }
-      resetIdleTimer();
-    }
-
-    if (result.streamChunk) {
-      acknowledgeOutput();
-      streamedText = mergeStreamingText(streamedText, result.streamChunk);
-      const webCh = getWebChannel();
-      if (webCh && !liveTurnId) {
-        await webCh.sendStreamChunk(chatJid, result.streamChunk, false);
-        outputSentToUser = true;
-      } else if (webCh && liveTurnId) {
-        await webCh.sendStreamChunk(chatJid, result.streamChunk, false, liveTurnId);
-        outputSentToUser = true;
-      }
-      if (channel.name !== 'web' && channel.sendStreamChunk) {
-        await channel.sendStreamChunk(chatJid, result.streamChunk, false);
-        streamedToPrimaryChannel = true;
-        outputSentToUser = true;
-      }
-      await channel.setTyping?.(chatJid, false);
-      resetIdleTimer();
-    }
-
-    if (result.result) {
-      const raw =
-        typeof result.result === 'string'
-          ? result.result
-          : JSON.stringify(result.result);
-      const text = raw.replace(/<internal>[\s\S]*?<\/internal>/g, '').trim();
-      agentLog.debug({ group: group.name, outputLength: raw.length }, 'Agent output received');
-      if (text) {
-        acknowledgeOutput();
-        const delivered = await storeAndBroadcastBotReply(
-          chatJid,
-          text,
-          liveTurnId ? turnPersistenceDrafts.get(liveTurnId) : undefined,
-        );
-        persistedPrimaryReply = {
-          messageId: delivered.messageId,
-          timestamp: delivered.timestamp,
-          text: delivered.text,
-        };
-        await persistDeliveredTurnSnapshot({
-          messageId: delivered.messageId,
-          timestamp: delivered.timestamp,
-          text: delivered.text,
-        });
-
-        // Async emotion analysis — only for companion mode conversations
-        (async () => {
-          try {
-            if (!(await isEmotionEnabled())) return;
-            const chatMode = await getConversationMode(chatJid);
-            if (chatMode !== 'companion') return;
-            const emotion = await analyzeEmotion(delivered.text);
-            const webCh = getWebChannel();
-            if (webCh && emotion !== 'neutral') {
-              webCh.notifyLive2DEmotion(chatJid, emotion, liveTurnId || '');
-            }
-          } catch (err) { agentLog.debug({ err, chatJid }, 'Emotion analysis failed (non-critical)'); }
-        })();
-
-        if (channel.name === 'web') {
-          const webCh = getWebChannel();
-          if (webCh) {
-            await webCh.sendStreamChunk(chatJid, '', true, liveTurnId);
-          }
-          outputSentToUser = true;
-          primaryReplyCompleted = true;
-          await channel.setTyping?.(chatJid, false);
-        } else if (streamedToPrimaryChannel && channel.sendStreamChunk) {
-          await channel.sendStreamChunk(chatJid, delivered.text, true);
-          outputSentToUser = true;
-          primaryReplyCompleted = true;
-          streamedText = '';
-          pendingParts = [];
-          await channel.setTyping?.(chatJid, false);
-          const webCh = getWebChannel();
-          if (webCh) {
-            await webCh.sendStreamChunk(chatJid, '', true, liveTurnId);
-          }
-        } else {
-          await channel.sendMessage(chatJid, delivered.text);
-          outputSentToUser = true;
-          primaryReplyCompleted = true;
-          streamedText = '';
-          pendingParts = [];
-          await channel.setTyping?.(chatJid, false);
-          const webCh = getWebChannel();
-          if (webCh) {
-            await webCh.sendStreamChunk(chatJid, '', true, liveTurnId);
+        if (visibleTurnEvent?.type === 'turn.failed') {
+          latestTurnError = visibleTurnEvent.error;
+        }
+        if (result.turnEvent.type === 'turn.completed') {
+          stopTurnScopedSubagents(
+            chatJid,
+            result.turnEvent.turnId,
+            ['agent'],
+            'turn_completed',
+          );
+          const completedTurn = turnPersistenceDrafts.get(
+            result.turnEvent.turnId,
+          );
+          if (completedTurn) {
+            await storeAssistantTurnSnapshot(
+              chatJid,
+              completedTurn,
+              completedTurn.timestamp,
+            );
           }
         }
+        if (result.turnEvent.type === 'turn.failed') {
+          stopTurnScopedSubagents(
+            chatJid,
+            result.turnEvent.turnId,
+            ['agent'],
+            'turn_failed',
+          );
+        }
+        const webCh = getWebChannel();
+        if (webCh && visibleTurnEvent) {
+          webCh.notifyTurnEvent(chatJid, visibleTurnEvent);
+        }
+        resetIdleTimer();
       }
-      resetIdleTimer();
-    }
 
-    if (result.status === 'success' && !result.result && !result.streamChunk) {
-      acknowledgeOutput();
-      queue.notifyIdle(chatJid);
-    }
+      if (result.approvalRequest) {
+        const webCh = getWebChannel();
+        if (webCh) {
+          webCh.notifyApprovalRequest(chatJid, result.approvalRequest);
+        }
+        resetIdleTimer();
+      }
 
-    if (result.status === 'error') {
-      const webCh = getWebChannel();
-      if (webCh && !liveTurnId) {
-        await webCh.sendStreamChunk(chatJid, '', true);
-      } else if (webCh && liveTurnId) {
-        await webCh.sendStreamChunk(chatJid, '', true, liveTurnId);
+      if (result.approvalResolved) {
+        const webCh = getWebChannel();
+        if (webCh) {
+          webCh.notifyApprovalResolved(chatJid, result.approvalResolved);
+        }
+        resetIdleTimer();
       }
-      if (channel.name !== 'web' && channel.sendStreamChunk) {
-        await channel.sendStreamChunk(chatJid, '', true);
+
+      if (result.askRequest) {
+        const webCh = getWebChannel();
+        if (webCh) {
+          webCh.notifyAskRequest(chatJid, result.askRequest);
+        }
+        resetIdleTimer();
       }
-      nonRetryableError = result.retryable === false;
-      if (nonRetryableError && !outputSentToUser) {
-        const visibleError = formatUserVisibleAgentError(
-          latestTurnError || result.error || '',
+
+      if (result.askResolved) {
+        const webCh = getWebChannel();
+        if (webCh) {
+          webCh.notifyAskResolved(chatJid, result.askResolved);
+        }
+        resetIdleTimer();
+      }
+
+      if (result.streamChunk) {
+        acknowledgeOutput();
+        streamedText = mergeStreamingText(streamedText, result.streamChunk);
+        const webCh = getWebChannel();
+        if (webCh && !liveTurnId) {
+          await webCh.sendStreamChunk(chatJid, result.streamChunk, false);
+          outputSentToUser = true;
+        } else if (webCh && liveTurnId) {
+          await webCh.sendStreamChunk(
+            chatJid,
+            result.streamChunk,
+            false,
+            liveTurnId,
+          );
+          outputSentToUser = true;
+        }
+        if (channel.name !== 'web' && channel.sendStreamChunk) {
+          await channel.sendStreamChunk(chatJid, result.streamChunk, false);
+          streamedToPrimaryChannel = true;
+          outputSentToUser = true;
+        }
+        await channel.setTyping?.(chatJid, false);
+        resetIdleTimer();
+      }
+
+      if (result.result) {
+        const raw =
+          typeof result.result === 'string'
+            ? result.result
+            : JSON.stringify(result.result);
+        const text = raw.replace(/<internal>[\s\S]*?<\/internal>/g, '').trim();
+        agentLog.debug(
+          { group: group.name, outputLength: raw.length },
+          'Agent output received',
         );
-        await deliverVisibleErrorReply(visibleError);
+        if (text) {
+          acknowledgeOutput();
+          const delivered = await storeAndBroadcastBotReply(
+            chatJid,
+            text,
+            liveTurnId ? turnPersistenceDrafts.get(liveTurnId) : undefined,
+          );
+          persistedPrimaryReply = {
+            messageId: delivered.messageId,
+            timestamp: delivered.timestamp,
+            text: delivered.text,
+          };
+          await persistDeliveredTurnSnapshot({
+            messageId: delivered.messageId,
+            timestamp: delivered.timestamp,
+            text: delivered.text,
+          });
+
+          // Async emotion analysis — only for companion mode conversations
+          (async () => {
+            try {
+              if (!(await isEmotionEnabled())) return;
+              const chatMode = await getConversationMode(chatJid);
+              if (chatMode !== 'companion') return;
+              const emotion = await analyzeEmotion(delivered.text);
+              const webCh = getWebChannel();
+              if (webCh && emotion !== 'neutral') {
+                webCh.notifyLive2DEmotion(chatJid, emotion, liveTurnId || '');
+              }
+            } catch (err) {
+              agentLog.debug(
+                { err, chatJid },
+                'Emotion analysis failed (non-critical)',
+              );
+            }
+          })();
+
+          if (channel.name === 'web') {
+            const webCh = getWebChannel();
+            if (webCh) {
+              await webCh.sendStreamChunk(chatJid, '', true, liveTurnId);
+            }
+            outputSentToUser = true;
+            primaryReplyCompleted = true;
+            await channel.setTyping?.(chatJid, false);
+          } else if (streamedToPrimaryChannel && channel.sendStreamChunk) {
+            await channel.sendStreamChunk(chatJid, delivered.text, true);
+            outputSentToUser = true;
+            primaryReplyCompleted = true;
+            streamedText = '';
+            pendingParts = [];
+            await channel.setTyping?.(chatJid, false);
+            const webCh = getWebChannel();
+            if (webCh) {
+              await webCh.sendStreamChunk(chatJid, '', true, liveTurnId);
+            }
+          } else {
+            await channel.sendMessage(chatJid, delivered.text);
+            outputSentToUser = true;
+            primaryReplyCompleted = true;
+            streamedText = '';
+            pendingParts = [];
+            await channel.setTyping?.(chatJid, false);
+            const webCh = getWebChannel();
+            if (webCh) {
+              await webCh.sendStreamChunk(chatJid, '', true, liveTurnId);
+            }
+          }
+        }
+        resetIdleTimer();
       }
-      hadError = true;
-    }
-  }, {
-    soulPrompt,
-    userId: resolvedUserId,
-    promptEnvelope,
-  });
+
+      if (
+        result.status === 'success' &&
+        !result.result &&
+        !result.streamChunk
+      ) {
+        acknowledgeOutput();
+        queue.notifyIdle(chatJid);
+      }
+
+      if (result.status === 'error') {
+        const webCh = getWebChannel();
+        if (webCh && !liveTurnId) {
+          await webCh.sendStreamChunk(chatJid, '', true);
+        } else if (webCh && liveTurnId) {
+          await webCh.sendStreamChunk(chatJid, '', true, liveTurnId);
+        }
+        if (channel.name !== 'web' && channel.sendStreamChunk) {
+          await channel.sendStreamChunk(chatJid, '', true);
+        }
+        nonRetryableError = result.retryable === false;
+        if (nonRetryableError && !outputSentToUser) {
+          const visibleError = formatUserVisibleAgentError(
+            latestTurnError || result.error || '',
+          );
+          await deliverVisibleErrorReply(visibleError);
+        }
+        hadError = true;
+      }
+    },
+    {
+      soulPrompt,
+      userId: resolvedUserId,
+      promptEnvelope,
+    },
+  );
 
   if (output.status === 'error' && !latestTurnError) {
     notifyWebTurnFailure(
@@ -2471,7 +2656,10 @@ export async function processGroupMessages(
     lastAgentTimestamp[chatJid] = previousCursor;
     clearPendingAgentTimestamp(chatJid);
     saveState().catch((err) => {
-      agentLog.error({ err }, 'Failed to persist cursor rollback after agent error');
+      agentLog.error(
+        { err },
+        'Failed to persist cursor rollback after agent error',
+      );
     });
     agentLog.warn(
       { group: group.name },
@@ -2542,8 +2730,9 @@ async function runAgent(
     : undefined;
 
   try {
-    const promptEnvelope = opts?.promptEnvelope
-      || await resolveConversationPromptEnvelope(chatJid, [], group);
+    const promptEnvelope =
+      opts?.promptEnvelope ||
+      (await resolveConversationPromptEnvelope(chatJid, [], group));
     const assistantRuntime = promptEnvelope.assistantRuntime;
     const legacyInstructionsAppend = promptEnvelope.segments
       .filter(
@@ -2567,11 +2756,13 @@ async function runAgent(
       volatileSystemPrompt: promptEnvelope.compiledPrompt.volatileSystemPrompt,
       systemPromptText: promptEnvelope.compiledPrompt.systemPromptText || null,
       userPromptText: promptEnvelope.compiledPrompt.userPrompt,
-      providerInputText: promptEnvelope.compiledPrompt.providerInputText || prompt.text,
+      providerInputText:
+        promptEnvelope.compiledPrompt.providerInputText || prompt.text,
       contextBlocks: promptEnvelope.compiledPrompt.contextBlocks,
       segments: promptEnvelope.segments,
       resolution: promptEnvelope.resolution,
-      stablePrefixFingerprint: promptEnvelope.compiledPrompt.stablePrefixFingerprint || null,
+      stablePrefixFingerprint:
+        promptEnvelope.compiledPrompt.stablePrefixFingerprint || null,
       cacheFingerprint: promptEnvelope.compiledPrompt.cacheFingerprint || null,
       metadata: {
         assistantId: assistantRuntime.assistantId,
@@ -2636,7 +2827,12 @@ async function runAgent(
 
     const agentDurationMs = Date.now() - agentStartTime;
     agentLog.info(
-      { group: group.name, chatJid, durationMs: agentDurationMs, status: 'success' },
+      {
+        group: group.name,
+        chatJid,
+        durationMs: agentDurationMs,
+        status: 'success',
+      },
       'Agent finished',
     );
     return { status: 'success' };
@@ -2644,7 +2840,10 @@ async function runAgent(
     agentLog.error({ group: group.name, chatJid, err }, 'Agent error');
     return {
       status: 'error',
-      error: err instanceof Error ? err.message : t('errors.auto_6c36b7', {}, undefined),
+      error:
+        err instanceof Error
+          ? err.message
+          : t('errors.auto_6c36b7', {}, undefined),
     };
   } finally {
     clearEphemeralSubagentRuntimes({
@@ -2676,9 +2875,10 @@ export async function startMessageLoop(): Promise<void> {
       );
 
       if (messages.length > 0) {
-        const fresh = snapshotTimestamp === lastTimestamp
-          ? messages
-          : messages.filter((m) => m.timestamp > lastTimestamp);
+        const fresh =
+          snapshotTimestamp === lastTimestamp
+            ? messages
+            : messages.filter((m) => m.timestamp > lastTimestamp);
         if (fresh.length === 0) {
           assignLastTimestamp(newTimestamp);
           await saveState().catch((err) => {
@@ -2705,7 +2905,10 @@ export async function startMessageLoop(): Promise<void> {
             await dispatchPendingMessages(chatJid, groupMessages);
           } catch (dispatchErr) {
             failedJids.add(chatJid);
-            agentLog.error({ chatJid, err: dispatchErr }, 'Failed to dispatch messages for group');
+            agentLog.error(
+              { chatJid, err: dispatchErr },
+              'Failed to dispatch messages for group',
+            );
           }
         }
 
@@ -2714,7 +2917,10 @@ export async function startMessageLoop(): Promise<void> {
         } else {
           let safeTimestamp = lastTimestamp;
           for (const msg of messages) {
-            if (!failedJids.has(msg.chat_jid) && msg.timestamp > safeTimestamp) {
+            if (
+              !failedJids.has(msg.chat_jid) &&
+              msg.timestamp > safeTimestamp
+            ) {
               safeTimestamp = msg.timestamp;
             }
           }
@@ -2729,7 +2935,10 @@ export async function startMessageLoop(): Promise<void> {
         try {
           await saveState();
         } catch (persistErr) {
-          agentLog.error({ err: persistErr }, 'Failed to persist message loop cursor');
+          agentLog.error(
+            { err: persistErr },
+            'Failed to persist message loop cursor',
+          );
         }
       }
     } catch (err) {

@@ -802,6 +802,187 @@ export async function storeContextEntries(entries: ContextEntryRecord[]): Promis
   await tx(entries);
 }
 
+function uniqueNonEmptyStrings(values: Array<string | undefined | null>): string[] {
+  return Array.from(
+    new Set(
+      values
+        .map((value) => String(value || '').trim())
+        .filter((value) => value.length > 0),
+    ),
+  );
+}
+
+function contextEntryReferencesAnySource(
+  record: Pick<ContextEntryRecord, 'source_ref' | 'content_json'>,
+  sourceIds: Set<string>,
+): boolean {
+  if (record.source_ref && sourceIds.has(record.source_ref)) {
+    return true;
+  }
+  if (!record.content_json) return false;
+  try {
+    const parsed = JSON.parse(record.content_json) as Record<string, unknown>;
+    const sourceEntryIds = Array.isArray(parsed.sourceEntryIds)
+      ? parsed.sourceEntryIds
+      : Array.isArray(parsed.source_entry_ids)
+        ? parsed.source_entry_ids
+        : [];
+    return sourceEntryIds.some(
+      (value) => typeof value === 'string' && sourceIds.has(value),
+    );
+  } catch {
+    return false;
+  }
+}
+
+async function deleteToolSummariesReferencingContextEntries(
+  chatJid: string,
+  contextEntryIds: Set<string>,
+): Promise<number> {
+  if (contextEntryIds.size === 0) return 0;
+  const summaries = await dba
+    .prepare(
+      `
+        SELECT id, source_ref, content_json
+        FROM context_entries
+        WHERE chat_jid = ? AND source_type = 'tool_call_summary'
+      `,
+    )
+    .all(chatJid) as Array<Pick<ContextEntryRecord, 'id' | 'source_ref' | 'content_json'>>;
+  const summaryIds = summaries
+    .filter((record) => contextEntryReferencesAnySource(record, contextEntryIds))
+    .map((record) => record.id);
+  if (summaryIds.length === 0) return 0;
+  const placeholders = createPlaceholders(summaryIds.length);
+  const result = await dba
+    .prepare(
+      `DELETE FROM context_entries WHERE chat_jid = ? AND id IN (${placeholders})`,
+    )
+    .run(chatJid, ...summaryIds);
+  return result.changes;
+}
+
+async function deleteCompactionsReferencingContextEntries(
+  chatJid: string,
+  contextEntryIds: Set<string>,
+): Promise<number> {
+  if (contextEntryIds.size === 0) return 0;
+  const compactions = await dba
+    .prepare(
+      `
+        SELECT id, source_entry_ids_json
+        FROM context_compactions
+        WHERE chat_jid = ?
+      `,
+    )
+    .all(chatJid) as Array<{ id: string; source_entry_ids_json: string | null }>;
+  const compactionIds = compactions
+    .filter((record) => {
+      if (!record.source_entry_ids_json) return false;
+      try {
+        const parsed = JSON.parse(record.source_entry_ids_json) as unknown;
+        return Array.isArray(parsed) && parsed.some(
+          (value) => typeof value === 'string' && contextEntryIds.has(value),
+        );
+      } catch {
+        return false;
+      }
+    })
+    .map((record) => record.id);
+  if (compactionIds.length === 0) return 0;
+  const placeholders = createPlaceholders(compactionIds.length);
+  const result = await dba
+    .prepare(
+      `DELETE FROM context_compactions WHERE chat_jid = ? AND id IN (${placeholders})`,
+    )
+    .run(chatJid, ...compactionIds);
+  return result.changes;
+}
+
+export async function deleteConversationContextEntriesForSources(input: {
+  chatJid: string;
+  messageIds?: string[];
+  turnIds?: string[];
+}): Promise<number> {
+  const chatJid = String(input.chatJid || '').trim();
+  if (!chatJid) return 0;
+  const messageIds = uniqueNonEmptyStrings(input.messageIds || []);
+  const turnIds = uniqueNonEmptyStrings(input.turnIds || []);
+  if (messageIds.length === 0 && turnIds.length === 0) return 0;
+
+  const sourceRefs = uniqueNonEmptyStrings([...messageIds, ...turnIds]);
+  const directEntryIds = uniqueNonEmptyStrings([
+    ...messageIds.map((messageId) => `msg:${chatJid}:${messageId}`),
+    ...turnIds.map((turnId) => `turn:${turnId}`),
+  ]);
+  const affectedContextEntryIds = new Set<string>(directEntryIds);
+
+  if (sourceRefs.length > 0) {
+    const placeholders = createPlaceholders(sourceRefs.length);
+    const rows = await dba
+      .prepare(
+        `
+          SELECT id
+          FROM context_entries
+          WHERE chat_jid = ? AND source_ref IN (${placeholders})
+        `,
+      )
+      .all(chatJid, ...sourceRefs) as Array<{ id: string }>;
+    for (const row of rows) affectedContextEntryIds.add(row.id);
+  }
+
+  if (turnIds.length > 0) {
+    const placeholders = createPlaceholders(turnIds.length);
+    const rows = await dba
+      .prepare(
+        `
+          SELECT id
+          FROM context_entries
+          WHERE chat_jid = ?
+            AND run_id IN (${placeholders})
+            AND source_type IN ('assistant_turn', 'tool_call_recent', 'tool_result')
+        `,
+      )
+      .all(chatJid, ...turnIds) as Array<{ id: string }>;
+    for (const row of rows) affectedContextEntryIds.add(row.id);
+  }
+
+  let deleted = 0;
+  deleted += await deleteToolSummariesReferencingContextEntries(
+    chatJid,
+    affectedContextEntryIds,
+  );
+  deleted += await deleteCompactionsReferencingContextEntries(
+    chatJid,
+    affectedContextEntryIds,
+  );
+
+  const clauses: string[] = [];
+  const args: string[] = [chatJid];
+  if (sourceRefs.length > 0) {
+    clauses.push(`source_ref IN (${createPlaceholders(sourceRefs.length)})`);
+    args.push(...sourceRefs);
+  }
+  if (directEntryIds.length > 0) {
+    clauses.push(`id IN (${createPlaceholders(directEntryIds.length)})`);
+    args.push(...directEntryIds);
+  }
+  if (turnIds.length > 0) {
+    clauses.push(
+      `(run_id IN (${createPlaceholders(turnIds.length)}) AND source_type IN ('assistant_turn', 'tool_call_recent', 'tool_result'))`,
+    );
+    args.push(...turnIds);
+  }
+  if (clauses.length === 0) return deleted;
+
+  const result = await dba
+    .prepare(
+      `DELETE FROM context_entries WHERE chat_jid = ? AND (${clauses.join(' OR ')})`,
+    )
+    .run(...args);
+  return deleted + result.changes;
+}
+
 export async function storeMemoryRecallEntry(input: {
   groupFolder: string;
   chatJid: string;

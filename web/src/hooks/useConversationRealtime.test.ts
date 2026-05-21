@@ -520,6 +520,30 @@ describe('useConversationRealtime structured stream handling', () => {
     });
   });
 
+  it('does not re-append completed persisted turns that disappeared from a fresh snapshot', () => {
+    const deletedTurn = {
+      id: 'run-deleted',
+      clientKey: 'run-deleted',
+      timestamp: '2026-04-03T07:02:00.000Z',
+      items: [
+        {
+          id: 'run-deleted:assistant',
+          type: 'assistant_message' as const,
+          status: 'completed' as const,
+          text: '旧回复',
+          timestamp: '2026-04-03T07:02:00.000Z',
+        },
+      ],
+      isLive: false,
+      isCompleted: true,
+      persistedMessageId: 'bot-deleted',
+    };
+
+    const merged = mergePersistedAndTransientTurns([], [deletedTurn]);
+
+    expect(merged).toEqual([]);
+  });
+
   it('preserves live turn with items even when persisted is completed', () => {
     const timestamp = '2026-04-03T07:10:00.000Z';
     let state = createEmptyState();
@@ -621,7 +645,11 @@ describe('useConversationRealtime structured stream handling', () => {
     );
 
     expect(merged).toHaveLength(1);
-    expect(merged[0]).toMatchObject({ id: 'run-stuck', isLive: false, isCompleted: true });
+    expect(merged[0]).toMatchObject({
+      id: 'run-stuck',
+      isLive: false,
+      isCompleted: true,
+    });
   });
 
   it('clears optimistic turn via snapshot reconciliation after bot reply', () => {

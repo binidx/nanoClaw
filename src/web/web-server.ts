@@ -296,7 +296,7 @@ export interface WebServerOptions {
     model: string | null,
   ) => boolean | Promise<boolean>;
   resetConversationRuntime?: (jid: string, groupFolder?: string) => void;
-  interruptConversationReply?: (jid: string) => boolean;
+  interruptConversationReply?: (jid: string) => boolean | Promise<boolean>;
   regenerateConversationReply?: (
     jid: string,
     turnId?: string,

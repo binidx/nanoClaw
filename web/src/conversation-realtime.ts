@@ -36,11 +36,9 @@ export function shouldIgnoreConversationRealtimeSeq(
   );
 }
 
-export function applyConversationRealtimeWatermark<T extends ConversationChatState>(
-  state: T,
-  seq: number | undefined,
-  source: ConversationWatermarkSource,
-): T {
+export function applyConversationRealtimeWatermark<
+  T extends ConversationChatState,
+>(state: T, seq: number | undefined, source: ConversationWatermarkSource): T {
   if (source === 'snapshot' || !Number.isFinite(seq)) return state;
   if ((state.lastEventSeq ?? Number.NEGATIVE_INFINITY) >= (seq as number)) {
     return state;
@@ -104,6 +102,7 @@ export type NormalizedConversationRealtimeEvent =
       kind: 'interrupted';
       jid: string;
       reason?: string;
+      turnId?: string;
     } & RealtimeMeta)
   | ({
       kind: 'im_event';
@@ -234,7 +233,9 @@ function normalizeTurnItem(value: unknown): TurnItem | null {
         subagentStatus === 'stopped'
       ) {
         subagentInfo = {
-          agentName: asString(subagentInfoRecord.agentName) ?? i18n.t('common.subagent.defaultName'),
+          agentName:
+            asString(subagentInfoRecord.agentName) ??
+            i18n.t('common.subagent.defaultName'),
           runtimeId: asString(subagentInfoRecord.runtimeId),
           provider: asString(subagentInfoRecord.provider),
           mode:
@@ -256,9 +257,7 @@ function normalizeTurnItem(value: unknown): TurnItem | null {
           controllerSessionKey: asString(
             subagentInfoRecord.controllerSessionKey,
           ),
-          requesterSessionKey: asString(
-            subagentInfoRecord.requesterSessionKey,
-          ),
+          requesterSessionKey: asString(subagentInfoRecord.requesterSessionKey),
           originTurnId: asString(subagentInfoRecord.originTurnId),
           originToolCallId: asString(subagentInfoRecord.originToolCallId),
           topologyRole:
@@ -459,7 +458,8 @@ function normalizeMessage(value: unknown, meta?: RealtimeMeta): Message | null {
       ? (record.reactions as Message['reactions'])
       : undefined,
     read_receipts: Array.isArray(record.read_receipts ?? record.readReceipts)
-      ? ((record.read_receipts ?? record.readReceipts) as Message['read_receipts'])
+      ? ((record.read_receipts ??
+          record.readReceipts) as Message['read_receipts'])
       : undefined,
     uploaded_files: normalizeUploadedChatFiles(
       record.uploaded_files ?? record.uploadedFiles,
@@ -543,15 +543,16 @@ export function normalizeConversationRealtimeEvent(
   }
 
   if (type === 'im_event' || type.startsWith('im_')) {
-    const eventType = type === 'im_event'
-      ? asString(raw.event_type ?? raw.eventType)
-      : type;
-    const actualEventType = eventType || asString(raw.event_type ?? raw.eventType);
+    const eventType =
+      type === 'im_event' ? asString(raw.event_type ?? raw.eventType) : type;
+    const actualEventType =
+      eventType || asString(raw.event_type ?? raw.eventType);
     if (!actualEventType) return null;
-    const message = normalizeMessage(raw.message ?? raw, {
-      ...meta,
-      seq: asNumber(raw.room_seq ?? raw.seq ?? meta.seq),
-    }) ?? undefined;
+    const message =
+      normalizeMessage(raw.message ?? raw, {
+        ...meta,
+        seq: asNumber(raw.room_seq ?? raw.seq ?? meta.seq),
+      }) ?? undefined;
     return {
       kind: 'im_event',
       jid,
@@ -639,6 +640,7 @@ export function normalizeConversationRealtimeEvent(
       kind: 'interrupted',
       jid,
       reason: asString(raw.reason),
+      turnId: asString(raw.turnId ?? raw.turn_id) ?? meta.runId,
       ...meta,
     };
   }
