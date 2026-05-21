@@ -2,6 +2,12 @@
 
 按时间记录功能 Map 的摄入、查询、健康检查和重要修正。格式保持短小，便于 Agent 快速回溯。
 
+## [2026-05-21] update | 知识库 RAG 检索链路优化
+
+- 将知识库检索从“FTS 候选内向量重排”升级为“FTS + 授权 KB 范围直接向量召回 + RRF 辅助融合”。
+- 记录 Qwen3-Embedding-8B 维度默认与实际向量长度校验，避免 1536/4096 混用静默降级。
+- Wiki claim evidence 选择新增 embedding 相似度辅助，保留词面匹配兜底。
+
 ## [2026-04-24] ingest | 初始功能 Map
 
 - 读取仓库协作入口：`AGENTS.md`、`.codex/README.md`、`docs/agent-harness.md`。

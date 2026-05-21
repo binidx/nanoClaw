@@ -133,6 +133,83 @@ function chooseEvidence(
   return { chunk: best, confidence: Math.max(0.55, Math.min(0.95, bestScore)) };
 }
 
+async function buildVectorScoreMapForClaim(
+  pageId: string,
+  claimText: string,
+  chunks: CandidateChunk[],
+): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  if (chunks.length === 0) return out;
+
+  const page = (await dba.prepare(
+    `SELECT kb.embedding_provider_id AS embedding_provider_id
+     FROM knowledge_wiki_pages wp
+     JOIN knowledge_bases kb ON kb.id = wp.kb_id
+     WHERE wp.id = ?`,
+  ).get(pageId)) as { embedding_provider_id: string | null } | undefined;
+  const providerId = page?.embedding_provider_id;
+  if (!providerId) return out;
+
+  const [
+    { getProvider, getEmbeddingsByOwnerBatch },
+    { buildEmbeddingProviderFromAiProvider },
+    { cachedEmbedQuery, cosineSimilarity, deserializeEmbedding },
+  ] = await Promise.all([
+    import('../db.js'),
+    import('../embedding/resolve.js'),
+    import('../embedding/vector-store.js'),
+  ]);
+  const providerRecord = await getProvider(providerId);
+  const provider = providerRecord ? buildEmbeddingProviderFromAiProvider(providerRecord) : null;
+  if (!providerRecord || !provider) return out;
+
+  const queryVec = await cachedEmbedQuery(provider, claimText);
+  const embeddingRows = await getEmbeddingsByOwnerBatch(
+    'knowledge',
+    chunks.map((chunk) => chunk.chunk_id),
+    providerRecord.id,
+  );
+  for (const chunk of chunks) {
+    const row = embeddingRows.get(chunk.chunk_id);
+    if (!row) continue;
+    const vec = deserializeEmbedding(row.embedding);
+    if (vec.length !== queryVec.length) continue;
+    out.set(chunk.chunk_id, Math.max(0, cosineSimilarity(queryVec, vec)));
+  }
+  return out;
+}
+
+async function chooseEvidenceWithVector(
+  pageId: string,
+  claimText: string,
+  chunks: CandidateChunk[],
+): Promise<{ chunk: CandidateChunk | null; confidence: number }> {
+  if (chunks.length === 0) return { chunk: null, confidence: 0.25 };
+
+  let vectorScores = new Map<string, number>();
+  try {
+    vectorScores = await buildVectorScoreMapForClaim(pageId, claimText, chunks);
+  } catch {
+    vectorScores = new Map<string, number>();
+  }
+
+  if (vectorScores.size === 0) return chooseEvidence(claimText, chunks);
+
+  let best: CandidateChunk | null = null;
+  let bestScore = 0;
+  for (const chunk of chunks) {
+    const lexical = scoreChunkForClaim(claimText, chunk);
+    const vector = vectorScores.get(chunk.chunk_id) ?? 0;
+    const score = lexical * 0.45 + vector * 0.55;
+    if (score > bestScore) {
+      best = chunk;
+      bestScore = score;
+    }
+  }
+  if (!best || bestScore < 0.18) return { chunk: null, confidence: 0.25 };
+  return { chunk: best, confidence: Math.max(0.55, Math.min(0.95, bestScore)) };
+}
+
 export async function syncWikiClaimsForPage(input: {
   pageId: string;
   content: string;
@@ -145,7 +222,7 @@ export async function syncWikiClaimsForPage(input: {
 
   const chunks = await loadCandidateChunks(parseSourceDocIds(input.sourceDocIds));
   for (const claimText of claimTexts) {
-    const { chunk, confidence } = chooseEvidence(claimText, chunks);
+    const { chunk, confidence } = await chooseEvidenceWithVector(input.pageId, claimText, chunks);
     await dba
       .prepare(
         adaptSql(

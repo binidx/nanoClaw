@@ -101,6 +101,20 @@ export function queryEmbeddingCacheKey(text: string, providerKey: string): strin
   return crypto.createHash('sha256').update(`${providerKey}:${text}`).digest('hex').slice(0, 24);
 }
 
+function actualEmbeddingDimensions(vec: number[], provider: EmbeddingProvider): number {
+  if (vec.length !== provider.dimensions) {
+    logger.warn(
+      {
+        provider: provider.name,
+        configuredDimensions: provider.dimensions,
+        actualDimensions: vec.length,
+      },
+      'Embedding provider returned a vector with dimensions different from its configuration',
+    );
+  }
+  return vec.length;
+}
+
 // ---------------------------------------------------------------------------
 // High-level operations
 // ---------------------------------------------------------------------------
@@ -129,10 +143,11 @@ export async function embedAndStore(
   const vec = await provider.embedQuery(text);
   const blob = serializeEmbedding(vec);
   const id = existing?.id ?? crypto.randomUUID();
+  const dimensions = actualEmbeddingDimensions(vec, provider);
 
   await upsertEmbeddingVector(
     id, ownerType, ownerId, embeddingProviderId, hash,
-    blob, provider.dimensions, provider.name,
+    blob, dimensions, provider.name,
   );
   invalidateVectorRowCache(ownerType);
   return id;
@@ -165,11 +180,16 @@ export async function batchEmbedAndStore(
 
   for (let i = 0; i < toEmbed.length; i++) {
     const { ownerId, hash, existingId } = toEmbed[i];
-    const blob = serializeEmbedding(vectors[i]);
+    const vec = vectors[i];
+    if (!vec) {
+      throw new Error(`Embedding provider returned too few vectors: expected ${toEmbed.length}, got ${vectors.length}`);
+    }
+    const blob = serializeEmbedding(vec);
     const id = existingId ?? crypto.randomUUID();
+    const dimensions = actualEmbeddingDimensions(vec, provider);
     await upsertEmbeddingVector(
       id, ownerType, ownerId, embeddingProviderId, hash,
-      blob, provider.dimensions, provider.name,
+      blob, dimensions, provider.name,
     );
   }
 

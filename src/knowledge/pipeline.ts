@@ -349,6 +349,30 @@ function deduplicateChunks(chunks: import('./chunker.js').TextChunk[], docId: st
   return records;
 }
 
+function buildKnowledgeChunkEmbeddingText(
+  doc: Pick<KnowledgeDocumentRecord, 'filename' | 'doc_path' | 'source_url' | 'published_at'>,
+  chunk: Pick<KnowledgeChunkRecord, 'content' | 'chunk_index'>,
+): string {
+  const contextLines = [
+    doc.filename ? `Document: ${doc.filename}` : null,
+    doc.doc_path ? `Path: ${doc.doc_path}` : null,
+    doc.source_url ? `Source URL: ${doc.source_url}` : null,
+    doc.published_at ? `Published at: ${doc.published_at}` : null,
+    `Chunk: ${chunk.chunk_index + 1}`,
+  ].filter((line): line is string => Boolean(line));
+  return `${contextLines.join('\n')}\n\n${chunk.content}`;
+}
+
+function buildKnowledgeChunkEmbeddingItems(
+  doc: Pick<KnowledgeDocumentRecord, 'filename' | 'doc_path' | 'source_url' | 'published_at'>,
+  chunks: KnowledgeChunkRecord[],
+): Array<{ ownerId: string; text: string }> {
+  return chunks.map((chunk) => ({
+    ownerId: chunk.id,
+    text: buildKnowledgeChunkEmbeddingText(doc, chunk),
+  }));
+}
+
 async function resolveKnowledgeEmbeddingProvider(
   kb: Pick<KnowledgeBaseRecord, 'id' | 'embedding_provider_id'>,
 ) {
@@ -654,7 +678,7 @@ export async function indexDocument(
     if (embeddingConfig) {
       await batchEmbedAndStore(
         'knowledge',
-        chunkRecords.map((c) => ({ ownerId: c.id, text: c.content })),
+        buildKnowledgeChunkEmbeddingItems(doc, chunkRecords),
         embeddingConfig.embeddingProvider,
         embeddingConfig.provider.id,
       );
@@ -736,7 +760,7 @@ export async function reindexDocument(
       if (embeddingConfig) {
         await batchEmbedAndStore(
           'knowledge',
-          chunkRecords.map((c) => ({ ownerId: c.id, text: c.content })),
+          buildKnowledgeChunkEmbeddingItems(doc, chunkRecords),
           embeddingConfig.embeddingProvider,
           embeddingConfig.provider.id,
         );
@@ -781,7 +805,10 @@ export async function backfillEmbeddings(
 
   const unembedded = (await dba
     .prepare(
-      `SELECT c.id, c.content, kb.embedding_provider_id FROM knowledge_chunks c
+      `SELECT c.id, c.content, c.chunk_index,
+              d.filename, d.doc_path, d.source_url, d.published_at,
+              kb.embedding_provider_id
+       FROM knowledge_chunks c
        JOIN knowledge_documents d ON d.id = c.document_id
        JOIN knowledge_bases kb ON kb.id = d.kb_id
        WHERE d.status = 'indexed'
@@ -795,7 +822,16 @@ export async function backfillEmbeddings(
          ${kbFilter}
        ORDER BY c.created_at ASC`,
     )
-    .all(...params)) as Array<{ id: string; content: string; embedding_provider_id: string | null }>;
+    .all(...params)) as Array<{
+    id: string;
+    content: string;
+    chunk_index: number;
+    filename: string | null;
+    doc_path: string | null;
+    source_url: string | null;
+    published_at: string | null;
+    embedding_provider_id: string | null;
+  }>;
 
   if (unembedded.length === 0) return { embedded: 0, skipped: 0 };
 
@@ -803,7 +839,21 @@ export async function backfillEmbeddings(
   for (const row of unembedded) {
     if (!row.embedding_provider_id) continue;
     const group = groups.get(row.embedding_provider_id) ?? [];
-    group.push({ ownerId: row.id, text: row.content });
+    group.push({
+      ownerId: row.id,
+      text: buildKnowledgeChunkEmbeddingText(
+        {
+          filename: row.filename ?? '',
+          doc_path: row.doc_path,
+          source_url: row.source_url,
+          published_at: row.published_at,
+        },
+        {
+          content: row.content,
+          chunk_index: Number(row.chunk_index ?? 0),
+        },
+      ),
+    });
     groups.set(row.embedding_provider_id, group);
   }
 
@@ -846,7 +896,9 @@ export async function backfillEmbeddings(
 export async function rebuildAllKnowledgeEmbeddings(): Promise<{ rebuilt: number; skipped: number }> {
   const knowledgeRows = (await dba
     .prepare(
-      `SELECT c.id, c.content, kb.embedding_provider_id
+      `SELECT c.id, c.content, c.chunk_index,
+              d.filename, d.doc_path, d.source_url, d.published_at,
+              kb.embedding_provider_id
        FROM knowledge_chunks c
        JOIN knowledge_documents d ON d.id = c.document_id
        JOIN knowledge_bases kb ON kb.id = d.kb_id
@@ -856,7 +908,16 @@ export async function rebuildAllKnowledgeEmbeddings(): Promise<{ rebuilt: number
          AND kb.embedding_provider_id IS NOT NULL
        ORDER BY c.created_at ASC`,
     )
-    .all()) as Array<{ id: string; content: string; embedding_provider_id: string | null }>;
+    .all()) as Array<{
+    id: string;
+    content: string;
+    chunk_index: number;
+    filename: string | null;
+    doc_path: string | null;
+    source_url: string | null;
+    published_at: string | null;
+    embedding_provider_id: string | null;
+  }>;
 
   if (knowledgeRows.length === 0) return { rebuilt: 0, skipped: 0 };
 
@@ -866,7 +927,21 @@ export async function rebuildAllKnowledgeEmbeddings(): Promise<{ rebuilt: number
   for (const row of knowledgeRows) {
     if (!row.embedding_provider_id) continue;
     const group = groups.get(row.embedding_provider_id) ?? [];
-    group.push({ ownerId: row.id, text: row.content });
+    group.push({
+      ownerId: row.id,
+      text: buildKnowledgeChunkEmbeddingText(
+        {
+          filename: row.filename ?? '',
+          doc_path: row.doc_path,
+          source_url: row.source_url,
+          published_at: row.published_at,
+        },
+        {
+          content: row.content,
+          chunk_index: Number(row.chunk_index ?? 0),
+        },
+      ),
+    });
     groups.set(row.embedding_provider_id, group);
   }
 

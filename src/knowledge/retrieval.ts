@@ -94,6 +94,10 @@ const MIN_FTS_CANDIDATES = 40;
 const MAX_FTS_CANDIDATES = 120;
 const FTS_CANDIDATE_MULTIPLIER = 12;
 const VECTOR_BLEND_ALPHA = 0.55;
+const FUSION_RRF_K = 60;
+const VECTOR_DIRECT_CANDIDATE_MULTIPLIER = 4;
+const MIN_VECTOR_DIRECT_CANDIDATES = 80;
+const MAX_VECTOR_DIRECT_CANDIDATES = 240;
 const SLOW_KNOWLEDGE_SEARCH_WARN_MS = 1500;
 
 export function computeWikiQualityMultiplier(
@@ -477,9 +481,50 @@ function normalizeScores(scores: number[]): number[] {
   return scores.map((s) => (s - min) / range);
 }
 
+function normalizeScoreMap(scores: Map<string, number>): Map<string, number> {
+  const values = [...scores.values()];
+  const normalizedValues = normalizeScores(values);
+  const out = new Map<string, number>();
+  let index = 0;
+  for (const key of scores.keys()) {
+    out.set(key, normalizedValues[index] ?? 0);
+    index += 1;
+  }
+  return out;
+}
+
+function buildRankMap(ids: string[]): Map<string, number> {
+  const out = new Map<string, number>();
+  ids.forEach((id, index) => {
+    if (!out.has(id)) out.set(id, index + 1);
+  });
+  return out;
+}
+
+function normalizeRrfScores(
+  candidateIds: string[],
+  rankMaps: Array<Map<string, number>>,
+): Map<string, number> {
+  const raw = new Map<string, number>();
+  for (const id of candidateIds) {
+    let score = 0;
+    for (const ranks of rankMaps) {
+      const rank = ranks.get(id);
+      if (rank) score += 1 / (FUSION_RRF_K + rank);
+    }
+    raw.set(id, score);
+  }
+  return normalizeScoreMap(raw);
+}
+
 function buildKnowledgeFtsCandidateLimit(topK: number): number {
   const requested = Math.max(topK * FTS_CANDIDATE_MULTIPLIER, MIN_FTS_CANDIDATES);
   return Math.min(requested, MAX_FTS_CANDIDATES);
+}
+
+function buildKnowledgeVectorCandidateLimit(topK: number): number {
+  const requested = Math.max(topK * VECTOR_DIRECT_CANDIDATE_MULTIPLIER, MIN_VECTOR_DIRECT_CANDIDATES);
+  return Math.min(requested, MAX_VECTOR_DIRECT_CANDIDATES);
 }
 
 const DEFAULT_TEMPORAL_HALF_LIFE_DAYS = 365;
@@ -660,6 +705,108 @@ async function buildKnowledgeVectorScoreMap(
   return out;
 }
 
+async function loadKnowledgeChunkIdsForKbIds(kbIds: string[]): Promise<string[]> {
+  const uniqueKbIds = [...new Set(kbIds.filter(Boolean))];
+  if (uniqueKbIds.length === 0) return [];
+  const out: string[] = [];
+  const batchSize = 100;
+  for (let i = 0; i < uniqueKbIds.length; i += batchSize) {
+    const batch = uniqueKbIds.slice(i, i + batchSize);
+    const placeholders = batch.map(() => '?').join(', ');
+    const rows = (await dba.prepare(
+      `SELECT c.id
+       FROM knowledge_chunks c
+       JOIN knowledge_documents d ON d.id = c.document_id AND d.deleted_at IS NULL
+       JOIN knowledge_bases kb ON kb.id = d.kb_id AND kb.deleted_at IS NULL
+       WHERE d.kb_id IN (${placeholders})
+         AND d.status = 'indexed'`,
+    ).all(...batch)) as Array<{ id: string }>;
+    out.push(...rows.map((row) => row.id));
+  }
+  return out;
+}
+
+async function searchKnowledgeVectorsDirect(
+  query: string,
+  kbIdList: string[],
+  kbEmbeddingProviderMap: Map<string, string | null>,
+  topK: number,
+  minScore: number,
+): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  if (kbIdList.length === 0) return out;
+
+  const kbIdSet = new Set(kbIdList);
+  const providerToKbIds = new Map<string, string[]>();
+  for (const [kbId, providerId] of kbEmbeddingProviderMap.entries()) {
+    if (!providerId || !kbIdSet.has(kbId)) continue;
+    const list = providerToKbIds.get(providerId) ?? [];
+    list.push(kbId);
+    providerToKbIds.set(providerId, list);
+  }
+
+  const vectorLimit = buildKnowledgeVectorCandidateLimit(topK);
+  for (const [providerId, providerKbIds] of providerToKbIds.entries()) {
+    try {
+      const providerRecord = await getProvider(providerId);
+      const embeddingProvider = providerRecord
+        ? buildEmbeddingProviderFromAiProvider(providerRecord)
+        : null;
+      if (!providerRecord || !embeddingProvider) {
+        logger.warn({ providerId }, 'Knowledge direct vector search skipped invalid embedding provider');
+        continue;
+      }
+
+      const allowedChunkIds = await loadKnowledgeChunkIdsForKbIds(providerKbIds);
+      if (allowedChunkIds.length === 0) continue;
+
+      const queryVec = await cachedEmbedQuery(embeddingProvider, query);
+      const scored: Array<{ chunkId: string; score: number }> = [];
+      const batchSize = 500;
+      for (let i = 0; i < allowedChunkIds.length; i += batchSize) {
+        const batch = allowedChunkIds.slice(i, i + batchSize);
+        const embeddingRows = await getEmbeddingsByOwnerBatch(
+          'knowledge',
+          batch,
+          providerRecord.id,
+        );
+        let dimensionMismatchCount = 0;
+        for (const chunkId of batch) {
+          const row = embeddingRows.get(chunkId);
+          if (!row) continue;
+          const vec = deserializeEmbedding(row.embedding);
+          if (vec.length !== queryVec.length) {
+            dimensionMismatchCount += 1;
+            continue;
+          }
+          const score = cosineSimilarity(queryVec, vec);
+          if (score >= minScore) scored.push({ chunkId, score });
+        }
+        if (dimensionMismatchCount > 0) {
+          logger.warn(
+            {
+              providerId,
+              expectedDimensions: queryVec.length,
+              skipped: dimensionMismatchCount,
+              candidateCount: batch.length,
+            },
+            'Knowledge direct vector search skipped embeddings with mismatched dimensions',
+          );
+        }
+      }
+
+      scored.sort((left, right) => right.score - left.score);
+      for (const hit of scored.slice(0, vectorLimit)) {
+        out.set(hit.chunkId, Math.max(out.get(hit.chunkId) ?? 0, hit.score));
+      }
+    } catch (err) {
+      logger.warn({ err, providerId }, 'Knowledge direct vector search failed for embedding provider');
+    }
+  }
+
+  return out;
+}
+
 async function enrichSearchResults(
   results: KnowledgeSearchResult[],
   kbEnhancementMap: Map<string, string>,
@@ -802,16 +949,29 @@ export async function searchKnowledge(
     ftsResults = ftsResults.filter((r) => !supersededChunkIds.has(r.chunkId));
   }
 
-  // --- Vector rerank over lexical candidates only ---
+  // --- Direct vector recall (parallel source, not gated by FTS) ---
   let vectorScoreMap = new Map<string, number>();
   const vectorStartedAt = Date.now();
+  vectorScoreMap = await searchKnowledgeVectorsDirect(
+    query,
+    kbIdList,
+    kbEmbeddingProviderMap,
+    topK,
+    minScore,
+  );
+
+  // Backward-compatible safety net: if a provider cannot support direct vector
+  // recall but some FTS candidates already have stored vectors, score those too.
   if (ftsResults.length > 0) {
-    vectorScoreMap = await buildKnowledgeVectorScoreMap(
+    const ftsVectorScoreMap = await buildKnowledgeVectorScoreMap(
       query,
       ftsResults.map((result) => result.chunkId),
       kbEmbeddingProviderMap,
       minScore,
     );
+    for (const [chunkId, score] of ftsVectorScoreMap.entries()) {
+      vectorScoreMap.set(chunkId, Math.max(vectorScoreMap.get(chunkId) ?? 0, score));
+    }
   }
   vectorMs = Date.now() - vectorStartedAt;
 
@@ -824,18 +984,48 @@ export async function searchKnowledge(
     dialect === 'sqlite' ? -r.score : r.score,
   );
   const normFts = normalizeScores(rawFtsScores);
-  const scored = ftsResults.map((result, index) => {
-    const ftsScore = normFts[index] ?? 0;
-    const vecScore = vectorScoreMap.get(result.chunkId) ?? 0;
-    const combinedScore =
-      vecScore > 0
-        ? VECTOR_BLEND_ALPHA * vecScore + (1 - VECTOR_BLEND_ALPHA) * ftsScore
-        : ftsScore;
-    return {
-      chunkId: result.chunkId,
-      documentId: result.documentId,
+  const ftsScoreMap = new Map<string, number>();
+  ftsResults.forEach((result, index) => {
+    ftsScoreMap.set(result.chunkId, normFts[index] ?? 0);
+  });
+  const normalizedVectorScoreMap = normalizeScoreMap(vectorScoreMap);
+  const ftsRankMap = buildRankMap(ftsResults.map((result) => result.chunkId));
+  const vectorRankMap = buildRankMap(
+    [...vectorScoreMap.entries()]
+      .sort((left, right) => right[1] - left[1])
+      .map(([chunkId]) => chunkId),
+  );
+  let candidateChunkIds = [...new Set([
+    ...ftsResults.map((result) => result.chunkId),
+    ...vectorScoreMap.keys(),
+  ])];
+  const supersededCandidateChunkIds = await filterSuperseded(candidateChunkIds);
+  if (supersededCandidateChunkIds.size > 0) {
+    candidateChunkIds = candidateChunkIds.filter((id) => !supersededCandidateChunkIds.has(id));
+  }
+
+  const candidateChunks = await getKnowledgeChunksByIds(candidateChunkIds);
+  const candidateChunkMap = new Map(candidateChunks.map((chunk) => [chunk.id, chunk]));
+  const rrfScoreMap = normalizeRrfScores(candidateChunkIds, [ftsRankMap, vectorRankMap]);
+  const scored = candidateChunkIds.flatMap((chunkId) => {
+    const chunk = candidateChunkMap.get(chunkId);
+    if (!chunk || (chunk.kb_id && !enabledKbIds.has(chunk.kb_id))) return [];
+    const hasFts = ftsScoreMap.has(chunkId);
+    const hasVector = normalizedVectorScoreMap.has(chunkId);
+    const ftsScore = ftsScoreMap.get(chunkId) ?? 0;
+    const vecScore = normalizedVectorScoreMap.get(chunkId) ?? 0;
+    const weightTotal =
+      (hasFts ? (1 - VECTOR_BLEND_ALPHA) : 0) +
+      (hasVector ? VECTOR_BLEND_ALPHA : 0);
+    const sourceScore = weightTotal > 0
+      ? (((1 - VECTOR_BLEND_ALPHA) * ftsScore) + (VECTOR_BLEND_ALPHA * vecScore)) / weightTotal
+      : 0;
+    const combinedScore = sourceScore * 0.92 + (rrfScoreMap.get(chunkId) ?? 0) * 0.08;
+    return [{
+      chunkId,
+      documentId: chunk.document_id,
       combinedScore,
-    };
+    }];
   });
 
   await applyTemporalBoost(scored, halfLifeMap);
@@ -846,7 +1036,9 @@ export async function searchKnowledge(
   const scoreMap = new Map(scored.map((s) => [s.chunkId, s.combinedScore]));
 
   // Hydrate chunk details
-  const chunks = await getKnowledgeChunksByIds(topChunkIds);
+  const chunks = topChunkIds
+    .map((chunkId) => candidateChunkMap.get(chunkId))
+    .filter((chunk): chunk is NonNullable<typeof chunk> => Boolean(chunk));
 
   const output: KnowledgeSearchResult[] = [];
   for (const c of chunks) {
@@ -876,7 +1068,7 @@ export async function searchKnowledge(
     vectorMs,
     wikiMs,
     totalMs,
-    candidateStrategy: 'fts_candidates_then_vector_rerank',
+    candidateStrategy: 'fts_and_direct_vector_fusion',
   };
   if (totalMs >= SLOW_KNOWLEDGE_SEARCH_WARN_MS) {
     logger.warn(logPayload, 'Knowledge search slow');
