@@ -364,7 +364,7 @@ const REPO_REVIEW_SUBAGENT_TIMEOUT_MS = Math.max(
 );
 const REPO_REVIEW_SUBAGENT_TIMEOUT_GRACE_MS = Math.max(
   25,
-  Number(process.env.NANOCLAW_REVIEW_SUBAGENT_TIMEOUT_GRACE_MS) || 20_000,
+  Number(process.env.NANOCLAW_REVIEW_SUBAGENT_TIMEOUT_GRACE_MS) || 180_000,
 );
 
 function resolveRepoReviewProfileSubagentTimeoutMs(
@@ -434,10 +434,9 @@ export function groupFilesForReview(
     ? byteWeight
     : (_t: RepoReviewSupplementalPreparedFileTask) => 1;
   const sorted = [...tasks].sort((a, b) => {
-    const communityCompare = String(a.communityLabel || a.communityId || '').localeCompare(
-      String(b.communityLabel || b.communityId || ''),
-      'en',
-    );
+    const communityCompare = String(
+      a.communityLabel || a.communityId || '',
+    ).localeCompare(String(b.communityLabel || b.communityId || ''), 'en');
     if (communityCompare !== 0) return communityCompare;
     return weight(b) - weight(a);
   });
@@ -448,9 +447,7 @@ export function groupFilesForReview(
     let lightest = groups[0]!;
     const preferred = groups.find((group) =>
       group.tasks.some(
-        (entry) =>
-          entry.communityId &&
-          entry.communityId === task.communityId,
+        (entry) => entry.communityId && entry.communityId === task.communityId,
       ),
     );
     if (preferred) {
@@ -917,7 +914,8 @@ function normalizeRepoReviewExecutionStats(
     projectGraphPlanner: normalizeRepoReviewObservabilityPlanner(
       record.projectGraphPlanner,
     ),
-    projectGraphArtifactId: stringValue(record.projectGraphArtifactId) || undefined,
+    projectGraphArtifactId:
+      stringValue(record.projectGraphArtifactId) || undefined,
   };
 }
 
@@ -1994,12 +1992,12 @@ function isStructuredRepoReviewAssistantMessage(text: string): boolean {
     if (Object.keys(reviewPlan).length > 0) return true;
     return Boolean(
       Array.isArray(parsed.checked_files) ||
-        Array.isArray(parsed.checkedFiles) ||
-        Array.isArray(parsed.findings) ||
-        stringValue(parsed.summary) ||
-        stringValue(parsed.overall) ||
-        stringValue(parsed.result_type || parsed.resultType) ||
-        normalizeBoolean(parsed.final),
+      Array.isArray(parsed.checkedFiles) ||
+      Array.isArray(parsed.findings) ||
+      stringValue(parsed.summary) ||
+      stringValue(parsed.overall) ||
+      stringValue(parsed.result_type || parsed.resultType) ||
+      normalizeBoolean(parsed.final),
     );
   } catch {
     return false;
@@ -5515,10 +5513,7 @@ function buildReviewEvidenceFileImpact(input: {
       edge.fromFile,
       (outgoingByFile.get(edge.fromFile) || 0) + 1,
     );
-    incomingByFile.set(
-      edge.toFile,
-      (incomingByFile.get(edge.toFile) || 0) + 1,
-    );
+    incomingByFile.set(edge.toFile, (incomingByFile.get(edge.toFile) || 0) + 1);
   }
 
   const relatedScores = new Map<string, number>();
@@ -5608,7 +5603,9 @@ function buildReviewEvidenceFileImpact(input: {
     );
   }
   if (!input.codeMapSnapshot && !input.codeIndexSnapshot) {
-    missingContext.push('CodeMap 和 Code Index 均不可用，无法构建文件级影响图。');
+    missingContext.push(
+      'CodeMap 和 Code Index 均不可用，无法构建文件级影响图。',
+    );
   }
 
   return {
@@ -6215,10 +6212,7 @@ function renderRepoReviewEvidenceBundleBlock(
   }
   if ((bundle.fileImpact?.edges.length || 0) === 0) lines.push('- (none)');
 
-  lines.push(
-    '',
-    'Changed hunks：',
-  );
+  lines.push('', 'Changed hunks：');
   for (const hunk of bundle.changedHunks.slice(0, 64)) {
     lines.push(
       `- ${hunk.filePath} | ${hunk.header} | new ${hunk.newStart}-${hunk.newEnd} | added ${hunk.addedLineNumbers.join(',') || '-'} | removed ${hunk.removedLineNumbers.join(',') || '-'}`,
@@ -6292,7 +6286,8 @@ export function buildRepoReviewEvidenceBundleBlock(input: {
     'Diff 文件摘要：',
     input.diffSummaryBlock || '- (none)',
     '',
-    input.projectGraphContextBlock || 'Project Graph Retrieval:\nstatus: missing',
+    input.projectGraphContextBlock ||
+      'Project Graph Retrieval:\nstatus: missing',
     '',
     input.codeMapContextBlock || 'CodeMap 影响图：unavailable',
     '',
@@ -6471,23 +6466,23 @@ async function enrichReviewPreparedContextWithCodeIntelligence(input: {
     await Promise.allSettled([
       loadCodeIndexReviewContextData(input.repository.id, branch),
       loadCodeMapFromDb(input.repository.id, branch),
-    prepareProjectGraphContext({
-      repositoryId: input.repository.id,
-      branch,
-      intent: 'repo_review',
-      question: projectGraphQuestion,
-      focusPaths: input.prepared.changedFiles,
-      persist: {
-        source: 'repo-review',
-        kind: 'prepared_context',
-        metadata: {
-          branch,
-          changedFiles: input.prepared.changedFiles,
-          headSha: input.prepared.headSha,
-          baseSha: input.prepared.baseSha,
+      prepareProjectGraphContext({
+        repositoryId: input.repository.id,
+        branch,
+        intent: 'repo_review',
+        question: projectGraphQuestion,
+        focusPaths: input.prepared.changedFiles,
+        persist: {
+          source: 'repo-review',
+          kind: 'prepared_context',
+          metadata: {
+            branch,
+            changedFiles: input.prepared.changedFiles,
+            headSha: input.prepared.headSha,
+            baseSha: input.prepared.baseSha,
+          },
         },
-      },
-    }),
+      }),
     ]);
   if (codeIndexResult.status === 'fulfilled') {
     codeIndexSnapshot = codeIndexResult.value;
@@ -7889,7 +7884,9 @@ interface RepoReviewAgenticSubagentResult {
 function inferRepoReviewGraphRiskAreas(files: string[]): string[] {
   const joined = files.join(' ').toLowerCase();
   const areas: string[] = [];
-  if (/(^|\s|\/)(tests?|__tests__|spec)(\/|\.|\s|$)|\.(test|spec)\./.test(joined)) {
+  if (
+    /(^|\s|\/)(tests?|__tests__|spec)(\/|\.|\s|$)|\.(test|spec)\./.test(joined)
+  ) {
     areas.push('确认变更行为是否已有测试覆盖，或是否需要同步补充回归测试。');
   }
   if (/(config|settings|env|feature-flag|flag)/.test(joined)) {
@@ -7962,7 +7959,10 @@ export function buildRepoReviewGraphPlanningBlock(input: {
   }
   const groups = buildRepoReviewGraphSuggestedGroups(input);
   const topChangedFiles = graphContext.topFiles
-    .filter((node) => node.filePath && input.prepared.changedFiles.includes(node.filePath))
+    .filter(
+      (node) =>
+        node.filePath && input.prepared.changedFiles.includes(node.filePath),
+    )
     .slice(0, 6)
     .map((node) => `${node.filePath} (${node.score.toFixed(1)})`);
   const riskAreas = inferRepoReviewGraphRiskAreas(input.prepared.changedFiles);
@@ -8341,7 +8341,9 @@ function buildGraphFallbackRepoReviewAgenticPlan(input: {
   budget: RepoReviewAgenticBudget;
   reason: string;
 }): RepoReviewAgenticPlan | null {
-  if (input.prepared.changedFiles.length <= input.budget.delegationFileThreshold) {
+  if (
+    input.prepared.changedFiles.length <= input.budget.delegationFileThreshold
+  ) {
     return null;
   }
   const groups = buildRepoReviewGraphSuggestedGroups({
@@ -13836,7 +13838,11 @@ async function executeRepoReviewEvent(
     };
     const persistReviewProgress = async (
       patch: Record<string, unknown> = {},
-      options: { flush?: boolean; includeFullTurns?: boolean; force?: boolean } = {},
+      options: {
+        flush?: boolean;
+        includeFullTurns?: boolean;
+        force?: boolean;
+      } = {},
     ): Promise<void> => {
       pendingPersistPatch = mergeCallbackContext(pendingPersistPatch, patch);
       pendingPersistIncludeFullTurns =
@@ -13951,11 +13957,14 @@ async function executeRepoReviewEvent(
         progressSteps,
         'skipped',
       );
-      await persistReviewProgress({}, {
-        flush: true,
-        includeFullTurns: true,
-        force: true,
-      });
+      await persistReviewProgress(
+        {},
+        {
+          flush: true,
+          includeFullTurns: true,
+          force: true,
+        },
+      );
       const updated = await updateReviewRun(runRecord.id, {
         status: 'skipped',
         result_state: 'skipped',
@@ -14263,11 +14272,14 @@ async function executeRepoReviewEvent(
           progressSteps,
           prepared.overall === 'skipped' ? 'skipped' : 'completed',
         );
-        await persistReviewProgress({}, {
-          flush: true,
-          includeFullTurns: true,
-          force: true,
-        });
+        await persistReviewProgress(
+          {},
+          {
+            flush: true,
+            includeFullTurns: true,
+            force: true,
+          },
+        );
         const updated = await updateReviewRun(runRecord.id, {
           status: prepared.overall === 'skipped' ? 'skipped' : 'completed',
           baseline_source: baselineSource || null,
@@ -14759,11 +14771,14 @@ async function executeRepoReviewEvent(
         progressSteps,
         'completed',
       );
-      await persistReviewProgress({}, {
-        flush: true,
-        includeFullTurns: true,
-        force: true,
-      });
+      await persistReviewProgress(
+        {},
+        {
+          flush: true,
+          includeFullTurns: true,
+          force: true,
+        },
+      );
       return {
         run: normalized,
         allowed: !blocking,
@@ -14801,11 +14816,14 @@ async function executeRepoReviewEvent(
         'failed',
         errorMessageForProgress(err),
       );
-      await persistReviewProgress({}, {
-        flush: true,
-        includeFullTurns: true,
-        force: true,
-      });
+      await persistReviewProgress(
+        {},
+        {
+          flush: true,
+          includeFullTurns: true,
+          force: true,
+        },
+      );
       const updated = await updateReviewRun(runRecord.id, {
         status: 'error',
         result_state: 'error',

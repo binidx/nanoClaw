@@ -983,7 +983,7 @@ export function registerAssistantRoutes(
           'manage',
         );
         if (!assistant) return;
-        materializeLegacyAssistantBindings(assistantId);
+        await materializeLegacyAssistantBindings(assistantId);
         const body =
           req.body && typeof req.body === 'object' && !Array.isArray(req.body)
             ? (req.body as Record<string, unknown>)
@@ -1048,7 +1048,7 @@ export function registerAssistantRoutes(
         const assistantId = decodeRouteParam(req.params.id);
         if (!(await requireAssistantAccess(req, res, assistantId, 'manage')))
           return;
-        materializeLegacyAssistantBindings(assistantId);
+        await materializeLegacyAssistantBindings(assistantId);
         const bindingId = decodeRouteParam(req.params.bindingId);
         const body =
           req.body && typeof req.body === 'object' && !Array.isArray(req.body)
@@ -1095,7 +1095,7 @@ export function registerAssistantRoutes(
         const assistantId = decodeRouteParam(req.params.id);
         if (!(await requireAssistantAccess(req, res, assistantId, 'manage')))
           return;
-        materializeLegacyAssistantBindings(assistantId);
+        await materializeLegacyAssistantBindings(assistantId);
         const bindingId = decodeRouteParam(req.params.bindingId);
         if (!(await deleteAssistantMcpBinding(assistantId, bindingId))) {
           res.status(404).json({ error: 'Assistant MCP binding not found' });
@@ -1158,7 +1158,7 @@ export function registerAssistantRoutes(
         const assistantId = decodeRouteParam(req.params.id);
         if (!(await requireAssistantAccess(req, res, assistantId, 'manage')))
           return;
-        materializeLegacyAssistantBindings(assistantId);
+        await materializeLegacyAssistantBindings(assistantId);
         const bindingId = decodeRouteParam(req.params.bindingId);
         const body =
           req.body && typeof req.body === 'object' && !Array.isArray(req.body)
@@ -1209,7 +1209,7 @@ export function registerAssistantRoutes(
         const assistantId = decodeRouteParam(req.params.id);
         if (!(await requireAssistantAccess(req, res, assistantId, 'manage')))
           return;
-        materializeLegacyAssistantBindings(assistantId);
+        await materializeLegacyAssistantBindings(assistantId);
         const bindingId = decodeRouteParam(req.params.bindingId);
         if (!(await deleteAssistantMcpBindingSecret(assistantId, bindingId))) {
           res

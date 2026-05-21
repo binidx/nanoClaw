@@ -100,6 +100,37 @@ describe('task session route ownership', () => {
     expect(JSON.parse(filtered.body).tasks).toEqual([]);
   });
 
+  it('lists legacy system tasks without requiring a conversation filter', async () => {
+    await seedTask({
+      id: 'task-user-a',
+      userId: 'user-a',
+      chatJid: 'chat-a@g.us',
+      prompt: 'owned by a',
+    });
+    await createTask({
+      id: 'task-system',
+      group_folder: 'folder-system',
+      chat_jid: 'chat-system@g.us',
+      prompt: 'legacy system task',
+      schedule_type: 'once',
+      schedule_value: '2026-06-01T00:00:00.000Z',
+      context_mode: 'isolated',
+      next_run: '2026-06-01T00:00:00.000Z',
+      status: 'active',
+      created_at: '2026-05-20T00:00:01.000Z',
+    });
+
+    const response = await inject(createApp('user-a'), {
+      method: 'GET',
+      url: '/api/tasks',
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(
+      JSON.parse(response.body).tasks.map((task: { id: string }) => task.id),
+    ).toEqual(['task-system', 'task-user-a']);
+  });
+
   it('does not update another user task', async () => {
     await seedTask({
       id: 'task-user-b',

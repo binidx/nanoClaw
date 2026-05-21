@@ -69,8 +69,8 @@ function buildTaskOwnerScope(userId?: string): {
 } {
   if (!userId) return { clause: '', values: [] };
   return {
-    clause: ` AND (user_id = ? OR (user_id = ? AND created_by = ?))`,
-    values: [userId, SYSTEM_USER_ID, userId],
+    clause: ` AND (user_id = ? OR (user_id = ? AND (created_by = ? OR created_by = ?)))`,
+    values: [userId, SYSTEM_USER_ID, userId, SYSTEM_USER_ID],
   };
 }
 

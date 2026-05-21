@@ -72,21 +72,18 @@ const DEFAULT_WORKER_TIMEOUT_MS = Math.max(
     Number(process.env.NANOCLAW_REVIEW_WORKER_TIMEOUT_MS) ||
     420_000,
 );
-const WORKER_TIMEOUT_MS = Math.max(
-  50,
-  DEFAULT_WORKER_TIMEOUT_MS,
-);
+const WORKER_TIMEOUT_MS = Math.max(50, DEFAULT_WORKER_TIMEOUT_MS);
 const WORKER_TIMEOUT_GRACE_MS = Math.max(
   25,
   Number(process.env.NANOCLAW_REVIEW_SUBAGENT_TIMEOUT_GRACE_MS) ||
     Number(process.env.NANOCLAW_REVIEW_WORKER_TIMEOUT_GRACE_MS) ||
-    20_000,
+    180_000,
 );
 const MAIN_REVIEW_TIMEOUT_GRACE_MS = Math.max(
   25,
   Number(process.env.NANOCLAW_REVIEW_MAIN_TIMEOUT_GRACE_MS) ||
     Number(process.env.NANOCLAW_REVIEW_SUBAGENT_TIMEOUT_GRACE_MS) ||
-    20_000,
+    180_000,
 );
 const DEFAULT_MAIN_REVIEW_TIMEOUT_MS = Math.max(
   0,
@@ -1047,7 +1044,8 @@ async function runBoundedReviewAgent(input: {
       clearTimeout(earlyTerminalTimer);
       earlyTerminalTimer = null;
     }
-    const text = streamedResult || latestResultText || latestUsableAssistantMessageText;
+    const text =
+      streamedResult || latestResultText || latestUsableAssistantMessageText;
     if (!String(text || '').trim()) return;
     earlyTerminalOutputResolved = true;
     resolveEarlyTerminalOutput?.({
@@ -1096,7 +1094,8 @@ async function runBoundedReviewAgent(input: {
     timeoutFollowupCompleted = true;
   };
   const idleTimeoutMs =
-    typeof input.idleTimeoutMs === 'number' && Number.isFinite(input.idleTimeoutMs)
+    typeof input.idleTimeoutMs === 'number' &&
+    Number.isFinite(input.idleTimeoutMs)
       ? Math.max(0, Math.trunc(input.idleTimeoutMs))
       : 0;
   let resolveIdleTimeoutResult: ((value: AgentRunOutput) => void) | null = null;
@@ -1299,7 +1298,10 @@ async function runBoundedReviewAgent(input: {
         streamedResult,
         result.result,
       );
-    } else if (result.status !== 'success' && /idle timeout/i.test(result.error || '')) {
+    } else if (
+      result.status !== 'success' &&
+      /idle timeout/i.test(result.error || '')
+    ) {
       timedOut = true;
       forceStopAgentProcess();
     }
@@ -1371,10 +1373,7 @@ const MAIN_REVIEW_IDLE_TIMEOUT_MS = Math.max(
 );
 
 function resolveRepoReviewDefaultWorkerTimeoutSeconds(): number {
-  return Math.max(
-    1,
-    Math.trunc(resolveRepoReviewWorkerTimeoutMs({}) / 1000),
-  );
+  return Math.max(1, Math.trunc(resolveRepoReviewWorkerTimeoutMs({}) / 1000));
 }
 
 async function prepareRepoReviewScopedWorkspace(input: {
@@ -1387,7 +1386,10 @@ async function prepareRepoReviewScopedWorkspace(input: {
   if (!sourceRoot) return null;
   const scopedFiles = Array.from(
     new Set(
-      [...input.changedFiles, ...input.findings.map((finding) => stringValue(finding.file))]
+      [
+        ...input.changedFiles,
+        ...input.findings.map((finding) => stringValue(finding.file)),
+      ]
         .map((entry) => entry.trim())
         .filter(Boolean),
     ),
@@ -1754,10 +1756,7 @@ function resolveRepoReviewMainTimeoutMs(
   return Math.max(
     0,
     Math.trunc(
-      phaseSpecific ||
-        strategySpecific ||
-        DEFAULT_MAIN_REVIEW_TIMEOUT_MS ||
-        0,
+      phaseSpecific || strategySpecific || DEFAULT_MAIN_REVIEW_TIMEOUT_MS || 0,
     ),
   );
 }
@@ -1976,9 +1975,10 @@ function buildRepoReviewMainFormattingPrompt(input: {
       .join('\n\n'),
     '',
     input.workerResults.length > 0
-      ? ['## Worker 结构化结果', buildWorkerResultsPrompt(input.workerResults)].join(
-          '\n',
-        )
+      ? [
+          '## Worker 结构化结果',
+          buildWorkerResultsPrompt(input.workerResults),
+        ].join('\n')
       : '',
     input.parsedDraft
       ? [
@@ -2242,7 +2242,8 @@ function extractLooseRepoReviewSummary(markdown: string): string {
   if (summaryMatch?.[1]) {
     return normalizeLine(summaryMatch[1]);
   }
-  const prefix = markdown.split(/\n(?:重点问题|主要问题|发现的问题)\s*\n/, 2)[0] || '';
+  const prefix =
+    markdown.split(/\n(?:重点问题|主要问题|发现的问题)\s*\n/, 2)[0] || '';
   const lines = prefix
     .split(/\r?\n/)
     .map((line) => normalizeLine(line))
@@ -2442,9 +2443,8 @@ function buildLocalStructuredResultFallback(input: {
       commitReviews: [],
       fileReviews: [],
     };
-    fallbackResult.markdownBody = buildStructuredMarkdownFallback(
-      fallbackResult,
-    );
+    fallbackResult.markdownBody =
+      buildStructuredMarkdownFallback(fallbackResult);
     return fallbackResult;
   }
   const result: RepoReviewStructuredResult = {
@@ -2463,7 +2463,9 @@ function buildLocalStructuredResultFallback(input: {
   return result;
 }
 
-function looksLikeFinalizableLooseRepoReviewOutput(outputText: string): boolean {
+function looksLikeFinalizableLooseRepoReviewOutput(
+  outputText: string,
+): boolean {
   const text = String(outputText || '').trim();
   if (!text) return false;
   if (/代码审查报告|(?:^|\n)\s*#{1,6}\s*[一二三四五六七八九十]、/.test(text)) {
@@ -4214,7 +4216,8 @@ export async function runRepoReviewGraphCoordinator(input: {
         id: 'main_agent_finalize',
         label: '主代理终稿补证',
         status: 'completed',
-        detail: '终稿补证未产出合格模板，已保留主代理结构化结论并由本地渲染报告',
+        detail:
+          '终稿补证未产出合格模板，已保留主代理结构化结论并由本地渲染报告',
         kind: 'main',
         outputText: JSON.stringify(
           {

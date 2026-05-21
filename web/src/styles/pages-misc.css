@@ -847,10 +847,7 @@
 .repo-review-cards-grid {
   display: grid;
   gap: 14px;
-  grid-template-columns: repeat(
-    auto-fill,
-    minmax(min(320px, 100%), 360px)
-  );
+  grid-template-columns: repeat(auto-fill, minmax(min(320px, 100%), 360px));
   justify-content: start;
 }
 
@@ -1020,6 +1017,20 @@
 
 .repo-review-card-header-meta {
   margin-left: 8px;
+}
+
+.repo-review-config-card {
+  gap: 18px;
+}
+
+.repo-review-config-header {
+  padding-bottom: 14px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.16);
+}
+
+.repo-review-config-body {
+  display: grid;
+  gap: 14px;
 }
 
 .repo-review-fold {
@@ -1651,7 +1662,11 @@
   border-radius: 999px;
   border: 1px solid rgba(255, 255, 255, 0.82);
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(245, 249, 255, 0.9)),
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.98),
+      rgba(245, 249, 255, 0.9)
+    ),
     var(--surface-card);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.92),
@@ -1760,14 +1775,13 @@
   margin: 4px auto 0;
   padding: 12px;
   border-radius: 999px;
-  background:
-    conic-gradient(
-      from 180deg,
-      rgba(37, 99, 235, 0.12) 0%,
-      rgba(52, 211, 153, 0.72) var(--repo-review-completion),
-      rgba(226, 232, 240, 0.9) var(--repo-review-completion),
-      rgba(226, 232, 240, 0.9) 100%
-    );
+  background: conic-gradient(
+    from 180deg,
+    rgba(37, 99, 235, 0.12) 0%,
+    rgba(52, 211, 153, 0.72) var(--repo-review-completion),
+    rgba(226, 232, 240, 0.9) var(--repo-review-completion),
+    rgba(226, 232, 240, 0.9) 100%
+  );
   display: grid;
   place-items: center;
 }
@@ -2264,42 +2278,48 @@
   position: relative;
   display: flex;
   align-items: center;
+  gap: 8px;
   min-width: 0;
+  min-height: 42px;
+  padding: 8px 12px;
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: 12px;
+  background: var(--surface-panel, #f8fafc);
 }
 
 .repo-review-search-icon {
-  position: absolute;
-  right: 12px;
-  top: 50%;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: var(--text-muted);
-  transform: translateY(-50%);
-  pointer-events: none;
+  width: 18px;
+  height: 18px;
+  color: var(--text-secondary, #94a3b8);
+  flex: 0 0 auto;
   pointer-events: none;
   transition: color 0.2s ease;
 }
 
 .repo-review-search-shell .repo-review-search-input {
+  appearance: none;
+  -webkit-appearance: none;
   min-width: 0;
   width: 100%;
-  padding: 8px 36px 8px 12px;
-  border-radius: var(--radius-md);
-  border: 1.5px solid var(--border, rgba(148, 163, 184, 0.28));
-  background: var(--panel, rgba(248, 250, 252, 0.96));
+  padding: 0;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  background-color: transparent !important;
   color: var(--text-primary, inherit);
   font-size: 13px;
-  line-height: 1.5;
-  transition:
-    border-color 0.2s ease,
-    box-shadow 0.2s ease;
+  line-height: 1.4;
+  box-shadow: none !important;
 }
 
 .repo-review-search-shell .repo-review-search-input:focus {
-  border-color: var(--accent, rgba(59, 130, 246, 0.6));
   outline: none;
-  box-shadow: 0 0 0 3px rgba(56, 120, 255, 0.12);
+  background: transparent !important;
+  background-color: transparent !important;
+  box-shadow: none !important;
 }
 
 .repo-review-search-shell .repo-review-search-input::placeholder {
@@ -2311,9 +2331,6 @@
 }
 
 .repo-review-search-clear {
-  position: absolute;
-  right: 8px;
-  top: 50%;
   width: 24px;
   height: 24px;
   display: inline-flex;
@@ -2324,12 +2341,11 @@
   padding: 0;
   background: rgba(148, 163, 184, 0.14);
   color: var(--text-secondary);
-  transform: translateY(-50%);
+  flex: 0 0 auto;
   cursor: pointer;
   transition:
     background-color 0.15s ease,
-    color 0.15s ease,
-    transform 0.15s ease;
+    color 0.15s ease;
 }
 
 .repo-review-search-clear:hover,
@@ -2340,7 +2356,7 @@
 }
 
 .repo-review-search-clear:active {
-  transform: translateY(-50%) scale(0.96);
+  transform: scale(0.96);
 }
 
 .repo-review-run-list {
@@ -2727,7 +2743,8 @@
 }
 
 .repo-review-branch-status-layout.single-branch,
-.repo-review-branch-status-layout.single-branch .repo-review-branch-status-main {
+.repo-review-branch-status-layout.single-branch
+  .repo-review-branch-status-main {
   min-height: min-content;
 }
 
@@ -3032,7 +3049,16 @@
   align-content: start;
 }
 
-.modal.repo-review-run-detail-modal .status-detail-grid {
+.modal.repo-review-run-detail-modal .status-detail-item,
+.modal.repo-review-run-detail-modal .repo-review-detail-card,
+.modal.repo-review-run-detail-modal .repo-review-progress-turn-group,
+.modal.repo-review-run-detail-modal .repo-review-empty-hint,
+.modal.repo-review-run-detail-modal .repo-review-run-card {
+  background: transparent;
+  box-shadow: none;
+}
+
+.modal.repo-review-run-detail-modal > .status-detail-grid {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
@@ -4548,15 +4574,9 @@
   min-width: 0;
   padding: 12px 14px;
   border-radius: var(--radius-lg);
-  border: 1px solid rgba(226, 232, 240, 0.88);
-  background: linear-gradient(
-    180deg,
-    rgba(255, 255, 255, 0.98) 0%,
-    rgba(248, 250, 252, 0.95) 100%
-  );
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.85),
-    0 6px 18px rgba(15, 23, 42, 0.025);
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  background: transparent;
+  box-shadow: none;
   position: relative;
   overflow: hidden;
 }
@@ -4714,14 +4734,23 @@
   color: #93c5fd;
 }
 
+[data-theme='dark'] .repo-review-search-shell {
+  border-color: var(--border, #334155);
+  background: var(--surface-panel, #0f172a);
+}
+
 [data-theme='dark'] .repo-review-search-shell .repo-review-search-input {
-  border-color: var(--border, rgba(71, 85, 105, 0.78));
-  background: var(--bg-secondary, rgba(15, 23, 42, 0.96));
+  border-color: transparent !important;
+  background: transparent !important;
+  background-color: transparent !important;
+  box-shadow: none !important;
 }
 
 [data-theme='dark'] .repo-review-search-shell .repo-review-search-input:focus {
-  border-color: var(--accent, rgba(96, 165, 250, 0.4));
-  box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.15);
+  border-color: transparent !important;
+  background: transparent !important;
+  background-color: transparent !important;
+  box-shadow: none !important;
 }
 
 [data-theme='dark'] .repo-review-search-icon {
@@ -6812,7 +6841,11 @@
   padding: 12px;
   border-radius: 16px;
   border: 1px solid var(--border-light, #d7def0);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(245, 250, 255, 0.95));
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.98),
+    rgba(245, 250, 255, 0.95)
+  );
   text-align: left;
   cursor: pointer;
 }
@@ -6873,7 +6906,11 @@
   padding: 16px;
   border-radius: 18px;
   border: 1px solid var(--border-light, #d7def0);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(247, 251, 255, 0.96));
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.98),
+    rgba(247, 251, 255, 0.96)
+  );
 }
 
 .tavern-card-preview {
@@ -8317,8 +8354,14 @@
   position: relative;
   display: flex;
   align-items: center;
+  gap: 8px;
   min-width: 0;
   width: 100%;
+  min-height: 42px;
+  padding: 8px 12px;
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: 12px;
+  background: var(--surface-panel, #f8fafc);
 }
 
 .repo-review-search-shell--wide {
@@ -8326,40 +8369,43 @@
 }
 
 .repo-review-search-shell .repo-review-search-input {
+  appearance: none;
+  -webkit-appearance: none;
   width: 100%;
   min-width: 0;
-  padding: 11px 42px 11px 14px;
-  border: 1px solid var(--border);
-  border-radius: 18px;
-  background: linear-gradient(
-    180deg,
-    rgba(255, 255, 255, 0.96) 0%,
-    rgba(247, 250, 255, 0.9) 100%
-  );
+  padding: 0;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  background-color: transparent !important;
   color: var(--text-primary);
   font-size: 13px;
-  line-height: 1.5;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.92),
-    0 10px 22px rgba(80, 101, 150, 0.06);
+  line-height: 1.4;
+  box-shadow: none !important;
 }
 
 .repo-review-search-shell .repo-review-search-input:focus {
-  border-color: var(--accent);
   outline: none;
-  box-shadow:
-    0 0 0 4px rgba(var(--accent-rgb), 0.1),
-    0 12px 24px rgba(80, 101, 150, 0.08);
+  background: transparent !important;
+  background-color: transparent !important;
+  box-shadow: none !important;
 }
 
 .repo-review-search-icon {
-  right: 12px;
+  position: static;
+  width: 18px;
+  height: 18px;
+  transform: none;
+  color: var(--text-secondary, #94a3b8);
+  flex: 0 0 auto;
 }
 
 .repo-review-search-clear {
   width: 22px;
   height: 22px;
-  right: 10px;
+  position: static;
+  transform: none;
+  flex: 0 0 auto;
 }
 
 .repo-review-repo-card,
@@ -8782,22 +8828,17 @@
 }
 
 [data-theme='dark'] .repo-review-search-shell .repo-review-search-input {
-  border-color: rgba(68, 83, 116, 0.48);
-  background: linear-gradient(
-    180deg,
-    rgba(15, 23, 42, 0.96) 0%,
-    rgba(11, 19, 33, 0.92) 100%
-  );
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.04),
-    0 12px 24px rgba(2, 6, 23, 0.22);
+  border-color: transparent !important;
+  background: transparent !important;
+  background-color: transparent !important;
+  box-shadow: none !important;
 }
 
 [data-theme='dark'] .repo-review-search-shell .repo-review-search-input:focus {
-  border-color: rgba(96, 165, 250, 0.36);
-  box-shadow:
-    0 0 0 4px rgba(96, 165, 250, 0.12),
-    0 12px 24px rgba(2, 6, 23, 0.24);
+  border-color: transparent !important;
+  background: transparent !important;
+  background-color: transparent !important;
+  box-shadow: none !important;
 }
 
 [data-theme='dark'] .repo-review-search-icon {

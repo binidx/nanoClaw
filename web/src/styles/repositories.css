@@ -492,7 +492,10 @@
 .repo-review-workspace-layout--focused .repo-review-framework-header,
 .repo-review-workspace-layout--focused .repo-review-overview-hero--framework,
 .repo-review-workspace-layout--focused .repo-review-workspace-card--framework,
-.repo-review-workspace-layout--focused .repo-review-framework-content-grid > .repo-review-card {
+.repo-review-workspace-layout--focused .repo-review-config-card,
+.repo-review-workspace-layout--focused
+  .repo-review-framework-content-grid
+  > .repo-review-card {
   border: 1px solid rgba(255, 255, 255, 0.66);
   border-radius: 24px;
   background:
@@ -519,14 +522,29 @@
 
 .repo-review-workspace-layout--focused .repo-review-overview-hero--framework,
 .repo-review-workspace-layout--focused .repo-review-workspace-card--framework,
-.repo-review-workspace-layout--focused .repo-review-framework-content-grid > .repo-review-card {
+.repo-review-workspace-layout--focused .repo-review-config-card,
+.repo-review-workspace-layout--focused
+  .repo-review-framework-content-grid
+  > .repo-review-card {
   padding: 18px;
 }
 
-[data-theme='dark'] .repo-review-workspace-layout--focused .repo-review-framework-header,
-[data-theme='dark'] .repo-review-workspace-layout--focused .repo-review-overview-hero--framework,
-[data-theme='dark'] .repo-review-workspace-layout--focused .repo-review-workspace-card--framework,
-[data-theme='dark'] .repo-review-workspace-layout--focused .repo-review-framework-content-grid > .repo-review-card {
+[data-theme='dark']
+  .repo-review-workspace-layout--focused
+  .repo-review-framework-header,
+[data-theme='dark']
+  .repo-review-workspace-layout--focused
+  .repo-review-overview-hero--framework,
+[data-theme='dark']
+  .repo-review-workspace-layout--focused
+  .repo-review-workspace-card--framework,
+[data-theme='dark']
+  .repo-review-workspace-layout--focused
+  .repo-review-config-card,
+[data-theme='dark']
+  .repo-review-workspace-layout--focused
+  .repo-review-framework-content-grid
+  > .repo-review-card {
   border-color: rgba(68, 83, 116, 0.44);
   background:
     radial-gradient(
