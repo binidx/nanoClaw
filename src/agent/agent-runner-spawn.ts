@@ -50,8 +50,8 @@ import {
   type ResolvedRunExecutionContext,
   type VolumeMount,
 } from './agent-runner-mounts.js';
-import { getProfileForChat } from '../workteam/runner-profile-registry.js';
-import { mergeProfileEnv } from '../workteam/runner-profiles.js';
+import { getProfileForChat } from '../workflow/runner-profile-registry.js';
+import { mergeProfileEnv } from '../workflow/runner-profiles.js';
 import { t } from '../i18n/index.js';
 import {
   buildUserMcpRuntimeAlias,
@@ -430,7 +430,7 @@ export async function spawnAgent(
     'GIT_SSH_COMMAND',
   ];
 
-  // Workteam SDLC tasks register a Runner Profile per chatJid. If present, its
+  // Workflow/legacy Workteam tasks register a Runner Profile per chatJid. If present, its
   // `extraPassthrough` list is appended to the default passthrough whitelist,
   // and its `pathPrepend` + `extra` env are merged at the end of env assembly.
   const runnerProfile = getProfileForChat(input.chatJid);

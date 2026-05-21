@@ -430,5 +430,17 @@
   "跟随assistant默认Provider": "Use assistant default provider",
   "AI Provider": "AI Provider",
   "留空则跟随Provider默认模型": "Leave blank to use provider default model",
+  "任务目标": "Objective",
+  "验收标准": "Acceptance criteria",
+  "输出格式": "Output schema",
+  "失败打回策略": "Failure routing",
+  "最大执行次数": "Max attempts",
+  "交接契约": "Handoff contract",
+  "触发条件": "Trigger condition",
+  "总是发送": "Always",
+  "通过时发送": "On pass",
+  "失败时打回": "On fail",
+  "阻塞时发送": "On blocked",
+  "仅人工发送": "Manual only",
   "关闭": "Close"
 }

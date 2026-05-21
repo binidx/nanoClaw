@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import { getAssistantName } from '../config-store.js';
 import { runAgentProcess, requestAgentClose, type AgentRunOutput } from '../agent/agent-runner.js';
 import { resolveAssistantRuntimeConfig } from '../assistant/assistant-runtime.js';
+import { getVisibleProvidersForUser } from '../db.js';
 import { getRepositoryById } from '../db/repositories.js';
 import * as workflowDb from '../db/workflows.js';
 import {
@@ -13,6 +14,11 @@ import {
 import { listOwnerBindings } from '../tenant/resource-binding-service.js';
 import { getCurrentUserId } from '../tenant/tenant-context.js';
 import type { RegisteredGroup } from '../types.js';
+import {
+  clearProfileForChat,
+  setProfileForChat,
+} from './runner-profile-registry.js';
+import { resolveRunnerProfile } from './runner-profiles.js';
 import type {
   WorkflowNodeRecord,
   RoleNodeConfig,
@@ -207,6 +213,14 @@ function effectiveToolPolicy(
   return taskPolicy ?? workflowPolicy ?? { mode: 'assistant_default' };
 }
 
+async function assertVisibleProvider(providerId: string | undefined): Promise<void> {
+  if (!providerId) return;
+  const visibleProviders = await getVisibleProvidersForUser(getCurrentUserId(), 'llm');
+  if (!visibleProviders.some((provider) => provider.id === providerId)) {
+    throw new Error('Workflow node references a provider the current user cannot access');
+  }
+}
+
 async function buildWorkflowTaskProjectContext(input: {
   workflowId: string;
   workflowName?: string;
@@ -283,6 +297,46 @@ async function buildWorkflowTaskProjectContext(input: {
   return context.contextText;
 }
 
+async function resolveWorkflowRepositoryRuntime(input: {
+  workflowId: string;
+  repositoryBindingKey?: string;
+}): Promise<{
+  repositoryId: string;
+  worktreePath?: string;
+  allowedDirectories?: string[];
+} | null> {
+  const bindings = await listOwnerBindings(
+    'workflow',
+    input.workflowId,
+    getCurrentUserId(),
+  );
+  const binding = bindings.find(
+    (item) =>
+      item.resourceType === 'repository' &&
+      (!input.repositoryBindingKey ||
+        item.bindingKey === input.repositoryBindingKey),
+  );
+  if (!binding) return null;
+  const repository = await getRepositoryById(binding.resourceId, getCurrentUserId());
+  if (!repository) return null;
+  const bindingConfig =
+    binding.config && typeof binding.config === 'object' ? binding.config : {};
+  const configuredWorktree =
+    typeof bindingConfig.worktree_path === 'string'
+      ? bindingConfig.worktree_path.trim()
+      : '';
+  const worktreePath =
+    binding.workDirectory?.trim() ||
+    configuredWorktree ||
+    repository.local_repo_path?.trim() ||
+    undefined;
+  return {
+    repositoryId: binding.resourceId,
+    worktreePath,
+    allowedDirectories: worktreePath ? [worktreePath] : undefined,
+  };
+}
+
 function restrictResolvedMcpServers(
   servers: Awaited<ReturnType<typeof resolveAssistantRuntimeConfig>>['resolvedMcpServers'],
   allowedIds: string[] | undefined,
@@ -327,7 +381,7 @@ export function buildTaskPrompt(
 ${resolvedRoleNode.name}
 
 ## Goal
-${taskCfg.goal || roleCfg.goal || resolvedRoleNode.description || 'Complete the assigned workflow responsibilities.'}
+${taskCfg.objective || taskCfg.goal || roleCfg.goal || resolvedRoleNode.description || 'Complete the assigned workflow responsibilities.'}
 
 ## Backstory
 ${roleCfg.backstory || ''}
@@ -338,8 +392,17 @@ ${taskNode.name}
 ## Task Description
 ${taskNode.description}
 
+## Acceptance Criteria
+${taskCfg.acceptanceCriteria || taskCfg.expectedOutput || ''}
+
 ## Expected Output
 ${taskCfg.expectedOutput || ''}
+
+## Output Schema
+${taskCfg.outputSchema || 'Free-form text unless the node contract asks for JSON. Review/test nodes should return JSON with verdict: "pass" | "fail" | "blocked", reason, suggestedFix, and rollbackNodeId when routing depends on the result.'}
+
+## Handoff Contract
+${taskCfg.handoffContract || 'Make downstream handoff content actionable and concise.'}
 
 ## Run Input
 ${runInput}
@@ -423,12 +486,24 @@ export async function executeWorkflowTask(input: {
     executionId = execution.id;
 
     const assistantRuntime = await resolveAssistantRuntimeConfig(group, {}, {});
+    const workflowRepositoryRuntime = await resolveWorkflowRepositoryRuntime({
+      workflowId,
+      repositoryBindingKey,
+    });
+    const runnerProfile = await resolveRunnerProfile(
+      workflowRepositoryRuntime?.repositoryId,
+      { worktreePath: workflowRepositoryRuntime?.worktreePath },
+    );
     const taskProviderOverrideId = taskCfg.providerOverrideId?.trim() || undefined;
     const taskModelOverride = taskCfg.modelOverride?.trim() || undefined;
     const taskInstructionsAppend = taskCfg.instructionsAppend?.trim() || undefined;
     const taskAllowedDirectories = normalizeTaskAllowedDirectories(
       taskCfg.allowedDirectories,
     );
+    const effectiveAllowedDirectories =
+      taskAllowedDirectories ||
+      workflowRepositoryRuntime?.allowedDirectories ||
+      assistantRuntime.repoBindingDirectories;
     const toolPolicy = effectiveToolPolicy(workflowToolPolicy, taskCfg.toolPolicy);
     const restricted = toolPolicy.mode === 'restricted';
     const managedSkillIds = restricted ? toolPolicy.managedSkillIds : assistantRuntime.managedSkillIds;
@@ -449,6 +524,7 @@ export async function executeWorkflowTask(input: {
     const modelOverride = restricted
       ? toolPolicy.modelOverride
       : taskModelOverride || assistantRuntime.modelOverride;
+    await assertVisibleProvider(providerOverrideId);
     const startMs = Date.now();
     let pollCount = 0;
     let latestResult = '';
@@ -459,6 +535,9 @@ export async function executeWorkflowTask(input: {
       requestAgentClose(group.folder, execution.runtime_namespace);
     };
     signal?.addEventListener('abort', onAbort, { once: true });
+    if (runnerProfile) {
+      setProfileForChat(runtimeJid, runnerProfile);
+    }
 
     const onOutput = async (output: AgentRunOutput) => {
       pollCount += 1;
@@ -538,43 +617,49 @@ export async function executeWorkflowTask(input: {
       }
     };
 
-    const result = await runAgentProcess(
-      group,
-      {
-        prompt: { text: prompt },
-        sessionId: latestExecution?.session_id || undefined,
-        groupFolder: group.folder,
-        chatJid: runtimeJid,
-        isMain: false,
-        assistantName: await getAssistantName(),
-        managedSkillIds,
-        managedMcpServerIds,
-        userSkillIds,
-        userMcpServerIds,
-        managedKbIds,
-        resolvedManagedMcpServers,
-        projectRootOverride:
-          taskAllowedDirectories?.[0] || assistantRuntime.projectRootOverride,
-        workspaceExtraDirectories:
-          taskAllowedDirectories
-            ? taskAllowedDirectories.slice(1)
-            : assistantRuntime.repoBindingDirectories?.slice(1),
-        allowedDirectoriesOverride:
-          taskAllowedDirectories || assistantRuntime.repoBindingDirectories,
-        providerOverrideId,
-        modelOverride,
-        soulSystemPrompt: assistantRuntime.soulSystemPrompt,
-        instructionsAppend:
-          [assistantRuntime.instructionsAppend, taskInstructionsAppend]
-            .filter(Boolean)
-            .join('\n\n') || undefined,
-        assistantRuleMode: assistantRuntime.instructionsMode,
-      },
-      () => {
-        /* workflow executor does not register queue processes */
-      },
-      onOutput,
-    );
+    const result = await (async () => {
+      try {
+        return await runAgentProcess(
+          group,
+          {
+            prompt: { text: prompt },
+            sessionId: latestExecution?.session_id || undefined,
+            groupFolder: group.folder,
+            chatJid: runtimeJid,
+            isMain: false,
+            assistantName: await getAssistantName(),
+            managedSkillIds,
+            managedMcpServerIds,
+            userSkillIds,
+            userMcpServerIds,
+            managedKbIds,
+            resolvedManagedMcpServers,
+            projectRootOverride:
+              effectiveAllowedDirectories?.[0] || assistantRuntime.projectRootOverride,
+            workspaceExtraDirectories:
+              effectiveAllowedDirectories?.slice(1) ||
+              assistantRuntime.repoBindingDirectories?.slice(1),
+            allowedDirectoriesOverride: effectiveAllowedDirectories,
+            providerOverrideId,
+            modelOverride,
+            soulSystemPrompt: assistantRuntime.soulSystemPrompt,
+            instructionsAppend:
+              [assistantRuntime.instructionsAppend, taskInstructionsAppend]
+                .filter(Boolean)
+                .join('\n\n') || undefined,
+            assistantRuleMode: assistantRuntime.instructionsMode,
+          },
+          () => {
+            /* workflow executor does not register queue processes */
+          },
+          onOutput,
+        );
+      } finally {
+        if (runnerProfile) {
+          clearProfileForChat(runtimeJid);
+        }
+      }
+    })();
     signal?.removeEventListener('abort', onAbort);
     if (result.newSessionId) {
       latestSessionId = result.newSessionId;

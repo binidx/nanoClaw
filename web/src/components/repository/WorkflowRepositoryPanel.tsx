@@ -72,7 +72,7 @@ export function WorkflowRepositoryPanel({
       const [nextBindings, nextRepos, nextProfiles] = await Promise.all([
         fetchResourceBindings('workflow', workflowId),
         fetchRepositories(),
-        fetch(`${apiBase}/api/workteam/runner-profiles`).then((response) =>
+        fetch(`${apiBase}/api/workflows/runner-profiles`).then((response) =>
           requireOk<RunnerProfileSummary[]>(response, t('workflow.loadRunnerProfileFailed')),
         ),
       ]);
@@ -80,7 +80,7 @@ export function WorkflowRepositoryPanel({
       const mainBinding = getWorkflowMainRepositoryBinding(nextBindings);
       const nextProfileId = mainBinding
         ? await fetch(
-            `${apiBase}/api/workteam/repositories/${encodeURIComponent(
+            `${apiBase}/api/workflows/repositories/${encodeURIComponent(
               mainBinding.resourceId,
             )}/runner-profile`,
           ).then((response) =>
@@ -179,7 +179,7 @@ export function WorkflowRepositoryPanel({
     setError('');
     try {
       const repositoryId = encodeURIComponent(mainBinding.resourceId);
-      const path = `${apiBase}/api/workteam/repositories/${repositoryId}/runner-profile`;
+      const path = `${apiBase}/api/workflows/repositories/${repositoryId}/runner-profile`;
       if (!profileDraft) {
         await fetch(path, { method: 'DELETE' }).then((response) =>
           requireOk(response, t('workflow.clearRunnerProfileFailed')),

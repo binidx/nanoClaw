@@ -1,5 +1,12 @@
 export type WorkflowNodeType = 'role' | 'task';
 export type WorkflowEdgeDirection = 'one_way' | 'two_way';
+export type WorkflowEdgeCondition =
+  | 'always'
+  | 'on_pass'
+  | 'on_fail'
+  | 'on_blocked'
+  | 'manual_only';
+export type WorkflowNodeVerdict = 'pass' | 'fail' | 'blocked';
 export type WorkflowKind =
   | 'repository'
   | 'skill'
@@ -359,6 +366,9 @@ export interface RoleNodeConfig {
 export interface TaskNodeConfig {
   pipelineNodeKind?: WorkflowPipelineNodeKind;
   assistantId?: string;
+  objective?: string;
+  acceptanceCriteria?: string;
+  outputSchema?: string;
   goal?: string;
   prompt?: string;
   expectedOutput?: string;
@@ -389,6 +399,12 @@ export interface TaskNodeConfig {
   retryPolicy?: {
     maxAttempts: number;
   };
+  failurePolicy?: {
+    maxAttempts?: number;
+    defaultRollbackNodeId?: string;
+    pauseOnFailure?: boolean;
+  };
+  handoffContract?: string;
   handoffPolicy?: {
     maxTurns: number;
     cooldownMs: number;
@@ -397,6 +413,7 @@ export interface TaskNodeConfig {
 }
 
 export interface WorkflowEdgeConfig {
+  condition?: WorkflowEdgeCondition;
   discussionTurns?: number;
 }
 

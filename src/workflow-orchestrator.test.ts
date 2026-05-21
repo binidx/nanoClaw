@@ -139,4 +139,33 @@ describe('validateWorkflowGraph', () => {
       ),
     ).not.toThrow();
   });
+
+  it('allows conditional fail edges to route back without becoming initial DAG dependencies', () => {
+    const role = node({ id: 'role-1', node_type: 'role' });
+    const developer = node({
+      id: 'developer',
+      node_type: 'task',
+      role_node_id: role.id,
+    });
+    const tester = node({
+      id: 'tester',
+      node_type: 'task',
+      role_node_id: role.id,
+    });
+
+    expect(() =>
+      validateWorkflowGraph(
+        [role, developer, tester],
+        [
+          edge({ id: 'dev-test', source_node_id: developer.id, target_node_id: tester.id }),
+          edge({
+            id: 'test-dev',
+            source_node_id: tester.id,
+            target_node_id: developer.id,
+            config_json: JSON.stringify({ condition: 'on_fail' }),
+          }),
+        ],
+      ),
+    ).not.toThrow();
+  });
 });

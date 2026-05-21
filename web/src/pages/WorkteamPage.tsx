@@ -20,6 +20,12 @@ export interface WorkteamPageProps {
 type WorkflowStatus = 'draft' | 'active' | 'archived';
 type WorkflowNodeType = 'role' | 'task';
 type WorkflowEdgeDirection = 'one_way' | 'two_way';
+type WorkflowEdgeCondition =
+  | 'always'
+  | 'on_pass'
+  | 'on_fail'
+  | 'on_blocked'
+  | 'manual_only';
 type WorkflowKind = 'repository' | 'skill' | 'mcp' | 'system_capability' | 'general';
 type WorkflowVisibility = 'private' | 'shared' | 'system';
 type WorkflowRunStatus =
@@ -347,6 +353,9 @@ interface RoleConfig {
 
 interface TaskConfig {
   assistantId?: string;
+  objective?: string;
+  acceptanceCriteria?: string;
+  outputSchema?: string;
   goal?: string;
   prompt?: string;
   expectedOutput?: string;
@@ -357,6 +366,15 @@ interface TaskConfig {
   instructionsAppend?: string;
   allowedDirectories?: string[];
   toolPolicy?: WorkflowToolPolicy;
+  retryPolicy?: {
+    maxAttempts: number;
+  };
+  failurePolicy?: {
+    maxAttempts?: number;
+    defaultRollbackNodeId?: string;
+    pauseOnFailure?: boolean;
+  };
+  handoffContract?: string;
   handoffPolicy?: {
     maxTurns: number;
     cooldownMs: number;
@@ -365,6 +383,7 @@ interface TaskConfig {
 }
 
 interface EdgeConfig {
+  condition?: WorkflowEdgeCondition;
   discussionTurns?: number;
 }
 
@@ -1837,8 +1856,13 @@ export function WorkteamPage({
           description: '',
           role_node_id: roleNode.id,
           config_json: {
+            objective: '',
+            acceptanceCriteria: '',
+            outputSchema: '',
             prompt: '',
             expectedOutput: '',
+            failurePolicy: { maxAttempts: 2 },
+            handoffContract: '',
             timeoutMs: 600000,
             approvalRequired: false,
           },
@@ -3942,8 +3966,19 @@ function NodeInspector({
   const [assistantId, setAssistantId] = useState(node.assistant_id);
   const [goal, setGoal] = useState(roleConfig.goal || '');
   const [backstory, setBackstory] = useState(roleConfig.backstory || '');
+  const [objective, setObjective] = useState(taskConfig.objective || taskConfig.goal || '');
+  const [acceptanceCriteria, setAcceptanceCriteria] = useState(
+    taskConfig.acceptanceCriteria || '',
+  );
+  const [outputSchema, setOutputSchema] = useState(taskConfig.outputSchema || '');
   const [prompt, setPrompt] = useState(taskConfig.prompt || '');
   const [expectedOutput, setExpectedOutput] = useState(taskConfig.expectedOutput || '');
+  const [handoffContract, setHandoffContract] = useState(
+    taskConfig.handoffContract || '',
+  );
+  const [maxAttempts, setMaxAttempts] = useState(
+    String(taskConfig.failurePolicy?.maxAttempts ?? taskConfig.retryPolicy?.maxAttempts ?? 2),
+  );
   const [timeoutMs] = useState(String(taskConfig.timeoutMs || 600000));
   const [approvalRequired] = useState(Boolean(taskConfig.approvalRequired));
   const [providerOverrideId, setProviderOverrideId] = useState(taskConfig.providerOverrideId || '');
@@ -4097,6 +4132,25 @@ function NodeInspector({
             />
           </label>
           <label>
+            {t('workteam.任务目标')}
+            <textarea value={objective} onChange={(event) => setObjective(event.target.value)} />
+          </label>
+          <label>
+            {t('workteam.验收标准')}
+            <textarea
+              value={acceptanceCriteria}
+              onChange={(event) => setAcceptanceCriteria(event.target.value)}
+            />
+          </label>
+          <label>
+            {t('workteam.输出格式')}
+            <textarea
+              value={outputSchema}
+              onChange={(event) => setOutputSchema(event.target.value)}
+              placeholder='{"verdict":"pass|fail|blocked","reason":"","suggestedFix":"","rollbackNodeId":""}'
+            />
+          </label>
+          <label>
             {t('workteam.提示词')}
             <textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} />
           </label>
@@ -4104,6 +4158,23 @@ function NodeInspector({
             {t('workteam.预期输出')}
             <textarea value={expectedOutput} onChange={(event) => setExpectedOutput(event.target.value)} />
           </label>
+          <details className="workflow-advanced-details">
+            <summary>{t('workteam.失败打回策略')}</summary>
+            <label>
+              {t('workteam.最大执行次数')}
+              <input
+                value={maxAttempts}
+                onChange={(event) => setMaxAttempts(event.target.value)}
+              />
+            </label>
+            <label>
+              {t('workteam.交接契约')}
+              <textarea
+                value={handoffContract}
+                onChange={(event) => setHandoffContract(event.target.value)}
+              />
+            </label>
+          </details>
           <button
             type="button"
             className="btn-primary"
@@ -4115,8 +4186,19 @@ function NodeInspector({
                 assistant_id: assistantId,
                 config_json: {
                   assistantId: assistantId || undefined,
+                  objective,
+                  goal: objective,
+                  acceptanceCriteria,
+                  outputSchema,
                   prompt,
                   expectedOutput,
+                  failurePolicy: {
+                    maxAttempts: Math.max(1, Number(maxAttempts) || 2),
+                  },
+                  retryPolicy: {
+                    maxAttempts: Math.max(1, Number(maxAttempts) || 2),
+                  },
+                  handoffContract,
                   timeoutMs: Number(timeoutMs) || 600000,
                   approvalRequired,
                   providerOverrideId: providerOverrideId || undefined,
@@ -4197,6 +4279,9 @@ function EdgeInspector({
   const edgeConfig = parseJsonObject<EdgeConfig>(edge.config_json);
   const [label, setLabel] = useState(edge.label);
   const [direction, setDirection] = useState<WorkflowEdgeDirection>(edge.direction);
+  const [condition, setCondition] = useState<WorkflowEdgeCondition>(
+    edgeConfig.condition || 'always',
+  );
   const [discussionTurns, setDiscussionTurns] = useState(
     String(edgeConfig.discussionTurns ?? 4),
   );
@@ -4230,6 +4315,19 @@ function EdgeInspector({
       <label>
         {t('workteam.标签')}
         <input value={label} onChange={(event) => setLabel(event.target.value)} />
+      </label>
+      <label>
+        {t('workteam.触发条件')}
+        <select
+          value={condition}
+          onChange={(event) => setCondition(event.target.value as WorkflowEdgeCondition)}
+        >
+          <option value="always">{t('workteam.总是发送')}</option>
+          <option value="on_pass">{t('workteam.通过时发送')}</option>
+          <option value="on_fail">{t('workteam.失败时打回')}</option>
+          <option value="on_blocked">{t('workteam.阻塞时发送')}</option>
+          <option value="manual_only">{t('workteam.仅人工发送')}</option>
+        </select>
       </label>
       <label>
         {t('workteam.方向')}
@@ -4266,10 +4364,12 @@ function EdgeInspector({
           onSave({
             label,
             direction,
-            config_json:
-              direction === 'two_way'
+            config_json: {
+              condition,
+              ...(direction === 'two_way'
                 ? { discussionTurns: Number(discussionTurns) || 4 }
-                : {},
+                : {}),
+            },
           })
         }
       >

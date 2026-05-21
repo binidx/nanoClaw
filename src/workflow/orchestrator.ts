@@ -4,11 +4,14 @@ import { executeWorkflowTask } from './agent-adapter.js';
 import type {
   WorkflowEdgeRecord,
   WorkflowEdgeConfig,
+  WorkflowEdgeCondition,
   WorkflowNodeRecord,
+  WorkflowNodeVerdict,
   WorkflowRecord,
   WorkflowRunGraph,
   WorkflowRunRecord,
   WorkflowPendingTransferRecord,
+  TaskNodeConfig,
 } from './types.js';
 import { WorkflowEventBus } from './event-bus.js';
 import { parseWorkflowConfig } from './config.js';
@@ -27,10 +30,22 @@ function nowIso(): string {
 function parseTaskConfig(node: WorkflowNodeRecord): {
   assistantId?: string;
   pipelineNodeKind?: 'input' | 'retrieval' | 'analysis' | 'summary';
+  objective?: string;
+  acceptanceCriteria?: string;
+  outputSchema?: string;
   prompt?: string;
   expectedOutput?: string;
   timeoutMs?: number;
   approvalRequired?: boolean;
+  retryPolicy?: {
+    maxAttempts: number;
+  };
+  failurePolicy?: {
+    maxAttempts?: number;
+    defaultRollbackNodeId?: string;
+    pauseOnFailure?: boolean;
+  };
+  handoffContract?: string;
   handoffPolicy?: {
     maxTurns: number;
     cooldownMs: number;
@@ -38,19 +53,7 @@ function parseTaskConfig(node: WorkflowNodeRecord): {
   };
 } {
   try {
-    return JSON.parse(node.config_json || '{}') as {
-      assistantId?: string;
-      pipelineNodeKind?: 'input' | 'retrieval' | 'analysis' | 'summary';
-      prompt?: string;
-      expectedOutput?: string;
-      timeoutMs?: number;
-      approvalRequired?: boolean;
-      handoffPolicy?: {
-        maxTurns: number;
-        cooldownMs: number;
-        exposeToolCalls: false;
-      };
-    };
+    return JSON.parse(node.config_json || '{}') as TaskNodeConfig;
   } catch {
     return {};
   }
@@ -79,6 +82,92 @@ function parseEdgeConfig(edge: WorkflowEdgeRecord): WorkflowEdgeConfig {
   } catch {
     return {};
   }
+}
+
+function getEdgeCondition(edge: WorkflowEdgeRecord): WorkflowEdgeCondition {
+  const condition = parseEdgeConfig(edge).condition;
+  return condition === 'on_pass' ||
+    condition === 'on_fail' ||
+    condition === 'on_blocked' ||
+    condition === 'manual_only'
+    ? condition
+    : 'always';
+}
+
+function isDependencyEdge(edge: WorkflowEdgeRecord): boolean {
+  const condition = getEdgeCondition(edge);
+  return condition === 'always' || condition === 'on_pass';
+}
+
+function edgeMatchesVerdict(
+  edge: WorkflowEdgeRecord,
+  verdict: WorkflowNodeVerdict,
+): boolean {
+  const condition = getEdgeCondition(edge);
+  if (condition === 'manual_only') return false;
+  if (condition === 'always') return true;
+  if (condition === 'on_pass') return verdict === 'pass';
+  if (condition === 'on_fail') return verdict === 'fail';
+  return verdict === 'blocked';
+}
+
+function extractJsonObject(text: string): Record<string, unknown> | null {
+  const trimmed = text.trim();
+  if (!trimmed) return null;
+  const candidates = [trimmed];
+  const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  if (fenced?.[1]) candidates.push(fenced[1].trim());
+  const start = trimmed.indexOf('{');
+  const end = trimmed.lastIndexOf('}');
+  if (start >= 0 && end > start) candidates.push(trimmed.slice(start, end + 1));
+  for (const candidate of candidates) {
+    try {
+      const parsed = JSON.parse(candidate) as unknown;
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>;
+      }
+    } catch {
+      // try the next candidate
+    }
+  }
+  return null;
+}
+
+function parseWorkflowVerdict(output: string): {
+  verdict: WorkflowNodeVerdict;
+  reason?: string;
+  suggestedFix?: string;
+  rollbackNodeId?: string;
+  payload?: Record<string, unknown>;
+} {
+  const payload = extractJsonObject(output);
+  const verdictValue =
+    typeof payload?.verdict === 'string' ? payload.verdict.toLowerCase() : '';
+  const verdict: WorkflowNodeVerdict =
+    verdictValue === 'fail' || verdictValue === 'failed'
+      ? 'fail'
+      : verdictValue === 'blocked'
+        ? 'blocked'
+        : 'pass';
+  const reason =
+    typeof payload?.reason === 'string'
+      ? payload.reason
+      : typeof payload?.failureReason === 'string'
+        ? payload.failureReason
+        : undefined;
+  const suggestedFix =
+    typeof payload?.suggestedFix === 'string'
+      ? payload.suggestedFix
+      : typeof payload?.fix === 'string'
+        ? payload.fix
+        : undefined;
+  const rollbackNodeId =
+    typeof payload?.rollbackNodeId === 'string'
+      ? payload.rollbackNodeId
+      : typeof payload?.targetRollbackNodeId === 'string'
+        ? payload.targetRollbackNodeId
+        : undefined;
+  return { verdict, reason, suggestedFix, rollbackNodeId, payload: payload ?? undefined };
 }
 
 function getDiscussionTurnBudget(edge: WorkflowEdgeRecord): number {
@@ -198,6 +287,35 @@ function hasUnresolvedInboundTransfer(
       transfer.target_node_id === targetNodeId &&
       isTransferUnresolved(transfer),
   );
+}
+
+function hasDeliveredEdgeHandoff(
+  graph: WorkflowRunGraph,
+  edge: WorkflowEdgeRecord,
+  sourceNodeId: string,
+  targetNodeId: string,
+): boolean {
+  if (
+    graph.messageFrames.some(
+      (frame) =>
+        frame.edge_id === edge.id &&
+        frame.source_node_id === sourceNodeId &&
+        frame.target_node_id === targetNodeId,
+    )
+  ) {
+    return true;
+  }
+  return graph.messages.some((message) => {
+    if (message.source_node_id !== sourceNodeId || message.target_node_id !== targetNodeId) {
+      return false;
+    }
+    try {
+      const payload = JSON.parse(message.payload_json) as Record<string, unknown>;
+      return payload.edgeId === edge.id;
+    } catch {
+      return false;
+    }
+  });
 }
 
 function resolveRuntimeTransfer(
@@ -464,6 +582,8 @@ export class WorkflowOrchestrator {
     transfer: { sourceNodeId: string; targetNodeId: string };
     content: string;
     messageType: string;
+    verdict?: ReturnType<typeof parseWorkflowVerdict>;
+    triggerReason?: string;
   }): Promise<WorkflowPendingTransferRecord | null> {
     if (!this.runId) return null;
     const emittedCount = this.recordEdgeMessage(input.edge.id);
@@ -482,6 +602,16 @@ export class WorkflowOrchestrator {
       messageType: input.messageType,
       discussionCount: emittedCount,
       content: input.content,
+      condition: getEdgeCondition(input.edge),
+      triggerReason: input.triggerReason,
+      verdict: input.verdict
+        ? {
+            verdict: input.verdict.verdict,
+            reason: input.verdict.reason,
+            suggestedFix: input.verdict.suggestedFix,
+            rollbackNodeId: input.verdict.rollbackNodeId,
+          }
+        : undefined,
     };
     const pending = await db.createWorkflowPendingTransfer({
       run_id: this.runId,
@@ -513,6 +643,63 @@ export class WorkflowOrchestrator {
       this.schedulePendingTransferTimer(pending);
     }
     return pending;
+  }
+
+  private async prepareConditionalTarget(input: {
+    graph: WorkflowRunGraph;
+    edge: WorkflowEdgeRecord;
+    transfer: { sourceNodeId: string; targetNodeId: string };
+    verdict: ReturnType<typeof parseWorkflowVerdict>;
+  }): Promise<boolean> {
+    if (!this.runId) return false;
+    const condition = getEdgeCondition(input.edge);
+    if (condition !== 'on_fail' && condition !== 'on_blocked') return true;
+    const targetRunNode = input.graph.runNodes.find(
+      (runNode) => runNode.node_id === input.transfer.targetNodeId,
+    );
+    if (!targetRunNode) return true;
+    if (targetRunNode.status === 'pending' || targetRunNode.status === 'running') {
+      return true;
+    }
+    const targetNode = this.nodesById.get(input.transfer.targetNodeId);
+    const targetConfig = targetNode ? parseTaskConfig(targetNode) : {};
+    const maxAttempts =
+      targetConfig.failurePolicy?.maxAttempts ??
+      targetConfig.retryPolicy?.maxAttempts;
+    const priorAttempts = input.graph.executions.filter(
+      (execution) => execution.node_id === input.transfer.targetNodeId,
+    ).length;
+    if (
+      typeof maxAttempts === 'number' &&
+      Number.isFinite(maxAttempts) &&
+      priorAttempts >= Math.max(1, Math.floor(maxAttempts))
+    ) {
+      await this.failRunForGuardrail(
+        `Conditional handoff reached maxAttempts=${Math.floor(maxAttempts)} for node ${targetNode?.name || input.transfer.targetNodeId}`,
+      );
+      return false;
+    }
+    await db.updateWorkflowRunNode(targetRunNode.id, {
+      status: 'pending',
+      last_error: '',
+      output_snapshot: '',
+      completed_at: '',
+      pause_reason:
+        input.verdict.verdict === 'blocked'
+          ? `Blocked verdict from ${input.transfer.sourceNodeId}`
+          : `Failed verdict from ${input.transfer.sourceNodeId}`,
+      version: targetRunNode.version + 1,
+    });
+    this.eventBus.emit(this.runId, 'intervention', {
+      nodeId: input.transfer.targetNodeId,
+      edgeId: input.edge.id,
+      reason: 'conditional_handoff_rework',
+      condition,
+      verdict: input.verdict.verdict,
+      verdictReason: input.verdict.reason || '',
+      suggestedFix: input.verdict.suggestedFix || '',
+    });
+    return true;
   }
 
   private async sendPendingTransfer(
@@ -600,7 +787,7 @@ export class WorkflowOrchestrator {
       return;
     }
     const tasks = graph.nodes.filter((node) => node.node_type === 'task');
-    const inbound = inboundMap(directedEdges(graph.edges));
+    const inbound = inboundMap(directedEdges(graph.edges).filter(isDependencyEdge));
     const completed = new Set(
       graph.runNodes
         .filter((node) => node.status === 'completed' || node.status === 'skipped')
@@ -626,6 +813,7 @@ export class WorkflowOrchestrator {
 
     let availableSlots = Math.max(0, this.workflowGuardrails().concurrentNodes - this.runningNodeIds.size);
     if (availableSlots <= 0) return;
+    let launched = false;
     for (const node of tasks) {
       if (availableSlots <= 0) break;
       if (this.runningNodeIds.has(node.id)) continue;
@@ -634,6 +822,12 @@ export class WorkflowOrchestrator {
       const deps = inbound.get(node.id) ?? [];
       const depsReady = deps.every((edge) => {
         if (!completed.has(edge.source_node_id)) return false;
+        if (
+          getEdgeCondition(edge) === 'on_pass' &&
+          !hasDeliveredEdgeHandoff(graph, edge, edge.source_node_id, node.id)
+        ) {
+          return false;
+        }
         return !hasUnresolvedInboundTransfer(
           graph,
           edge,
@@ -643,10 +837,49 @@ export class WorkflowOrchestrator {
       });
       if (!depsReady) continue;
       availableSlots -= 1;
+      launched = true;
       void this.executeNode(graph, node).catch((err) => {
         logger.error({ err, runId: this.runId, nodeId: node.id }, 'workflow executeNode failed');
       });
     }
+    if (!launched && this.runningNodeIds.size === 0) {
+      const skipped = await this.skipUnreachableConditionalNodes(graph, inbound, completed);
+      if (skipped) this.enqueueSchedule();
+    }
+  }
+
+  private async skipUnreachableConditionalNodes(
+    graph: WorkflowRunGraph,
+    inbound: Map<string, WorkflowEdgeRecord[]>,
+    completed: Set<string>,
+  ): Promise<boolean> {
+    let skipped = false;
+    for (const runNode of graph.runNodes.filter((item) => item.status === 'pending')) {
+      const deps = inbound.get(runNode.node_id) ?? [];
+      if (deps.length === 0) continue;
+      const allSourcesSettled = deps.every((edge) => completed.has(edge.source_node_id));
+      const missingConditionalPass = deps.some(
+        (edge) =>
+          getEdgeCondition(edge) === 'on_pass' &&
+          !hasDeliveredEdgeHandoff(graph, edge, edge.source_node_id, runNode.node_id),
+      );
+      const hasUnresolved = deps.some((edge) =>
+        hasUnresolvedInboundTransfer(graph, edge, edge.source_node_id, runNode.node_id),
+      );
+      if (!allSourcesSettled || !missingConditionalPass || hasUnresolved) continue;
+      await db.updateWorkflowRunNode(runNode.id, {
+        status: 'skipped',
+        last_error: '',
+        completed_at: nowIso(),
+        pause_reason: 'Skipped because conditional pass handoff was not produced',
+      });
+      this.eventBus.emit(graph.run.id, 'intervention', {
+        nodeId: runNode.node_id,
+        reason: 'conditional_dependency_not_satisfied',
+      });
+      skipped = true;
+    }
+    return skipped;
   }
 
   private async executeNode(graph: WorkflowRunGraph, node: WorkflowNodeRecord): Promise<void> {
@@ -682,12 +915,16 @@ export class WorkflowOrchestrator {
             transfer: { sourceNodeId: string; targetNodeId: string };
           } => entry.transfer !== null,
         );
+      const verdict = parseWorkflowVerdict(graph.run.input || '');
       for (const { edge, transfer } of outEdges) {
+        if (!edgeMatchesVerdict(edge, verdict.verdict)) continue;
         await this.queueTransfer({
           edge,
           transfer,
           content: graph.run.input || '',
           messageType: 'node_output',
+          verdict,
+          triggerReason: `condition:${getEdgeCondition(edge)}`,
         });
       }
       this.enqueueSchedule();
@@ -828,6 +1065,7 @@ export class WorkflowOrchestrator {
       output: result.output,
       executionMs: result.execution_ms,
     });
+    const verdict = parseWorkflowVerdict(result.output);
 
     const outEdges = graph.edges
       .map((edge) => ({ edge, transfer: resolveRuntimeTransfer(edge, node.id) }))
@@ -840,11 +1078,31 @@ export class WorkflowOrchestrator {
         } => entry.transfer !== null,
       );
     for (const { edge, transfer } of outEdges) {
+      if (!edgeMatchesVerdict(edge, verdict.verdict)) continue;
+      if (
+        verdict.rollbackNodeId &&
+        (getEdgeCondition(edge) === 'on_fail' || getEdgeCondition(edge) === 'on_blocked') &&
+        transfer.targetNodeId !== verdict.rollbackNodeId
+      ) {
+        continue;
+      }
+      if (
+        !(await this.prepareConditionalTarget({
+          graph,
+          edge,
+          transfer,
+          verdict,
+        }))
+      ) {
+        return;
+      }
       await this.queueTransfer({
         edge,
         transfer,
         content: result.output,
         messageType: 'node_output',
+        verdict,
+        triggerReason: `condition:${getEdgeCondition(edge)}`,
       });
     }
     this.enqueueSchedule();
@@ -854,7 +1112,9 @@ export class WorkflowOrchestrator {
     graph: WorkflowRunGraph,
   ): Promise<boolean> {
     if (!this.runId) return false;
-    for (const edge of graph.edges.filter((item) => item.direction === 'two_way')) {
+    for (const edge of graph.edges.filter(
+      (item) => item.direction === 'two_way' && getEdgeCondition(item) !== 'manual_only',
+    )) {
       const budget = getEffectiveDiscussionTurnBudget(edge, this.nodesById);
       const count =
         this.edgeMessageCounts.get(edge.id) ??
@@ -1389,7 +1649,10 @@ export function validateWorkflowGraph(
 
   const directed = directedEdges(
     edges.filter(
-      (edge) => taskIds.has(edge.source_node_id) && taskIds.has(edge.target_node_id),
+      (edge) =>
+        taskIds.has(edge.source_node_id) &&
+        taskIds.has(edge.target_node_id) &&
+        isDependencyEdge(edge),
     ),
   );
   const indegree = new Map<string, number>();

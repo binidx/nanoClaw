@@ -5,8 +5,8 @@
 Workflow Workbench 是 Workteam 的图形化替代层。它把原先“智能体表单 + 任务表单 + 依赖多选”的编排方式重构为一个可视化工作台：
 
 - 角色节点：定义 AI 身份、目标、背景和助手绑定
-- 任务节点：定义具体任务、Prompt、预期输出、超时与人工批准策略
-- 消息流边：定义节点间的单向 / 双向交互关系
+- 任务节点：定义目标、验收标准、Prompt、输出格式、失败打回策略、超时与人工批准策略
+- 消息流边：定义节点间的单向 / 双向交互关系，以及 `always` / `on_pass` / `on_fail` / `on_blocked` / `manual_only` 条件
 - 运行台：展示每个任务节点的输入快照、输出快照、节点消息流和人工干预记录
 
 ## 后端结构
@@ -21,6 +21,8 @@ Workflow Workbench 是 Workteam 的图形化替代层。它把原先“智能体
   将 workflow run 事件通过 WebSocket 推送到 `workflow:<runId>` 订阅通道。
 - `src/workflow/config.ts`
   规范化 `workflow_config`，包括工作流类型、可见性、消息延迟、仓库策略和产物策略。
+- `src/workflow/runner-profiles.ts` / `src/workflow/runner-profile-registry.ts`
+  Workflow 侧复用旧 Workteam runner profile 能力，为绑定仓库的节点执行注入语言工具链 env。
 - `src/workflow/artifacts.ts`
   生成运行摘要 / bundle，并支持导出、发布和仓库分支提交推送。
 
@@ -48,6 +50,10 @@ Workflow Workbench 是 Workteam 的图形化替代层。它把原先“智能体
 ## 执行语义
 
 - 自动调度只基于任务节点之间的单向边。
+- 条件边会读取节点输出中的结构化 verdict。测试 / 评审节点可返回 JSON：
+  `{ "verdict": "pass" | "fail" | "blocked", "reason": "...", "suggestedFix": "...", "rollbackNodeId": "..." }`。
+- `always` 边总是发送；`on_pass` 只在 verdict 通过时进入下游；`on_fail` / `on_blocked` 会把目标节点重新置为 `pending`，用于 `developer -> tester -> developer` 闭环；`manual_only` 只保留给人工反馈 / 手动 transfer。
+- 条件打回受目标节点 `failurePolicy.maxAttempts` / `retryPolicy.maxAttempts` 限制，达到上限后运行失败，避免无限返工。
 - 双向边会被持久化、显示并参与消息流可视化；运行时会在当前批次执行结束后，按最新消息方向驱动下一位发言节点继续执行。
 - 双向边支持 `discussionTurns` 轮次预算；达到预算后，不再继续自动轮转。
 - 用户可以在边级面板插入 `feedback frame`，作为下一轮节点交互的显式反馈载荷。
@@ -55,6 +61,8 @@ Workflow Workbench 是 Workteam 的图形化替代层。它把原先“智能体
 - 运行中的任务节点支持选择某个 message frame 作为下一轮输入基线，并可切换 `反馈优先` / `纯时间顺序` 两种输入优先级规则。
 - 任务节点支持节点级执行覆盖：`providerOverrideId`、`modelOverride`、`instructionsAppend`、`allowedDirectories`，并优先于 assistant 默认执行配置生效。
 - 任务节点可直接绑定助手；执行时 worker 节点助手优先于角色节点助手，节点覆写继续优先于助手默认运行配置。
+- 节点级 `allowedDirectories` 优先；未设置时，Workflow 仓库绑定目录会作为 agent 可访问目录；再退回 assistant 绑定目录。
+- Workflow 仓库绑定的 runner profile 会在节点执行前注册到 agent spawn registry，使 Java / Go / Python / Node 等 profile env 能注入 Bash 工具运行环境。
 - 跨节点消息默认进入延迟 transfer 队列；默认延迟为 15 秒，可通过工作流配置调整为 0 以兼容即时运行。
 - 节点 execution 事件在运行台中会按 turn/tool/approval/ask/reasoning 语义解析为可读 timeline，而不再只显示原始 JSON。
 - 任务节点可显式绑定角色节点；未绑定时后端使用隐藏 runtime role 兼容执行模型。

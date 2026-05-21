@@ -7,6 +7,10 @@ const {
   listOwnerBindingsMock,
   getRepositoryByIdMock,
   prepareProjectGraphContextMock,
+  resolveRunnerProfileMock,
+  setProfileForChatMock,
+  clearProfileForChatMock,
+  getVisibleProvidersForUserMock,
 } = vi.hoisted(() => ({
   runAgentProcessMock: vi.fn(),
   resolveAssistantRuntimeConfigMock: vi.fn(),
@@ -14,6 +18,10 @@ const {
   listOwnerBindingsMock: vi.fn(),
   getRepositoryByIdMock: vi.fn(),
   prepareProjectGraphContextMock: vi.fn(),
+  resolveRunnerProfileMock: vi.fn(),
+  setProfileForChatMock: vi.fn(),
+  clearProfileForChatMock: vi.fn(),
+  getVisibleProvidersForUserMock: vi.fn(),
 }));
 
 vi.mock('./agent/agent-runner.js', () => ({
@@ -37,6 +45,10 @@ vi.mock('./db/repositories.js', () => ({
   getRepositoryById: getRepositoryByIdMock,
 }));
 
+vi.mock('./db.js', () => ({
+  getVisibleProvidersForUser: getVisibleProvidersForUserMock,
+}));
+
 vi.mock('./code-intelligence/project-graph-context.js', () => ({
   buildWorkflowProjectGraphQuestion: vi.fn(() => 'workflow graph question'),
   prepareProjectGraphContext: prepareProjectGraphContextMock,
@@ -45,6 +57,15 @@ vi.mock('./code-intelligence/project-graph-context.js', () => ({
 vi.mock('./tenant/tenant-context.js', () => ({
   getCurrentUserId: vi.fn(() => 'test-user'),
   SYSTEM_USER_ID: '__system__',
+}));
+
+vi.mock('./workflow/runner-profiles.js', () => ({
+  resolveRunnerProfile: resolveRunnerProfileMock,
+}));
+
+vi.mock('./workflow/runner-profile-registry.js', () => ({
+  setProfileForChat: setProfileForChatMock,
+  clearProfileForChat: clearProfileForChatMock,
 }));
 
 import { _initTestDatabase } from './db/init.js';
@@ -149,6 +170,12 @@ describe('workflow agent adapter', () => {
       contextText: '',
       message: 'graph_unavailable',
     });
+    resolveRunnerProfileMock.mockResolvedValue(undefined);
+    getVisibleProvidersForUserMock.mockResolvedValue([
+      { id: 'provider-node' },
+      { id: 'provider-assistant' },
+      { id: 'provider-allowed' },
+    ]);
     runAgentProcessMock.mockImplementation(async (_group, input) => ({
       status: 'success',
       result: JSON.stringify(input),
@@ -252,6 +279,66 @@ describe('workflow agent adapter', () => {
     expect(String((input.prompt as { text: string }).text)).toContain(
       'Project Graph Retrieval:',
     );
+  });
+
+  it('applies workflow repository binding directories and runner profile env registration', async () => {
+    const runnerProfile = {
+      id: 'python',
+      name: 'Python',
+      description: 'Python projects',
+      detect: { files: ['pyproject.toml'], priority: 1 },
+      env: { extraPassthrough: ['VIRTUAL_ENV'] },
+      requiredTools: ['python3'],
+      testCommand: 'pytest',
+      testSuccessPatterns: ['passed'],
+    };
+    listOwnerBindingsMock.mockResolvedValue([
+      {
+        resourceType: 'repository',
+        resourceId: 'repo-1',
+        bindingKey: 'main',
+        branch: 'main',
+        workDirectory: '/workflow/repo',
+        config: {},
+      },
+    ]);
+    getRepositoryByIdMock.mockResolvedValue({
+      id: 'repo-1',
+      local_repo_path: '/repo/fallback',
+      default_target_branch: 'main',
+    });
+    resolveRunnerProfileMock.mockResolvedValue(runnerProfile);
+
+    const result = await executeWorkflowTask({
+      workflowId: 'wf-1',
+      workflowName: 'Repo Workflow',
+      runId: 'run-1',
+      roleNode: roleNode(),
+      taskNode: {
+        ...taskNode(),
+        config_json: JSON.stringify({ prompt: 'Run tests' }),
+      },
+      runInput: 'Run input',
+      upstreamMessages: [],
+      repositoryBindingKey: 'main',
+    });
+
+    expect(result.success).toBe(true);
+    expect(resolveRunnerProfileMock).toHaveBeenCalledWith('repo-1', {
+      worktreePath: '/workflow/repo',
+    });
+    expect(setProfileForChatMock).toHaveBeenCalledWith(
+      'workflow-runtime:run-1:task-1',
+      runnerProfile,
+    );
+    expect(clearProfileForChatMock).toHaveBeenCalledWith(
+      'workflow-runtime:run-1:task-1',
+    );
+    const [, input] = runAgentProcessMock.mock.calls[0] as [unknown, Record<string, unknown>];
+    expect(input).toMatchObject({
+      projectRootOverride: '/workflow/repo',
+      allowedDirectoriesOverride: ['/workflow/repo'],
+    });
   });
 
   it('passes node-level graph retrieval scope and overrides', async () => {

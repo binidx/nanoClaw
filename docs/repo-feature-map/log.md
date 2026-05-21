@@ -2,6 +2,13 @@
 
 按时间记录功能 Map 的摄入、查询、健康检查和重要修正。格式保持短小，便于 Agent 快速回溯。
 
+## [2026-05-21] update | Workflow 条件路由与 runner profile 迁移入口
+
+- Workflow Workbench 稳定边界新增 `src/workflow/runner-profiles.ts` / `src/workflow/runner-profile-registry.ts`，Workflow 仓库绑定节点执行可复用 runner profile env 注入能力。
+- `src/workflow/orchestrator.ts` 支持 verdict 条件边：`always`、`on_pass`、`on_fail`、`on_blocked`、`manual_only`，可构建 developer -> tester -> developer 自动打回闭环并受 maxAttempts 限制。
+- `web/src/pages/WorkteamPage.tsx` 节点属性面板新增任务目标、验收标准、输出 schema、失败打回策略、交接契约；连线属性面板新增触发条件。
+- `web/src/components/repository/WorkflowRepositoryPanel.tsx` runner profile API 切到 `/api/workflows/**`，旧 Workteam support route 保留兼容。
+
 ## [2026-04-24] ingest | 初始功能 Map
 
 - 读取仓库协作入口：`AGENTS.md`、`.codex/README.md`、`docs/agent-harness.md`。

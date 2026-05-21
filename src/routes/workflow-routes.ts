@@ -3,6 +3,7 @@ import { Router } from 'express';
 
 import * as db from '../db/workflows.js';
 import { listAssistants } from '../db.js';
+import { getRepositoryById } from '../db/repositories.js';
 import { getCurrentUserId } from '../tenant/tenant-context.js';
 import {
   WorkflowOrchestrator,
@@ -21,6 +22,14 @@ import {
   serializeWorkflowEvaluation,
 } from '../workflow/evaluation.js';
 import { computeWorkflowRunMetrics } from '../workflow/metrics.js';
+import {
+  AUTO_PROFILE_ID,
+  BUILTIN_PROFILES,
+  clearRepositoryRunnerProfile,
+  findProfileById,
+  getRepositoryRunnerProfileId,
+  setRepositoryRunnerProfile,
+} from '../workflow/runner-profiles.js';
 import { logger } from '../logger.js';
 import type {
   WorkflowEdgeDirection,
@@ -190,6 +199,99 @@ export function registerWorkflowRoutes(
       res.json(workflow);
     } catch (err) {
       logger.error({ err }, 'workflow routes: POST /workflows failed');
+      sendError(res, 500, 'Internal error');
+    }
+  });
+
+  router.get('/workflows/runner-profiles', viewGuard, async (_req, res) => {
+    try {
+      res.json(
+        BUILTIN_PROFILES.map((profile) => ({
+          id: profile.id,
+          name: profile.name,
+          description: profile.description,
+          detect_files: profile.detect.files,
+          required_tools: profile.requiredTools,
+          test_command: profile.testCommand,
+        })),
+      );
+    } catch (err) {
+      logger.error({ err }, 'workflow routes: runner-profiles failed');
+      sendError(res, 500, 'Internal error');
+    }
+  });
+
+  router.get('/workflows/repositories/:id/runner-profile', viewGuard, async (req, res) => {
+    try {
+      const repositoryId = paramId(req.params.id);
+      if (!repositoryId) {
+        sendError(res, 400, 'repository id is required');
+        return;
+      }
+      const repo = await getRepositoryById(repositoryId, getCurrentUserId());
+      if (!repo) {
+        sendError(res, 404, 'Repository not found');
+        return;
+      }
+      const profileId = await getRepositoryRunnerProfileId(repositoryId);
+      res.json({ profile_id: profileId ?? null });
+    } catch (err) {
+      logger.error({ err }, 'workflow routes: get repo runner-profile failed');
+      sendError(res, 500, 'Internal error');
+    }
+  });
+
+  router.post('/workflows/repositories/:id/runner-profile', manageGuard, async (req, res) => {
+    try {
+      const repositoryId = paramId(req.params.id);
+      if (!repositoryId) {
+        sendError(res, 400, 'repository id is required');
+        return;
+      }
+      const userId = getCurrentUserId();
+      const repo = await getRepositoryById(repositoryId, userId);
+      if (!repo) {
+        sendError(res, 404, 'Repository not found');
+        return;
+      }
+      const profileId =
+        typeof req.body?.profile_id === 'string' ? req.body.profile_id.trim() : '';
+      if (!profileId) {
+        sendError(res, 400, 'profile_id is required');
+        return;
+      }
+      if (profileId !== AUTO_PROFILE_ID && !findProfileById(profileId)) {
+        sendError(
+          res,
+          400,
+          `Unknown profile_id "${profileId}". Use one of: ${[AUTO_PROFILE_ID, ...BUILTIN_PROFILES.map((profile) => profile.id)].join(', ')}`,
+        );
+        return;
+      }
+      await setRepositoryRunnerProfile(repositoryId, profileId, userId);
+      res.json({ ok: true, profile_id: profileId });
+    } catch (err) {
+      logger.error({ err }, 'workflow routes: set repo runner-profile failed');
+      sendError(res, 500, 'Internal error');
+    }
+  });
+
+  router.delete('/workflows/repositories/:id/runner-profile', manageGuard, async (req, res) => {
+    try {
+      const repositoryId = paramId(req.params.id);
+      if (!repositoryId) {
+        sendError(res, 400, 'repository id is required');
+        return;
+      }
+      const repo = await getRepositoryById(repositoryId, getCurrentUserId());
+      if (!repo) {
+        sendError(res, 404, 'Repository not found');
+        return;
+      }
+      await clearRepositoryRunnerProfile(repositoryId);
+      res.json({ ok: true });
+    } catch (err) {
+      logger.error({ err }, 'workflow routes: clear repo runner-profile failed');
       sendError(res, 500, 'Internal error');
     }
   });

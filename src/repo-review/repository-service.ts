@@ -17,8 +17,7 @@ import { getAssistant } from '../db.js';
 import { listBindingsByResource } from '../db/resource-bindings.js';
 import { getWorkteam } from '../db/workteam.js';
 import { getWorkflow } from '../db/workflows.js';
-import { AUTO_PROFILE_ID } from '../workteam/runner-profile-resolver.js';
-import { findProfileById } from '../workteam/runner-profiles.js';
+import { AUTO_PROFILE_ID, findProfileById } from '../workflow/runner-profiles.js';
 
 export interface RepositoryInfo {
   id: string;
