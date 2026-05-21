@@ -946,6 +946,112 @@ export function registerKnowledgeRoutes(
     }
   });
 
+  app.get('/api/knowledge/bases/:id/health', guard, async (req, res) => {
+    try {
+      const kbId = paramId(req.params.id);
+      const userId = getTenantUserId(req);
+      const kb = await getKnowledgeBase(kbId);
+      if (!kb) return res.status(404).json({ error: t('knowledge.notFound', {}, req.locale) });
+      if (!isKbVisibleToUser(kb, userId)) return res.status(404).json({ error: t('knowledge.notFound', {}, req.locale) });
+
+      const [docRow, vectorRow, wikiRow, relationRow] = await Promise.all([
+        dba
+          .prepare(
+            adaptSql(
+              `SELECT
+                 COUNT(*) AS total_documents,
+                 SUM(CASE WHEN status = 'indexed' THEN 1 ELSE 0 END) AS indexed_documents,
+                 SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failed_documents,
+                 COALESCE(SUM(chunk_count), 0) AS document_chunk_count
+               FROM knowledge_documents
+               WHERE kb_id = ? AND deleted_at IS NULL`,
+            ),
+          )
+          .get(kbId),
+        dba
+          .prepare(
+            adaptSql(
+              `SELECT
+                 COUNT(c.id) AS total_chunks,
+                 SUM(CASE WHEN ev.id IS NOT NULL THEN 1 ELSE 0 END) AS embedded_chunks,
+                 SUM(CASE WHEN ev.id IS NULL THEN 1 ELSE 0 END) AS missing_vectors,
+                 SUM(CASE
+                   WHEN ev.id IS NOT NULL
+                    AND p.dimensions IS NOT NULL
+                    AND ev.dimensions != p.dimensions
+                   THEN 1 ELSE 0 END) AS dimension_mismatch,
+                 MAX(p.dimensions) AS expected_dimensions
+               FROM knowledge_chunks c
+               JOIN knowledge_documents d ON d.id = c.document_id
+               JOIN knowledge_bases kb ON kb.id = d.kb_id
+               LEFT JOIN ai_providers p ON p.id = kb.embedding_provider_id
+               LEFT JOIN embedding_vectors ev
+                 ON ev.owner_type = 'knowledge'
+                AND ev.owner_id = c.id
+                AND ev.embedding_provider_id = kb.embedding_provider_id
+               WHERE d.kb_id = ?
+                 AND d.deleted_at IS NULL
+                 AND d.status = 'indexed'`,
+            ),
+          )
+          .get(kbId),
+        dba
+          .prepare(
+            adaptSql(
+              `SELECT COUNT(*) AS wiki_pages FROM knowledge_wiki_pages WHERE kb_id = ?`,
+            ),
+          )
+          .get(kbId),
+        dba
+          .prepare(
+            adaptSql(
+              `SELECT COUNT(*) AS relation_edges
+               FROM knowledge_doc_relations r
+               JOIN knowledge_documents d ON d.id = r.source_doc_id
+               WHERE d.kb_id = ? AND d.deleted_at IS NULL`,
+            ),
+          )
+          .get(kbId),
+      ]) as Array<Record<string, unknown> | undefined>;
+
+      const totalChunks = toCount(vectorRow?.total_chunks);
+      const embeddedChunks = kb.embedding_provider_id ? toCount(vectorRow?.embedded_chunks) : 0;
+      const missingVectors = kb.embedding_provider_id ? toCount(vectorRow?.missing_vectors) : totalChunks;
+      const coverage = kb.embedding_provider_id && totalChunks > 0
+        ? Math.round((embeddedChunks / totalChunks) * 1000) / 10
+        : null;
+
+      res.json({
+        kb_id: kbId,
+        enhancement_level: kb.enhancement_level,
+        embedding_provider_id: kb.embedding_provider_id ?? null,
+        expected_dimensions: vectorRow?.expected_dimensions == null
+          ? null
+          : Number(vectorRow.expected_dimensions),
+        total_documents: toCount(docRow?.total_documents),
+        indexed_documents: toCount(docRow?.indexed_documents),
+        failed_documents: toCount(docRow?.failed_documents),
+        document_chunk_count: toCount(docRow?.document_chunk_count),
+        total_chunks: totalChunks,
+        embedded_chunks: embeddedChunks,
+        missing_vectors: missingVectors,
+        dimension_mismatch: kb.embedding_provider_id ? toCount(vectorRow?.dimension_mismatch) : 0,
+        vector_coverage_percent: coverage,
+        vector_status: !kb.embedding_provider_id
+          ? 'disabled'
+          : totalChunks === 0
+            ? 'empty'
+            : missingVectors === 0 && toCount(vectorRow?.dimension_mismatch) === 0
+              ? 'complete'
+              : 'partial',
+        wiki_pages: toCount(wikiRow?.wiki_pages),
+        relation_edges: toCount(relationRow?.relation_edges),
+      });
+    } catch (err) {
+      res.status(500).json({ error: 'Internal error' });
+    }
+  });
+
   app.get('/api/knowledge/bases/:id/graph', guard, async (req, res) => {
     try {
       const kbId = paramId(req.params.id);

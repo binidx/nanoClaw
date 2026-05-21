@@ -139,6 +139,12 @@
 - 新增 `/api/retrieval/search` 与 `/internal/retrieval/search`，保留旧 `knowledge/search` 兼容路径；内部路由复用 agent 可访问 KB 解析。
 - 新增 `src/rag-eval/*` 的 Ragas-style 本地指标工具和对应测试，作为后续评测集 / run 持久化的基础。
 
+## [2026-05-21] optimize | 知识库体验与性能可观测性
+
+- 新增 `GET /api/knowledge/bases/:id/health`，向前端暴露文档/chunk、向量覆盖率、缺失向量、维度不匹配、Wiki 页和关系边统计。
+- 知识库概览页展示向量覆盖率、缺失/维度不符、Wiki 页和关系边，并支持对当前知识库单独执行向量补录，完成后自动刷新健康状态。
+- 直接向量召回增加应用层扫描上限，超大知识库会有限扫描并保留 FTS 候选向量补分，降低普通查询长时间等待风险。
+
 ## [2026-05-21] optimize | 知识库 RAG 第二轮结构化 chunk 上下文
 
 - `knowledge_chunks` 增加 `heading_path`、`context_label`、`prev_chunk_id`、`next_chunk_id`、`parent_chunk_id`、`chunk_type`，三套数据库 schema 与启动迁移同步补齐。

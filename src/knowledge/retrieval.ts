@@ -111,6 +111,7 @@ const FUSION_RRF_K = 60;
 const VECTOR_DIRECT_CANDIDATE_MULTIPLIER = 4;
 const MIN_VECTOR_DIRECT_CANDIDATES = 80;
 const MAX_VECTOR_DIRECT_CANDIDATES = 240;
+const MAX_VECTOR_DIRECT_SCAN_CHUNKS = 12000;
 const SLOW_KNOWLEDGE_SEARCH_WARN_MS = 1500;
 
 export function computeWikiQualityMultiplier(
@@ -718,22 +719,27 @@ async function buildKnowledgeVectorScoreMap(
   return out;
 }
 
-async function loadKnowledgeChunkIdsForKbIds(kbIds: string[]): Promise<string[]> {
+async function loadKnowledgeChunkIdsForKbIds(kbIds: string[], maxChunks?: number): Promise<string[]> {
   const uniqueKbIds = [...new Set(kbIds.filter(Boolean))];
   if (uniqueKbIds.length === 0) return [];
   const out: string[] = [];
   const batchSize = 100;
+  const limit = maxChunks && maxChunks > 0 ? maxChunks : Number.POSITIVE_INFINITY;
   for (let i = 0; i < uniqueKbIds.length; i += batchSize) {
+    if (out.length >= limit) break;
     const batch = uniqueKbIds.slice(i, i + batchSize);
     const placeholders = batch.map(() => '?').join(', ');
+    const remaining = Number.isFinite(limit) ? Math.max(0, limit - out.length) : null;
     const rows = (await dba.prepare(
       `SELECT c.id
        FROM knowledge_chunks c
        JOIN knowledge_documents d ON d.id = c.document_id AND d.deleted_at IS NULL
        JOIN knowledge_bases kb ON kb.id = d.kb_id AND kb.deleted_at IS NULL
        WHERE d.kb_id IN (${placeholders})
-         AND d.status = 'indexed'`,
-    ).all(...batch)) as Array<{ id: string }>;
+         AND d.status = 'indexed'
+       ORDER BY d.updated_at DESC, c.chunk_index ASC
+       ${remaining === null ? '' : 'LIMIT ?'}`,
+    ).all(...batch, ...(remaining === null ? [] : [remaining]))) as Array<{ id: string }>;
     out.push(...rows.map((row) => row.id));
   }
   return out;
@@ -770,8 +776,14 @@ async function searchKnowledgeVectorsDirect(
         continue;
       }
 
-      const allowedChunkIds = await loadKnowledgeChunkIdsForKbIds(providerKbIds);
+      const allowedChunkIds = await loadKnowledgeChunkIdsForKbIds(providerKbIds, MAX_VECTOR_DIRECT_SCAN_CHUNKS);
       if (allowedChunkIds.length === 0) continue;
+      if (allowedChunkIds.length >= MAX_VECTOR_DIRECT_SCAN_CHUNKS) {
+        logger.warn(
+          { providerId, scannedChunks: allowedChunkIds.length, kbCount: providerKbIds.length },
+          'Knowledge direct vector search scan capped; FTS rerank fallback remains enabled',
+        );
+      }
 
       const queryVec = await cachedEmbedQuery(embeddingProvider, query);
       const scored: Array<{ chunkId: string; score: number }> = [];

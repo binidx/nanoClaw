@@ -50,9 +50,17 @@ vi.mock('./tenant-context.js', () => ({
 }));
 
 import { _initTestDatabase } from './db/init.js';
-import { createKnowledgeBase, createKnowledgeDocument, updateKnowledgeDocument } from './db/assistants.js';
+import {
+  createKnowledgeBase,
+  createKnowledgeDocument,
+  createProvider,
+  insertKnowledgeChunks,
+  updateKnowledgeDocument,
+  upsertEmbeddingVector,
+} from './db.js';
 import { dba } from './db/engine-access.js';
 import { getActiveEngine } from './database/engine.js';
+import { serializeEmbedding } from './embedding/vector-store.js';
 import { createKnowledgeSearchEngine } from './knowledge/knowledge-search-engine.js';
 import { registerKnowledgeRoutes } from './routes/knowledge-routes.js';
 import type { KnowledgeBaseRecord, KnowledgeDocumentRecord } from './types/context.js';
@@ -356,6 +364,98 @@ describe('knowledge routes', () => {
         human_locked_count: 4,
       },
     });
+  });
+
+  it('returns knowledge health with vector coverage and graph readiness counts', async () => {
+    await createProvider({
+      id: 'health-embed-provider',
+      alias: 'Health Embedding',
+      type: 'openai_compatible',
+      capability: 'embedding',
+      api_key: 'fake-key',
+      base_url: 'https://embedding.example.com/v1',
+      model: 'Qwen3-Embedding-8B-4bit-DWQ',
+      dimensions: 2,
+      extra_config: null,
+      is_default: 0,
+      user_id: 'test-user',
+      visibility: 'private',
+    });
+    const kb = await createKb({ embedding_provider_id: 'health-embed-provider' });
+    await insertIndexedDoc(kb.id, 'doc-health', 'Health.md', 'done', '2026-04-27T00:00:00.000Z');
+    await insertKnowledgeChunks([
+      {
+        id: 'chunk-health-a',
+        document_id: 'doc-health',
+        chunk_index: 0,
+        content: 'A has an embedding.',
+        token_count: 8,
+        created_at: '2026-04-27T00:00:00.000Z',
+      },
+      {
+        id: 'chunk-health-b',
+        document_id: 'doc-health',
+        chunk_index: 1,
+        content: 'B is missing an embedding.',
+        token_count: 8,
+        created_at: '2026-04-27T00:00:00.000Z',
+      },
+    ]);
+    await upsertEmbeddingVector(
+      'vec-health-a',
+      'knowledge',
+      'chunk-health-a',
+      'health-embed-provider',
+      'hash-health-a',
+      serializeEmbedding([1, 0]),
+      2,
+      'fake-embedding',
+    );
+    await insertWikiPage({
+      id: 'wiki-health',
+      kbId: kb.id,
+      pageType: 'overview',
+      title: 'Health Overview',
+      content: 'Overview',
+      sourceDocIds: ['doc-health'],
+      updatedAt: '2026-04-27T00:01:00.000Z',
+    });
+    await dba.prepare(
+      `INSERT INTO knowledge_doc_relations
+       (id, source_doc_id, target_doc_id, relation_type, confidence, detail, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      'rel-health',
+      'doc-health',
+      'doc-health',
+      'references',
+      0.9,
+      null,
+      '2026-04-27T00:01:00.000Z',
+    );
+
+    const app = createApp();
+    const response = await inject(app, {
+      method: 'GET',
+      url: `/api/knowledge/bases/${kb.id}/health`,
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(JSON.parse(response.body)).toEqual(expect.objectContaining({
+      kb_id: kb.id,
+      embedding_provider_id: 'health-embed-provider',
+      expected_dimensions: 2,
+      total_documents: 1,
+      indexed_documents: 1,
+      total_chunks: 2,
+      embedded_chunks: 1,
+      missing_vectors: 1,
+      dimension_mismatch: 0,
+      vector_coverage_percent: 50,
+      vector_status: 'partial',
+      wiki_pages: 1,
+      relation_edges: 1,
+    }));
   });
 
   it('rebuilds one indexed document through rebuild_docs mode', async () => {
