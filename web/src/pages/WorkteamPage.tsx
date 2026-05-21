@@ -356,6 +356,11 @@ interface TaskConfig {
   objective?: string;
   acceptanceCriteria?: string;
   outputSchema?: string;
+  outputContract?: {
+    verdictRequired?: boolean;
+    strictJson?: boolean;
+    schemaValidation?: 'off' | 'warn' | 'block';
+  };
   goal?: string;
   prompt?: string;
   expectedOutput?: string;
@@ -365,6 +370,12 @@ interface TaskConfig {
   modelOverride?: string;
   instructionsAppend?: string;
   allowedDirectories?: string[];
+  contextPolicy?: {
+    mode?: 'full' | 'latest' | 'feedback_first';
+    maxMessages?: number;
+    maxCharsPerMessage?: number;
+    maxTotalChars?: number;
+  };
   toolPolicy?: WorkflowToolPolicy;
   retryPolicy?: {
     maxAttempts: number;
@@ -385,6 +396,13 @@ interface TaskConfig {
 interface EdgeConfig {
   condition?: WorkflowEdgeCondition;
   discussionTurns?: number;
+  requireVerdict?: boolean;
+  contextPolicy?: {
+    mode?: 'full' | 'latest' | 'feedback_first';
+    maxMessages?: number;
+    maxCharsPerMessage?: number;
+    maxTotalChars?: number;
+  };
 }
 
 interface WorkflowMessagePayload {
@@ -3971,6 +3989,15 @@ function NodeInspector({
     taskConfig.acceptanceCriteria || '',
   );
   const [outputSchema, setOutputSchema] = useState(taskConfig.outputSchema || '');
+  const [verdictRequired, setVerdictRequired] = useState(
+    Boolean(taskConfig.outputContract?.verdictRequired),
+  );
+  const [strictJson, setStrictJson] = useState(
+    Boolean(taskConfig.outputContract?.strictJson),
+  );
+  const [schemaValidation, setSchemaValidation] = useState<'off' | 'warn' | 'block'>(
+    taskConfig.outputContract?.schemaValidation || 'off',
+  );
   const [prompt, setPrompt] = useState(taskConfig.prompt || '');
   const [expectedOutput, setExpectedOutput] = useState(taskConfig.expectedOutput || '');
   const [handoffContract, setHandoffContract] = useState(
@@ -3978,6 +4005,15 @@ function NodeInspector({
   );
   const [maxAttempts, setMaxAttempts] = useState(
     String(taskConfig.failurePolicy?.maxAttempts ?? taskConfig.retryPolicy?.maxAttempts ?? 2),
+  );
+  const [contextMode, setContextMode] = useState<'full' | 'latest' | 'feedback_first'>(
+    taskConfig.contextPolicy?.mode || 'full',
+  );
+  const [contextMaxMessages, setContextMaxMessages] = useState(
+    String(taskConfig.contextPolicy?.maxMessages ?? ''),
+  );
+  const [contextMaxTotalChars, setContextMaxTotalChars] = useState(
+    String(taskConfig.contextPolicy?.maxTotalChars ?? ''),
   );
   const [timeoutMs] = useState(String(taskConfig.timeoutMs || 600000));
   const [approvalRequired] = useState(Boolean(taskConfig.approvalRequired));
@@ -4150,6 +4186,38 @@ function NodeInspector({
               placeholder='{"verdict":"pass|fail|blocked","reason":"","suggestedFix":"","rollbackNodeId":""}'
             />
           </label>
+          <details className="workflow-advanced-details">
+            <summary>{t('workteam.输出契约')}</summary>
+            <label className="workflow-inline-option">
+              <input
+                type="checkbox"
+                checked={verdictRequired}
+                onChange={(event) => setVerdictRequired(event.target.checked)}
+              />
+              {t('workteam.必须输出verdict')}
+            </label>
+            <label className="workflow-inline-option">
+              <input
+                type="checkbox"
+                checked={strictJson}
+                onChange={(event) => setStrictJson(event.target.checked)}
+              />
+              {t('workteam.严格JSON输出')}
+            </label>
+            <label>
+              {t('workteam.Schema校验')}
+              <select
+                value={schemaValidation}
+                onChange={(event) =>
+                  setSchemaValidation(event.target.value as 'off' | 'warn' | 'block')
+                }
+              >
+                <option value="off">{t('workteam.关闭')}</option>
+                <option value="warn">{t('workteam.仅警告')}</option>
+                <option value="block">{t('workteam.阻塞')}</option>
+              </select>
+            </label>
+          </details>
           <label>
             {t('workteam.提示词')}
             <textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} />
@@ -4174,6 +4242,33 @@ function NodeInspector({
                 onChange={(event) => setHandoffContract(event.target.value)}
               />
             </label>
+            <label>
+              {t('workteam.上下文模式')}
+              <select
+                value={contextMode}
+                onChange={(event) =>
+                  setContextMode(event.target.value as 'full' | 'latest' | 'feedback_first')
+                }
+              >
+                <option value="full">{t('workteam.完整')}</option>
+                <option value="latest">{t('workteam.每条边最新')}</option>
+                <option value="feedback_first">{t('workteam.反馈优先')}</option>
+              </select>
+            </label>
+            <label>
+              {t('workteam.最大上下文消息数')}
+              <input
+                value={contextMaxMessages}
+                onChange={(event) => setContextMaxMessages(event.target.value)}
+              />
+            </label>
+            <label>
+              {t('workteam.最大上下文字数')}
+              <input
+                value={contextMaxTotalChars}
+                onChange={(event) => setContextMaxTotalChars(event.target.value)}
+              />
+            </label>
           </details>
           <button
             type="button"
@@ -4190,6 +4285,11 @@ function NodeInspector({
                   goal: objective,
                   acceptanceCriteria,
                   outputSchema,
+                  outputContract: {
+                    verdictRequired,
+                    strictJson,
+                    schemaValidation,
+                  },
                   prompt,
                   expectedOutput,
                   failurePolicy: {
@@ -4199,6 +4299,11 @@ function NodeInspector({
                     maxAttempts: Math.max(1, Number(maxAttempts) || 2),
                   },
                   handoffContract,
+                  contextPolicy: {
+                    mode: contextMode,
+                    maxMessages: Number(contextMaxMessages) || undefined,
+                    maxTotalChars: Number(contextMaxTotalChars) || undefined,
+                  },
                   timeoutMs: Number(timeoutMs) || 600000,
                   approvalRequired,
                   providerOverrideId: providerOverrideId || undefined,
@@ -4282,6 +4387,15 @@ function EdgeInspector({
   const [condition, setCondition] = useState<WorkflowEdgeCondition>(
     edgeConfig.condition || 'always',
   );
+  const [requireVerdict, setRequireVerdict] = useState(
+    Boolean(edgeConfig.requireVerdict),
+  );
+  const [contextMode, setContextMode] = useState<'full' | 'latest' | 'feedback_first'>(
+    edgeConfig.contextPolicy?.mode || 'full',
+  );
+  const [contextMaxMessages, setContextMaxMessages] = useState(
+    String(edgeConfig.contextPolicy?.maxMessages ?? ''),
+  );
   const [discussionTurns, setDiscussionTurns] = useState(
     String(edgeConfig.discussionTurns ?? 4),
   );
@@ -4339,6 +4453,14 @@ function EdgeInspector({
           <option value="two_way">{t('workteam.双向')}</option>
         </select>
       </label>
+      <label className="workflow-inline-option">
+        <input
+          type="checkbox"
+          checked={requireVerdict}
+          onChange={(event) => setRequireVerdict(event.target.checked)}
+        />
+        {t('workteam.要求verdict')}
+      </label>
       {direction === 'two_way' ? (
         <details className="workflow-advanced-details">
           <summary>{t('workteam.更多配置')}</summary>
@@ -4347,6 +4469,26 @@ function EdgeInspector({
             <input
               value={discussionTurns}
               onChange={(event) => setDiscussionTurns(event.target.value)}
+            />
+          </label>
+          <label>
+            {t('workteam.上下文模式')}
+            <select
+              value={contextMode}
+              onChange={(event) =>
+                setContextMode(event.target.value as 'full' | 'latest' | 'feedback_first')
+              }
+            >
+              <option value="full">{t('workteam.完整')}</option>
+              <option value="latest">{t('workteam.每条边最新')}</option>
+              <option value="feedback_first">{t('workteam.反馈优先')}</option>
+            </select>
+          </label>
+          <label>
+            {t('workteam.最大上下文消息数')}
+            <input
+              value={contextMaxMessages}
+              onChange={(event) => setContextMaxMessages(event.target.value)}
             />
           </label>
         </details>
@@ -4366,6 +4508,11 @@ function EdgeInspector({
             direction,
             config_json: {
               condition,
+              requireVerdict,
+              contextPolicy: {
+                mode: contextMode,
+                maxMessages: Number(contextMaxMessages) || undefined,
+              },
               ...(direction === 'two_way'
                 ? { discussionTurns: Number(discussionTurns) || 4 }
                 : {}),

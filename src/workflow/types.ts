@@ -369,6 +369,7 @@ export interface TaskNodeConfig {
   objective?: string;
   acceptanceCriteria?: string;
   outputSchema?: string;
+  outputContract?: WorkflowOutputContract;
   goal?: string;
   prompt?: string;
   expectedOutput?: string;
@@ -395,6 +396,7 @@ export interface TaskNodeConfig {
   modelOverride?: string;
   instructionsAppend?: string;
   allowedDirectories?: string[];
+  contextPolicy?: WorkflowContextPolicy;
   toolPolicy?: WorkflowToolPolicy;
   retryPolicy?: {
     maxAttempts: number;
@@ -415,6 +417,22 @@ export interface TaskNodeConfig {
 export interface WorkflowEdgeConfig {
   condition?: WorkflowEdgeCondition;
   discussionTurns?: number;
+  requireVerdict?: boolean;
+  contextPolicy?: WorkflowContextPolicy;
+}
+
+export interface WorkflowOutputContract {
+  verdictRequired?: boolean;
+  strictJson?: boolean;
+  schemaValidation?: 'off' | 'warn' | 'block';
+}
+
+export interface WorkflowContextPolicy {
+  mode?: 'full' | 'latest' | 'feedback_first';
+  maxMessages?: number;
+  maxCharsPerMessage?: number;
+  maxTotalChars?: number;
+  includeFrameTypes?: WorkflowMessageFrameType[];
 }
 
 export interface WorkflowRealtimeEnvelope {

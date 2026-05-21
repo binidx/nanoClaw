@@ -2,6 +2,7 @@ import * as db from '../db/workflows.js';
 import { parseWorkflowConfig } from './config.js';
 import { computeWorkflowRunMetrics } from './metrics.js';
 import type { WorkflowRunEvaluationRecord, WorkflowRunGraph } from './types.js';
+import type { TaskNodeConfig } from './types.js';
 
 export interface WorkflowEvaluationFinding {
   code: string;
@@ -24,6 +25,25 @@ function parseFindings(value: string): WorkflowEvaluationFinding[] {
     return Array.isArray(parsed) ? (parsed as WorkflowEvaluationFinding[]) : [];
   } catch {
     return [];
+  }
+}
+
+function parseTaskConfig(raw: string): TaskNodeConfig {
+  try {
+    return JSON.parse(raw || '{}') as TaskNodeConfig;
+  } catch {
+    return {};
+  }
+}
+
+function parseRecord(value: string): Record<string, unknown> {
+  try {
+    const parsed = JSON.parse(value || '{}') as unknown;
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : {};
+  } catch {
+    return {};
   }
 }
 
@@ -67,6 +87,29 @@ export function evaluateWorkflowRunGraph(graph: WorkflowRunGraph): Omit<Workflow
         message: runNode.pause_reason || 'Node is paused',
       });
     }
+    if (runNode.status === 'completed' && runNode.pause_reason.includes('Output contract')) {
+      findings.push({
+        code: 'output_contract_warning',
+        severity: 'warning',
+        nodeId: runNode.node_id,
+        message: runNode.pause_reason,
+      });
+    }
+  }
+  for (const node of graph.nodes.filter((item) => item.node_type === 'task')) {
+    const cfg = parseTaskConfig(node.config_json);
+    if (
+      cfg.outputSchema?.trim() &&
+      cfg.outputContract?.schemaValidation !== 'block' &&
+      cfg.outputContract?.strictJson !== true
+    ) {
+      findings.push({
+        code: 'output_schema_not_enforced',
+        severity: 'info',
+        nodeId: node.id,
+        message: 'Node has an outputSchema but schema validation is not set to block',
+      });
+    }
   }
   const pendingTransfers = graph.pendingTransfers.filter(
     (transfer) => transfer.status === 'pending' || transfer.status === 'approved',
@@ -77,6 +120,24 @@ export function evaluateWorkflowRunGraph(graph: WorkflowRunGraph): Omit<Workflow
       severity: 'warning',
       message: `${pendingTransfers.length} pending transfer(s) remain unresolved`,
     });
+  }
+  for (const transfer of graph.pendingTransfers) {
+    const payload = parseRecord(transfer.payload_json);
+    const verdict =
+      payload.verdict && typeof payload.verdict === 'object' && !Array.isArray(payload.verdict)
+        ? (payload.verdict as Record<string, unknown>)
+        : {};
+    const validationErrors = Array.isArray(verdict.validationErrors)
+      ? verdict.validationErrors.filter((item): item is string => typeof item === 'string')
+      : [];
+    if (validationErrors.length > 0) {
+      findings.push({
+        code: 'handoff_contract_validation_error',
+        severity: transfer.status === 'sent' ? 'warning' : 'error',
+        nodeId: transfer.source_node_id,
+        message: validationErrors.join('; '),
+      });
+    }
   }
   if (
     graph.run.status === 'completed' &&

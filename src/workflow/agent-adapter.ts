@@ -401,6 +401,13 @@ ${taskCfg.expectedOutput || ''}
 ## Output Schema
 ${taskCfg.outputSchema || 'Free-form text unless the node contract asks for JSON. Review/test nodes should return JSON with verdict: "pass" | "fail" | "blocked", reason, suggestedFix, and rollbackNodeId when routing depends on the result.'}
 
+## Output Contract
+${
+  taskCfg.outputContract?.verdictRequired || taskCfg.outputContract?.strictJson
+    ? `Return a JSON object. ${taskCfg.outputContract.verdictRequired ? 'Include verdict: "pass" | "fail" | "blocked".' : ''} ${taskCfg.outputContract.strictJson ? 'Do not wrap the final answer in prose outside the JSON object.' : ''}`
+    : 'When downstream routing depends on this node, include verdict: "pass" | "fail" | "blocked" in the final JSON object.'
+}
+
 ## Handoff Contract
 ${taskCfg.handoffContract || 'Make downstream handoff content actionable and concise.'}
 

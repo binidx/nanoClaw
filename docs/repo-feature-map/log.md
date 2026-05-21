@@ -15,6 +15,12 @@
 - Runner profile、project detector 和 profile registry 已迁入 `src/workflow/**`，Workflow 节点执行直接注入仓库绑定 profile env。
 - Schema、trash、WebSocket、resource binding 和仓库关系展示移除旧 Workteam owner / table / event 入口。
 
+## [2026-05-21] update | Workflow 输出契约与上下文策略
+
+- 新增 `src/workflow/contracts.ts`，集中处理结构化 verdict、输出契约校验、条件边 verdict 要求和 handoff 上下文裁剪。
+- 条件边缺失 verdict 时不再默认 pass，可通过 `outputContract` / `requireVerdict` 进入 blocked 路由或失败。
+- `web/src/pages/WorkteamPage.tsx` 节点/边属性面板新增输出契约和上下文策略配置。
+
 ## [2026-04-24] ingest | 初始功能 Map
 
 - 读取仓库协作入口：`AGENTS.md`、`.codex/README.md`、`docs/agent-harness.md`。

@@ -17,6 +17,8 @@ Workflow Workbench 是当前唯一主线的图形多智能体编排层。它把�
   管理 workflow 持久化与 run graph 读取。
 - `src/workflow/orchestrator.ts`
   负责任务节点调度、消息传播、整图暂停恢复、节点级暂停恢复、输入输出覆写与重试。
+- `src/workflow/contracts.ts`
+  负责节点输出契约校验、结构化 verdict 解析、上下文裁剪和条件边 verdict 判定。
 - `src/workflow/event-bus.ts`
   将 workflow run 事件通过 WebSocket 推送到 `workflow:<runId>` 订阅通道。
 - `src/workflow/config.ts`
@@ -52,6 +54,8 @@ Workflow Workbench 是当前唯一主线的图形多智能体编排层。它把�
 - 自动调度只基于任务节点之间的单向边。
 - 条件边会读取节点输出中的结构化 verdict。测试 / 评审节点可返回 JSON：
   `{ "verdict": "pass" | "fail" | "blocked", "reason": "...", "suggestedFix": "...", "rollbackNodeId": "..." }`。
+- 当边配置为 `on_pass` / `on_fail` / `on_blocked`，或边显式 `requireVerdict=true` 时，缺失结构化 verdict 不再默认通过，而会按输出契约视为 `blocked`。
+- 任务节点可启用 `outputContract`：`verdictRequired`、`strictJson`、`schemaValidation=off|warn|block`。`block` 模式会用轻量 JSON schema / 示例对象校验必填字段与基础类型。
 - `always` 边总是发送；`on_pass` 只在 verdict 通过时进入下游；`on_fail` / `on_blocked` 会把目标节点重新置为 `pending`，用于 `developer -> tester -> developer` 闭环；`manual_only` 只保留给人工反馈 / 手动 transfer。
 - 条件打回受目标节点 `failurePolicy.maxAttempts` / `retryPolicy.maxAttempts` 限制，达到上限后运行失败，避免无限返工。
 - 双向边会被持久化、显示并参与消息流可视化；运行时会在当前批次执行结束后，按最新消息方向驱动下一位发言节点继续执行。
@@ -69,6 +73,7 @@ Workflow Workbench 是当前唯一主线的图形多智能体编排层。它把�
 - 任务输入由两部分组成：
   - 整图输入 `workflow_runs.input`
   - 上游节点或历史消息为该节点累积的消息上下文
+- 节点和边可配置 `contextPolicy`，限制传入上下文模式、消息数和字符预算，避免多轮 handoff 把后续节点上下文撑爆。
 
 ## 运行态干预
 

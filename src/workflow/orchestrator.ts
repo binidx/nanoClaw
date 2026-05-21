@@ -6,7 +6,6 @@ import type {
   WorkflowEdgeConfig,
   WorkflowEdgeCondition,
   WorkflowNodeRecord,
-  WorkflowNodeVerdict,
   WorkflowRecord,
   WorkflowRunGraph,
   WorkflowRunRecord,
@@ -18,6 +17,12 @@ import { parseWorkflowConfig } from './config.js';
 import { ensureWorkflowArtifacts } from './artifacts.js';
 import { evaluateAndPersistWorkflowRun } from './evaluation.js';
 import { computeWorkflowRunMetrics } from './metrics.js';
+import {
+  applyWorkflowContextPolicy,
+  edgeConditionRequiresVerdict,
+  evaluateWorkflowOutputContract,
+  type WorkflowOutputContractResult,
+} from './contracts.js';
 
 const logger = createModuleLogger('workflow');
 
@@ -27,31 +32,7 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
-function parseTaskConfig(node: WorkflowNodeRecord): {
-  assistantId?: string;
-  pipelineNodeKind?: 'input' | 'retrieval' | 'analysis' | 'summary';
-  objective?: string;
-  acceptanceCriteria?: string;
-  outputSchema?: string;
-  prompt?: string;
-  expectedOutput?: string;
-  timeoutMs?: number;
-  approvalRequired?: boolean;
-  retryPolicy?: {
-    maxAttempts: number;
-  };
-  failurePolicy?: {
-    maxAttempts?: number;
-    defaultRollbackNodeId?: string;
-    pauseOnFailure?: boolean;
-  };
-  handoffContract?: string;
-  handoffPolicy?: {
-    maxTurns: number;
-    cooldownMs: number;
-    exposeToolCalls: false;
-  };
-} {
+function parseTaskConfig(node: WorkflowNodeRecord): TaskNodeConfig {
   try {
     return JSON.parse(node.config_json || '{}') as TaskNodeConfig;
   } catch {
@@ -101,73 +82,21 @@ function isDependencyEdge(edge: WorkflowEdgeRecord): boolean {
 
 function edgeMatchesVerdict(
   edge: WorkflowEdgeRecord,
-  verdict: WorkflowNodeVerdict,
+  verdict: WorkflowOutputContractResult,
 ): boolean {
   const condition = getEdgeCondition(edge);
   if (condition === 'manual_only') return false;
-  if (condition === 'always') return true;
-  if (condition === 'on_pass') return verdict === 'pass';
-  if (condition === 'on_fail') return verdict === 'fail';
-  return verdict === 'blocked';
-}
-
-function extractJsonObject(text: string): Record<string, unknown> | null {
-  const trimmed = text.trim();
-  if (!trimmed) return null;
-  const candidates = [trimmed];
-  const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
-  if (fenced?.[1]) candidates.push(fenced[1].trim());
-  const start = trimmed.indexOf('{');
-  const end = trimmed.lastIndexOf('}');
-  if (start >= 0 && end > start) candidates.push(trimmed.slice(start, end + 1));
-  for (const candidate of candidates) {
-    try {
-      const parsed = JSON.parse(candidate) as unknown;
-      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-        return parsed as Record<string, unknown>;
-      }
-    } catch {
-      // try the next candidate
-    }
+  if (
+    edgeConditionRequiresVerdict(condition, parseEdgeConfig(edge).requireVerdict) &&
+    !verdict.hasExplicitVerdict &&
+    verdict.blockedByContract
+  ) {
+    return condition === 'on_blocked';
   }
-  return null;
-}
-
-function parseWorkflowVerdict(output: string): {
-  verdict: WorkflowNodeVerdict;
-  reason?: string;
-  suggestedFix?: string;
-  rollbackNodeId?: string;
-  payload?: Record<string, unknown>;
-} {
-  const payload = extractJsonObject(output);
-  const verdictValue =
-    typeof payload?.verdict === 'string' ? payload.verdict.toLowerCase() : '';
-  const verdict: WorkflowNodeVerdict =
-    verdictValue === 'fail' || verdictValue === 'failed'
-      ? 'fail'
-      : verdictValue === 'blocked'
-        ? 'blocked'
-        : 'pass';
-  const reason =
-    typeof payload?.reason === 'string'
-      ? payload.reason
-      : typeof payload?.failureReason === 'string'
-        ? payload.failureReason
-        : undefined;
-  const suggestedFix =
-    typeof payload?.suggestedFix === 'string'
-      ? payload.suggestedFix
-      : typeof payload?.fix === 'string'
-        ? payload.fix
-        : undefined;
-  const rollbackNodeId =
-    typeof payload?.rollbackNodeId === 'string'
-      ? payload.rollbackNodeId
-      : typeof payload?.targetRollbackNodeId === 'string'
-        ? payload.targetRollbackNodeId
-        : undefined;
-  return { verdict, reason, suggestedFix, rollbackNodeId, payload: payload ?? undefined };
+  if (condition === 'always') return true;
+  if (condition === 'on_pass') return verdict.verdict === 'pass';
+  if (condition === 'on_fail') return verdict.verdict === 'fail';
+  return verdict.verdict === 'blocked';
 }
 
 function getDiscussionTurnBudget(edge: WorkflowEdgeRecord): number {
@@ -582,7 +511,7 @@ export class WorkflowOrchestrator {
     transfer: { sourceNodeId: string; targetNodeId: string };
     content: string;
     messageType: string;
-    verdict?: ReturnType<typeof parseWorkflowVerdict>;
+    verdict?: WorkflowOutputContractResult;
     triggerReason?: string;
   }): Promise<WorkflowPendingTransferRecord | null> {
     if (!this.runId) return null;
@@ -610,6 +539,8 @@ export class WorkflowOrchestrator {
             reason: input.verdict.reason,
             suggestedFix: input.verdict.suggestedFix,
             rollbackNodeId: input.verdict.rollbackNodeId,
+            hasExplicitVerdict: input.verdict.hasExplicitVerdict,
+            validationErrors: input.verdict.validationErrors,
           }
         : undefined,
     };
@@ -649,7 +580,7 @@ export class WorkflowOrchestrator {
     graph: WorkflowRunGraph;
     edge: WorkflowEdgeRecord;
     transfer: { sourceNodeId: string; targetNodeId: string };
-    verdict: ReturnType<typeof parseWorkflowVerdict>;
+    verdict: WorkflowOutputContractResult;
   }): Promise<boolean> {
     if (!this.runId) return false;
     const condition = getEdgeCondition(input.edge);
@@ -698,6 +629,7 @@ export class WorkflowOrchestrator {
       verdict: input.verdict.verdict,
       verdictReason: input.verdict.reason || '',
       suggestedFix: input.verdict.suggestedFix || '',
+      validationErrors: input.verdict.validationErrors,
     });
     return true;
   }
@@ -915,9 +847,18 @@ export class WorkflowOrchestrator {
             transfer: { sourceNodeId: string; targetNodeId: string };
           } => entry.transfer !== null,
         );
-      const verdict = parseWorkflowVerdict(graph.run.input || '');
+      const verdict = evaluateWorkflowOutputContract({
+        output: graph.run.input || '',
+        taskConfig,
+        verdictRequired: outEdges.some(({ edge }) =>
+          edgeConditionRequiresVerdict(
+            getEdgeCondition(edge),
+            parseEdgeConfig(edge).requireVerdict,
+          ),
+        ),
+      });
       for (const { edge, transfer } of outEdges) {
-        if (!edgeMatchesVerdict(edge, verdict.verdict)) continue;
+        if (!edgeMatchesVerdict(edge, verdict)) continue;
         await this.queueTransfer({
           edge,
           transfer,
@@ -1054,19 +995,6 @@ export class WorkflowOrchestrator {
       return;
     }
 
-    await db.updateWorkflowRunNode(runNode.id, {
-      status: 'completed',
-      output_snapshot: result.output,
-      completed_at: nowIso(),
-      pause_reason: '',
-    });
-    this.eventBus.emit(this.runId, 'node_completed', {
-      nodeId: node.id,
-      output: result.output,
-      executionMs: result.execution_ms,
-    });
-    const verdict = parseWorkflowVerdict(result.output);
-
     const outEdges = graph.edges
       .map((edge) => ({ edge, transfer: resolveRuntimeTransfer(edge, node.id) }))
       .filter(
@@ -1077,8 +1005,55 @@ export class WorkflowOrchestrator {
           transfer: { sourceNodeId: string; targetNodeId: string };
         } => entry.transfer !== null,
       );
+    const verdict = evaluateWorkflowOutputContract({
+      output: result.output,
+      taskConfig,
+      verdictRequired: outEdges.some(({ edge }) =>
+        edgeConditionRequiresVerdict(
+          getEdgeCondition(edge),
+          parseEdgeConfig(edge).requireVerdict,
+        ),
+      ),
+    });
+    if (
+      verdict.blockedByContract &&
+      !outEdges.some(({ edge }) => edgeMatchesVerdict(edge, verdict))
+    ) {
+      const error =
+        verdict.validationErrors.join('; ') ||
+        'Workflow output contract was not satisfied';
+      await db.updateWorkflowRunNode(runNode.id, {
+        status: 'failed',
+        output_snapshot: result.output,
+        last_error: error,
+        completed_at: nowIso(),
+      });
+      this.eventBus.emit(this.runId, 'node_failed', {
+        nodeId: node.id,
+        error,
+        contract: true,
+      });
+      this.enqueueSchedule();
+      return;
+    }
+
+    await db.updateWorkflowRunNode(runNode.id, {
+      status: 'completed',
+      output_snapshot: result.output,
+      completed_at: nowIso(),
+      pause_reason: verdict.blockedByContract
+        ? `Output contract warning: ${verdict.validationErrors.join('; ')}`
+        : '',
+    });
+    this.eventBus.emit(this.runId, 'node_completed', {
+      nodeId: node.id,
+      output: result.output,
+      executionMs: result.execution_ms,
+      verdict: verdict.verdict,
+      validationErrors: verdict.validationErrors,
+    });
     for (const { edge, transfer } of outEdges) {
-      if (!edgeMatchesVerdict(edge, verdict.verdict)) continue;
+      if (!edgeMatchesVerdict(edge, verdict)) continue;
       if (
         verdict.rollbackNodeId &&
         (getEdgeCondition(edge) === 'on_fail' || getEdgeCondition(edge) === 'on_blocked') &&
@@ -1159,7 +1134,14 @@ export class WorkflowOrchestrator {
   private async buildNodeInput(
     graph: WorkflowRunGraph,
     node: WorkflowNodeRecord,
-  ): Promise<Array<{ from: string; to: string; direction: string; content: string }>> {
+  ): Promise<Array<{
+    from: string;
+    to: string;
+    direction: string;
+    content: string;
+    frameType?: import('./types.js').WorkflowMessageFrameType;
+    edgeId?: string;
+  }>> {
     const runNodesByNodeId = new Map(
       graph.runNodes.map((runNode) => [runNode.node_id, runNode]),
     );
@@ -1172,10 +1154,13 @@ export class WorkflowOrchestrator {
       to: string;
       direction: string;
       content: string;
+      frameType?: import('./types.js').WorkflowMessageFrameType;
+      edgeId?: string;
     }> = [];
     for (const edge of graph.edges) {
       const inbound = resolveRuntimeInbound(edge, node.id);
       if (!inbound) continue;
+      const edgeContextPolicy = parseEdgeConfig(edge).contextPolicy;
       let existingEdgeFrames = frames.filter(
         (frame) => frame.edge_id === edge.id && frame.target_node_id === node.id,
       );
@@ -1197,6 +1182,7 @@ export class WorkflowOrchestrator {
         ];
       }
       if (existingEdgeFrames.length > 0) {
+        const edgeCollected: typeof collected = [];
         for (const frame of existingEdgeFrames) {
           const prefix =
             frame.frame_type === 'feedback'
@@ -1204,13 +1190,16 @@ export class WorkflowOrchestrator {
               : frame.frame_type === 'intervention'
                 ? '[intervention] '
                 : '';
-          collected.push({
+          edgeCollected.push({
             from: taskName(frame.source_node_id),
             to: taskName(frame.target_node_id),
             direction: frame.direction,
             content: `${prefix}${frame.content_text}`,
+            frameType: frame.frame_type,
+            edgeId: frame.edge_id,
           });
         }
+        collected.push(...applyWorkflowContextPolicy(edgeCollected, edgeContextPolicy));
         continue;
       }
       const existingEdgeMessages = messages.filter((message) => {
@@ -1223,21 +1212,24 @@ export class WorkflowOrchestrator {
         }
       });
       if (existingEdgeMessages.length > 0) {
+        const edgeCollected: typeof collected = [];
         for (const message of existingEdgeMessages) {
           try {
             const payload = JSON.parse(message.payload_json) as Record<string, unknown>;
             if (typeof payload.content === 'string') {
-              collected.push({
+              edgeCollected.push({
                 from: taskName(message.source_node_id),
                 to: taskName(message.target_node_id),
                 direction: message.direction,
                 content: payload.content,
+                edgeId: edge.id,
               });
             }
           } catch {
             // ignore malformed payloads
           }
         }
+        collected.push(...applyWorkflowContextPolicy(edgeCollected, edgeContextPolicy));
         continue;
       }
       const transferRecords = graph.pendingTransfers.filter(
@@ -1251,12 +1243,20 @@ export class WorkflowOrchestrator {
       }
       const sourceRunNode = runNodesByNodeId.get(inbound.sourceNodeId);
       if (sourceRunNode?.output_snapshot) {
-        collected.push({
-          from: taskName(inbound.sourceNodeId),
-          to: taskName(node.id),
-          direction: edge.direction,
-          content: sourceRunNode.output_snapshot,
-        });
+        collected.push(
+          ...applyWorkflowContextPolicy(
+            [
+              {
+                from: taskName(inbound.sourceNodeId),
+                to: taskName(node.id),
+                direction: edge.direction,
+                content: sourceRunNode.output_snapshot,
+                edgeId: edge.id,
+              },
+            ],
+            edgeContextPolicy,
+          ),
+        );
       }
     }
     if (currentRunNode?.manual_input_override?.trim()) {
@@ -1267,7 +1267,7 @@ export class WorkflowOrchestrator {
         content: `[manual_override] ${currentRunNode.manual_input_override.trim()}`,
       });
     }
-    return collected;
+    return applyWorkflowContextPolicy(collected, parseTaskConfig(node).contextPolicy);
   }
 
   private async finalizeRun(status: 'completed' | 'failed'): Promise<void> {
