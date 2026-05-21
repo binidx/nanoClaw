@@ -15,7 +15,6 @@ import type {
 } from '../db/repositories.js';
 import { getAssistant } from '../db.js';
 import { listBindingsByResource } from '../db/resource-bindings.js';
-import { getWorkteam } from '../db/workteam.js';
 import { getWorkflow } from '../db/workflows.js';
 import { AUTO_PROFILE_ID, findProfileById } from '../workflow/runner-profiles.js';
 
@@ -58,11 +57,11 @@ export interface RepositoryAssistantRelationship {
   worktreePath: string | null;
 }
 
-export interface RepositoryWorkteamRelationship {
-  ownerType?: 'workteam' | 'workflow';
+export interface RepositoryWorkflowRelationship {
+  ownerType?: 'workflow';
   bindingId: string;
-  workteamId: string;
-  workteamName: string | null;
+  workflowId: string;
+  workflowName: string | null;
   bindingKey: string;
   branch: string | null;
 }
@@ -75,7 +74,7 @@ export interface RepositoryRunnerProfileRelationship {
 export interface RepositoryRelationships {
   repositoryId: string;
   assistantBindings: RepositoryAssistantRelationship[];
-  workteamBindings: RepositoryWorkteamRelationship[];
+  workflowBindings: RepositoryWorkflowRelationship[];
   runnerProfile: RepositoryRunnerProfileRelationship | null;
 }
 
@@ -237,7 +236,7 @@ export async function getRepositoryRelationships(
 
   const bindings = await listBindingsByResource('repository', repositoryId);
   const assistantBindings: RepositoryAssistantRelationship[] = [];
-  const workteamBindings: RepositoryWorkteamRelationship[] = [];
+  const workflowBindings: RepositoryWorkflowRelationship[] = [];
   let runnerProfile: RepositoryRunnerProfileRelationship | null = null;
 
   for (const binding of bindings) {
@@ -257,26 +256,13 @@ export async function getRepositoryRelationships(
       continue;
     }
 
-    if (binding.owner_type === 'workteam') {
-      const team = await getWorkteam(binding.owner_id);
-      workteamBindings.push({
-        ownerType: 'workteam',
-        bindingId: binding.id,
-        workteamId: binding.owner_id,
-        workteamName: team?.name ?? null,
-        bindingKey: binding.binding_key,
-        branch: binding.branch,
-      });
-      continue;
-    }
-
     if (binding.owner_type === 'workflow') {
       const workflow = await getWorkflow(binding.owner_id);
-      workteamBindings.push({
+      workflowBindings.push({
         ownerType: 'workflow',
         bindingId: binding.id,
-        workteamId: binding.owner_id,
-        workteamName: workflow?.name ?? null,
+        workflowId: binding.owner_id,
+        workflowName: workflow?.name ?? null,
         bindingKey: binding.binding_key,
         branch: binding.branch,
       });
@@ -305,7 +291,7 @@ export async function getRepositoryRelationships(
   return {
     repositoryId,
     assistantBindings,
-    workteamBindings,
+    workflowBindings,
     runnerProfile,
   };
 }

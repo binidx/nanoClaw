@@ -24,7 +24,7 @@ export interface ResourceBindingRouteOptions {
   ) => void;
 }
 
-const VALID_OWNER_TYPES = ['assistant', 'workteam', 'workflow'] as const;
+const VALID_OWNER_TYPES = ['assistant', 'workflow'] as const;
 type OwnerType = (typeof VALID_OWNER_TYPES)[number];
 
 function isValidOwnerType(v: unknown): v is OwnerType {
@@ -56,12 +56,8 @@ async function verifyOwnerAccess(
     if (mode === 'view') return (assistant as { visibility?: string }).visibility === 'shared';
     return false;
   }
-  if (ownerType === 'workteam' || ownerType === 'workflow') {
-    const { getWorkteam } = await import('../db/workteam.js');
-    const resource =
-      ownerType === 'workflow'
-        ? await getWorkflow(ownerId)
-        : await getWorkteam(ownerId);
+  if (ownerType === 'workflow') {
+    const resource = await getWorkflow(ownerId);
     if (!resource) return false;
     if (resource.user_id === userId) return true;
     return resource.user_id === SYSTEM_USER_ID && userId === SYSTEM_USER_ID;
@@ -96,7 +92,7 @@ export function registerResourceBindingRoutes(
 
         if (ownerType && ownerId) {
         if (!isValidOwnerType(ownerType)) {
-            res.status(400).json({ error: 'ownerType must be assistant, workteam, or workflow' });
+            res.status(400).json({ error: 'ownerType must be assistant or workflow' });
             return;
           }
           const ok = await enforcePermission(
@@ -150,7 +146,7 @@ export function registerResourceBindingRoutes(
         const repositoryId = body.repositoryId as string | undefined;
 
         if (!isValidOwnerType(ownerType)) {
-          res.status(400).json({ error: 'ownerType must be assistant, workteam, or workflow' });
+          res.status(400).json({ error: 'ownerType must be assistant or workflow' });
           return;
         }
         if (!ownerId || typeof ownerId !== 'string') {

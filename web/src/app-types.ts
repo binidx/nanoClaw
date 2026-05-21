@@ -1182,11 +1182,11 @@ export interface RepositoryAssistantRelationship {
   worktreePath: string | null;
 }
 
-export interface RepositoryWorkteamRelationship {
-  ownerType?: 'workteam' | 'workflow';
+export interface RepositoryWorkflowRelationship {
+  ownerType?: 'workflow';
   bindingId: string;
-  workteamId: string;
-  workteamName: string | null;
+  workflowId: string;
+  workflowName: string | null;
   bindingKey: string;
   branch: string | null;
 }
@@ -1199,7 +1199,7 @@ export interface RepositoryRunnerProfileRelationship {
 export interface RepositoryRelationships {
   repositoryId: string;
   assistantBindings: RepositoryAssistantRelationship[];
-  workteamBindings: RepositoryWorkteamRelationship[];
+  workflowBindings: RepositoryWorkflowRelationship[];
   runnerProfile: RepositoryRunnerProfileRelationship | null;
 }
 

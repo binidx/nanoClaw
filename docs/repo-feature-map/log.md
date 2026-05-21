@@ -7,7 +7,13 @@
 - Workflow Workbench 稳定边界新增 `src/workflow/runner-profiles.ts` / `src/workflow/runner-profile-registry.ts`，Workflow 仓库绑定节点执行可复用 runner profile env 注入能力。
 - `src/workflow/orchestrator.ts` 支持 verdict 条件边：`always`、`on_pass`、`on_fail`、`on_blocked`、`manual_only`，可构建 developer -> tester -> developer 自动打回闭环并受 maxAttempts 限制。
 - `web/src/pages/WorkteamPage.tsx` 节点属性面板新增任务目标、验收标准、输出 schema、失败打回策略、交接契约；连线属性面板新增触发条件。
-- `web/src/components/repository/WorkflowRepositoryPanel.tsx` runner profile API 切到 `/api/workflows/**`，旧 Workteam support route 保留兼容。
+- `web/src/components/repository/WorkflowRepositoryPanel.tsx` runner profile API 切到 `/api/workflows/**`。
+
+## [2026-05-21] cleanup | 移除旧 Workteam 编排
+
+- 删除旧 `src/workteam/**`、`src/routes/workteam-routes.ts`、`src/db/workteam.ts` 和旧桥接测试，Workflow Workbench 成为唯一多智能体编排主线。
+- Runner profile、project detector 和 profile registry 已迁入 `src/workflow/**`，Workflow 节点执行直接注入仓库绑定 profile env。
+- Schema、trash、WebSocket、resource binding 和仓库关系展示移除旧 Workteam owner / table / event 入口。
 
 ## [2026-04-24] ingest | 初始功能 Map
 
@@ -31,7 +37,7 @@
 
 - 新增 `src/routes/workflow-routes.ts`、`src/workflow/*`、`src/db/workflows.ts` 作为图形工作流主入口。
 - 将 `web/src/pages/WorkteamPage.tsx` 的功能描述改为 Workflow Workbench 画布、节点编辑和运行态干预。
-- 保留 `src/workteam/*` 作为旧 Workteam / SDLC / Runner Profile 相关实现，并在功能 Map 中显式区分新旧入口。
+- 当时仍保留旧 Workteam / SDLC / Runner Profile 相关实现；后续已在 2026-05-21 清理并迁入 Workflow。
 
 ## [2026-05-01] update | 模块化路径刷新与索引说明
 

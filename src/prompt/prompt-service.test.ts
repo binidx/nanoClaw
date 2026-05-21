@@ -57,9 +57,6 @@ describe('prompt service config compatibility', () => {
         '新模板范围：{{diffRange}}\n文件：{{changedFiles}}',
       ),
     ).toBe(true);
-    expect(
-      isPromptConfigTemplateCompatible('workteam.task', '{{diffText}}'),
-    ).toBe(true);
   });
 
   it('ignores stale repo-review user override and falls back to compatible system override', async () => {

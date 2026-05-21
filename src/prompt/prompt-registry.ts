@@ -971,100 +971,6 @@ Input:
       'customPromptBlock',
     ],
   },
-  {
-    key: 'workteam.task',
-    featureScope: 'workteam',
-    title: t('errors.auto_d25331', {}, undefined),
-    description: t('prompts.auto_4c3d9c', {}, undefined),
-    promptKind: 'user',
-    defaultTemplate: `## Your Role
-You are a {{agentRole}}. {{agentGoal}}
-
-## Background
-{{agentBackstory}}
-
-## Task: {{taskName}}
-{{taskDescription}}
-
-## Expected Output
-{{expectedOutput}}
-
-## Context from Previous Tasks
-{{context}}`,
-    variables: [
-      'agentRole',
-      'agentGoal',
-      'agentBackstory',
-      'taskName',
-      'taskDescription',
-      'expectedOutput',
-      'context',
-    ],
-  },
-  {
-    key: 'workteam.eval',
-    featureScope: 'workteam',
-    title: t('errors.auto_ea8971', {}, undefined),
-    description: t('prompts.auto_b88608', {}, undefined),
-    promptKind: 'user',
-    defaultTemplate: `You are a strict quality evaluator for an AI agent task.
-
-## Task
-Name: {{taskName}}
-Description: {{taskDescription}}
-
-## Expected Output
-{{expectedOutput}}
-
-{{criteriaBlock}}
-## Actual Output
-{{actualOutput}}
-
-## Instructions
-Evaluate the actual output against the task description and expected output.
-Reply with ONLY valid JSON matching this shape:
-{
-  "pass": true | false,
-  "score": 0-100,
-  "feedback": "brief explanation of your evaluation"
-}
-
-Be strict but fair. A passing output must address the task description meaningfully.`,
-    variables: [
-      'taskName',
-      'taskDescription',
-      'expectedOutput',
-      'criteriaBlock',
-      'actualOutput',
-    ],
-  },
-  {
-    key: 'workteam.smart_creator',
-    featureScope: 'workteam',
-    title: t('errors.auto_d03825', {}, undefined),
-    description: t('prompts.auto_d2d09d', {}, undefined),
-    promptKind: 'user',
-    defaultTemplate: `You are an expert multi-agent team architect for NanoClaw workteams.
-
-Your job: read the user's requirement and design a small, practical team of specialized agents and a task graph they will execute.
-
-{{processHint}}
-
-## User requirement
-
-{{requirement}}`,
-    variables: ['processHint', 'requirement'],
-  },
-  {
-    key: 'workteam.smart_creator.retry_suffix',
-    featureScope: 'workteam',
-    title: t('prompts.auto_c5322a', {}, undefined),
-    description: t('prompts.auto_31c860', {}, undefined),
-    promptKind: 'user',
-    defaultTemplate:
-      '[IMPORTANT: Your previous response could not be parsed. Error: {{error}}. Please return ONLY valid JSON matching the schema above.]',
-    variables: ['error'],
-  },
 ];
 
 function inferPromptLayer(definition: PromptDefinition): PromptLayer {
@@ -1079,7 +985,6 @@ function inferPromptLayer(definition: PromptDefinition): PromptLayer {
   if (
     definition.featureScope === 'repo_review' ||
     definition.featureScope === 'stock_analysis' ||
-    definition.featureScope === 'workteam' ||
     definition.featureScope === 'runtime_customization' ||
     definition.featureScope === 'user_mcp'
   ) {

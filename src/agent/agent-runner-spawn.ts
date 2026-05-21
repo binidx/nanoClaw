@@ -430,7 +430,7 @@ export async function spawnAgent(
     'GIT_SSH_COMMAND',
   ];
 
-  // Workflow/legacy Workteam tasks register a Runner Profile per chatJid. If present, its
+  // Workflow tasks register a Runner Profile per chatJid. If present, its
   // `extraPassthrough` list is appended to the default passthrough whitelist,
   // and its `pathPrepend` + `extra` env are merged at the end of env assembly.
   const runnerProfile = getProfileForChat(input.chatJid);

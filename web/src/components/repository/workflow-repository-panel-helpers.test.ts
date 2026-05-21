@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest';
 
 import type { ResourceBindingInfo } from '../../app-types';
 import {
-  buildWorkteamMainRepositoryBindingInput,
-  getWorkteamMainRepositoryBinding,
-} from './workteam-repository-panel-helpers';
+  buildWorkflowMainRepositoryBindingInput,
+  getWorkflowMainRepositoryBinding,
+} from './workflow-repository-panel-helpers';
 
 function makeBinding(
   overrides: Partial<ResourceBindingInfo> & {
@@ -16,8 +16,8 @@ function makeBinding(
     id: overrides.id,
     resourceType: overrides.resourceType || 'repository',
     resourceId: overrides.resourceId || 'repo-1',
-    ownerType: overrides.ownerType || 'workteam',
-    ownerId: overrides.ownerId || 'team-1',
+    ownerType: overrides.ownerType || 'workflow',
+    ownerId: overrides.ownerId || 'workflow-1',
     bindingKey: overrides.bindingKey || 'default',
     branch: overrides.branch ?? null,
     workDirectory: overrides.workDirectory ?? null,
@@ -28,9 +28,9 @@ function makeBinding(
   };
 }
 
-describe('workteam repository panel helpers', () => {
-  it('prefers the sdlc binding as the team main repository', () => {
-    const binding = getWorkteamMainRepositoryBinding([
+describe('workflow repository panel helpers', () => {
+  it('prefers the sdlc binding as the workflow main repository', () => {
+    const binding = getWorkflowMainRepositoryBinding([
       makeBinding({ id: 'b-default', bindingKey: 'default' }),
       makeBinding({ id: 'b-sdlc', bindingKey: 'sdlc', branch: 'main' }),
     ]);
@@ -40,14 +40,14 @@ describe('workteam repository panel helpers', () => {
 
   it('creates repository binding input with the sdlc binding key', () => {
     expect(
-      buildWorkteamMainRepositoryBindingInput({
-        ownerId: 'team-1',
+      buildWorkflowMainRepositoryBindingInput({
+        ownerId: 'workflow-1',
         repositoryId: 'repo-1',
         branch: ' release ',
       }),
     ).toEqual({
-      ownerType: 'workteam',
-      ownerId: 'team-1',
+      ownerType: 'workflow',
+      ownerId: 'workflow-1',
       repositoryId: 'repo-1',
       bindingKey: 'sdlc',
       branch: 'release',

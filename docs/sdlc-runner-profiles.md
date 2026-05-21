@@ -1,8 +1,7 @@
 # SDLC Runner Profiles
 
-> 适用范围：Workflow Workbench 的仓库绑定节点执行，以及保留窗口内的旧
-> Workteam SDLC pipeline 辅助能力。旧 Workteam 主 CRUD / SDLC run route
-> 当前不再作为主线恢复。
+> 适用范围：Workflow Workbench 的仓库绑定节点执行。旧 Workteam 主 CRUD、
+> SDLC run route 和 `src/workteam/**` 编排实现已移除。
 
 ## 是什么
 
@@ -16,7 +15,7 @@ Runner Profile 让 SDLC 任务在非 Node.js 项目（Java 8 / Go / Python）上
 - 用于 eval 的**成功判据**（`required_patterns`）
 
 仓库选一个 profile 后：
-1. Workflow 节点执行会读取仓库绑定的 profile；旧 Workteam 的解析与工具校验能力仍存在
+1. Workflow 节点执行会读取仓库绑定的 profile，并在启动前做工具校验
 2. 正式执行任务时，每个 Agent 进程 spawn 时把 profile 的 env 合并进去
 3. Agent 的 Bash 工具（`/bin/sh`）从 PATH 中就能找到对应工具链
 
@@ -51,8 +50,7 @@ flowchart TB
 
 ## 内置 profile
 
-Phase 1 内置 4 个 profile（Workflow 入口见 `src/workflow/runner-profiles.ts`，
-底层复用旧 `src/workteam/runner-profiles.ts` 的 `BUILTIN_PROFILES`）：
+Phase 1 内置 4 个 profile（入口见 `src/workflow/runner-profiles.ts`）：
 
 - **nodejs** — `package.json` → 要求 `node`、`npm`；测试命令 `npm test`
 - **java8** — `pom.xml` / `build.gradle` → 要求 `java`；测试命令 `mvn test`；env 透传 `JAVA_HOME`、`MAVEN_HOME`、`M2_HOME`、`GRADLE_HOME`
@@ -123,8 +121,7 @@ Workflow run 会在 `executeWorkflowTask` 中：
 - 使用节点 `allowedDirectories`，或 workflow 仓库绑定目录，或 assistant 仓库目录作为可访问目录
 - 把 profile 注册到 agent spawn registry，随后 `spawnAgent` 合并 profile env
 
-旧 Workteam 的 runner profile support routes 暂时保留为兼容入口，但新 UI 已切到
-`/api/workflows/**`。
+Runner profile API 统一由 `/api/workflows/**` 提供。
 
 ## 工具缺失错误示例
 
@@ -155,16 +152,10 @@ and ensure `java` and `mvn` / `./gradlew` are on PATH.
 
 ## 相关代码
 
-- `src/workflow/runner-profiles.ts` — Workflow 侧 runner profile 入口 / 兼容导出
-- `src/workflow/runner-profile-registry.ts` — Workflow 侧 registry 入口 / 兼容导出
-- `src/workteam/runner-profiles.ts` — 类型 + `BUILTIN_PROFILES` + 合并 / 校验
-- `src/workteam/project-detector.ts` — 按标志文件探测
-- `src/workteam/runner-profile-registry.ts` — `chatJid → profile` 内存映射
-- `src/workteam/runner-profile-resolver.ts` — 绑定读写 + 解析
+- `src/workflow/runner-profiles.ts` — 类型、内置 profile、合并 / 校验、绑定解析
+- `src/workflow/project-detector.ts` — 按标志文件探测
+- `src/workflow/runner-profile-registry.ts` — `chatJid → profile` 内存映射
 - `src/agent/agent-runner-spawn.ts` — 在 `spawnAgent` 处读 Workflow registry 并合并 env
 - `src/workflow/agent-adapter.ts` — Workflow 节点前注册、结束/异常清理
-- `src/workteam/agent-adapter.ts` — 任务前注册、结束/异常清理
-- `src/workteam/orchestrator.ts` — `startRun` 前 `validateProfileTools`
 - `src/routes/workflow-routes.ts` — Workflow runner profile API 端点
-- `src/routes/workteam-routes.ts` — 兼容期 Workteam support API 端点
 - 单测：`runner-profiles.test.ts`、`project-detector.test.ts`、`runner-profile-registry.test.ts`

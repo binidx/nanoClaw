@@ -40,11 +40,11 @@ const {
         worktreePath: 'D:/worktrees/a1-main',
       },
     ],
-    workteamBindings: [
+    workflowBindings: [
       {
         bindingId: 'wtb-1',
-        workteamId: 'team-1',
-        workteamName: '交付团队',
+        workflowId: 'workflow-1',
+        workflowName: '交付流程',
         bindingKey: 'sdlc',
         branch: 'release',
       },
@@ -60,7 +60,7 @@ vi.mock('./tenant-request.js', () => ({
   getTenantUserId: vi.fn(() => 'test-user'),
 }));
 
-vi.mock('./repository-service.js', () => ({
+vi.mock('./repo-review/repository-service.js', () => ({
   createOrUpdateRepository: createOrUpdateRepositoryMock,
   getFeatures: vi.fn(async () => []),
   getRepository: vi.fn(async (id: string) =>
@@ -177,9 +177,9 @@ describe('repository routes', () => {
             assistantName: '代码助手',
           }),
         ],
-        workteamBindings: [
+        workflowBindings: [
           expect.objectContaining({
-            workteamId: 'team-1',
+            workflowId: 'workflow-1',
             bindingKey: 'sdlc',
           }),
         ],

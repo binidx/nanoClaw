@@ -274,21 +274,6 @@ describe('schema migrations', () => {
           'idx_scheduled_tasks_created',
         ]),
       );
-      expect(indexNames('workteams')).toContain(
-        'idx_workteams_user_created',
-      );
-      expect(indexNames('workteam_agents')).toContain(
-        'idx_workteam_agents_team_active_sort',
-      );
-      expect(indexNames('workteam_runs')).toEqual(
-        expect.arrayContaining([
-          'idx_workteam_runs_team_created',
-          'idx_workteam_runs_status_created',
-        ]),
-      );
-      expect(indexNames('workteam_events')).toContain(
-        'idx_workteam_events_agent_messages',
-      );
       expect(indexNames('workflows')).toContain(
         'idx_workflows_user_active_updated',
       );
@@ -371,11 +356,6 @@ describe('schema migrations', () => {
         'CREATE INDEX idx_review_runs_repo_status_completed ON review_runs(repository_id, status, completed_at DESC, created_at DESC)',
         'CREATE INDEX idx_review_runs_status_created ON review_runs(status, created_at ASC)',
         'CREATE INDEX idx_review_runs_repo_status_created ON review_runs(repository_id, status, created_at ASC)',
-        'CREATE INDEX idx_workteams_user_created ON workteams(user_id, deleted_at, created_at DESC)',
-        'CREATE INDEX idx_workteam_agents_team_active_sort ON workteam_agents(team_id, deleted_at, sort_order)',
-        'CREATE INDEX idx_workteam_runs_team_created ON workteam_runs(team_id, created_at DESC)',
-        'CREATE INDEX idx_workteam_runs_status_created ON workteam_runs(status, created_at)',
-        'CREATE INDEX idx_workteam_events_agent_messages ON workteam_events(run_id, target_agent_id, event_type, created_at)',
         'CREATE INDEX idx_workflows_user_active_updated ON workflows(user_id, deleted_at, updated_at DESC, created_at DESC)',
         'CREATE INDEX idx_workflow_nodes_workflow_active_sort ON workflow_nodes(workflow_id, deleted_at, sort_order, created_at)',
         'CREATE INDEX idx_workflow_edges_workflow_active_created ON workflow_edges(workflow_id, deleted_at, created_at)',
@@ -429,11 +409,6 @@ describe('schema migrations', () => {
         'CREATE INDEX IF NOT EXISTS idx_review_runs_repo_status_completed ON review_runs(repository_id, status, completed_at DESC, created_at DESC)',
         'CREATE INDEX IF NOT EXISTS idx_review_runs_status_created ON review_runs(status, created_at ASC)',
         'CREATE INDEX IF NOT EXISTS idx_review_runs_repo_status_created ON review_runs(repository_id, status, created_at ASC)',
-        'CREATE INDEX IF NOT EXISTS idx_workteams_user_created ON workteams(user_id, deleted_at, created_at DESC)',
-        'CREATE INDEX IF NOT EXISTS idx_workteam_agents_team_active_sort ON workteam_agents(team_id, deleted_at, sort_order)',
-        'CREATE INDEX IF NOT EXISTS idx_workteam_runs_team_created ON workteam_runs(team_id, created_at DESC)',
-        'CREATE INDEX IF NOT EXISTS idx_workteam_runs_status_created ON workteam_runs(status, created_at)',
-        'CREATE INDEX IF NOT EXISTS idx_workteam_events_agent_messages ON workteam_events(run_id, target_agent_id, event_type, created_at)',
         'CREATE INDEX IF NOT EXISTS idx_workflows_user_active_updated ON workflows(user_id, deleted_at, updated_at DESC, created_at DESC)',
         'CREATE INDEX IF NOT EXISTS idx_workflow_nodes_workflow_active_sort ON workflow_nodes(workflow_id, deleted_at, sort_order, created_at)',
         'CREATE INDEX IF NOT EXISTS idx_workflow_edges_workflow_active_created ON workflow_edges(workflow_id, deleted_at, created_at)',
@@ -1717,19 +1692,12 @@ describe('getConversationList', () => {
     ).toBe('latest group two');
   });
 
-  it('filters hidden workflow/workteam channels from the default list', async () => {
+  it('filters hidden workflow channels from the default list', async () => {
     await storeChatMetadata(
       'web:workflow-a',
       '2024-01-01T00:00:00.000Z',
       'Workflow A',
       'workflow',
-      false,
-    );
-    await storeChatMetadata(
-      'web:workteam-a',
-      '2024-01-01T00:00:01.000Z',
-      'Workteam A',
-      'workteam',
       false,
     );
     await storeChatMetadata(

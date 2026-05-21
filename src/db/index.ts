@@ -25,7 +25,6 @@ export * from './tavern.js';
 export * from './files.js';
 export * from './live2d.js';
 export * from './marketplace.js';
-export * from './workteam.js';
 export * from './workflows.js';
 export * from './prompt-configs.js';
 export * from './init.js';

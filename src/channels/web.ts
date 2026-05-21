@@ -113,11 +113,6 @@ export class WebChannel implements Channel {
     }
   }
 
-  /** Send workteam event only to clients subscribed to the specific workteam JID */
-  emitWorkteamEvent(jid: string, event: Record<string, unknown>): void {
-    this.broadcastTo(jid, event);
-  }
-
   /** Handle an inbound message from the web frontend */
   async handleInboundMessage(
     jid: string,

@@ -9,7 +9,7 @@ import {
 } from './api';
 
 export interface RepositoryBindingPickerProps {
-  ownerType: 'assistant' | 'workteam';
+  ownerType: 'assistant' | 'workflow';
   ownerId: string;
   onBindingChange?: () => void;
   /** Extra action buttons per binding (e.g. provision, switch-branch) */

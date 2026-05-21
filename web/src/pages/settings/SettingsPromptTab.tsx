@@ -236,9 +236,6 @@ function getScenarioTitleLabels(t: (key: string) => string): Record<string, stri
     'stock_analysis.ai_summary': t('settings.prompt.股票分析_AI_总结'),
     'stock_analysis.market_review': t('settings.prompt.股票市场复盘'),
     'requirement_parser.base': t('settings.prompt.需求解析'),
-    'workteam.smart_creator': t('settings.prompt.工作流_智能创建'),
-    'workteam.eval': t('settings.prompt.工作流_结果评估'),
-    'workteam.task': t('settings.prompt.工作流_任务下发'),
   };
 }
 
@@ -289,9 +286,6 @@ function formatScenarioDescription(t: (key: string) => string, scenario: PromptP
   }
   if (scenario.featureScope === 'stock_analysis') {
     return t('settings.prompt.股票分析模块真实运行时提示词预览');
-  }
-  if (scenario.featureScope === 'workteam') {
-    return t('settings.prompt.工作流_模块真实运行时提示词预览');
   }
   if (scenario.featureScope === 'runner') {
     return 'Runner 稳定系统提示前缀预览。';

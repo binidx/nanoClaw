@@ -31,9 +31,6 @@ import {
 } from '../stock-analysis/stock-analysis-prompts.js';
 import { buildPromptPreviewEnvelope } from './prompt-service.js';
 import { buildSoulPrompt } from '../soul/soul-service.js';
-import { buildTaskPrompt } from '../workteam/agent-adapter.js';
-import { buildEvalPrompt } from '../workteam/evaluation-engine.js';
-import { buildSmartCreatorPrompt } from '../workteam/smart-creator.js';
 import { buildRunnerPromptPreview } from './runner-prompt-runtime.js';
 import type { PromptLayer, PromptPreviewEnvelope, PromptSegment } from '../types/prompt.js';
 import { t } from '../i18n/index.js';
@@ -89,7 +86,6 @@ function segmentForPrompt(
             ? 'context_runtime'
             : promptKey.startsWith('repo_review.') ||
                 promptKey.startsWith('stock_analysis.') ||
-                promptKey.startsWith('workteam.') ||
                 promptKey.startsWith('requirement_parser.') ||
                 promptKey.startsWith('user_mcp.') ||
                 promptKey.startsWith('runtime_customization.')
@@ -713,50 +709,6 @@ const PROMPT_PREVIEW_SCENARIOS: PromptPreviewScenario[] = [
       rawInput: t('errors.auto_db48c6', {}, undefined),
     },
   },
-  {
-    id: 'workteam.smart_creator',
-    title: t('errors.auto_d03825', {}, undefined),
-    description: t('errors.auto_9dacaa', {}, undefined),
-    featureScope: 'workteam',
-    promptKey: 'workteam.smart_creator',
-    kind: 'runtime_prompt',
-    defaultVariables: {
-      requirement: t('errors.auto_f6be77', {}, undefined),
-      preferred_process_type: 'dag',
-    },
-  },
-  {
-    id: 'workteam.eval',
-    title: t('errors.auto_ea8971', {}, undefined),
-    description: t('errors.auto_a689ee', {}, undefined),
-    featureScope: 'workteam',
-    promptKey: 'workteam.eval',
-    kind: 'runtime_prompt',
-    defaultVariables: {
-      taskName: t('errors.auto_cd01ad', {}, undefined),
-      taskDescription: t('errors.auto_8b4820', {}, undefined),
-      expectedOutput: t('errors.auto_a8b5d5', {}, undefined),
-      actualOutput: t('errors.auto_8899e1', {}, undefined),
-      criteria: '',
-    },
-  },
-  {
-    id: 'workteam.task',
-    title: t('errors.auto_d25331', {}, undefined),
-    description: t('errors.auto_fc8beb', {}, undefined),
-    featureScope: 'workteam',
-    promptKey: 'workteam.task',
-    kind: 'runtime_prompt',
-    defaultVariables: {
-      agentRole: 'developer',
-      agentGoal: 'Implement the feature safely.',
-      agentBackstory: 'Senior engineer focused on predictable delivery.',
-      taskName: t('errors.auto_2f72a8', {}, undefined),
-      taskDescription: t('errors.auto_cb5a39', {}, undefined),
-      expectedOutput: t('errors.auto_f1ec78', {}, undefined),
-      context: t('errors.auto_3941ea', {}, undefined),
-    },
-  },
 ];
 
 export function getPromptPreviewScenarios(): PromptPreviewScenario[] {
@@ -860,78 +812,6 @@ export async function buildPromptPreviewFromRuntime(input: {
       userPromptText: text,
       providerInputText: text,
       segments: [segmentForPrompt(promptKey, t('errors.auto_03f28f', {}, undefined), text)],
-      resolution: [],
-    });
-  }
-
-  if (promptKey === 'workteam.smart_creator') {
-    const text = buildSmartCreatorPrompt(
-      asString(vars.requirement, t('errors.auto_ae2c7c', {}, undefined)),
-      (asString(vars.preferred_process_type, '') as any) || undefined,
-    );
-    return buildPromptPreviewEnvelope({
-      traceKind: 'direct_provider',
-      featureScope: 'workteam',
-      promptKey,
-      targetUserId: input.targetUserId || null,
-      userPromptText: text,
-      providerInputText: text,
-      segments: [segmentForPrompt(promptKey, t('errors.auto_f2ab2e', {}, undefined), text)],
-      resolution: [],
-    });
-  }
-
-  if (promptKey === 'workteam.eval') {
-    const text = buildEvalPrompt(
-      asString(vars.taskName, t('errors.auto_cd01ad', {}, undefined)),
-      asString(vars.taskDescription, t('errors.auto_8b4820', {}, undefined)),
-      asString(vars.expectedOutput, t('errors.auto_a8b5d5', {}, undefined)),
-      asString(vars.actualOutput, t('errors.auto_8899e1', {}, undefined)),
-      asString(vars.criteria, ''),
-    );
-    return buildPromptPreviewEnvelope({
-      traceKind: 'direct_provider',
-      featureScope: 'workteam',
-      promptKey,
-      targetUserId: input.targetUserId || null,
-      userPromptText: text,
-      providerInputText: text,
-      segments: [segmentForPrompt(promptKey, t('errors.auto_62e491', {}, undefined), text)],
-      resolution: [],
-    });
-  }
-
-  if (promptKey === 'workteam.task') {
-    const text = buildTaskPrompt(
-      {
-        id: 'task-preview',
-        team_id: 'team-preview',
-        name: asString(vars.taskName, t('errors.auto_2f72a8', {}, undefined)),
-        description: asString(vars.taskDescription, t('errors.auto_cb5a39', {}, undefined)),
-        expected_output: asString(vars.expectedOutput, t('errors.auto_f1ec78', {}, undefined)),
-        dependencies_json: '[]',
-        agent_role: 'developer',
-        timeout_ms: 600000,
-        created_at: '',
-        updated_at: '',
-      } as any,
-      asString(vars.context, t('errors.auto_3941ea', {}, undefined)),
-      {
-        id: 'agent-preview',
-        team_id: 'team-preview',
-        role: asString(vars.agentRole, 'developer'),
-        goal: asString(vars.agentGoal, 'Implement the feature safely.'),
-        backstory: asString(vars.agentBackstory, 'Senior engineer focused on predictable delivery.'),
-      } as any,
-    );
-    return buildPromptPreviewEnvelope({
-      traceKind: 'direct_provider',
-      featureScope: 'workteam',
-      promptKey,
-      targetUserId: input.targetUserId || null,
-      userPromptText: text,
-      providerInputText: text,
-      segments: [segmentForPrompt(promptKey, t('errors.auto_881330', {}, undefined), text)],
       resolution: [],
     });
   }

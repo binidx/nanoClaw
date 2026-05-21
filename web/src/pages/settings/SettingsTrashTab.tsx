@@ -14,7 +14,6 @@ function getTrashTypes(t: (k: string) => string) {
     { key: 'knowledge_bases', label: t('settings.trash.typeKnowledgeBases') },
     { key: 'ai_providers', label: t('settings.trash.typeAiProviders') },
     { key: 'users', label: t('settings.trash.typeUsers') },
-    { key: 'workteams', label: t('settings.trash.typeWorkteams') },
     { key: 'user_skills', label: t('settings.trash.typeUserSkills') },
     { key: 'user_mcp_servers', label: t('settings.trash.typeUserMcpServers') },
     { key: 'scheduled_tasks', label: t('settings.trash.typeScheduledTasks') },

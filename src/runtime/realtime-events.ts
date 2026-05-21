@@ -13,7 +13,6 @@ export type RealtimeEventType =
   | 'typing'
   | 'stream'
   | 'live2d_emotion'
-  | 'workteam_event'
   | 'workflow_event'
   | 'im_event';
 

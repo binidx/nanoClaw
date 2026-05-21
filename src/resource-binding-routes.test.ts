@@ -12,7 +12,6 @@ const {
   removeBindingMock,
   getBindingMock,
   getRepositoryByIdMock,
-  getWorkteamMock,
 } = vi.hoisted(() => ({
   getAssistantMock: vi.fn(),
   getWorkflowMock: vi.fn(),
@@ -22,7 +21,6 @@ const {
   removeBindingMock: vi.fn(),
   getBindingMock: vi.fn(),
   getRepositoryByIdMock: vi.fn(),
-  getWorkteamMock: vi.fn(),
 }));
 
 vi.mock('./db.js', () => ({
@@ -43,10 +41,6 @@ vi.mock('./tenant/resource-binding-service.js', () => ({
 
 vi.mock('./db/repositories.js', () => ({
   getRepositoryById: getRepositoryByIdMock,
-}));
-
-vi.mock('./db/workteam.js', () => ({
-  getWorkteam: getWorkteamMock,
 }));
 
 vi.mock('./tenant/tenant-request.js', () => ({
@@ -127,11 +121,6 @@ describe('resource binding routes', () => {
       id: 'workflow-1',
       user_id: 'test-user',
       name: 'Workflow One',
-    });
-    getWorkteamMock.mockResolvedValue({
-      id: 'workteam-1',
-      user_id: 'test-user',
-      name: 'Workteam One',
     });
     listOwnerBindingsMock.mockResolvedValue([
       {

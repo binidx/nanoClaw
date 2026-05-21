@@ -2,7 +2,7 @@
 
 ## 概述
 
-Workflow Workbench 是 Workteam 的图形化替代层。它把原先“智能体表单 + 任务表单 + 依赖多选”的编排方式重构为一个可视化工作台：
+Workflow Workbench 是当前唯一主线的图形多智能体编排层。它把“智能体表单 + 任务表单 + 依赖多选”的编排方式重构为一个可视化工作台：
 
 - 角色节点：定义 AI 身份、目标、背景和助手绑定
 - 任务节点：定义目标、验收标准、Prompt、输出格式、失败打回策略、超时与人工批准策略
@@ -22,7 +22,7 @@ Workflow Workbench 是 Workteam 的图形化替代层。它把原先“智能体
 - `src/workflow/config.ts`
   规范化 `workflow_config`，包括工作流类型、可见性、消息延迟、仓库策略和产物策略。
 - `src/workflow/runner-profiles.ts` / `src/workflow/runner-profile-registry.ts`
-  Workflow 侧复用旧 Workteam runner profile 能力，为绑定仓库的节点执行注入语言工具链 env。
+  管理 runner profile，为绑定仓库的节点执行注入语言工具链 env。
 - `src/workflow/artifacts.ts`
   生成运行摘要 / bundle，并支持导出、发布和仓库分支提交推送。
 
@@ -99,8 +99,6 @@ Workflow Workbench 是 Workteam 的图形化替代层。它把原先“智能体
 
 - 双向边会按预算自动继续对话；并发起始节点可能导致最后发言方不对称，预算限制的是边上自动 handoff 消息数。
 - 角色与任务采用双层模型，而不是统一通用节点系统。
-- 旧 Workteam 表和旧 API 仍在仓库中保留，但新页面和新运行流程已经切到 `/api/workflows/**`。
-- 旧 Workteam 现已提供 `POST /api/workteam/:id/migrate-to-workflow` 迁移入口，可将 team/agent/task 结构转换为 workflow 定义并复制仓库绑定。
-- `web-server` 不再注册旧 Workteam 主 CRUD / run 路由；旧模块仅保留迁移与 runner-profile 辅助接口。
+- 旧 Workteam 表、API route 和 `src/workteam/**` 编排实现已移除；Workflow Workbench 使用 `/api/workflows/**`。
 - 仓库绑定面板和仓库关系展示已经 workflow 化，主仓库绑定与 runner-profile 配置以 workflow 作为 owner 进行展示和编辑。
 - 新建 workflow 默认 seed 固定四节点 pipeline；左侧标准图模板库（如 SDLC Lite、Analysis -> Execute -> Summarize、Debate + Arbiter）不属于当前已落地入口。

@@ -2428,129 +2428,6 @@ export async function runPostgresMigrations(engine: DbEngine): Promise<void> {
     `CREATE INDEX IF NOT EXISTS idx_pua_provider ON provider_user_access(provider_id)`,
   );
 
-  // ── Workteam multi-agent collaboration tables ────────────────────
-  await safeMigrate(`
-    CREATE TABLE IF NOT EXISTS workteams (
-      id VARCHAR(64) PRIMARY KEY,
-      name VARCHAR(128) NOT NULL,
-      description TEXT NOT NULL DEFAULT '',
-      user_id VARCHAR(64) NOT NULL,
-      process_type VARCHAR(64) NOT NULL DEFAULT 'sequential',
-      workflow_config TEXT NOT NULL DEFAULT '{}',
-      status VARCHAR(64) NOT NULL DEFAULT 'draft',
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
-    )
-  `);
-  await safeMigrate(
-    `CREATE INDEX IF NOT EXISTS idx_workteams_user ON workteams(user_id)`,
-  );
-
-  await safeMigrate(`
-    CREATE TABLE IF NOT EXISTS workteam_agents (
-      id VARCHAR(64) PRIMARY KEY,
-      team_id VARCHAR(64) NOT NULL,
-      "role" VARCHAR(128) NOT NULL,
-      goal TEXT NOT NULL DEFAULT '',
-      backstory TEXT NOT NULL DEFAULT '',
-      assistant_id VARCHAR(64) NOT NULL DEFAULT '',
-      chat_jid VARCHAR(128) NOT NULL DEFAULT '',
-      tools_config TEXT NOT NULL DEFAULT '{}',
-      sort_order INT NOT NULL DEFAULT 0
-    )
-  `);
-  await safeMigrate(
-    `CREATE INDEX IF NOT EXISTS idx_workteam_agents_team ON workteam_agents(team_id, sort_order)`,
-  );
-
-  await safeMigrate(`
-    CREATE TABLE IF NOT EXISTS workteam_tasks (
-      id VARCHAR(64) PRIMARY KEY,
-      team_id VARCHAR(64) NOT NULL,
-      agent_id VARCHAR(64) NOT NULL DEFAULT '',
-      name VARCHAR(128) NOT NULL,
-      description TEXT NOT NULL DEFAULT '',
-      expected_output TEXT NOT NULL DEFAULT '',
-      dependencies TEXT NOT NULL DEFAULT '[]',
-      status VARCHAR(64) NOT NULL DEFAULT 'pending',
-      sort_order INT NOT NULL DEFAULT 0,
-      timeout_ms INT NOT NULL DEFAULT 600000,
-      retry_limit INT NOT NULL DEFAULT 1,
-      eval_config TEXT NOT NULL DEFAULT ''
-    )
-  `);
-  await safeMigrate(
-    `CREATE INDEX IF NOT EXISTS idx_workteam_tasks_team ON workteam_tasks(team_id, sort_order)`,
-  );
-
-  await safeMigrate(`
-    CREATE TABLE IF NOT EXISTS workteam_runs (
-      id VARCHAR(64) PRIMARY KEY,
-      team_id VARCHAR(64) NOT NULL,
-      status VARCHAR(64) NOT NULL DEFAULT 'pending',
-      input TEXT NOT NULL DEFAULT '',
-      output TEXT NOT NULL DEFAULT '',
-      started_at TEXT NOT NULL DEFAULT '',
-      completed_at TEXT NOT NULL DEFAULT '',
-      checkpoint TEXT NOT NULL DEFAULT '',
-      created_at TEXT NOT NULL
-    )
-  `);
-  await safeMigrate(
-    `CREATE INDEX IF NOT EXISTS idx_workteam_runs_team ON workteam_runs(team_id)`,
-  );
-  await safeMigrate(
-    `CREATE INDEX IF NOT EXISTS idx_workteam_runs_team_created ON workteam_runs(team_id, created_at DESC)`,
-  );
-  await safeMigrate(
-    `CREATE INDEX IF NOT EXISTS idx_workteam_runs_status ON workteam_runs(status)`,
-  );
-  await safeMigrate(
-    `CREATE INDEX IF NOT EXISTS idx_workteam_runs_status_created ON workteam_runs(status, created_at)`,
-  );
-  await safeMigrate(
-    `ALTER TABLE workteam_runs ADD COLUMN IF NOT EXISTS checkpoint TEXT NOT NULL DEFAULT ''`,
-  );
-  await safeMigrate(
-    `ALTER TABLE workteam_tasks ADD COLUMN IF NOT EXISTS eval_config TEXT NOT NULL DEFAULT ''`,
-  );
-
-  await safeMigrate(`
-    CREATE TABLE IF NOT EXISTS workteam_run_tasks (
-      id VARCHAR(64) PRIMARY KEY,
-      run_id VARCHAR(64) NOT NULL,
-      task_id VARCHAR(64) NOT NULL,
-      agent_id VARCHAR(64) NOT NULL DEFAULT '',
-      status VARCHAR(64) NOT NULL DEFAULT 'pending',
-      output TEXT NOT NULL DEFAULT '',
-      error TEXT NOT NULL DEFAULT '',
-      started_at TEXT NOT NULL DEFAULT '',
-      completed_at TEXT NOT NULL DEFAULT '',
-      retry_count INT NOT NULL DEFAULT 0
-    )
-  `);
-  await safeMigrate(
-    `CREATE INDEX IF NOT EXISTS idx_workteam_run_tasks_run ON workteam_run_tasks(run_id, task_id)`,
-  );
-
-  await safeMigrate(`
-    CREATE TABLE IF NOT EXISTS workteam_events (
-      id VARCHAR(64) PRIMARY KEY,
-      run_id VARCHAR(64) NOT NULL,
-      source_agent_id VARCHAR(64) NOT NULL DEFAULT '',
-      target_agent_id VARCHAR(64) NOT NULL DEFAULT '',
-      event_type VARCHAR(64) NOT NULL,
-      payload TEXT NOT NULL DEFAULT '{}',
-      created_at TEXT NOT NULL
-    )
-  `);
-  await safeMigrate(
-    `CREATE INDEX IF NOT EXISTS idx_workteam_events_run ON workteam_events(run_id, created_at)`,
-  );
-  await safeMigrate(
-    `CREATE INDEX IF NOT EXISTS idx_workteam_events_agent_messages ON workteam_events(run_id, target_agent_id, event_type, created_at)`,
-  );
-
   await safeMigrate(`
     CREATE TABLE IF NOT EXISTS workflows (
       id VARCHAR(64) PRIMARY KEY,
@@ -3276,8 +3153,6 @@ export async function runPostgresMigrations(engine: DbEngine): Promise<void> {
     'user_mcp_servers',
     'registered_groups',
     'scheduled_tasks',
-    'workteams',
-    'workteam_agents',
     'ssh_keys',
     'channel_instances',
   ];
@@ -3374,12 +3249,6 @@ export async function runPostgresMigrations(engine: DbEngine): Promise<void> {
     `CREATE INDEX IF NOT EXISTS idx_review_runs_repo_status_created ON review_runs(repository_id, status, created_at ASC)`,
   );
   await safeMigrate(
-    `CREATE INDEX IF NOT EXISTS idx_workteams_user_created ON workteams(user_id, deleted_at, created_at DESC)`,
-  );
-  await safeMigrate(
-    `CREATE INDEX IF NOT EXISTS idx_workteam_agents_team_active_sort ON workteam_agents(team_id, deleted_at, sort_order)`,
-  );
-  await safeMigrate(
     `CREATE INDEX IF NOT EXISTS idx_scheduled_tasks_due ON scheduled_tasks(status, deleted_at, next_run)`,
   );
   await safeMigrate(
@@ -3446,12 +3315,6 @@ export async function runPostgresMigrations(engine: DbEngine): Promise<void> {
   );
   await safeMigrate(
     `ALTER TABLE user_roles ADD COLUMN IF NOT EXISTS updated_at TEXT`,
-  );
-  await safeMigrate(
-    `ALTER TABLE workteam_agents ADD COLUMN IF NOT EXISTS created_at TEXT`,
-  );
-  await safeMigrate(
-    `ALTER TABLE workteam_agents ADD COLUMN IF NOT EXISTS updated_at TEXT`,
   );
   await safeMigrate(
     `ALTER TABLE scheduled_tasks ADD COLUMN IF NOT EXISTS updated_at TEXT`,

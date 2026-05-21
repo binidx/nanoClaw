@@ -271,10 +271,10 @@ const PRESET_PERMISSIONS: ReadonlyArray<PresetPermission> = [
   { id: 'perm-stock-create', code: 'stock.create', name: t('permissions.auto_9eb0b5', {}, undefined), category: 'stock', module: 'stock', description: t('permissions.auto_208fc5', {}, undefined), sort_order: 161, ui_hint: 'action' },
   { id: 'perm-stock-manage', code: 'stock.manage', name: t('permissions.auto_d26807', {}, undefined), category: 'stock', module: 'stock', description: t('permissions.auto_5a853d', {}, undefined), sort_order: 162, ui_hint: 'action' },
 
-  // ── Workteam ──
-  { id: 'perm-workteam-view', code: 'workteam.view', name: t('permissions.auto_2869c1', {}, undefined), category: 'workteam', module: 'workteam', description: t('permissions.auto_28a622', {}, undefined), sort_order: 170, ui_hint: 'page' },
-  { id: 'perm-workteam-create', code: 'workteam.create', name: t('permissions.auto_e81eaf', {}, undefined), category: 'workteam', module: 'workteam', description: t('permissions.auto_e81eaf', {}, undefined), sort_order: 171, ui_hint: 'action' },
-  { id: 'perm-workteam-manage', code: 'workteam.manage', name: t('permissions.auto_006aed', {}, undefined), category: 'workteam', module: 'workteam', description: t('permissions.auto_1b2258', {}, undefined), sort_order: 172, ui_hint: 'action' },
+  // ── Workflow ──
+  { id: 'perm-workteam-view', code: 'workteam.view', name: t('permissions.auto_2869c1', {}, undefined), category: 'workflow', module: 'workflow', description: t('permissions.auto_28a622', {}, undefined), sort_order: 170, ui_hint: 'page' },
+  { id: 'perm-workteam-create', code: 'workteam.create', name: t('permissions.auto_e81eaf', {}, undefined), category: 'workflow', module: 'workflow', description: t('permissions.auto_e81eaf', {}, undefined), sort_order: 171, ui_hint: 'action' },
+  { id: 'perm-workteam-manage', code: 'workteam.manage', name: t('permissions.auto_006aed', {}, undefined), category: 'workflow', module: 'workflow', description: t('permissions.auto_1b2258', {}, undefined), sort_order: 172, ui_hint: 'action' },
 
   // ── CodeMap ──
   { id: 'perm-codemap-view', code: 'codemap.view', name: t('permissions.auto_f7003f', {}, undefined), category: 'codemap', module: 'codemap', description: t('permissions.auto_c756ee', {}, undefined), sort_order: 180, ui_hint: 'page' },

@@ -82,10 +82,10 @@ export function RepositoryRelationshipsPanel({
             <div className="assistant-validation-item-copy">
               <strong>{t('repo.workflowBindings')}</strong>
               <p>
-                {relationships?.workteamBindings.length
-                  ? relationships.workteamBindings
+                {relationships?.workflowBindings.length
+                  ? relationships.workflowBindings
                       .map((binding) =>
-                        `${binding.ownerType === 'workflow' ? 'Workflow' : 'Workteam'}: ${binding.workteamName || binding.workteamId}${
+                        `Workflow: ${binding.workflowName || binding.workflowId}${
                           binding.bindingKey ? ` · ${binding.bindingKey}` : ''
                         }${binding.branch ? ` · ${binding.branch}` : ''}`,
                       )

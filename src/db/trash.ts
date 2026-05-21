@@ -16,7 +16,6 @@ export const TRASHABLE_TABLES = {
   knowledge_documents: { label: t('trash.entityKnowledgeDoc', {}, undefined), nameCol: 'filename' },
   ai_providers: { label: t('trash.entityProvider', {}, undefined), nameCol: 'alias' },
   users: { label: t('errors.auto_1fd02a', {}, undefined), nameCol: 'username' },
-  workteams: { label: t('trash.entityWorkteam', {}, undefined), nameCol: 'name' },
   ssh_keys: { label: t('trash.entitySshKey', {}, undefined), nameCol: 'name' },
   review_repositories: { label: t('trash.entityRepository', {}, undefined), nameCol: 'name' },
   live2d_models: { label: t('trash.entityLive2d', {}, undefined), nameCol: 'name' },

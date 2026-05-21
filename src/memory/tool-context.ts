@@ -32,8 +32,7 @@ function normalizeToolName(value: string): string {
 function isOrdinaryConversation(chatJid: string): boolean {
   return !(
     chatJid.startsWith('repo-review:') ||
-    chatJid.startsWith('workflow:') ||
-    chatJid.startsWith('workteam:')
+    chatJid.startsWith('workflow:')
   );
 }
 

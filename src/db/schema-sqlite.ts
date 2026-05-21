@@ -2992,104 +2992,6 @@ export function createSchema(database: Database.Database): void {
     `CREATE INDEX IF NOT EXISTS idx_pua_provider ON provider_user_access(provider_id)`,
   );
 
-  // ── Workteam multi-agent collaboration tables ────────────────────
-  database.exec(`
-    CREATE TABLE IF NOT EXISTS workteams (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      description TEXT NOT NULL DEFAULT '',
-      user_id TEXT NOT NULL,
-      process_type TEXT NOT NULL DEFAULT 'sequential',
-      workflow_config TEXT NOT NULL DEFAULT '{}',
-      status TEXT NOT NULL DEFAULT 'draft',
-      created_by TEXT NOT NULL DEFAULT '__system__',
-      updated_by TEXT NOT NULL DEFAULT '__system__',
-      deleted_at TEXT DEFAULT NULL,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
-    );
-    CREATE INDEX IF NOT EXISTS idx_workteams_user ON workteams(user_id);
-
-    CREATE TABLE IF NOT EXISTS workteam_agents (
-      id TEXT PRIMARY KEY,
-      team_id TEXT NOT NULL,
-      role TEXT NOT NULL,
-      goal TEXT NOT NULL DEFAULT '',
-      backstory TEXT NOT NULL DEFAULT '',
-      assistant_id TEXT NOT NULL DEFAULT '',
-      chat_jid TEXT NOT NULL DEFAULT '',
-      tools_config TEXT NOT NULL DEFAULT '{}',
-      sort_order INTEGER NOT NULL DEFAULT 0,
-      created_by TEXT NOT NULL DEFAULT '__system__',
-      updated_by TEXT NOT NULL DEFAULT '__system__',
-      deleted_at TEXT DEFAULT NULL,
-      created_at TEXT,
-      updated_at TEXT
-    );
-    CREATE INDEX IF NOT EXISTS idx_workteam_agents_team ON workteam_agents(team_id, sort_order);
-
-    CREATE TABLE IF NOT EXISTS workteam_tasks (
-      id TEXT PRIMARY KEY,
-      team_id TEXT NOT NULL,
-      agent_id TEXT NOT NULL DEFAULT '',
-      name TEXT NOT NULL,
-      description TEXT NOT NULL DEFAULT '',
-      expected_output TEXT NOT NULL DEFAULT '',
-      dependencies TEXT NOT NULL DEFAULT '[]',
-      status TEXT NOT NULL DEFAULT 'pending',
-      sort_order INTEGER NOT NULL DEFAULT 0,
-      timeout_ms INTEGER NOT NULL DEFAULT 600000,
-      retry_limit INTEGER NOT NULL DEFAULT 1,
-      eval_config TEXT NOT NULL DEFAULT ''
-    );
-    CREATE INDEX IF NOT EXISTS idx_workteam_tasks_team ON workteam_tasks(team_id, sort_order);
-
-    CREATE TABLE IF NOT EXISTS workteam_runs (
-      id TEXT PRIMARY KEY,
-      team_id TEXT NOT NULL,
-      status TEXT NOT NULL DEFAULT 'pending',
-      input TEXT NOT NULL DEFAULT '',
-      output TEXT NOT NULL DEFAULT '',
-      started_at TEXT NOT NULL DEFAULT '',
-      completed_at TEXT NOT NULL DEFAULT '',
-      checkpoint TEXT NOT NULL DEFAULT '',
-      created_at TEXT NOT NULL
-    );
-    CREATE INDEX IF NOT EXISTS idx_workteam_runs_team ON workteam_runs(team_id);
-    CREATE INDEX IF NOT EXISTS idx_workteam_runs_team_created
-      ON workteam_runs(team_id, created_at DESC);
-    CREATE INDEX IF NOT EXISTS idx_workteam_runs_status ON workteam_runs(status);
-    CREATE INDEX IF NOT EXISTS idx_workteam_runs_status_created
-      ON workteam_runs(status, created_at);
-
-    CREATE TABLE IF NOT EXISTS workteam_run_tasks (
-      id TEXT PRIMARY KEY,
-      run_id TEXT NOT NULL,
-      task_id TEXT NOT NULL,
-      agent_id TEXT NOT NULL DEFAULT '',
-      status TEXT NOT NULL DEFAULT 'pending',
-      output TEXT NOT NULL DEFAULT '',
-      error TEXT NOT NULL DEFAULT '',
-      started_at TEXT NOT NULL DEFAULT '',
-      completed_at TEXT NOT NULL DEFAULT '',
-      retry_count INTEGER NOT NULL DEFAULT 0
-    );
-    CREATE INDEX IF NOT EXISTS idx_workteam_run_tasks_run ON workteam_run_tasks(run_id, task_id);
-
-    CREATE TABLE IF NOT EXISTS workteam_events (
-      id TEXT PRIMARY KEY,
-      run_id TEXT NOT NULL,
-      source_agent_id TEXT NOT NULL DEFAULT '',
-      target_agent_id TEXT NOT NULL DEFAULT '',
-      event_type TEXT NOT NULL,
-      payload TEXT NOT NULL DEFAULT '{}',
-      created_at TEXT NOT NULL
-    );
-    CREATE INDEX IF NOT EXISTS idx_workteam_events_run ON workteam_events(run_id, created_at);
-    CREATE INDEX IF NOT EXISTS idx_workteam_events_agent_messages
-      ON workteam_events(run_id, target_agent_id, event_type, created_at);
-  `);
-
   database.exec(`
     CREATE TABLE IF NOT EXISTS workflows (
       id TEXT PRIMARY KEY,
@@ -3688,22 +3590,6 @@ export function createSchema(database: Database.Database): void {
     /* column already exists */
   }
 
-  try {
-    database.exec(
-      `ALTER TABLE workteam_runs ADD COLUMN checkpoint TEXT NOT NULL DEFAULT ''`,
-    );
-  } catch {
-    /* column already exists */
-  }
-
-  try {
-    database.exec(
-      `ALTER TABLE workteam_tasks ADD COLUMN eval_config TEXT NOT NULL DEFAULT ''`,
-    );
-  } catch {
-    /* column already exists */
-  }
-
   // ── Multi-user isolation: assistants visibility ──
   try {
     database.exec(
@@ -3876,8 +3762,6 @@ export function createSchema(database: Database.Database): void {
     'user_mcp_servers',
     'registered_groups',
     'scheduled_tasks',
-    'workteams',
-    'workteam_agents',
     'ssh_keys',
     'channel_instances',
   ];
@@ -3954,12 +3838,6 @@ export function createSchema(database: Database.Database): void {
   );
   database.exec(
     `CREATE INDEX IF NOT EXISTS idx_review_runs_repo_status_created ON review_runs(repository_id, status, created_at ASC)`,
-  );
-  database.exec(
-    `CREATE INDEX IF NOT EXISTS idx_workteams_user_created ON workteams(user_id, deleted_at, created_at DESC)`,
-  );
-  database.exec(
-    `CREATE INDEX IF NOT EXISTS idx_workteam_agents_team_active_sort ON workteam_agents(team_id, deleted_at, sort_order)`,
   );
   database.exec(
     `CREATE INDEX IF NOT EXISTS idx_scheduled_tasks_due ON scheduled_tasks(status, deleted_at, next_run)`,
@@ -4054,18 +3932,6 @@ export function createSchema(database: Database.Database): void {
   } catch {
     /* exists */
   }
-  // workteam_agents lacks timestamps
-  try {
-    database.exec(`ALTER TABLE workteam_agents ADD COLUMN created_at TEXT`);
-  } catch {
-    /* exists */
-  }
-  try {
-    database.exec(`ALTER TABLE workteam_agents ADD COLUMN updated_at TEXT`);
-  } catch {
-    /* exists */
-  }
-
   // ── Tier 3 user-facing tables: audit columns ────────────────────
   const tier3AuditTables = [
     'im_chat_meta',

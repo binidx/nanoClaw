@@ -4,7 +4,6 @@ import {
   resolvePromptText,
 } from './prompt-service.js';
 import { generateTextWithDefaultProvider } from '../provider/provider-api.js';
-import { extractJsonFromLlmText } from '../workteam/smart-creator.js';
 import { t } from '../i18n/index.js';
 
 const logger = createModuleLogger('requirement-parser');
@@ -26,6 +25,12 @@ export interface RequirementParseResult {
 
 const PARSER_TEMPERATURE = 0.3;
 const MAX_RETRIES = 2;
+
+export function extractJsonFromLlmText(raw: string): string {
+  const trimmed = raw.trim();
+  const match = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  return match?.[1] ? match[1].trim() : trimmed;
+}
 
 export function buildParserPrompt(rawInput: string): string {
   return `You are a senior product manager analyzing user requirements for a software project.

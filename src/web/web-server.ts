@@ -130,8 +130,6 @@ import {
 import { registerLive2DRoutes } from '../routes/live2d-routes.js';
 import { registerUserMcpRoutes } from '../routes/user-mcp-routes.js';
 import { registerUserSkillRoutes } from '../routes/user-skill-routes.js';
-import { registerWorkteamSupportRoutes } from '../routes/workteam-routes.js';
-import { recoverActiveRuns } from '../workteam/orchestrator.js';
 import { registerWorkflowRoutes } from '../routes/workflow-routes.js';
 import { recoverActiveWorkflowRuns } from '../workflow/orchestrator.js';
 import { registerResourceAccessRoutes } from '../routes/resource-access-routes.js';
@@ -948,7 +946,6 @@ export function createWebServer(opts: WebServerOptions) {
     generateAiTaskDraft,
   });
 
-  registerWorkteamSupportRoutes(app, { requirePermission });
   registerWorkflowRoutes(app, { requirePermission, auditMutation });
 
   registerShareRoutes(app, { requirePermission });
@@ -1226,17 +1223,6 @@ export function createWebServer(opts: WebServerOptions) {
             { port: opts.port, url: `http://localhost:${opts.port}` },
             'Web server started',
           );
-          recoverActiveRuns()
-            .then((n) => {
-              if (n)
-                logger.info(
-                  { recovered: n },
-                  'workteam: recovered active runs after restart',
-                );
-            })
-            .catch((err) =>
-              logger.warn({ err }, 'workteam: run recovery failed'),
-            );
           recoverActiveWorkflowRuns()
             .then((n) => {
               if (n)

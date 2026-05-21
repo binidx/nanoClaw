@@ -144,7 +144,7 @@ function mapConversationMessageRow(
 }
 
 const CONTEXT_COMPACTION_JOB_LEASE_MS = 60_000;
-const HIDDEN_CONVERSATION_CHANNELS = ['workflow', 'workteam'] as const;
+const HIDDEN_CONVERSATION_CHANNELS = ['workflow'] as const;
 
 function buildHiddenConversationChannelPredicate(tablePrefix = 'c.'): string {
   const p = tablePrefix;

@@ -68,7 +68,6 @@
 | `src/routes/code-map-routes.ts` | CodeMap 快照、文本渲染、AI 分析 | `src/code-map-*`, `src/db/code-map-analysis-db.ts` |
 | `src/routes/task-session-routes.ts` | 任务 CRUD、执行、暂停恢复 | `src/scheduler/task-scheduler.ts`, `src/db/tasks.ts` |
 | `src/routes/workflow-routes.ts` | Workflow Workbench、workflow/node/edge CRUD、run graph、延迟 transfer、条件打回、runner profile、产物交付、运行态干预 | `src/workflow/*`, `src/db/workflows.ts` |
-| `src/routes/workteam-routes.ts` | 旧 Workteam / SDLC / Runner Profile 能力 | `src/workteam/*`, `src/db/workteam.ts` |
 | `src/routes/stock-analysis-routes.ts` | 股票配置、任务、报告、数据源 | `src/stock-analysis-*`, `src/db/stock-analysis.ts` |
 | `src/routes/browser-routes.ts` | 浏览器连接、tab、CDP 操作 | `src/browser/*`, `src/config/web-search-config.ts` |
 | `src/routes/user-mcp-routes.ts` | 用户 MCP 管理 | `src/user/user-mcp-service.ts`, `src/mcp/mcp-client.ts` |
@@ -122,7 +121,7 @@
 | Repo Review | `src/db/review.ts`, `src/db/repositories.ts` | `src/db/schema-*.ts` | 兼容旧 `review_repositories` 与新 `repositories`/`repo_features`。 |
 | Code Index | `src/db/code-index-db.ts` | `src/db/schema-*.ts` 的 `code_index_*` 表 | 明细表是功能 Map 的主要原始数据；当前 snapshot meta 统计可能滞后。 |
 | CodeMap AI 分析 | `src/db/code-map-analysis-db.ts` | `src/db/schema-*.ts` | 保存 repo description 与 AI analysis 缓存。 |
-| 任务/Workflow | `src/db/tasks.ts`, `src/db/workflows.ts`, `src/db/workteam.ts` | `src/db/schema-*.ts` | 图形工作流在 `src/workflow/*`；旧 SDLC / Runner Profile 在 `src/workteam/*`。 |
+| 任务/Workflow | `src/db/tasks.ts`, `src/db/workflows.ts` | `src/db/schema-*.ts` | 图形工作流在 `src/workflow/*`；runner profile 已归属 Workflow。 |
 | 股票/Soul/Live2D/分享 | `src/db/stock-analysis.ts`, `src/db/soul.ts`, `src/db/live2d.ts`, `src/db/shares.ts` | `src/db/schema-*.ts` | 各自路由和前端页面一一对应。 |
 
 ## 针对常见问题的定向入口
@@ -139,7 +138,7 @@
 | “Provider/模型/请求头/兼容模式” | `src/provider-*`, `src/routes/user-provider-routes.ts`, `agent/runner/src/codex-mode.ts`, `agent/runner/src/codex-request-headers.ts` | 不要先改前端表单。 |
 | “MCP/Skill 安装或隔离” | `docs/MCP-Skills-扩展.md`, `src/user/user-mcp-service.ts`, `src/user/user-skill-service.ts`, `skills-engine/*`, `agent/runner/src/ipc-mcp-stdio.ts` | 不要只看设置页 tab。 |
 | “浏览器抓取/CDP/网页搜索” | `docs/浏览器自动化与Web能力.md`, `src/browser/*`, `src/routes/browser-routes.ts`, `src/config/web-search-config.ts` | 不要先查 knowledge importer，除非是 URL 导入。 |
-| “Workflow/Workteam/SDLC/Runner Profile” | `docs/workflow-workbench.md`, `docs/sdlc-runner-profiles.md`, `src/workflow/*`, `src/workteam/*` | 不要从普通 task scheduler 开始。 |
+| “Workflow/SDLC/Runner Profile” | `docs/workflow-workbench.md`, `docs/sdlc-runner-profiles.md`, `src/workflow/*` | 不要从普通 task scheduler 开始。 |
 
 ## 维护约定
 

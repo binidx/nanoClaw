@@ -11,10 +11,7 @@ import {
   normalizeBashApprovalAllowlist,
 } from '../security/bash-approval-allowlist.js';
 import { getWebChannel } from '../channels/web.js';
-import * as db from '../db/workteam.js';
 import * as workflowDb from '../db/workflows.js';
-import { WorkteamEventBus } from '../workteam/event-bus.js';
-import type { WorkteamRealtimeEnvelope } from '../workteam/types.js';
 import { WorkflowEventBus } from '../workflow/event-bus.js';
 import type { WorkflowRealtimeEnvelope } from '../workflow/types.js';
 import type { RuntimeApprovalPatchRecord } from '../conversation/conversation-admin-support.js';
@@ -808,13 +805,6 @@ export function attachRealtimeWebSocketHandler(
   wss: WebSocketServer,
   opts: RealtimeWebSocketHandlerOptions,
 ): void {
-  const webChannelForWorkteam = getWebChannel();
-  if (webChannelForWorkteam) {
-    WorkteamEventBus.getInstance().setBroadcastFn((jid, data) => {
-      webChannelForWorkteam.emitWorkteamEvent(jid, data);
-    });
-  }
-
   wss.on('connection', (ws: WebSocket, request: IncomingMessage) => {
     const cookie = request.headers.cookie ?? undefined;
     const ready = (opts.resolveSocketTenantUserId
@@ -891,26 +881,6 @@ async function handleWsSubscribe(ws: WebSocket, jid: string): Promise<void> {
       return;
     }
     webChannel.addClient('*', ws);
-    return;
-  }
-
-  if (jid.startsWith('workteam:')) {
-    const runId = jid.slice('workteam:'.length);
-    const run = await db.getWorkteamRun(runId);
-    if (!run) return;
-    const team = await db.getWorkteam(run.team_id);
-    if (!team || (tenantUserId !== SYSTEM_USER_ID && team.user_id !== tenantUserId)) {
-      wsLog.debug({ tenantUserId, runId }, 'Workteam subscribe rejected: not owner');
-      return;
-    }
-    const bus = WorkteamEventBus.getInstance();
-    const handler = (envelope: WorkteamRealtimeEnvelope) => {
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify(envelope));
-      }
-    };
-    bus.on(runId, handler);
-    ws.on('close', () => bus.off(runId, handler));
     return;
   }
 

@@ -198,7 +198,7 @@ describe('workflow routes', () => {
     });
   });
 
-  it('allows workteam.create to create workflows without granting other workflow mutations', async () => {
+  it('allows the legacy workteam.create permission to create workflows without granting other workflow mutations', async () => {
     const createOnlyRequirePermission: RequirePermissionFn =
       (...codes) =>
       async (_req, res, next) => {
