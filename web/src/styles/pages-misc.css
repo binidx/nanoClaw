@@ -1019,16 +1019,19 @@
   margin-left: 8px;
 }
 
-.repo-review-config-card {
+.repo-review-config-card,
+.repo-review-profile-card {
   gap: 18px;
 }
 
-.repo-review-config-header {
+.repo-review-config-header,
+.repo-review-profile-header {
   padding-bottom: 14px;
   border-bottom: 1px solid rgba(148, 163, 184, 0.16);
 }
 
-.repo-review-config-body {
+.repo-review-config-body,
+.repo-review-profile-body {
   display: grid;
   gap: 14px;
 }

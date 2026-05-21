@@ -103,6 +103,7 @@ afterEach(() => {
   vi.unstubAllEnvs();
   vi.clearAllMocks();
   __testing.resetManagedSubagentsForTests();
+  __testing.resetCommandAvailabilityCache();
   fakeProc = createFakeProcess();
   for (const target of createdPaths.splice(0)) {
     fs.rmSync(target, { recursive: true, force: true });
@@ -1247,6 +1248,23 @@ describe('codex tool execution coverage', () => {
       expect(output.trim()).toBe('(no matches)');
     },
   );
+
+  it('grep resolves ripgrep outside PATH before falling back', async () => {
+    __testing.resetCommandAvailabilityCache();
+    vi.stubEnv('PATH', '');
+    fs.writeFileSync(
+      path.join(tmpDir, 'sample-with-path-gap.txt'),
+      'needle from fallback path',
+      'utf8',
+    );
+    const output = await executeTool(
+      'grep',
+      { pattern: 'needle', path: tmpDir },
+      tmpDir,
+    );
+    expect(output).toContain('needle from fallback path');
+    expect(output).not.toContain('ripgrep (rg) not installed');
+  });
 
   it('list_dir lists directory entries with structure markers', async () => {
     fs.mkdirSync(path.join(tmpDir, 'folder'), { recursive: true });

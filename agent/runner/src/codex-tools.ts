@@ -986,6 +986,10 @@ export const __testing = {
     managedSubagents.clear();
     pendingSpawnReservations.clear();
   },
+  resetCommandAvailabilityCache: () => {
+    _cmdCache.clear();
+    _cmdPathCache.clear();
+  },
   isCodexToolAllowedByPolicy,
 };
 
@@ -2530,7 +2534,8 @@ async function executeGlob(
   }
 
   try {
-    if (!isCommandAvailable('rg')) {
+    const rgCommand = resolveCommandPath('rg');
+    if (!rgCommand) {
       log('glob: rg not found, using Node.js fallback');
       const result = nodeFsGlob();
       if (result === '(no matches)') return result;
@@ -2541,7 +2546,7 @@ async function executeGlob(
     }
 
     const rgArgs = ['--files', '--glob', pattern, dir];
-    const spawned = spawnSync('rg', rgArgs, {
+    const spawned = spawnSync(rgCommand, rgArgs, {
       cwd: dir,
       encoding: 'utf-8',
       timeout: 10000,
@@ -2588,22 +2593,75 @@ function globToRegex(glob: string): RegExp {
 }
 
 const _cmdCache = new Map<string, boolean>();
-function isCommandAvailable(cmd: string): boolean {
-  if (_cmdCache.has(cmd)) return _cmdCache.get(cmd)!;
+const _cmdPathCache = new Map<string, string | null>();
+
+function getBundledRipgrepPlatformDir(): string {
+  const arch = process.arch === 'x64' ? 'x64' : process.arch;
+  const platform = process.platform === 'win32' ? 'win32' : process.platform;
+  return `${arch}-${platform}`;
+}
+
+function getCommandCandidatePaths(cmd: string): string[] {
+  if (cmd !== 'rg') return [];
+  const moduleDir = path.dirname(fileURLToPath(import.meta.url));
+  const bundledDir = path.join(
+    'node_modules',
+    '@anthropic-ai',
+    'claude-agent-sdk',
+    'vendor',
+    'ripgrep',
+    getBundledRipgrepPlatformDir(),
+  );
+  const binaryName = process.platform === 'win32' ? 'rg.exe' : 'rg';
+  return [
+    process.env.NANOCLAW_RG_PATH || '',
+    '/usr/bin/rg',
+    '/usr/local/bin/rg',
+    '/opt/homebrew/bin/rg',
+    '/bin/rg',
+    path.join(moduleDir, bundledDir, binaryName),
+    path.join(moduleDir, '..', bundledDir, binaryName),
+  ].filter(Boolean);
+}
+
+function probeCommand(cmdPath: string): boolean {
   try {
-    const r = spawnSync(cmd, ['--version'], {
+    const r = spawnSync(cmdPath, ['--version'], {
       encoding: 'utf-8',
       timeout: 5000,
       stdio: 'pipe',
     });
-    const ok = !r.error;
-    _cmdCache.set(cmd, ok);
-    if (!ok) log(`[dep-check] ${cmd} not found: ${r.error?.message}`);
-    return ok;
+    return !r.error && (r.status === 0 || r.status === null);
   } catch {
-    _cmdCache.set(cmd, false);
     return false;
   }
+}
+
+function resolveCommandPath(cmd: string): string | null {
+  if (_cmdPathCache.has(cmd)) return _cmdPathCache.get(cmd)!;
+  if (probeCommand(cmd)) {
+    _cmdPathCache.set(cmd, cmd);
+    _cmdCache.set(cmd, true);
+    return cmd;
+  }
+  for (const candidate of getCommandCandidatePaths(cmd)) {
+    if (!fs.existsSync(candidate)) continue;
+    if (probeCommand(candidate)) {
+      _cmdPathCache.set(cmd, candidate);
+      _cmdCache.set(cmd, true);
+      log(`[dep-check] ${cmd} resolved via fallback path: ${candidate}`);
+      return candidate;
+    }
+  }
+  _cmdPathCache.set(cmd, null);
+  _cmdCache.set(cmd, false);
+  log(`[dep-check] ${cmd} not found in PATH or fallback paths`);
+  return null;
+}
+
+function isCommandAvailable(cmd: string): boolean {
+  if (_cmdCache.has(cmd)) return _cmdCache.get(cmd)!;
+  return !!resolveCommandPath(cmd);
 }
 
 const SKIP_DIRS = new Set([
@@ -2809,7 +2867,8 @@ async function executeGrep(
   const headLimit = Math.min(Math.max(Number(input.head_limit) || 100, 1), 500);
   const multiline = input.multiline === true;
 
-  if (!isCommandAvailable('rg')) {
+  const rgCommand = resolveCommandPath('rg');
+  if (!rgCommand) {
     log('grep: rg not found, using Node.js fallback');
     const fallback = nodeGrepFallback(searchPath, pattern, {
       include,
@@ -2838,7 +2897,7 @@ async function executeGrep(
 
   try {
     log(`grep: rg ${rgArgs.map((a) => JSON.stringify(a)).join(' ')}`);
-    const spawned = spawnSync('rg', rgArgs, {
+    const spawned = spawnSync(rgCommand, rgArgs, {
       cwd,
       encoding: 'utf-8',
       timeout: 15_000,
@@ -2874,7 +2933,7 @@ async function executeGrep(
           '-F',
           ...rgArgs.filter((a) => a !== '-U' && a !== '--multiline-dotall'),
         ];
-        const fixedSpawned = spawnSync('rg', fixedArgs, {
+        const fixedSpawned = spawnSync(rgCommand, fixedArgs, {
           cwd,
           encoding: 'utf-8',
           timeout: 15_000,
@@ -3507,7 +3566,10 @@ async function executeSemanticSearch(
             if (r.headingPath) {
               sections.push(`   Heading: ${r.headingPath}`);
             }
-            if (Array.isArray(r.adjacentChunks) && r.adjacentChunks.length > 0) {
+            if (
+              Array.isArray(r.adjacentChunks) &&
+              r.adjacentChunks.length > 0
+            ) {
               sections.push('   Adjacent context:');
               for (const chunk of r.adjacentChunks) {
                 sections.push(

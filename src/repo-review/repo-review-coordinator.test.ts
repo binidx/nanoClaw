@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   buildRepoReviewEvidenceBundle,
+  mergeCanonicalRepoReviewFindings,
   partitionRepoReviewEvidenceChunks,
   renderRepoReviewMarkdownFromStructuredResult,
   shouldDirectMainAgentReview,
@@ -101,6 +102,71 @@ function makeBundle(
 }
 
 describe('repo-review coordinator', () => {
+  it('prefers canonical reducer findings when worker duplicates only rephrase the same evidence', () => {
+    const merged = mergeCanonicalRepoReviewFindings(
+      [
+        {
+          severity: 'medium',
+          file: 'web/src/styles/pages-misc.css',
+          line: '3049-3058',
+          title: 'Run detail modal 网格选择器被收窄为直接子节点，三列表布局实际失效',
+          detail: '选择器从后代匹配改成直接子节点匹配，导致规则不再命中。',
+          codeSnippet:
+            '.modal.repo-review-run-detail-modal > .status-detail-grid {\n  grid-template-columns: repeat(3, minmax(0, 1fr));\n}',
+          fixCode:
+            '.modal.repo-review-run-detail-modal .status-detail-grid {\n  grid-template-columns: repeat(3, minmax(0, 1fr));\n}',
+        },
+      ],
+      [
+        {
+          severity: 'medium',
+          file: 'web/src/styles/pages-misc.css',
+          line: '3049-3058',
+          title:
+            'Run detail modal grid selector was narrowed to direct children, so the 3-column layout no longer applies',
+          detail:
+            'The selector now requires a direct child, so the current JSX structure no longer matches.',
+          codeSnippet:
+            '.modal.repo-review-run-detail-modal > .status-detail-grid {\n  grid-template-columns: repeat(3, minmax(0, 1fr));\n}',
+          fixCode:
+            '.modal.repo-review-run-detail-modal .status-detail-grid {\n  grid-template-columns: repeat(3, minmax(0, 1fr));\n}',
+        },
+      ],
+    );
+
+    expect(merged).toHaveLength(1);
+    expect(merged[0]?.title).toContain('三列表布局实际失效');
+  });
+
+  it('keeps distinct findings when the evidence anchor differs', () => {
+    const merged = mergeCanonicalRepoReviewFindings(
+      [
+        {
+          severity: 'medium',
+          file: 'src/db/tasks.ts',
+          line: '66-73',
+          title: '任务归属放宽同时作用于写路径',
+          detail: '写路径被放宽。',
+          codeSnippet: 'const canWrite = true;',
+          fixCode: 'const canWrite = isOwner;',
+        },
+      ],
+      [
+        {
+          severity: 'medium',
+          file: 'src/db/tasks.ts',
+          line: '88-95',
+          title: '任务列表排序回退',
+          detail: '排序字段被回退。',
+          codeSnippet: 'ORDER BY updated_at ASC',
+          fixCode: 'ORDER BY updated_at DESC',
+        },
+      ],
+    );
+
+    expect(merged).toHaveLength(2);
+  });
+
   it('partitions evidence into bounded worker chunks', () => {
     const bundle = makeBundle({
       directMainAgentReview: false,

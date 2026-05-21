@@ -1219,12 +1219,10 @@ export function RepoReviewSettingsPanel({
   );
   const [profileDraft, setProfileDraft] =
     useState<ProfileDraft>(EMPTY_PROFILE_DRAFT);
-  const [profileSectionOpen, setProfileSectionOpen] = useState(false);
   const [runsSectionOpen, setRunsSectionOpen] = useState(false);
   const [repositoryEditorOpen, setRepositoryEditorOpen] = useState(false);
   const [repositoryEditorSection, setRepositoryEditorSection] =
     useState<RepositoryEditorSection>('all');
-  const [profileEditorOpen, setProfileEditorOpen] = useState(false);
   const [confirmDialog, setConfirmDialog] =
     useState<RepoReviewConfirmDialogState>(EMPTY_CONFIRM_DIALOG);
   const [savingRepository, setSavingRepository] = useState(false);
@@ -1238,6 +1236,7 @@ export function RepoReviewSettingsPanel({
   const runsRequestIdRef = useRef(0);
   const runSnapshotRequestIdRef = useRef(0);
   const runsRefreshInFlightRef = useRef(false);
+  const runsRefreshQueuedRef = useRef(false);
   const runDetailRefreshInFlightRef = useRef(false);
   const remoteBranchRequestIdRef = useRef(0);
   const digestRunsRequestIdRef = useRef(0);
@@ -1284,7 +1283,7 @@ export function RepoReviewSettingsPanel({
     repositoryEditorOpen ||
     creatingRepository ||
     (!creatingRepository && !!selectedRepository && repoDetailTab === 'config');
-  const pauseOverviewRefresh = repositoryConfigActive || profileEditorOpen;
+  const pauseOverviewRefresh = repositoryConfigActive;
 
   const repositoryById = useMemo(
     () =>
@@ -2101,16 +2100,10 @@ export function RepoReviewSettingsPanel({
 
   const openProfileEditor = (create = false) => {
     if (!selectedRepositoryId) return;
-    setProfileSectionOpen(true);
     if (create) {
       setProfileDraft(makeProfileDraft(selectedRepositoryId));
     }
-    setProfileEditorOpen(true);
-  };
-
-  const closeProfileEditor = () => {
-    setProfileEditorOpen(false);
-    if (selectedRepositoryId) {
+    if (!create && selectedRepositoryId) {
       setProfileDraft((current) =>
         current.id
           ? current
@@ -2224,7 +2217,10 @@ export function RepoReviewSettingsPanel({
   };
 
   const refreshRunSummaries = async (preserveFeedback = true) => {
-    if (runsRefreshInFlightRef.current) return;
+    if (runsRefreshInFlightRef.current) {
+      runsRefreshQueuedRef.current = true;
+      return;
+    }
     if (!selectedRepositoryId) {
       setRuns([]);
       return;
@@ -2247,9 +2243,23 @@ export function RepoReviewSettingsPanel({
       if (!mountedRef.current) return;
       isInitialLoadRef.current = false;
       if (runSnapshotRequestId === runSnapshotRequestIdRef.current) {
-        setRuns((current) =>
-          mergeRepoReviewRunListSnapshots(nextRuns, current),
-        );
+        const shouldPreserveUnfetchedRuns =
+          !runFilterStatus && !runFilterText.trim();
+        setRuns((current) => {
+          const mergedRuns = mergeRepoReviewRunListSnapshots(nextRuns, current);
+          if (!shouldPreserveUnfetchedRuns) {
+            return mergedRuns;
+          }
+          const mergedRunIds = new Set(mergedRuns.map((run) => run.id));
+          return sortRepoReviewRunsByLatestActivity([
+            ...mergedRuns,
+            ...current.filter(
+              (run) =>
+                !mergedRunIds.has(run.id) &&
+                run.repositoryId === selectedRepositoryId,
+            ),
+          ]);
+        });
       }
     } catch (err) {
       setError(
@@ -2259,11 +2269,30 @@ export function RepoReviewSettingsPanel({
       );
     } finally {
       runsRefreshInFlightRef.current = false;
+      if (runsRefreshQueuedRef.current && mountedRef.current) {
+        runsRefreshQueuedRef.current = false;
+        void refreshRunSummaries(true);
+      }
       if (requestId === runsRequestIdRef.current && mountedRef.current) {
         setLoading(false);
       }
     }
   };
+
+  const mergeRunIntoRuns = useCallback((incomingRun?: RepoReviewRun | null) => {
+    if (!incomingRun) return;
+    setRuns((current) => {
+      const existingRun =
+        current.find((entry) => entry.id === incomingRun.id) || null;
+      const mergedRun =
+        mergeFetchedRepoReviewRunSnapshot(incomingRun, existingRun) ||
+        incomingRun;
+      return sortRepoReviewRunsByLatestActivity([
+        mergedRun,
+        ...current.filter((entry) => entry.id !== mergedRun.id),
+      ]);
+    });
+  }, []);
 
   const refreshSelectedRunDetail = useCallback(
     async (runId: string) => {
@@ -2273,6 +2302,7 @@ export function RepoReviewSettingsPanel({
       try {
         const data = await fetchRepoReviewRunDetail(apiBase, detailRunId);
         if (!mountedRef.current) return;
+        mergeRunIntoRuns(data.run);
         setSelectedRunDetail((current) =>
           mergeFetchedRepoReviewRunSnapshot(data.run || null, current),
         );
@@ -2282,7 +2312,7 @@ export function RepoReviewSettingsPanel({
         runDetailRefreshInFlightRef.current = false;
       }
     },
-    [apiBase],
+    [apiBase, mergeRunIntoRuns],
   );
 
   const refreshDigestRuns = async (preserveFeedback = true) => {
@@ -2673,6 +2703,12 @@ export function RepoReviewSettingsPanel({
   }, [runFilterStatus, runFilterText, selectedRepositoryId]);
 
   useEffect(() => {
+    if (!selectedRepositoryId || repoDetailTab !== 'runs') return;
+    setRunsSectionOpen(true);
+    void refreshRunSummaries(true);
+  }, [repoDetailTab, selectedRepositoryId]);
+
+  useEffect(() => {
     if (
       !selectedRepositoryId ||
       repoDetailTab !== 'runs' ||
@@ -2753,7 +2789,6 @@ export function RepoReviewSettingsPanel({
       if (!previousInitialRepositoryId) return;
       setSelectedRepositoryId('');
       setRepositoryEditorOpen(false);
-      setProfileEditorOpen(false);
       setRepoDetailTab('overview');
       return;
     }
@@ -2770,7 +2805,6 @@ export function RepoReviewSettingsPanel({
     }
     setSelectedRepositoryId(initialRepositoryId);
     setRepositoryEditorOpen(false);
-    setProfileEditorOpen(false);
     setRepoDetailTab(initialDetailTab);
   }, [
     creatingRepository,
@@ -2843,7 +2877,7 @@ export function RepoReviewSettingsPanel({
   ]);
 
   useEffect(() => {
-    if (creatingRepository || repositoryEditorOpen || profileEditorOpen) {
+    if (creatingRepository || repositoryEditorOpen) {
       return;
     }
     const repositoryId = selectedRepository?.id || '';
@@ -2875,7 +2909,6 @@ export function RepoReviewSettingsPanel({
     });
   }, [
     creatingRepository,
-    profileEditorOpen,
     profilesForSelectedRepository,
     repositoryEditorOpen,
     selectedRepository,
@@ -2940,6 +2973,7 @@ export function RepoReviewSettingsPanel({
     setLoadingRunDetail(true);
     try {
       const data = await fetchRepoReviewRunDetail(apiBase, run.id);
+      mergeRunIntoRuns(data.run || run);
       setSelectedRunDetail((current) =>
         mergeFetchedRepoReviewRunSnapshot(data.run || run, current || run),
       );
@@ -2966,6 +3000,8 @@ export function RepoReviewSettingsPanel({
     try {
       const data = await fetchRepoReviewRunDetail(apiBase, runId);
       if (data.run) {
+        setRunsPage(1);
+        mergeRunIntoRuns(data.run);
         setSelectedRunDetail((current) =>
           mergeFetchedRepoReviewRunSnapshot(
             data.run,
@@ -3336,7 +3372,6 @@ export function RepoReviewSettingsPanel({
       if (nextProfile) {
         setProfileDraft(makeProfileDraft(selectedRepositoryId, nextProfile));
       }
-      setProfileEditorOpen(false);
       setMessage(i18n.t('repoReview.success.profileSaved'));
     } catch (err) {
       setError(
@@ -3376,7 +3411,6 @@ export function RepoReviewSettingsPanel({
           invalidateRemoteBranchCache(selectedRepositoryId);
           await refreshRepositoryCatalog(true);
           await refreshSelectedRepositoryDetail(selectedRepositoryId, true);
-          setProfileEditorOpen(false);
           setMessage(i18n.t('repoReview.success.profileDeleted'));
         } finally {
           setDeletingProfile(false);
@@ -3458,7 +3492,13 @@ export function RepoReviewSettingsPanel({
             : i18n.t('repoReview.success.branchTriggered', { branch })),
       );
       invalidateRemoteBranchCache(selectedRepositoryId);
-      await refreshRunSummaries(true);
+      const hadRunFilters = !!runFilterStatus || !!runFilterText.trim();
+      setRunFilterStatus('');
+      setRunFilterText('');
+      setRunsPage(1);
+      if (!hadRunFilters) {
+        await refreshRunSummaries(true);
+      }
       await refreshRemoteBranches(true);
       if (data.runId) {
         await openRunDetailById(data.runId);
@@ -3484,8 +3524,10 @@ export function RepoReviewSettingsPanel({
 
   const openWorkspaceCardAction = (action: RepoReviewWorkspaceCardAction) => {
     if (action === 'profile') {
-      setProfileSectionOpen(true);
-      openProfileEditor(profilesForSelectedRepository.length === 0);
+      if (profilesForSelectedRepository.length === 0) {
+        openProfileEditor(true);
+      }
+      selectRepoDetailTab('profile');
       return;
     }
     const sectionMap: Record<
@@ -3515,7 +3557,6 @@ export function RepoReviewSettingsPanel({
       setCreatingRepository(false);
       setSelectedRepositoryId(repositoryId);
       setRepositoryEditorOpen(false);
-      setProfileEditorOpen(false);
       setRepoDetailTab('config');
       onRepositoryRouteChange?.(repositoryId, 'config');
     },
@@ -3526,7 +3567,6 @@ export function RepoReviewSettingsPanel({
     setSelectedRepositoryId('');
     setCreatingRepository(false);
     setRepositoryEditorOpen(false);
-    setProfileEditorOpen(false);
     setRepoDetailTab('overview');
     onRepositoryRouteChange?.(null);
   }, [onRepositoryRouteChange]);
@@ -3596,7 +3636,14 @@ export function RepoReviewSettingsPanel({
         setMessage(
           result.message || i18n.t('repoReview.success.rerunTriggered'),
         );
-        await refreshRunSummaries(true);
+        const hadRunFilters = !!runFilterStatus || !!runFilterText.trim();
+        setRunFilterStatus('');
+        setRunFilterText('');
+        setRunsPage(1);
+        mergeRunIntoRuns(result.run);
+        if (!hadRunFilters) {
+          await refreshRunSummaries(true);
+        }
         if (selectedRepositoryId === run.repositoryId) {
           await refreshRemoteBranches(true);
         }
@@ -3695,6 +3742,7 @@ export function RepoReviewSettingsPanel({
               run.id,
             ).catch(() => null);
             if (detail?.run) {
+              mergeRunIntoRuns(detail.run);
               setSelectedRunDetail(detail.run);
             }
           }
@@ -4509,8 +4557,6 @@ export function RepoReviewSettingsPanel({
                     repoDetailTab === 'profile' && (
                       <RepoReviewProfileSection
                         selectedRepositoryId={selectedRepositoryId}
-                        sectionOpen={profileSectionOpen || profileEditorOpen}
-                        editorOpen={profileEditorOpen}
                         profileDraft={profileDraft}
                         setProfileDraft={setProfileDraft}
                         profiles={profilesForSelectedRepository}
@@ -4523,11 +4569,7 @@ export function RepoReviewSettingsPanel({
                         activeBranchWindowDays={
                           REPO_REVIEW_ACTIVE_BRANCH_WINDOW_DAYS
                         }
-                        onToggleSection={() =>
-                          setProfileSectionOpen((current) => !current)
-                        }
                         onOpenEditor={openProfileEditor}
-                        onCloseEditor={closeProfileEditor}
                         onSelectProfile={(profile) =>
                           setProfileDraft(
                             makeProfileDraft(selectedRepositoryId, profile),

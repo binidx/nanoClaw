@@ -340,6 +340,11 @@ function normalizeFindings(entries: unknown[]): RepoReviewRunFinding[] {
       if (stringValue(record.evidence)) {
         finding.evidence = stringValue(record.evidence);
       }
+      if (stringValue(record.evidenceKey || record.evidence_key)) {
+        finding.evidenceKey = stringValue(
+          record.evidenceKey || record.evidence_key,
+        );
+      }
       if (stringValue(record.suggestion)) {
         finding.suggestion = stringValue(record.suggestion);
       }
@@ -348,18 +353,83 @@ function normalizeFindings(entries: unknown[]): RepoReviewRunFinding[] {
     .filter((entry): entry is RepoReviewRunFinding => Boolean(entry));
 }
 
+function normalizeFindingDedupSegment(
+  value: string | null | undefined,
+  maxLength = 400,
+): string {
+  return normalizeLine(stringValue(value)).toLowerCase().slice(0, maxLength);
+}
+
+function buildFindingDedupKeys(finding: RepoReviewRunFinding): string[] {
+  const file = stringValue(finding.file);
+  const line = stringValue(finding.line);
+  const severity = normalizeSeverity(finding.severity);
+  const title = normalizeFindingDedupSegment(finding.title);
+  const detail = normalizeFindingDedupSegment(finding.detail);
+  const evidence = normalizeFindingDedupSegment(finding.evidence);
+  const suggestion = normalizeFindingDedupSegment(finding.suggestion);
+  const codeSnippet = normalizeFindingDedupSegment(finding.codeSnippet);
+  const fixCode = normalizeFindingDedupSegment(finding.fixCode);
+  const evidenceKey = normalizeFindingDedupSegment(finding.evidenceKey);
+  const keys = new Set<string>();
+
+  if (evidenceKey) {
+    keys.add(`evidence:${evidenceKey}`);
+  }
+  const titleKey = buildRepoReviewFindingEvidenceKey(finding);
+  if (titleKey.trim()) {
+    keys.add(`title:${normalizeFindingDedupSegment(titleKey)}`);
+  }
+  if (file && detail) {
+    keys.add(`detail:${file}::${detail}`);
+  }
+  if (file && line && severity) {
+    if (codeSnippet && fixCode) {
+      keys.add(`snippet_fix:${file}::${line}::${severity}::${codeSnippet}::${fixCode}`);
+    }
+    if (codeSnippet && suggestion) {
+      keys.add(`snippet_suggestion:${file}::${line}::${severity}::${codeSnippet}::${suggestion}`);
+    }
+    if (codeSnippet && evidence) {
+      keys.add(`snippet_evidence:${file}::${line}::${severity}::${codeSnippet}::${evidence}`);
+    }
+    if (codeSnippet && !fixCode && !suggestion && !evidence) {
+      keys.add(`snippet:${file}::${line}::${severity}::${codeSnippet}`);
+    }
+  }
+
+  return Array.from(keys.values());
+}
+
+function findingsOverlap(
+  left: RepoReviewRunFinding,
+  right: RepoReviewRunFinding,
+): boolean {
+  const leftKeys = buildFindingDedupKeys(left);
+  if (leftKeys.length === 0) return false;
+  const rightKeys = new Set(buildFindingDedupKeys(right));
+  if (rightKeys.size === 0) return false;
+  return leftKeys.some((key) => rightKeys.has(key));
+}
+
 function dedupeFindings(
   findings: RepoReviewRunFinding[],
 ): RepoReviewRunFinding[] {
-  const seen = new Set<string>();
   const deduped: RepoReviewRunFinding[] = [];
   for (const finding of findings) {
-    const key = buildRepoReviewFindingEvidenceKey(finding);
-    if (seen.has(key)) continue;
-    seen.add(key);
+    if (deduped.some((existing) => findingsOverlap(existing, finding))) {
+      continue;
+    }
     deduped.push(finding);
   }
   return deduped;
+}
+
+export function mergeCanonicalRepoReviewFindings(
+  canonicalFindings: RepoReviewRunFinding[],
+  supplementalFindings: RepoReviewRunFinding[],
+): RepoReviewRunFinding[] {
+  return dedupeFindings([...canonicalFindings, ...supplementalFindings]);
 }
 
 function buildStructuredMarkdownFallback(
@@ -3512,10 +3582,10 @@ async function runReducer(input: {
     ...parsed.scopeLimitations,
     ...input.workerResults.flatMap((result) => result.scopeLimitations),
   ]);
-  const mergedFindings = dedupeFindings([
-    ...input.workerResults.flatMap((result) => result.findings),
-    ...parsed.findings,
-  ]);
+  const mergedFindings = mergeCanonicalRepoReviewFindings(
+    parsed.findings,
+    input.workerResults.flatMap((result) => result.findings),
+  );
   const finalResult: RepoReviewStructuredResult = {
     ...parsed,
     findings: mergedFindings,
@@ -4264,10 +4334,10 @@ export async function runRepoReviewGraphCoordinator(input: {
   }
   parsed = {
     ...parsed,
-    findings: dedupeFindings([
-      ...workerResults.flatMap((result) => result.findings),
-      ...parsed.findings,
-    ]),
+    findings: mergeCanonicalRepoReviewFindings(
+      parsed.findings,
+      workerResults.flatMap((result) => result.findings),
+    ),
     scopeLimitations: uniqueStrings([
       ...parsed.scopeLimitations,
       ...workerResults.flatMap((result) => result.scopeLimitations),

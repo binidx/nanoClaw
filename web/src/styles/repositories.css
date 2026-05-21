@@ -493,6 +493,7 @@
 .repo-review-workspace-layout--focused .repo-review-overview-hero--framework,
 .repo-review-workspace-layout--focused .repo-review-workspace-card--framework,
 .repo-review-workspace-layout--focused .repo-review-config-card,
+.repo-review-workspace-layout--focused .repo-review-profile-card,
 .repo-review-workspace-layout--focused
   .repo-review-framework-content-grid
   > .repo-review-card {
@@ -523,6 +524,7 @@
 .repo-review-workspace-layout--focused .repo-review-overview-hero--framework,
 .repo-review-workspace-layout--focused .repo-review-workspace-card--framework,
 .repo-review-workspace-layout--focused .repo-review-config-card,
+.repo-review-workspace-layout--focused .repo-review-profile-card,
 .repo-review-workspace-layout--focused
   .repo-review-framework-content-grid
   > .repo-review-card {
@@ -541,6 +543,9 @@
 [data-theme='dark']
   .repo-review-workspace-layout--focused
   .repo-review-config-card,
+[data-theme='dark']
+  .repo-review-workspace-layout--focused
+  .repo-review-profile-card,
 [data-theme='dark']
   .repo-review-workspace-layout--focused
   .repo-review-framework-content-grid
