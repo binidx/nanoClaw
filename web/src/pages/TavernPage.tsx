@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 
 import type {
   AiProvider,
@@ -45,6 +46,42 @@ interface TavernEditorState {
 }
 
 type TavernEditorTab = 'basic' | 'setting' | 'dialogue' | 'preview';
+type TavernRouteOverlay = 'editor' | 'history';
+
+function decodePathPart(value: string | undefined): string | null {
+  if (!value) return null;
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+function resolveTavernRoute(pathname: string): {
+  personaId: string | null;
+  overlay: TavernRouteOverlay | null;
+} {
+  const parts = pathname.split('/').filter(Boolean);
+  if (parts[0] !== 'tavern' || parts[1] !== 'personas') {
+    return { personaId: null, overlay: null };
+  }
+  const personaId = decodePathPart(parts[2]);
+  if (!personaId) {
+    return { personaId: null, overlay: null };
+  }
+  return {
+    personaId,
+    overlay: parts[3] === 'history' ? 'history' : 'editor',
+  };
+}
+
+function tavernPersonaPath(
+  personaId: string,
+  overlay: TavernRouteOverlay = 'editor',
+): string {
+  const base = `/tavern/personas/${encodeURIComponent(personaId)}`;
+  return overlay === 'history' ? `${base}/history` : base;
+}
 
 function emptyEditor(): TavernEditorState {
   return {
@@ -152,6 +189,12 @@ export function TavernPage({
   onStartChat,
   onOpenConversation,
 }: TavernPageProps) {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const routeDetail = useMemo(
+    () => resolveTavernRoute(location.pathname),
+    [location.pathname],
+  );
   const [personas, setPersonas] = useState<TavernPersona[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editor, setEditor] = useState<TavernEditorState>(emptyEditor());
@@ -171,6 +214,7 @@ export function TavernPage({
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const routeManagedOverlayRef = useRef(false);
 
   const userMcp = useUserMcp(apiBase);
   const userSkills = useUserSkills(apiBase);
@@ -271,6 +315,44 @@ export function TavernPage({
       .finally(() => setLoading(false));
   }, [loadPageData]);
 
+  const closeOverlay = useCallback(() => {
+    routeManagedOverlayRef.current = false;
+    setActiveOverlay(null);
+    if (location.pathname !== '/tavern') {
+      navigate('/tavern', { replace: true });
+    }
+  }, [location.pathname, navigate]);
+
+  useEffect(() => {
+    if (!routeDetail.personaId) {
+      if (routeManagedOverlayRef.current) {
+        routeManagedOverlayRef.current = false;
+        setActiveOverlay(null);
+        setSelectedId(null);
+      }
+      return;
+    }
+    if (loading) {
+      return;
+    }
+    const exists = personas.some((persona) => persona.id === routeDetail.personaId);
+    if (!exists) {
+      routeManagedOverlayRef.current = false;
+      setActiveOverlay(null);
+      setError('找不到这个酒馆人格');
+      return;
+    }
+    routeManagedOverlayRef.current = true;
+    setSelectedId(routeDetail.personaId);
+    setError('');
+    if (routeDetail.overlay === 'history') {
+      setActiveOverlay('history');
+      return;
+    }
+    setEditorTab('basic');
+    setActiveOverlay('editor');
+  }, [loading, personas, routeDetail.overlay, routeDetail.personaId]);
+
   useEffect(() => {
     if (!selectedId) return;
     const selected = personas.find((persona) => persona.id === selectedId);
@@ -309,6 +391,7 @@ export function TavernPage({
     editor.firstMessage.trim() || parseMultiLine(editor.alternateGreetingsText)[0] || '';
 
   const handleCreateNew = useCallback(() => {
+    routeManagedOverlayRef.current = false;
     setSelectedId(null);
     setEditor(emptyEditor());
     setMessage('');
@@ -319,7 +402,10 @@ export function TavernPage({
     handleCreateNew();
     setEditorTab('basic');
     setActiveOverlay('editor');
-  }, [handleCreateNew]);
+    if (location.pathname !== '/tavern') {
+      navigate('/tavern', { replace: true });
+    }
+  }, [handleCreateNew, location.pathname, navigate]);
 
   const openPersonaEditor = useCallback((personaId: string) => {
     setSelectedId(personaId);
@@ -327,14 +413,16 @@ export function TavernPage({
     setError('');
     setEditorTab('basic');
     setActiveOverlay('editor');
-  }, []);
+    navigate(tavernPersonaPath(personaId));
+  }, [navigate]);
 
   const openPersonaHistory = useCallback((personaId: string) => {
     setSelectedId(personaId);
     setMessage('');
     setError('');
     setActiveOverlay('history');
-  }, []);
+    navigate(tavernPersonaPath(personaId, 'history'));
+  }, [navigate]);
 
   const handleSaveGlobalConfig = useCallback(async () => {
     setSavingConfig(true);
@@ -413,13 +501,15 @@ export function TavernPage({
       });
       setSelectedId(saved.id);
       setEditor(toEditorState(saved));
+      routeManagedOverlayRef.current = true;
+      navigate(tavernPersonaPath(saved.id), { replace: Boolean(editor.id) });
       setMessage(editor.id ? '酒馆人格已保存' : '酒馆人格已创建');
     } catch (err) {
       setError(err instanceof Error ? err.message : '保存酒馆人格失败');
     } finally {
       setSavingPersona(false);
     }
-  }, [apiBase, editor]);
+  }, [apiBase, editor, navigate]);
 
   const handleDeletePersona = useCallback(async () => {
     if (!editor.id) {
@@ -448,13 +538,13 @@ export function TavernPage({
       setSelectedId((current) => (current === editor.id ? null : current));
       setEditor(emptyEditor());
       setMessage('酒馆人格已删除');
-      setActiveOverlay(null);
+      closeOverlay();
     } catch (err) {
       setError(err instanceof Error ? err.message : '删除酒馆人格失败');
     } finally {
       setSavingPersona(false);
     }
-  }, [apiBase, editor.id, editor.name, handleCreateNew]);
+  }, [apiBase, closeOverlay, editor.id, editor.name, handleCreateNew]);
 
   const handleUploadAvatar = useCallback(async (file: File) => {
     if (!editor.id) {
@@ -623,9 +713,13 @@ export function TavernPage({
               type="button"
               className="btn-outline workflow-create-action"
               onClick={() => {
+                routeManagedOverlayRef.current = false;
                 setMessage('');
                 setError('');
                 setActiveOverlay('config');
+                if (location.pathname !== '/tavern') {
+                  navigate('/tavern', { replace: true });
+                }
               }}
             >
               全局能力
@@ -650,7 +744,7 @@ export function TavernPage({
       {listPane}
 
       {activeOverlay === 'editor' ? (
-        <div className="modal-overlay" onClick={() => setActiveOverlay(null)}>
+        <div className="modal-overlay" onClick={closeOverlay}>
           <div
             className="modal tavern-editor-modal"
             onClick={(event) => event.stopPropagation()}
@@ -663,7 +757,7 @@ export function TavernPage({
               <button
                 type="button"
                 className="modal-close-btn"
-                onClick={() => setActiveOverlay(null)}
+                onClick={closeOverlay}
                 aria-label="关闭"
               >
                 ×
@@ -926,7 +1020,7 @@ export function TavernPage({
               <button
                 type="button"
                 className="btn-outline"
-                onClick={() => setActiveOverlay(null)}
+                onClick={closeOverlay}
               >
                 关闭
               </button>
@@ -945,7 +1039,7 @@ export function TavernPage({
 
       <Drawer
         open={activeOverlay === 'config'}
-        onClose={() => setActiveOverlay(null)}
+        onClose={closeOverlay}
         title="全局底层能力"
         width="min(100vw, 720px)"
         footer={
@@ -953,7 +1047,7 @@ export function TavernPage({
             <button
               type="button"
               className="btn-outline"
-              onClick={() => setActiveOverlay(null)}
+              onClick={closeOverlay}
             >
               关闭
             </button>
@@ -1076,14 +1170,14 @@ export function TavernPage({
 
       <Drawer
         open={activeOverlay === 'history'}
-        onClose={() => setActiveOverlay(null)}
+        onClose={closeOverlay}
         title={selectedPersona ? `人格历史 · ${selectedPersona.name}` : '人格历史对话'}
         width="min(100vw, 620px)"
         footer={
           <button
             type="button"
             className="tasks-inline-action"
-            onClick={() => setActiveOverlay(null)}
+            onClick={closeOverlay}
           >
             关闭
           </button>

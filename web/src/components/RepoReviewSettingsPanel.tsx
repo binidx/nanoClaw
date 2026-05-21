@@ -218,10 +218,16 @@ type RepoReviewSettingsPanelProps = {
   pickNativeDirectory: () => Promise<string | null>;
   conversations: Conversation[];
   initialRepositoryId?: string;
-  onRepositoryRouteChange?: (repositoryId: string | null) => void;
+  initialDetailTab?: RepoReviewPanelTab;
+  onRepositoryRouteChange?: (
+    repositoryId: string | null,
+    tab?: RepoReviewPanelTab,
+  ) => void;
   hideRepositoryList?: boolean;
   embedded?: boolean;
 };
+
+type RepoReviewPanelTab = 'overview' | 'profile' | 'runs' | 'config' | 'codemap';
 
 function stripBranchStateVisibility(
   item: RepoReviewBranchStateItem & { visible: boolean },
@@ -1128,6 +1134,7 @@ export function RepoReviewSettingsPanel({
   pickNativeDirectory,
   conversations,
   initialRepositoryId,
+  initialDetailTab = 'overview',
   onRepositoryRouteChange,
   hideRepositoryList = false,
   embedded = false,
@@ -1150,9 +1157,8 @@ export function RepoReviewSettingsPanel({
   const [runFilterStatus, setRunFilterStatus] = useState('');
   const [runFilterText, setRunFilterText] = useState('');
   const [runsPage, setRunsPage] = useState(1);
-  const [repoDetailTab, setRepoDetailTab] = useState<
-    'overview' | 'profile' | 'runs' | 'config' | 'codemap'
-  >('overview');
+  const [repoDetailTab, setRepoDetailTab] =
+    useState<RepoReviewPanelTab>(initialDetailTab);
   const [inlineCodeMapBranch, setInlineCodeMapBranch] = useState<string | null>(
     null,
   );
@@ -2847,7 +2853,10 @@ export function RepoReviewSettingsPanel({
       setRepoDetailTab('overview');
       return;
     }
-    if (selectedRepositoryId === initialRepositoryId) return;
+    if (selectedRepositoryId === initialRepositoryId) {
+      setRepoDetailTab(initialDetailTab);
+      return;
+    }
     if (
       !overview.repositories.some(
         (repository) => repository.id === initialRepositoryId,
@@ -2858,9 +2867,10 @@ export function RepoReviewSettingsPanel({
     setSelectedRepositoryId(initialRepositoryId);
     setRepositoryEditorOpen(false);
     setProfileEditorOpen(false);
-    setRepoDetailTab('overview');
+    setRepoDetailTab(initialDetailTab);
   }, [
     creatingRepository,
+    initialDetailTab,
     initialRepositoryId,
     overview.repositories,
     selectedRepositoryId,
@@ -3570,6 +3580,16 @@ export function RepoReviewSettingsPanel({
     openRepositoryEditor(false, sectionMap[action]);
   };
 
+  const selectRepoDetailTab = useCallback(
+    (tab: RepoReviewPanelTab) => {
+      setRepoDetailTab(tab);
+      if (selectedRepositoryId) {
+        onRepositoryRouteChange?.(selectedRepositoryId, tab);
+      }
+    },
+    [onRepositoryRouteChange, selectedRepositoryId],
+  );
+
   const openWorkspaceDetail = useCallback(
     (repositoryId: string) => {
       setCreatingRepository(false);
@@ -3577,7 +3597,7 @@ export function RepoReviewSettingsPanel({
       setRepositoryEditorOpen(false);
       setProfileEditorOpen(false);
       setRepoDetailTab('overview');
-      onRepositoryRouteChange?.(repositoryId);
+      onRepositoryRouteChange?.(repositoryId, 'overview');
     },
     [onRepositoryRouteChange],
   );
@@ -4139,7 +4159,7 @@ export function RepoReviewSettingsPanel({
                           ]}
                           activeKey={repoDetailTab}
                           onChange={(key) =>
-                            setRepoDetailTab(key as typeof repoDetailTab)
+                            selectRepoDetailTab(key as RepoReviewPanelTab)
                           }
                         />
                       </>
@@ -4233,7 +4253,7 @@ export function RepoReviewSettingsPanel({
                                   className="btn-outline btn-sm"
                                   onClick={() => {
                                     openRepositoryEditor(false);
-                                    setRepoDetailTab('config');
+                                    selectRepoDetailTab('config');
                                   }}
                                 >
                                   {t('repoReview.button.editRepo')}
@@ -4243,7 +4263,7 @@ export function RepoReviewSettingsPanel({
                                   className="btn-primary btn-sm"
                                   onClick={() => {
                                     openProfileEditor(true);
-                                    setRepoDetailTab('profile');
+                                    selectRepoDetailTab('profile');
                                   }}
                                   disabled={!selectedRepositoryId}
                                 >
@@ -5443,7 +5463,7 @@ export function RepoReviewSettingsPanel({
                                 onClick={() => {
                                   closeRepositoryEditor();
                                   closeProfileEditor();
-                                  setRepoDetailTab('overview');
+                                  selectRepoDetailTab('overview');
                                 }}
                               >
                                 {t('repoReview.editor.backToOverview')}

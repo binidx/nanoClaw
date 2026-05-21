@@ -115,6 +115,7 @@ export function applyTaskStreamUpdate(
 interface UseStockAnalysisRemoteDataOptions {
   apiBase: string;
   reviewScope: StockMarketScope;
+  urlReportId?: string | null;
   onBootstrapError?: (message: string) => void;
   onConfigHydrated?: (config: StockAnalysisConfigMap) => void;
 }
@@ -122,6 +123,7 @@ interface UseStockAnalysisRemoteDataOptions {
 export function useStockAnalysisRemoteData({
   apiBase,
   reviewScope,
+  urlReportId,
   onBootstrapError,
   onConfigHydrated,
 }: UseStockAnalysisRemoteDataOptions) {
@@ -175,6 +177,7 @@ export function useStockAnalysisRemoteData({
   const activeTasksRef = useRef<StockAnalysisTask[]>([]);
   const recentTaskResultsRef = useRef<StockAnalysisTask[]>([]);
   const selectedReportIdRef = useRef<string | null>(null);
+  const urlReportIdRef = useRef<string | null>(urlReportId ?? null);
   const historyLimitRef = useRef(HISTORY_PAGE_SIZE);
   const historyOffsetRef = useRef(0);
 
@@ -278,6 +281,10 @@ export function useStockAnalysisRemoteData({
       setHistory(response.items);
       setHistoryTotal(response.total);
       if (response.items.length === 0) {
+        if (urlReportIdRef.current) {
+          await loadReportDetail(urlReportIdRef.current);
+          return;
+        }
         if (response.total > 0 && offset > 0) {
           const fallbackOffset = Math.max(0, offset - limit);
           await loadHistory({
@@ -294,11 +301,16 @@ export function useStockAnalysisRemoteData({
         return;
       }
 
-      const selectedReportId = resolveHistorySelection(
-        response.items,
-        options.selectedReportId ?? selectedReportIdRef.current,
-      );
+      const requestedReportId =
+        options.selectedReportId ??
+        urlReportIdRef.current ??
+        selectedReportIdRef.current;
+      const selectedReportId = resolveHistorySelection(response.items, requestedReportId);
       if (!selectedReportId) {
+        if (requestedReportId && requestedReportId === urlReportIdRef.current) {
+          await loadReportDetail(requestedReportId);
+          return;
+        }
         await loadReportDetail(response.items[0].id);
         return;
       }
@@ -313,6 +325,13 @@ export function useStockAnalysisRemoteData({
     },
     [apiBase, loadReportDetail],
   );
+
+  const clearSelectedReport = useCallback(() => {
+    selectedReportIdRef.current = null;
+    setSelectedReport(null);
+    setSelectedValidation(null);
+    setSelectedDashboard(null);
+  }, []);
 
   const loadFeedback = useCallback(async () => {
     setFeedback(await fetchFeedbackSnapshot(apiBase));
@@ -557,6 +576,10 @@ export function useStockAnalysisRemoteData({
   }, [selectedReport?.id]);
 
   useEffect(() => {
+    urlReportIdRef.current = urlReportId ?? null;
+  }, [urlReportId]);
+
+  useEffect(() => {
     historyLimitRef.current = historyLimit;
   }, [historyLimit]);
 
@@ -650,6 +673,7 @@ export function useStockAnalysisRemoteData({
     configMeta,
     configUpdatedAt,
     clearFailedTaskResults,
+    clearSelectedReport,
     configVersion,
     customConfigPresets,
     dataProviderReport,

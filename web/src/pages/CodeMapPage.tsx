@@ -135,6 +135,7 @@ export function CodeMapPage({
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [overviewCollapsed, setOverviewCollapsed] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+  const pendingBranchQuerySyncRef = useRef(false);
 
   const loadCodeMap = useCallback(
     async (b: string) => {
@@ -259,6 +260,35 @@ export function CodeMapPage({
   }, [apiBase, codeIndexConcurrency, t]);
 
   useEffect(() => {
+    setBranch(branchParam);
+    setAvailableBranches((current) =>
+      current.includes(branchParam) ? current : [branchParam, ...current],
+    );
+  }, [branchParam]);
+
+  useEffect(() => {
+    if (branchProp || !repositoryId) return;
+    const pendingBranchQuerySync = pendingBranchQuerySyncRef.current;
+    if (!pendingBranchQuerySync && branch !== branchParam) return;
+    const params = new URLSearchParams(location.search);
+    if (params.get('branch') === branch) {
+      pendingBranchQuerySyncRef.current = false;
+      return;
+    }
+    params.set('branch', branch);
+    pendingBranchQuerySyncRef.current = false;
+    navigate(`${location.pathname}?${params.toString()}`, { replace: true });
+  }, [
+    branch,
+    branchParam,
+    branchProp,
+    location.pathname,
+    location.search,
+    navigate,
+    repositoryId,
+  ]);
+
+  useEffect(() => {
     if (!repositoryId) return;
     void loadCodeMap(branch);
     void loadStats(branch);
@@ -300,7 +330,11 @@ export function CodeMapPage({
       .then((list) => {
         if (cancelled) return;
         const names = list.map((b) => b.name);
-        if (names.length > 0) setAvailableBranches(names);
+        if (names.length > 0) {
+          setAvailableBranches(
+            names.includes(branch) ? names : [branch, ...names],
+          );
+        }
       })
       .catch(() => {});
     return () => {
@@ -365,6 +399,13 @@ export function CodeMapPage({
     setSelectedFile(path);
   }, []);
 
+  const handleBranchChange = useCallback((nextBranch: string) => {
+    if (!branchProp) {
+      pendingBranchQuerySyncRef.current = true;
+    }
+    setBranch(nextBranch);
+  }, [branchProp]);
+
   if (!repositoryId) {
     return (
       <div className="codemap-page">
@@ -424,7 +465,7 @@ export function CodeMapPage({
             <NcSelect
               className="codemap-branch-select"
               value={branch}
-              onChange={(e) => setBranch(e.target.value)}
+              onChange={(e) => handleBranchChange(e.target.value)}
               aria-label={t('auto.ec0152ae')}
             >
               {availableBranches.map((b) => (

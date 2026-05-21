@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
   CatalogPageShell,
   LibraryCard,
@@ -1019,6 +1019,33 @@ function visibleEdgesFromSnapshot(
   );
 }
 
+function decodeRouteSegment(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+function buildWorkteamUrl(
+  workflowId: string,
+  selection: {
+    runId?: string;
+    nodeId?: string;
+    edgeId?: string;
+  } = {},
+): string {
+  const path = workflowId
+    ? `/workteam/${encodeURIComponent(workflowId)}`
+    : '/workteam';
+  const params = new URLSearchParams();
+  if (selection.runId) params.set('run', selection.runId);
+  if (selection.edgeId) params.set('edge', selection.edgeId);
+  else if (selection.nodeId) params.set('node', selection.nodeId);
+  const query = params.toString();
+  return query ? `${path}?${query}` : path;
+}
+
 function resolveNodeAssistantId(node: WorkflowNodeRecord): string {
   const taskConfig = parseJsonObject<TaskConfig>(node.config_json);
   return node.assistant_id || taskConfig.assistantId || '';
@@ -1039,7 +1066,16 @@ export function WorkteamPage({
 }: WorkteamPageProps) {
   const { t } = useTranslation('workteam');
   const location = useLocation();
-  const routeWorkflowId = getUrlSubPath(location.pathname);
+  const navigate = useNavigate();
+  const routeWorkflowId = decodeRouteSegment(getUrlSubPath(location.pathname));
+  const routeSelection = useMemo(() => {
+    const params = new URLSearchParams(location.search);
+    return {
+      runId: params.get('run') || '',
+      nodeId: params.get('node') || '',
+      edgeId: params.get('edge') || '',
+    };
+  }, [location.search]);
   const [activeWorkflowId, setActiveWorkflowId] = useState(routeWorkflowId);
   const workflowId = activeWorkflowId;
   const canvasRef = useRef<HTMLDivElement | null>(null);
@@ -1117,21 +1153,14 @@ export function WorkteamPage({
   const loadRuns = useCallback(async () => {
     if (!workflowId) {
       setRuns([]);
-      setSelectedRunId('');
       return;
     }
     const res = await fetch(`${apiBase}/api/workflows/${workflowId}/runs`, {
       credentials: 'include',
     });
     if (!res.ok) throw new Error(await readError(res));
-    const list = (await res.json()) as WorkflowRunRecord[];
-    setRuns(list);
-    if (list.length === 0) {
-      setSelectedRunId('');
-    } else if (!selectedRunId || !list.some((run) => run.id === selectedRunId)) {
-      setSelectedRunId(list[0].id);
-    }
-  }, [apiBase, workflowId, selectedRunId]);
+    setRuns((await res.json()) as WorkflowRunRecord[]);
+  }, [apiBase, workflowId]);
 
   const loadRunGraph = useCallback(async () => {
     if (!selectedRunId) {
@@ -1276,10 +1305,14 @@ export function WorkteamPage({
   }, [apiBase, workflows]);
 
   useEffect(() => {
-    if (routeWorkflowId) setActiveWorkflowId(routeWorkflowId);
+    setActiveWorkflowId((prev) =>
+      prev === routeWorkflowId ? prev : routeWorkflowId,
+    );
   }, [routeWorkflowId]);
 
   useEffect(() => {
+    setSnapshot(null);
+    setRuns([]);
     setSelectedRunId('');
     setSelectedNodeId('');
     setSelectedNodeIds([]);
@@ -1292,6 +1325,19 @@ export function WorkteamPage({
     void loadSnapshot().catch((err) => setError(String(err)));
     void loadRuns().catch((err) => setError(String(err)));
   }, [loadSnapshot, loadRuns, workflowId]);
+
+  useEffect(() => {
+    if (!workflowId || runs.length === 0) {
+      setSelectedRunId('');
+      return;
+    }
+    const nextRunId = routeSelection.runId
+      ? runs.some((run) => run.id === routeSelection.runId)
+        ? routeSelection.runId
+        : ''
+      : runs[0]?.id || '';
+    setSelectedRunId((prev) => (prev === nextRunId ? prev : nextRunId));
+  }, [routeSelection.runId, runs, workflowId]);
 
   useEffect(() => {
     void loadRunGraph().catch((err) => setError(String(err)));
@@ -1591,6 +1637,117 @@ export function WorkteamPage({
     [runs, selectedRunId],
   );
 
+  useEffect(() => {
+    if (!snapshot) return;
+    if (routeSelection.edgeId) {
+      const nextEdgeId = snapshot.edges.some(
+        (edge) => edge.id === routeSelection.edgeId,
+      )
+        ? routeSelection.edgeId
+        : '';
+      setSelectedEdgeId((prev) => (prev === nextEdgeId ? prev : nextEdgeId));
+      setSelectedNodeId('');
+      setSelectedNodeIds([]);
+      return;
+    }
+    if (routeSelection.nodeId) {
+      const nextNodeId = snapshot.nodes.some(
+        (node) => node.id === routeSelection.nodeId,
+      )
+        ? routeSelection.nodeId
+        : '';
+      setSelectedNodeId((prev) => (prev === nextNodeId ? prev : nextNodeId));
+      setSelectedNodeIds((prev) =>
+        nextNodeId
+          ? prev.length === 1 && prev[0] === nextNodeId
+            ? prev
+            : [nextNodeId]
+          : prev.length === 0
+            ? prev
+            : [],
+      );
+      setSelectedEdgeId('');
+      return;
+    }
+    setSelectedNodeId('');
+    setSelectedNodeIds([]);
+    setSelectedEdgeId('');
+  }, [routeSelection.edgeId, routeSelection.nodeId, snapshot]);
+
+  const navigateWorkteam = useCallback(
+    (
+      nextWorkflowId: string,
+      selection: {
+        runId?: string;
+        nodeId?: string;
+        edgeId?: string;
+      } = {},
+    ) => {
+      const nextUrl = buildWorkteamUrl(nextWorkflowId, selection);
+      if (`${location.pathname}${location.search}` !== nextUrl) {
+        navigate(nextUrl);
+      }
+    },
+    [location.pathname, location.search, navigate],
+  );
+
+  const selectWorkflow = useCallback(
+    (nextWorkflowId: string) => {
+      setActiveWorkflowId(nextWorkflowId);
+      setSelectedRunId('');
+      setSelectedNodeId('');
+      setSelectedNodeIds([]);
+      setSelectedEdgeId('');
+      navigateWorkteam(nextWorkflowId);
+    },
+    [navigateWorkteam],
+  );
+
+  const selectRun = useCallback(
+    (runId: string) => {
+      setSelectedRunId(runId);
+      navigateWorkteam(workflowId, {
+        runId,
+        nodeId: selectedNodeId,
+        edgeId: selectedEdgeId,
+      });
+    },
+    [navigateWorkteam, selectedEdgeId, selectedNodeId, workflowId],
+  );
+
+  const selectNode = useCallback(
+    (nodeId: string, nodeIds: string[] = [nodeId]) => {
+      setSelectedNodeId(nodeId);
+      setSelectedNodeIds(nodeIds);
+      setSelectedEdgeId('');
+      navigateWorkteam(workflowId, {
+        runId: selectedRunId,
+        nodeId,
+      });
+    },
+    [navigateWorkteam, selectedRunId, workflowId],
+  );
+
+  const selectEdge = useCallback(
+    (edgeId: string) => {
+      setSelectedEdgeId(edgeId);
+      setSelectedNodeId('');
+      setSelectedNodeIds([]);
+      navigateWorkteam(workflowId, {
+        runId: selectedRunId,
+        edgeId,
+      });
+    },
+    [navigateWorkteam, selectedRunId, workflowId],
+  );
+
+  const clearDetailSelection = useCallback(() => {
+    setSelectedNodeId('');
+    setSelectedNodeIds([]);
+    setSelectedEdgeId('');
+    navigateWorkteam(workflowId, { runId: selectedRunId });
+  }, [navigateWorkteam, selectedRunId, workflowId]);
+
   const setSnapshotNode = useCallback(
     (nodeId: string, patch: Partial<WorkflowNodeRecord>) => {
       setSnapshot((prev) => {
@@ -1817,7 +1974,7 @@ export function WorkteamPage({
       setNewWorkflowDesc('');
       setActiveModal(null);
       await loadWorkflows();
-      setActiveWorkflowId(created.id);
+      selectWorkflow(created.id);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -1890,9 +2047,7 @@ export function WorkteamPage({
       });
       if (!res.ok) throw new Error(await readError(res));
       const node = (await res.json()) as WorkflowNodeRecord;
-      setSelectedNodeId(node.id);
-      setSelectedNodeIds([node.id]);
-      setSelectedEdgeId('');
+      selectNode(node.id);
       await loadSnapshot();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -1934,7 +2089,7 @@ export function WorkteamPage({
         credentials: 'include',
       });
       if (!res.ok) throw new Error(await readError(res));
-      setSelectedNodeId('');
+      clearDetailSelection();
       await loadSnapshot();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -2002,7 +2157,7 @@ export function WorkteamPage({
         credentials: 'include',
       });
       if (!res.ok) throw new Error(await readError(res));
-      setSelectedEdgeId('');
+      clearDetailSelection();
       await loadSnapshot();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -2044,9 +2199,8 @@ export function WorkteamPage({
       });
       if (!res.ok) throw new Error(await readError(res));
       const run = (await res.json()) as WorkflowRunRecord;
-      setSelectedRunId(run.id);
+      selectRun(run.id);
       await loadRuns();
-      await loadRunGraph();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -2474,7 +2628,7 @@ export function WorkteamPage({
                   className={`workflow-catalog-card ${
                     activeWorkflowId === workflow.id ? 'active' : ''
                   }`}
-                  onClick={() => setActiveWorkflowId(workflow.id)}
+                  onClick={() => selectWorkflow(workflow.id)}
                   heading={workflow.name}
                   badge={
                     <span
@@ -2525,13 +2679,13 @@ export function WorkteamPage({
         <div className="workflow-topbar-title">
           <div
             className="workflow-title-stack is-clickable"
-            onClick={() => setActiveWorkflowId('')}
+            onClick={() => selectWorkflow('')}
             role="button"
             tabIndex={0}
             onKeyDown={(event) => {
               if (event.key === 'Enter' || event.key === ' ') {
                 event.preventDefault();
-                setActiveWorkflowId('');
+                selectWorkflow('');
               }
             }}
           >
@@ -2721,11 +2875,7 @@ export function WorkteamPage({
                         <g
                           key={edge.id}
                           className="workflow-edge-hitbox"
-                          onClick={() => {
-                            setSelectedEdgeId(edge.id);
-                            setSelectedNodeId('');
-                            setSelectedNodeIds([]);
-                          }}
+                          onClick={() => selectEdge(edge.id)}
                         >
                           <path
                             d={edgePath(source, target)}
@@ -2806,16 +2956,13 @@ export function WorkteamPage({
                             return;
                           }
                           if (event.shiftKey) {
-                            setSelectedNodeIds((prev) =>
-                              prev.includes(node.id)
-                                ? prev.filter((item) => item !== node.id)
-                                : [...prev, node.id],
-                            );
-                          } else {
-                            setSelectedNodeIds([node.id]);
+                            const nextSelectedIds = selectedNodeIds.includes(node.id)
+                              ? selectedNodeIds.filter((item) => item !== node.id)
+                              : [...selectedNodeIds, node.id];
+                            selectNode(node.id, nextSelectedIds);
+                            return;
                           }
-                          setSelectedNodeId(node.id);
-                          setSelectedEdgeId('');
+                          selectNode(node.id);
                         }}
                       >
                         <span className="workflow-node-type">
@@ -2994,7 +3141,7 @@ export function WorkteamPage({
                           className={`workflow-run-card${
                             run.id === selectedRunId ? ' selected' : ''
                           }`}
-                          onClick={() => setSelectedRunId(run.id)}
+                          onClick={() => selectRun(run.id)}
                         >
                           <strong>{run.status}</strong>
                           <span>{fmt(run.created_at)}</span>
@@ -3088,10 +3235,7 @@ export function WorkteamPage({
                                     className={`workflow-edge-summary-card${
                                       selectedEdgeId === edge.id ? ' selected' : ''
                                     }`}
-                                    onClick={() => {
-                                      setSelectedEdgeId(edge.id);
-                                      setSelectedNodeId('');
-                                    }}
+                                    onClick={() => selectEdge(edge.id)}
                                   >
                                     <strong>
                                       {displayNodeName(

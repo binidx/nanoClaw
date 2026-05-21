@@ -3608,6 +3608,12 @@ function AppShell() {
   }, [location.pathname, navigate]);
 
   useEffect(() => {
+    if (!location.pathname.startsWith('/reviews/')) return;
+    const repoPath = location.pathname.slice('/reviews'.length);
+    navigate(`/repos${repoPath}${location.search}`, { replace: true });
+  }, [location.pathname, location.search, navigate]);
+
+  useEffect(() => {
     if (!terminalEnabled && page === 'terminal') {
       navigate(navPageToPath('chat'), { replace: true });
     }

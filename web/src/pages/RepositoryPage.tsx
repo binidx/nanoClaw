@@ -3,7 +3,12 @@ import { useLocation, useNavigate } from 'react-router-dom';
 
 import type { Conversation } from '../app-types';
 import { RepoReviewSettingsPanel } from '../components/RepoReviewSettingsPanel';
-import { getUrlSubPath, navPageToPath } from '../router/paths';
+import { CodeMapPage } from './CodeMapPage';
+import {
+  getRepositoryRoute,
+  repositoryRouteToPath,
+  type RepositoryRouteTab,
+} from '../router/paths';
 
 interface RepositoryPageProps {
   apiBase: string;
@@ -18,18 +23,27 @@ export default function RepositoryPage({
 }: RepositoryPageProps) {
   const location = useLocation();
   const navigate = useNavigate();
-  const routeRepositoryId = getUrlSubPath(location.pathname);
+  const { repositoryId: routeRepositoryId, tab: routeTab } =
+    getRepositoryRoute(location.pathname);
 
   const handleRepositoryRouteChange = useCallback(
-    (repositoryId: string | null) => {
-      navigate(
-        repositoryId
-          ? navPageToPath('repos', repositoryId)
-          : navPageToPath('repos'),
-      );
+    (repositoryId: string | null, tab: RepositoryRouteTab = 'overview') => {
+      navigate(repositoryRouteToPath(repositoryId, tab));
     },
     [navigate],
   );
+
+  if (routeRepositoryId && routeTab === 'codemap') {
+    return (
+      <CodeMapPage
+        apiBase={apiBase}
+        repositoryIdProp={routeRepositoryId}
+        onNavigateBack={() =>
+          navigate(repositoryRouteToPath(routeRepositoryId, 'overview'))
+        }
+      />
+    );
+  }
 
   return (
     <RepoReviewSettingsPanel
@@ -37,6 +51,7 @@ export default function RepositoryPage({
       pickNativeDirectory={pickNativeDirectory}
       conversations={conversations}
       initialRepositoryId={routeRepositoryId}
+      initialDetailTab={routeTab}
       onRepositoryRouteChange={handleRepositoryRouteChange}
       embedded
     />

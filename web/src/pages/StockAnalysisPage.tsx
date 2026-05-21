@@ -2,11 +2,13 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
 } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useNavigatedTab } from '../hooks/useNavigatedTab';
 
 import {
@@ -63,6 +65,29 @@ type StockAnalysisFeedbackEvaluationSort = 'latest' | 'return-desc';
 type StockAnalysisFeedbackOutcomeFilter = 'all' | 'win' | 'flat' | 'loss';
 type StockAnalysisRecentResultMode = 'all' | 'generated' | 'reused';
 type StockAnalysisMarketView = 'review' | 'backtest' | 'providers';
+
+function decodePathPart(value: string | undefined): string | null {
+  if (!value) return null;
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+function resolveRouteReportId(pathname: string): string | null {
+  const parts = pathname.split('/').filter(Boolean);
+  if (parts[0] !== 'stock-analysis' || parts[1] !== 'reports') {
+    return null;
+  }
+  return decodePathPart(parts[2]);
+}
+
+function stockReportsPath(reportId?: string | null): string {
+  return reportId
+    ? `/stock-analysis/reports/${encodeURIComponent(reportId)}`
+    : '/stock-analysis/reports';
+}
 
 function splitStockCodes(input: string): string[] {
   return input
@@ -1783,6 +1808,13 @@ function StockAnalysisDecisionDashboardCard({
 
 export function StockAnalysisPage({ apiBase }: StockAnalysisPageProps) {
   const { t } = useTranslation('stock');
+  const location = useLocation();
+  const navigate = useNavigate();
+  const routeReportId = useMemo(
+    () => resolveRouteReportId(location.pathname),
+    [location.pathname],
+  );
+  const hydratedRouteReportIdRef = useRef<string | null>(null);
   const [activeTab, setActiveTab] = useNavigatedTab<StockAnalysisTab>('stock-analysis', VALID_STOCK_TABS, 'workbench');
   const [historyView, setHistoryView] =
     useState<StockAnalysisHistoryView>('reports');
@@ -1882,6 +1914,7 @@ export function StockAnalysisPage({ apiBase }: StockAnalysisPageProps) {
     activeTasks,
     addWatchlist,
     builtinConfigPresets,
+    clearSelectedReport,
     config,
     configDefaults,
     configMeta,
@@ -1927,6 +1960,7 @@ export function StockAnalysisPage({ apiBase }: StockAnalysisPageProps) {
   } = useStockAnalysisRemoteData({
     apiBase,
     reviewScope,
+    urlReportId: routeReportId,
     onBootstrapError: handleBootstrapError,
     onConfigHydrated: handleConfigHydrated,
   });
@@ -2004,6 +2038,59 @@ export function StockAnalysisPage({ apiBase }: StockAnalysisPageProps) {
     media.addEventListener('change', sync);
     return () => media.removeEventListener('change', sync);
   }, []);
+
+  useEffect(() => {
+    if (!routeReportId) {
+      hydratedRouteReportIdRef.current = null;
+      return undefined;
+    }
+
+    if (selectedReport?.id === routeReportId) {
+      hydratedRouteReportIdRef.current = routeReportId;
+      setHistoryView('reports');
+      if (isCompactLayout) {
+        setIsMobileReportModalOpen(true);
+      }
+      return undefined;
+    }
+
+    if (hydratedRouteReportIdRef.current === routeReportId) {
+      return undefined;
+    }
+
+    let cancelled = false;
+    hydratedRouteReportIdRef.current = routeReportId;
+    void loadReportDetail(routeReportId)
+      .then((detail) => {
+        if (cancelled) return;
+        setHistoryView('reports');
+        setDetailView('overview');
+        setOverviewSection('core');
+        setIsMobileReportModalOpen(isCompactLayout);
+        setExpandedHistoryGroups((current) =>
+          current.includes(detail.stockCode)
+            ? current
+            : [...current, detail.stockCode],
+        );
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        hydratedRouteReportIdRef.current = null;
+        setPageError(
+          error instanceof Error ? error.message : t('stock.msg.loadReportFailed'),
+        );
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    isCompactLayout,
+    loadReportDetail,
+    routeReportId,
+    selectedReport?.id,
+    t,
+  ]);
 
   useEffect(() => {
     setBacktestDraft((current) => ({
@@ -2477,10 +2564,16 @@ export function StockAnalysisPage({ apiBase }: StockAnalysisPageProps) {
     });
   };
 
+  const handleCloseReportDetail = useCallback(() => {
+    setIsMobileReportModalOpen(false);
+    clearSelectedReport();
+    navigate(stockReportsPath(), { replace: true });
+  }, [clearSelectedReport, navigate]);
+
   const handleSelectHistory = async (reportId: string) => {
     try {
       const detail = await loadReportDetail(reportId);
-      setActiveTab('reports');
+      navigate(stockReportsPath(detail.id));
       setHistoryView('reports');
       setDetailView('overview');
       setOverviewSection('core');
@@ -2982,7 +3075,7 @@ export function StockAnalysisPage({ apiBase }: StockAnalysisPageProps) {
             <button
               className="btn-outline btn-sm"
               type="button"
-              onClick={() => setIsMobileReportModalOpen(false)}
+              onClick={handleCloseReportDetail}
             >
               {t('stock.action.close')}
             </button>
@@ -4742,7 +4835,7 @@ export function StockAnalysisPage({ apiBase }: StockAnalysisPageProps) {
         {isCompactLayout && isMobileReportModalOpen && selectedReport ? (
           <div
             className="modal-overlay"
-            onClick={() => setIsMobileReportModalOpen(false)}
+            onClick={handleCloseReportDetail}
           >
             <div
               className="modal stock-analysis-report-modal"
@@ -4762,7 +4855,7 @@ export function StockAnalysisPage({ apiBase }: StockAnalysisPageProps) {
                 <button
                   className="modal-close-btn"
                   type="button"
-                  onClick={() => setIsMobileReportModalOpen(false)}
+                  onClick={handleCloseReportDetail}
                   aria-label={t('stock.config.closeReportDialog')}
                 >
                   ×
