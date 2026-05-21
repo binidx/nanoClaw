@@ -2799,6 +2799,25 @@
     box-shadow 0.16s ease;
 }
 
+.repo-review-branch-status-card-select {
+  display: grid;
+  gap: 8px;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.repo-review-branch-status-card-select:focus-visible {
+  outline: 2px solid rgba(var(--accent-rgb), 0.45);
+  outline-offset: 3px;
+  border-radius: 16px;
+}
+
 .repo-review-branch-status-card:hover {
   transform: translateY(-1px);
   box-shadow: 0 12px 26px rgba(15, 23, 42, 0.08);

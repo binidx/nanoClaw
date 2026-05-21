@@ -39,7 +39,8 @@ export function shouldIgnoreConversationRealtimeSeq(
 export function applyConversationRealtimeWatermark<
   T extends ConversationChatState,
 >(state: T, seq: number | undefined, source: ConversationWatermarkSource): T {
-  if (source === 'snapshot' || !Number.isFinite(seq)) return state;
+  if (source === 'snapshot') return state;
+  if (!Number.isFinite(seq)) return state;
   if ((state.lastEventSeq ?? Number.NEGATIVE_INFINITY) >= (seq as number)) {
     return state;
   }

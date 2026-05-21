@@ -279,13 +279,23 @@ export interface CodeMapFetchResult {
   status?: string;
 }
 
+function fetchCodeMapApi(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+): Promise<Response> {
+  return fetch(input, {
+    credentials: 'include',
+    ...init,
+  });
+}
+
 export async function fetchCodeMap(
   apiBase: string,
   repositoryId: string,
   branch: string,
 ): Promise<CodeMapFetchResult> {
   const url = `${apiBase}/api/code-map/${encodeURIComponent(repositoryId)}?branch=${encodeURIComponent(branch)}`;
-  const resp = await fetch(url);
+  const resp = await fetchCodeMapApi(url);
   if (!resp.ok) {
     const body = await resp.json().catch(() => ({}));
     throw new Error(
@@ -301,9 +311,27 @@ export async function fetchCodeMapStats(
   branch: string,
 ): Promise<CodeMapStats> {
   const url = `${apiBase}/api/code-map/${encodeURIComponent(repositoryId)}/stats?branch=${encodeURIComponent(branch)}`;
-  const resp = await fetch(url);
+  const resp = await fetchCodeMapApi(url);
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
   return resp.json();
+}
+
+export async function fetchCodeMapText(
+  apiBase: string,
+  repositoryId: string,
+  branch: string,
+  maxTokens = 4096,
+  signal?: AbortSignal,
+): Promise<string> {
+  const url = `${apiBase}/api/code-map/${encodeURIComponent(repositoryId)}/text?branch=${encodeURIComponent(branch)}&maxTokens=${encodeURIComponent(String(maxTokens))}`;
+  const resp = await fetchCodeMapApi(url, { signal });
+  if (!resp.ok) {
+    const body = await resp.json().catch(() => ({}));
+    throw new Error(
+      (body as { error?: string }).error || `HTTP ${resp.status}`,
+    );
+  }
+  return resp.text();
 }
 
 export async function fetchAiSummary(
@@ -313,7 +341,7 @@ export async function fetchAiSummary(
   target: { filePath?: string; dirPath?: string },
 ): Promise<{ summary: string; cached: boolean }> {
   const url = `${apiBase}/api/code-map/${encodeURIComponent(repositoryId)}/ai-summary?branch=${encodeURIComponent(branch)}`;
-  const resp = await fetch(url, {
+  const resp = await fetchCodeMapApi(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(target),
@@ -364,7 +392,7 @@ export async function fetchAiAnalysisStream(
   signal?: AbortSignal,
 ): Promise<void> {
   const url = `${apiBase}/api/code-map/${encodeURIComponent(repositoryId)}/ai-analysis?branch=${encodeURIComponent(branch)}`;
-  const resp = await fetch(url, {
+  const resp = await fetchCodeMapApi(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(target),
@@ -464,7 +492,7 @@ export async function fetchAiAnalysisCached(
   target: { filePath?: string; dirPath?: string },
 ): Promise<{ analysis: AiAnalysis | null; cached: boolean }> {
   const url = `${apiBase}/api/code-map/${encodeURIComponent(repositoryId)}/ai-analysis?branch=${encodeURIComponent(branch)}`;
-  const resp = await fetch(url, {
+  const resp = await fetchCodeMapApi(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ ...target, cacheOnly: true }),
@@ -485,7 +513,7 @@ export async function fetchFileContent(
   filePath: string;
 }> {
   const url = `${apiBase}/api/code-map/${encodeURIComponent(repositoryId)}/file-content?branch=${encodeURIComponent(branch)}&file=${encodeURIComponent(filePath)}`;
-  const resp = await fetch(url);
+  const resp = await fetchCodeMapApi(url);
   if (!resp.ok) {
     const body = await resp.json().catch(() => ({}));
     throw new Error(
@@ -509,7 +537,7 @@ export async function fetchCodeIndexStatus(
   branch: string,
 ): Promise<CodeIndexStatusResponse> {
   const url = `${apiBase}/api/code-index/${encodeURIComponent(repositoryId)}/status?branch=${encodeURIComponent(branch)}`;
-  const resp = await fetch(url);
+  const resp = await fetchCodeMapApi(url);
   if (!resp.ok) {
     const body = await resp.json().catch(() => ({}));
     throw new Error(
@@ -525,7 +553,7 @@ export async function fetchCodeIndexProgress(
   branch: string,
 ): Promise<CodeIndexProgress> {
   const url = `${apiBase}/api/code-index/${encodeURIComponent(repositoryId)}/progress?branch=${encodeURIComponent(branch)}`;
-  const resp = await fetch(url);
+  const resp = await fetchCodeMapApi(url);
   if (!resp.ok) {
     const body = await resp.json().catch(() => ({}));
     throw new Error(
@@ -546,7 +574,7 @@ export async function rebuildCodeIndex(
   } = {},
 ): Promise<CodeIndexMeta | null> {
   const url = `${apiBase}/api/code-index/${encodeURIComponent(repositoryId)}/rebuild?branch=${encodeURIComponent(branch)}`;
-  const resp = await fetch(url, {
+  const resp = await fetchCodeMapApi(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -573,7 +601,7 @@ export async function searchCodeIndex(
   limit = 8,
 ): Promise<{ results: CodeIndexSearchResult[]; meta: CodeIndexMeta }> {
   const url = `${apiBase}/api/code-index/${encodeURIComponent(repositoryId)}/search?branch=${encodeURIComponent(branch)}`;
-  const resp = await fetch(url, {
+  const resp = await fetchCodeMapApi(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ query, limit }),
@@ -598,7 +626,7 @@ export async function listCodeIndexFunctions(
   if (params.query) search.set('query', params.query);
   if (params.line) search.set('line', String(params.line));
   const url = `${apiBase}/api/code-index/${encodeURIComponent(repositoryId)}/functions?${search.toString()}`;
-  const resp = await fetch(url);
+  const resp = await fetchCodeMapApi(url);
   if (!resp.ok) {
     const body = await resp.json().catch(() => ({}));
     throw new Error(
@@ -616,7 +644,7 @@ export async function fetchCodeIndexFunctionDeps(
   depth = 1,
 ): Promise<CodeIndexFunctionDepsResponse> {
   const url = `${apiBase}/api/code-index/${encodeURIComponent(repositoryId)}/functions/${encodeURIComponent(functionId)}/deps?branch=${encodeURIComponent(branch)}&depth=${depth}`;
-  const resp = await fetch(url);
+  const resp = await fetchCodeMapApi(url);
   if (!resp.ok) {
     const body = await resp.json().catch(() => ({}));
     throw new Error(
@@ -633,7 +661,7 @@ export async function fetchCodeIndexFileDetail(
   filePath: string,
 ): Promise<CodeIndexFileDetail> {
   const url = `${apiBase}/api/code-index/${encodeURIComponent(repositoryId)}/files/${encodeURIComponent(filePath)}?branch=${encodeURIComponent(branch)}`;
-  const resp = await fetch(url);
+  const resp = await fetchCodeMapApi(url);
   if (!resp.ok) {
     const body = await resp.json().catch(() => ({}));
     throw new Error(
@@ -654,7 +682,7 @@ export async function askProjectCodebase(
   },
 ): Promise<ProjectQaResponse> {
   const url = `${apiBase}/api/code-index/${encodeURIComponent(repositoryId)}/ask?branch=${encodeURIComponent(branch)}`;
-  const resp = await fetch(url, {
+  const resp = await fetchCodeMapApi(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
@@ -708,7 +736,7 @@ export async function fetchRepoDescription(
   branch: string,
 ): Promise<{ description: RepoDescription | null; cached: boolean }> {
   const url = `${apiBase}/api/code-map/${encodeURIComponent(repositoryId)}/repo-description?branch=${encodeURIComponent(branch)}`;
-  const resp = await fetch(url);
+  const resp = await fetchCodeMapApi(url);
   if (!resp.ok) {
     const body = await resp.json().catch(() => ({}));
     throw new Error(
@@ -725,7 +753,7 @@ export async function generateRepoDescription(
   forceRefresh = false,
 ): Promise<{ description: RepoDescription; cached: boolean; noAi?: boolean }> {
   const url = `${apiBase}/api/code-map/${encodeURIComponent(repositoryId)}/repo-description?branch=${encodeURIComponent(branch)}`;
-  const resp = await fetch(url, {
+  const resp = await fetchCodeMapApi(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ forceRefresh }),
@@ -759,7 +787,7 @@ export async function generateRepoDescriptionStream(
   signal?: AbortSignal,
 ): Promise<void> {
   const url = `${apiBase}/api/code-map/${encodeURIComponent(repositoryId)}/repo-description?branch=${encodeURIComponent(branch)}`;
-  const resp = await fetch(url, {
+  const resp = await fetchCodeMapApi(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ forceRefresh, stream: true }),

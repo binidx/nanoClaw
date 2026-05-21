@@ -1,11 +1,29 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+import i18n from '../i18n/index.ts';
 import type {
   PublicLibraryItem,
   PublicLibraryItemType,
   PublicLibraryResult,
   MarketplaceSourceView,
 } from '../app-types';
+
+async function readErrorMessage(res: Response, fallback: string): Promise<string> {
+  const payload = await res.json().catch(() => ({}));
+  return (payload as { error?: string }).error || fallback;
+}
+
+function installFallback(itemType: PublicLibraryItemType): string {
+  return itemType === 'mcp'
+    ? i18n.t('apps.hook.mcpInstallFailed')
+    : i18n.t('apps.hook.skillInstallFailed');
+}
+
+function deleteFallback(itemType: PublicLibraryItemType): string {
+  return itemType === 'mcp'
+    ? i18n.t('apps.hook.mcpDeleteFailed')
+    : i18n.t('apps.hook.skillDeleteFailed');
+}
 
 export interface UsePublicLibraryReturn {
   items: PublicLibraryItem[];
@@ -51,7 +69,9 @@ export function usePublicLibrary(apiBase: string): UsePublicLibraryReturn {
       if (typeFilter) params.set('type', typeFilter);
       if (debouncedSearch.trim()) params.set('search', debouncedSearch.trim());
       params.set('limit', '100');
-      const res = await fetch(`${apiBase}/api/public-library?${params.toString()}`);
+      const res = await fetch(`${apiBase}/api/public-library?${params.toString()}`, {
+        credentials: 'include',
+      });
       if (!res.ok) throw new Error('Failed to load');
       const data: PublicLibraryResult = await res.json();
       setItems(data.items);
@@ -67,29 +87,43 @@ export function usePublicLibrary(apiBase: string): UsePublicLibraryReturn {
   useEffect(() => { void refresh(); }, [refresh]);
 
   const install = useCallback(async (itemId: string, itemType: PublicLibraryItemType) => {
+    setError('');
+    const fallback = installFallback(itemType);
     try {
       const res = await fetch(`${apiBase}/api/public-library/install`, {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ itemId, itemType }),
       });
-      if (!res.ok) return false;
+      if (!res.ok) {
+        setError(await readErrorMessage(res, fallback));
+        return false;
+      }
       await refresh();
       return true;
-    } catch {
+    } catch (err) {
+      setError(err instanceof Error ? err.message : fallback);
       return false;
     }
   }, [apiBase, refresh]);
 
   const deleteItem = useCallback(async (itemId: string, itemType: PublicLibraryItemType) => {
+    setError('');
+    const fallback = deleteFallback(itemType);
     try {
       const res = await fetch(`${apiBase}/api/public-library/${itemType}/${itemId}`, {
         method: 'DELETE',
+        credentials: 'include',
       });
-      if (!res.ok) return false;
+      if (!res.ok) {
+        setError(await readErrorMessage(res, fallback));
+        return false;
+      }
       await refresh();
       return true;
-    } catch {
+    } catch (err) {
+      setError(err instanceof Error ? err.message : fallback);
       return false;
     }
   }, [apiBase, refresh]);

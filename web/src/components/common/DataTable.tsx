@@ -47,6 +47,21 @@ export function DataTable<T>({
     const nextOrder = sortKey === col.key && sortOrder === 'asc' ? 'desc' : 'asc';
     onSort(col.key, nextOrder);
   };
+  const handleSortKeyDown = (
+    event: React.KeyboardEvent<HTMLTableCellElement>,
+    col: DataTableColumn<T>,
+  ) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    event.preventDefault();
+    handleSort(col);
+  };
+  const getAriaSort = (
+    col: DataTableColumn<T>,
+  ): React.AriaAttributes['aria-sort'] => {
+    if (!col.sortable) return undefined;
+    if (sortKey !== col.key) return 'none';
+    return sortOrder === 'desc' ? 'descending' : 'ascending';
+  };
 
   return (
     <div className="nc-data-table-wrapper">
@@ -54,19 +69,25 @@ export function DataTable<T>({
         <table className="nc-data-table">
           <thead>
             <tr>
-              {columns.map(col => (
-                <th
-                  key={col.key}
-                  style={col.width ? { width: typeof col.width === 'number' ? `${col.width}px` : col.width } : undefined}
-                  className={col.sortable ? 'nc-sortable' : undefined}
-                  onClick={() => handleSort(col)}
-                >
-                  <span>{col.title}</span>
-                  {col.sortable && sortKey === col.key && (
-                    <span className="nc-sort-arrow">{sortOrder === 'asc' ? ' ↑' : ' ↓'}</span>
-                  )}
-                </th>
-              ))}
+              {columns.map(col => {
+                const sortable = Boolean(col.sortable && onSort);
+                return (
+                  <th
+                    key={col.key}
+                    style={col.width ? { width: typeof col.width === 'number' ? `${col.width}px` : col.width } : undefined}
+                    className={col.sortable ? 'nc-sortable' : undefined}
+                    onClick={sortable ? () => handleSort(col) : undefined}
+                    onKeyDown={sortable ? e => handleSortKeyDown(e, col) : undefined}
+                    tabIndex={sortable ? 0 : undefined}
+                    aria-sort={getAriaSort(col)}
+                  >
+                    <span>{col.title}</span>
+                    {col.sortable && sortKey === col.key && (
+                      <span className="nc-sort-arrow">{sortOrder === 'asc' ? ' ↑' : ' ↓'}</span>
+                    )}
+                  </th>
+                );
+              })}
             </tr>
           </thead>
           <tbody>

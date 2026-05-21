@@ -108,13 +108,15 @@ export function TasksPageContainer({
   const pauseTask = useCallback(
     async (taskId: string) => {
       try {
-        await fetch(
+        const res = await fetch(
           `${apiBase}/api/tasks/${encodeURIComponent(taskId)}/pause`,
           { method: 'POST' },
         );
+        if (!res.ok) return false;
         await loadTasks();
+        return true;
       } catch {
-        /* offline */
+        return false;
       }
     },
     [apiBase, loadTasks],
@@ -123,13 +125,15 @@ export function TasksPageContainer({
   const resumeTask = useCallback(
     async (taskId: string) => {
       try {
-        await fetch(
+        const res = await fetch(
           `${apiBase}/api/tasks/${encodeURIComponent(taskId)}/resume`,
           { method: 'POST' },
         );
+        if (!res.ok) return false;
         await loadTasks();
+        return true;
       } catch {
-        /* offline */
+        return false;
       }
     },
     [apiBase, loadTasks],
@@ -138,12 +142,14 @@ export function TasksPageContainer({
   const deleteScheduledTask = useCallback(
     async (taskId: string) => {
       try {
-        await fetch(`${apiBase}/api/tasks/${encodeURIComponent(taskId)}`, {
+        const res = await fetch(`${apiBase}/api/tasks/${encodeURIComponent(taskId)}`, {
           method: 'DELETE',
         });
+        if (!res.ok) return false;
         await loadTasks();
+        return true;
       } catch {
-        /* offline */
+        return false;
       }
     },
     [apiBase, loadTasks],

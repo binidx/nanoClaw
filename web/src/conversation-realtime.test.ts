@@ -73,6 +73,9 @@ describe('conversation realtime watermarks', () => {
       applyConversationRealtimeWatermark(base, 9, 'snapshot').lastEventSeq,
     ).toBe(5);
     expect(
+      applyConversationRealtimeWatermark(base, 4, 'snapshot').lastEventSeq,
+    ).toBe(5);
+    expect(
       applyConversationRealtimeWatermark(base, 8, 'live').lastEventSeq,
     ).toBe(8);
     expect(

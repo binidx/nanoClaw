@@ -37,9 +37,9 @@ interface TasksPageProps {
     input: TaskDraft & { chatJid: string },
   ) => Promise<boolean | void>;
   onParseTaskDraft: (request: string) => Promise<TaskDraft | null>;
-  onPauseTask: (taskId: string) => Promise<void>;
-  onResumeTask: (taskId: string) => Promise<void>;
-  onDeleteTask: (taskId: string) => Promise<void>;
+  onPauseTask: (taskId: string) => Promise<boolean | void>;
+  onResumeTask: (taskId: string) => Promise<boolean | void>;
+  onDeleteTask: (taskId: string) => Promise<boolean | void>;
   onUpdateTask: (taskId: string, input: TaskDraft) => Promise<boolean | void>;
   onRunTask: (taskId: string) => Promise<boolean | void>;
 }
@@ -724,6 +724,50 @@ export function TasksPage({
     }
   };
 
+  const handlePauseTask = async (task: ScheduledTaskSummary) => {
+    if (!beginTaskAction(task.id)) return;
+    try {
+      const ok = await onPauseTask(task.id);
+      if (ok === false) {
+        showTaskNotice(t('tasks.任务更新失败'), 'error');
+      }
+    } catch {
+      showTaskNotice(t('tasks.任务更新失败'), 'error');
+    } finally {
+      finishTaskAction(task.id);
+    }
+  };
+
+  const handleResumeTask = async (task: ScheduledTaskSummary) => {
+    if (!beginTaskAction(task.id)) return;
+    try {
+      const ok = await onResumeTask(task.id);
+      if (ok === false) {
+        showTaskNotice(t('tasks.任务更新失败'), 'error');
+      }
+    } catch {
+      showTaskNotice(t('tasks.任务更新失败'), 'error');
+    } finally {
+      finishTaskAction(task.id);
+    }
+  };
+
+  const handleDeleteTask = async (task: ScheduledTaskSummary) => {
+    if (!beginTaskAction(task.id)) return;
+    try {
+      const ok = await onDeleteTask(task.id);
+      if (ok === false) {
+        showTaskNotice(t('tasks.任务更新失败'), 'error');
+        return;
+      }
+      setSelectedTaskId(null);
+    } catch {
+      showTaskNotice(t('tasks.任务更新失败'), 'error');
+    } finally {
+      finishTaskAction(task.id);
+    }
+  };
+
   const getRuntimeLabel = (task: ScheduledTaskSummary) => {
     if (task.runtime_status === 'queued') return t('tasks.排队中');
     if (task.runtime_status === 'running') return t('tasks.执行中');
@@ -893,7 +937,7 @@ export function TasksPage({
                         className="tasks-inline-action"
                         onClick={() =>
                           void (task.status === 'paused'
-                            ? onResumeTask(task.id)
+                            ? handleResumeTask(task)
                             : handleRunTask(task))
                         }
                         disabled={
@@ -1294,12 +1338,7 @@ export function TasksPage({
                   <button
                     type="button"
                     className="tasks-inline-action"
-                    onClick={() => {
-                      if (!beginTaskAction(selectedTask.id)) return;
-                      void onPauseTask(selectedTask.id).finally(() =>
-                        finishTaskAction(selectedTask.id),
-                      );
-                    }}
+                    onClick={() => void handlePauseTask(selectedTask)}
                     disabled={!!taskActionBusyById[selectedTask.id]}
                   >
                     {t('tasks.暂停')}
@@ -1309,12 +1348,7 @@ export function TasksPage({
                   <button
                     type="button"
                     className="tasks-inline-action"
-                    onClick={() => {
-                      if (!beginTaskAction(selectedTask.id)) return;
-                      void onResumeTask(selectedTask.id).finally(() =>
-                        finishTaskAction(selectedTask.id),
-                      );
-                    }}
+                    onClick={() => void handleResumeTask(selectedTask)}
                     disabled={!!taskActionBusyById[selectedTask.id]}
                   >
                     {t('tasks.恢复')}
@@ -1323,12 +1357,7 @@ export function TasksPage({
                 <button
                   type="button"
                   className="tasks-inline-action tasks-inline-action-danger"
-                  onClick={() => {
-                    if (!beginTaskAction(selectedTask.id)) return;
-                    void onDeleteTask(selectedTask.id)
-                      .finally(() => finishTaskAction(selectedTask.id))
-                      .finally(() => setSelectedTaskId(null));
-                  }}
+                  onClick={() => void handleDeleteTask(selectedTask)}
                   disabled={!!taskActionBusyById[selectedTask.id]}
                 >
                   {t('tasks.删除')}

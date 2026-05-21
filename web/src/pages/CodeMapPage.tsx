@@ -21,6 +21,7 @@ import type {
 import {
   fetchCodeMap,
   fetchCodeMapStats,
+  fetchCodeMapText,
   fetchCodeIndexFileDetail,
   fetchCodeIndexStatus,
   fetchAiSummary,
@@ -1612,14 +1613,7 @@ function CodeMapTextView({
   useEffect(() => {
     const ctrl = new AbortController();
     setLoading(true);
-    fetch(
-      `${apiBase}/api/code-map/${encodeURIComponent(repositoryId)}/text?branch=${encodeURIComponent(branch)}&maxTokens=4096`,
-      { signal: ctrl.signal },
-    )
-      .then((r) => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        return r.text();
-      })
+    fetchCodeMapText(apiBase, repositoryId, branch, 4096, ctrl.signal)
       .then((txt) => {
         if (!ctrl.signal.aborted) setText(txt);
       })

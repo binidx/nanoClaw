@@ -92,6 +92,10 @@ function getSource(visibility: string, sourceType: string): AppCardSource {
   return visibility === 'shared' ? 'shared' : 'private';
 }
 
+function didMutationSucceed(result: unknown): boolean {
+  return result !== null && result !== false;
+}
+
 function buildExtensionExtra(input: {
   capabilities: string[];
   transport?: string;
@@ -302,11 +306,10 @@ export function MyAppsPanel({
             return result;
           }}
           onSave={async (input) => {
-            if (editingMcp) {
-              await onUpdateMcp(editingMcp.id, input);
-            } else {
-              await onCreateMcp(input);
-            }
+            const result = editingMcp
+              ? await onUpdateMcp(editingMcp.id, input)
+              : await onCreateMcp(input);
+            if (!didMutationSucceed(result)) return;
             setShowMcpDrawer(false);
             setEditingMcp(null);
           }}
@@ -317,7 +320,8 @@ export function MyAppsPanel({
       {showAiMcpDrawer && (
         <McpAiCreateDrawer
           onGenerate={async (input) => {
-            await onGenerateMcp(input);
+            const result = await onGenerateMcp(input);
+            if (!didMutationSucceed(result)) return;
             setShowAiMcpDrawer(false);
           }}
           onClose={() => setShowAiMcpDrawer(false)}
@@ -327,7 +331,8 @@ export function MyAppsPanel({
       {showMcpImportDrawer && (
         <McpImportDrawer
           onImport={async (input) => {
-            await onImportMcp(input);
+            const result = await onImportMcp(input);
+            if (!didMutationSucceed(result)) return;
             setShowMcpImportDrawer(false);
           }}
           onClose={() => setShowMcpImportDrawer(false)}
@@ -338,11 +343,10 @@ export function MyAppsPanel({
         <SkillCreateDrawer
           editing={editingSkill}
           onSave={async (input) => {
-            if (editingSkill) {
-              await onUpdateSkill(editingSkill.id, input);
-            } else {
-              await onCreateSkill(input);
-            }
+            const result = editingSkill
+              ? await onUpdateSkill(editingSkill.id, input)
+              : await onCreateSkill(input);
+            if (!didMutationSucceed(result)) return;
             setShowSkillDrawer(false);
             setEditingSkill(null);
           }}
@@ -353,7 +357,8 @@ export function MyAppsPanel({
       {showSkillImportDrawer && (
         <SkillImportDrawer
           onImport={async (input) => {
-            await onImportSkill(input);
+            const result = await onImportSkill(input);
+            if (!didMutationSucceed(result)) return;
             setShowSkillImportDrawer(false);
           }}
           onClose={() => setShowSkillImportDrawer(false)}

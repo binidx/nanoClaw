@@ -387,6 +387,7 @@ function extractPolicyFromPayload(payload: unknown): AccessPolicy | undefined {
 const API = '';
 const MAX_UPLOAD_FILES = 5;
 const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
+const SEND_ERROR_TIMEOUT_MS = 6000;
 
 type MessageMemoryAction = 'remember' | 'session_only';
 
@@ -1117,6 +1118,16 @@ function fileToBase64(file: File, t?: (key: string, opts?: Record<string, unknow
   });
 }
 
+function formatUploadBytes(bytes: number): string {
+  if (bytes >= 1024 * 1024) {
+    return `${Math.floor(bytes / (1024 * 1024))} MB`;
+  }
+  if (bytes >= 1024) {
+    return `${Math.floor(bytes / 1024)} KB`;
+  }
+  return `${bytes} B`;
+}
+
 function mergePendingUploadFiles(
   previous: PendingUploadFile[],
   picked: File[],
@@ -1382,6 +1393,25 @@ function AppShell() {
     PendingUploadFile[]
   >([]);
   const [uploadingFiles, setUploadingFiles] = useState(false);
+  const sendErrorTimerRef = useRef<number | null>(null);
+  const showSendError = useCallback((message: string) => {
+    if (sendErrorTimerRef.current !== null) {
+      window.clearTimeout(sendErrorTimerRef.current);
+    }
+    setSendError(message);
+    sendErrorTimerRef.current = window.setTimeout(() => {
+      setSendError(null);
+      sendErrorTimerRef.current = null;
+    }, SEND_ERROR_TIMEOUT_MS);
+  }, []);
+  useEffect(
+    () => () => {
+      if (sendErrorTimerRef.current !== null) {
+        window.clearTimeout(sendErrorTimerRef.current);
+      }
+    },
+    [],
+  );
 
   // ── Terminal state ──
 
@@ -2469,10 +2499,17 @@ function AppShell() {
     const picked = Array.from(files);
     const invalidSize = picked.find((file) => file.size > MAX_UPLOAD_BYTES);
     if (invalidSize) {
+      showSendError(
+        t('app.uploadTooLarge', {
+          name: invalidSize.name,
+          limit: formatUploadBytes(MAX_UPLOAD_BYTES),
+        }),
+      );
       return;
     }
     setPendingUploadFiles((prev) => mergePendingUploadFiles(prev, picked));
-  }, []);
+    setSendError(null);
+  }, [showSendError, t]);
 
   const removePendingUpload = useCallback((id: string) => {
     setPendingUploadFiles((prev) => prev.filter((item) => item.id !== id));
@@ -2640,16 +2677,26 @@ function AppShell() {
       return;
     const isSlashCommand = text.startsWith('/');
     const uploadSnapshot = [...pendingUploadFiles];
-    setInput('');
-    setPendingUploadFiles([]);
+    if (isSlashCommand && uploadSnapshot.length > 0) {
+      showSendError(t('app.slashNoAttachments'));
+      return;
+    }
 
     // Handle /reset command
     if (text === '/reset' && uploadSnapshot.length === 0) {
       try {
-        await fetch(
+        const resetRes = await fetch(
           `${API}/api/conversations/${encodeURIComponent(activeJid)}/reset`,
           { method: 'POST' },
         );
+        if (!resetRes.ok) {
+          const body = (await resetRes.json().catch(() => ({}))) as {
+            error?: string;
+          };
+          throw new Error(body.error || t('app.resetFailed'));
+        }
+        setInput('');
+        setPendingUploadFiles([]);
         epochRef.current++;
         seenIds.current = new Set();
         updateConversationChatState(activeJid, () => ({
@@ -2658,11 +2705,14 @@ function AppShell() {
         setMessageSelectionMode(false);
         setSelectedConversationItemKeys(new Set());
         loadConversations();
-      } catch {
-        /* offline */
+      } catch (err) {
+        showSendError(err instanceof Error ? err.message : t('app.resetFailed'));
       }
       return;
     }
+
+    setInput('');
+    setPendingUploadFiles([]);
 
     const localId = `local_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     const latestTimelineTime =
@@ -2778,8 +2828,7 @@ function AppShell() {
       setInput(text);
       setPendingUploadFiles(uploadSnapshot);
       const msg = err instanceof Error ? err.message : t('app.9ca6a3');
-      setSendError(msg);
-      setTimeout(() => setSendError(null), 6000);
+      showSendError(msg);
     } finally {
       setUploadingFiles(false);
     }

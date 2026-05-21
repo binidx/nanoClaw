@@ -25,6 +25,22 @@ export function getApprovalRemainingSeconds(
   return Math.max(0, Math.ceil((Date.parse(expiresAt) - nowMs) / 1000));
 }
 
+export function getApprovalTotalSeconds(
+  createdAt: string,
+  expiresAt: string,
+): number {
+  const createdMs = Date.parse(createdAt);
+  const expiresMs = Date.parse(expiresAt);
+  if (
+    !Number.isFinite(createdMs) ||
+    !Number.isFinite(expiresMs) ||
+    expiresMs <= createdMs
+  ) {
+    return 120;
+  }
+  return Math.max(1, Math.ceil((expiresMs - createdMs) / 1000));
+}
+
 interface ApprovalOverlayProps {
   approvals: ApprovalRequest[];
   resolvingApprovalId: string | null;
@@ -85,9 +101,16 @@ function ApprovalOverlayCard({
   const activeIndex = activeApproval
     ? sortedApprovals.findIndex((approval) => approval.id === activeApproval.id)
     : -1;
+  const isDirectoryAccess = activeApproval.toolName === 'DirectoryAccess';
+  const effectiveApprovalScope: ApprovalScope = isDirectoryAccess
+    ? 'current_tool_call'
+    : approvalScope;
   const remainingSeconds = activeApproval
     ? getApprovalRemainingSeconds(activeApproval.expiresAt, now)
     : 0;
+  const totalSeconds = activeApproval
+    ? getApprovalTotalSeconds(activeApproval.createdAt, activeApproval.expiresAt)
+    : 120;
   const resolving = !!activeApproval && resolvingApprovalId === activeApproval.id;
   const expired = remainingSeconds === 0;
 
@@ -97,8 +120,6 @@ function ApprovalOverlayCard({
     return () => window.clearInterval(timer);
   }, [activeApproval?.id]);
 
-  const isDirectoryAccess = activeApproval.toolName === 'DirectoryAccess';
-
   return (
     <div className="approval-overlay-shell" aria-live="polite">
       <div className="approval-overlay-card">
@@ -106,7 +127,7 @@ function ApprovalOverlayCard({
           <div
             className="approval-overlay-progress"
             style={{
-              width: `${Math.min(100, (remainingSeconds / 120) * 100)}%`,
+              width: `${Math.min(100, (remainingSeconds / totalSeconds) * 100)}%`,
               transition: 'width 1s linear',
             }}
           />
@@ -161,25 +182,29 @@ function ApprovalOverlayCard({
             <span>{t('directory', { path: activeApproval.cwd })}</span>
           ) : null}
         </div>
-        <label className="approval-overlay-scope">
-          <span>{t('scope.title')}</span>
-          <AppSelect
-            value={approvalScope}
-            onChange={(value) => setApprovalScope(value as ApprovalScope)}
-            ariaLabel={t('scope.title')}
-            options={[
-              { value: 'current_runtime', label: t('scope.runtime') },
-              { value: 'current_tool_call', label: t('scope.toolCall') },
-            ]}
-            compact
-            menuMatchTrigger
-          />
-        </label>
-        <div className="approval-overlay-help">
-          {approvalScope === 'current_runtime'
-            ? t('scope.runtimeHint')
-            : t('scope.toolCallHint')}
-        </div>
+        {!isDirectoryAccess ? (
+          <>
+            <label className="approval-overlay-scope">
+              <span>{t('scope.title')}</span>
+              <AppSelect
+                value={approvalScope}
+                onChange={(value) => setApprovalScope(value as ApprovalScope)}
+                ariaLabel={t('scope.title')}
+                options={[
+                  { value: 'current_runtime', label: t('scope.runtime') },
+                  { value: 'current_tool_call', label: t('scope.toolCall') },
+                ]}
+                compact
+                menuMatchTrigger
+              />
+            </label>
+            <div className="approval-overlay-help">
+              {approvalScope === 'current_runtime'
+                ? t('scope.runtimeHint')
+                : t('scope.toolCallHint')}
+            </div>
+          </>
+        ) : null}
         {expired ? (
           <div className="approval-overlay-expired">
             {t('timedOut')}
@@ -215,13 +240,13 @@ function ApprovalOverlayCard({
               type="button"
               className="approval-overlay-btn allow"
               onClick={() =>
-                onResolve(activeApproval, 'allow-once', approvalScope)
+                onResolve(activeApproval, 'allow-once', effectiveApprovalScope)
               }
               disabled={resolving || expired}
             >
               {resolving
                 ? t('button.allowing')
-                : approvalScope === 'current_runtime'
+                : effectiveApprovalScope === 'current_runtime'
                   ? t('button.allowRuntime')
                   : t('button.allowOnce')}
             </button>

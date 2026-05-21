@@ -12,6 +12,7 @@ import type {
 import {
   fetchCodeMap,
   fetchCodeMapStats,
+  fetchCodeMapText,
   rebuildCodeMap,
 } from './code-map-api';
 
@@ -303,14 +304,7 @@ function CodeMapTextView({
   useEffect(() => {
     const ctrl = new AbortController();
     setLoading(true);
-    fetch(
-      `${apiBase}/api/code-map/${encodeURIComponent(repositoryId)}/text?branch=${encodeURIComponent(branch)}&maxTokens=4096`,
-      { signal: ctrl.signal },
-    )
-      .then((r) => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        return r.text();
-      })
+    fetchCodeMapText(apiBase, repositoryId, branch, 4096, ctrl.signal)
       .then((t) => { if (!ctrl.signal.aborted) setText(t); })
       .catch((err) => {
         if (!ctrl.signal.aborted) setText(err instanceof Error ? err.message : t('panel.loadFailed'));

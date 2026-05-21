@@ -43,6 +43,7 @@ export function Pagination({
       </div>
       <div className="nc-pagination-controls">
         <button
+          type="button"
           className="nc-pagination-btn"
           disabled={safeCurrentPage <= 1}
           onClick={() => onPageChange(safeCurrentPage - 1)}
@@ -56,6 +57,7 @@ export function Pagination({
           ) : (
             <button
               key={p}
+              type="button"
               className={`nc-pagination-btn${p === safeCurrentPage ? ' active' : ''}`}
               onClick={() => onPageChange(p)}
             >
@@ -64,6 +66,7 @@ export function Pagination({
           ),
         )}
         <button
+          type="button"
           className="nc-pagination-btn"
           disabled={safeCurrentPage >= totalPages}
           onClick={() => onPageChange(safeCurrentPage + 1)}

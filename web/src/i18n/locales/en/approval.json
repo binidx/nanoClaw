@@ -3,7 +3,7 @@
   "title.commandConfirm": "Command confirmation",
   "button.reject": "Reject and close",
   "directoryRequest": "AI requests access to directory:",
-  "directoryHint": "Allowing will automatically add this directory to the current conversation whitelist.",
+  "directoryHint": "This approval applies only to the current directory access request.",
   "tool": "Tool: {{name}}",
   "directory": "Directory: {{path}}",
   "scope.title": "Authorization scope",

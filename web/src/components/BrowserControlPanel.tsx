@@ -32,6 +32,10 @@ interface BrowserTabsResponse {
   tabs: BrowserTab[];
 }
 
+const ROLE_SNAPSHOT_MAX_CHARS = 20000;
+const ROLE_SNAPSHOT_MAX_NODES = 250;
+const ROLE_SNAPSHOT_PREVIEW_CHARS = 20000;
+
 function buildApiUrl(apiBase: string, path: string): string {
   return `${apiBase}${path}`;
 }
@@ -442,6 +446,8 @@ export function BrowserControlPanel({ apiBase }: BrowserControlPanelProps) {
         interactive: 'true',
         compact: 'true',
         maxDepth: '12',
+        maxChars: String(ROLE_SNAPSHOT_MAX_CHARS),
+        maxNodes: String(ROLE_SNAPSHOT_MAX_NODES),
       });
       if (forceRefresh) {
         params.set('force', 'true');
@@ -1132,7 +1138,11 @@ export function BrowserControlPanel({ apiBase }: BrowserControlPanelProps) {
                       {t('panel.truncatedHint')}
                     </div>
                   ) : null}
-                  <pre className="browser-role-snapshot">{roleSnapshot.snapshot}</pre>
+                  <pre className="browser-role-snapshot">
+                    {roleSnapshot.snapshot.length > ROLE_SNAPSHOT_PREVIEW_CHARS
+                      ? `${roleSnapshot.snapshot.slice(0, ROLE_SNAPSHOT_PREVIEW_CHARS)}\n...(truncated ${roleSnapshot.snapshot.length - ROLE_SNAPSHOT_PREVIEW_CHARS} chars)`
+                      : roleSnapshot.snapshot}
+                  </pre>
                 </>
               ) : (
                 <div className="settings-hint">

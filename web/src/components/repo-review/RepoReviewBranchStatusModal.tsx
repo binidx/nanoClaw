@@ -187,57 +187,54 @@ export function RepoReviewBranchStatusModal({
                   return (
                     <div
                       key={`${repositoryId}-${item.name}`}
-                      role="button"
-                      tabIndex={0}
                       className={`repo-review-branch-status-card ${active ? 'active' : ''}`}
-                      onClick={() => setSelectedBranchDraft(item.name)}
-                      onKeyDown={(event) => {
-                        if (event.key === 'Enter' || event.key === ' ') {
-                          event.preventDefault();
-                          setSelectedBranchDraft(item.name);
-                        }
-                      }}
                     >
-                      <div className="repo-review-run-header">
-                        <div className="repo-review-run-title-block">
-                          <strong>{item.name}</strong>
-                          <div className="repo-review-run-meta">
-                            {item.defaultBranch ? <span>{t('branchStatus.defaultBaseline')}</span> : null}
-                            {item.headSha ? (
-                              <span>{formatShortSha(item.headSha)}</span>
-                            ) : null}
+                      <button
+                        type="button"
+                        className="repo-review-branch-status-card-select"
+                        onClick={() => setSelectedBranchDraft(item.name)}
+                      >
+                        <div className="repo-review-run-header">
+                          <div className="repo-review-run-title-block">
+                            <strong>{item.name}</strong>
+                            <div className="repo-review-run-meta">
+                              {item.defaultBranch ? <span>{t('branchStatus.defaultBaseline')}</span> : null}
+                              {item.headSha ? (
+                                <span>{formatShortSha(item.headSha)}</span>
+                              ) : null}
+                            </div>
+                          </div>
+                          <div className="repo-review-run-badges">
+                            <span
+                              className={`repo-review-status-badge ${
+                                item.lastRun
+                                  ? `status-${item.lastRun.overall || item.lastRun.status}`
+                                  : 'neutral'
+                              }`}
+                            >
+                              {item.lastRun
+                                ? formatRunOutcomeLabel(
+                                    item.lastRun.overall || item.lastRun.status,
+                                  )
+                                : t('branchStatus.notReviewed')}
+                            </span>
                           </div>
                         </div>
-                        <div className="repo-review-run-badges">
-                          <span
-                            className={`repo-review-status-badge ${
-                              item.lastRun
-                                ? `status-${item.lastRun.overall || item.lastRun.status}`
-                                : 'neutral'
-                            }`}
-                          >
-                            {item.lastRun
-                              ? formatRunOutcomeLabel(
-                                  item.lastRun.overall || item.lastRun.status,
-                                )
-                              : t('branchStatus.notReviewed')}
-                          </span>
+                        <div className="repo-review-spotlight-meta">
+                          {item.actor ? <span>{item.actor}</span> : null}
+                          {item.latestCommitAt ? (
+                            <span>
+                              {t('branchStatus.recentCommit', { time: formatOptionalDateTime(item.latestCommitAt) })}
+                            </span>
+                          ) : null}
                         </div>
-                      </div>
-                      <div className="repo-review-spotlight-meta">
-                        {item.actor ? <span>{item.actor}</span> : null}
-                        {item.latestCommitAt ? (
-                          <span>
-                            {t('branchStatus.recentCommit', { time: formatOptionalDateTime(item.latestCommitAt) })}
-                          </span>
-                        ) : null}
-                      </div>
-                      <div
-                        className="settings-hint repo-review-summary-preview"
-                        title={item.lastRun?.summary || item.title || t('branchStatus.noSummary')}
-                      >
-                        {item.lastRun?.summary || item.title || t('branchStatus.noSummary')}
-                      </div>
+                        <div
+                          className="settings-hint repo-review-summary-preview"
+                          title={item.lastRun?.summary || item.title || t('branchStatus.noSummary')}
+                        >
+                          {item.lastRun?.summary || item.title || t('branchStatus.noSummary')}
+                        </div>
+                      </button>
                       <div className="repo-review-inline-actions repo-review-history-actions">
                         <button
                           type="button"

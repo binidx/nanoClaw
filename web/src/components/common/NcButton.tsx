@@ -33,6 +33,7 @@ export const NcButton = React.forwardRef<HTMLButtonElement, NcButtonProps>(
       loading = false,
       leadingIcon,
       trailingIcon,
+      type = 'button',
       className = '',
       children,
       disabled,
@@ -59,7 +60,7 @@ export const NcButton = React.forwardRef<HTMLButtonElement, NcButtonProps>(
       .join(' ');
 
     return (
-      <button ref={ref} className={cls} disabled={disabled || loading} aria-busy={loading} {...rest}>
+      <button ref={ref} type={type} className={cls} disabled={disabled || loading} aria-busy={loading} {...rest}>
         {loading ? <span className="nc-btn-spinner" aria-hidden="true" /> : null}
         {!loading && leadingIcon ? <span className="nc-btn-icon">{leadingIcon}</span> : null}
         {children ? <span className="nc-btn-label">{children}</span> : null}

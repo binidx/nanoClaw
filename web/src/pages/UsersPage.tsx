@@ -1952,24 +1952,13 @@ export function UsersPage({ apiBase }: UsersPageProps) {
                               onClick={async () => {
                                 setSavingNewRole(true);
                                 try {
-                                  const res = await fetch('/api/roles', {
+                                  await requestJsonT('/api/roles', {
                                     method: 'POST',
-                                    headers: {
-                                      'Content-Type': 'application/json',
-                                    },
                                     body: JSON.stringify({
                                       name: newRoleName.trim(),
                                       description: newRoleDesc,
                                     }),
                                   });
-                                  const data = await res.json();
-                                  if (!res.ok) {
-                                    setNotice({
-                                      text: data.error || t('users.创建失败'),
-                                      tone: 'error',
-                                    });
-                                    return;
-                                  }
                                   setNotice({
                                     text: t('users.角色已创建', {
                                       name: newRoleName.trim(),
@@ -1981,9 +1970,12 @@ export function UsersPage({ apiBase }: UsersPageProps) {
                                   setNewRoleDesc('');
                                   const nextRoles = await loadRoles();
                                   setRoles(nextRoles);
-                                } catch {
+                                } catch (err) {
                                   setNotice({
-                                    text: t('users.网络错误'),
+                                    text:
+                                      err instanceof Error
+                                        ? err.message
+                                        : t('users.网络错误'),
                                     tone: 'error',
                                   });
                                 } finally {
@@ -2356,6 +2348,12 @@ function PermissionOverridesPanel({
   users: UserSummary[];
 }) {
   const { t } = useTranslation('users');
+  const requestJsonT = useCallback(
+    async <T,>(path: string, init?: RequestInit) => {
+      return requestJson<T>(apiBase, path, init, t('users.请求失败'));
+    },
+    [apiBase, t],
+  );
   const [selectedUserId, setSelectedUserId] = useState('');
   const [overrides, setOverrides] = useState<OverrideEntry[]>([]);
   const [allPermissions, setAllPermissions] = useState<
@@ -2364,17 +2362,36 @@ function PermissionOverridesPanel({
   const [newCode, setNewCode] = useState('');
   const [newEffect, setNewEffect] = useState<'allow' | 'deny'>('allow');
   const [loading, setLoading] = useState(false);
+  const [notice, setNotice] = useState<NoticeState | null>(null);
 
   useEffect(() => {
-    fetch(`${apiBase}/api/permissions`, { credentials: 'include' })
-      .then((r) => r.json())
+    requestJsonT<{ permissions?: unknown[] }>('/api/permissions')
       .then((data) => {
-        if (data.ok && Array.isArray(data.permissions)) {
-          setAllPermissions(data.permissions);
+        if (Array.isArray(data.permissions)) {
+          setAllPermissions(
+            data.permissions.filter(
+              (
+                item,
+              ): item is {
+                id: string;
+                code: string;
+                name: string;
+                category: string;
+              } =>
+                Boolean(item) &&
+                typeof item === 'object' &&
+                typeof (item as { code?: unknown }).code === 'string',
+            ),
+          );
         }
       })
-      .catch(() => {});
-  }, [apiBase]);
+      .catch((err) => {
+        setNotice({
+          tone: 'error',
+          text: err instanceof Error ? err.message : t('users.请求失败'),
+        });
+      });
+  }, [requestJsonT, t]);
 
   const loadOverrides = useCallback(
     async (uid: string) => {
@@ -2385,37 +2402,40 @@ function PermissionOverridesPanel({
       }
       setLoading(true);
       try {
-        const res = await fetch(`${apiBase}/api/permission-overrides/${uid}`, {
-          credentials: 'include',
-        });
-        const data = await res.json();
-        if (data.ok && Array.isArray(data.overrides)) {
+        const data = await requestJsonT<{ overrides?: OverrideEntry[] }>(
+          `/api/permission-overrides/${encodeURIComponent(uid)}`,
+        );
+        if (Array.isArray(data.overrides)) {
           setOverrides(data.overrides);
         } else {
           setOverrides([]);
         }
-      } catch {
+      } catch (err) {
         setOverrides([]);
+        setNotice({
+          tone: 'error',
+          text: err instanceof Error ? err.message : t('users.请求失败'),
+        });
       } finally {
         setLoading(false);
       }
     },
-    [apiBase],
+    [requestJsonT, t],
   );
 
   useEffect(() => {
     setNewCode('');
     setNewEffect('allow');
+    setNotice(null);
     loadOverrides(selectedUserId);
   }, [selectedUserId, loadOverrides]);
 
   const handleGrant = useCallback(async () => {
     if (!selectedUserId || !newCode) return;
+    setNotice(null);
     try {
-      await fetch(`${apiBase}/api/permission-overrides`, {
+      await requestJsonT('/api/permission-overrides', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({
           userId: selectedUserId,
           permissionCode: newCode,
@@ -2424,28 +2444,34 @@ function PermissionOverridesPanel({
       });
       await loadOverrides(selectedUserId);
       setNewCode('');
-    } catch {
-      /* ignore */
+      setNotice({ tone: 'success', text: t('users.新增权限覆盖') });
+    } catch (err) {
+      setNotice({
+        tone: 'error',
+        text: err instanceof Error ? err.message : t('users.请求失败'),
+      });
     }
-  }, [apiBase, selectedUserId, newCode, newEffect, loadOverrides]);
+  }, [selectedUserId, newCode, newEffect, loadOverrides, requestJsonT, t]);
 
   const handleRevoke = useCallback(
     async (code: string) => {
       if (!selectedUserId) return;
-      try {
-        await fetch(
-          `${apiBase}/api/permission-overrides/${selectedUserId}/${code}`,
-          {
-            method: 'DELETE',
-            credentials: 'include',
-          },
+      setNotice(null);
+        try {
+          await requestJsonT(
+          `/api/permission-overrides/${encodeURIComponent(selectedUserId)}/${encodeURIComponent(code)}`,
+          { method: 'DELETE' },
         );
         await loadOverrides(selectedUserId);
-      } catch {
-        /* ignore */
+        setNotice({ tone: 'success', text: t('users.移除') });
+      } catch (err) {
+        setNotice({
+          tone: 'error',
+          text: err instanceof Error ? err.message : t('users.请求失败'),
+        });
       }
     },
-    [apiBase, selectedUserId, loadOverrides],
+    [selectedUserId, loadOverrides, requestJsonT, t],
   );
 
   const userOptions: AppSelectOption[] = users.map((u) => ({
@@ -2474,6 +2500,13 @@ function PermissionOverridesPanel({
               ...userOptions,
             ]}
           />
+          {notice ? (
+            <div
+              className={`users-message ${notice.tone === 'error' ? 'is-error' : 'is-success'}`}
+            >
+              {notice.text}
+            </div>
+          ) : null}
         </div>
 
         {selectedUserId && (

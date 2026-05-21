@@ -76,8 +76,11 @@ export function StorePanel({
   const handleSectionChange = (s: StoreSection) => {
     setSection(s);
     setSearch('');
+    setTypeFilter(undefined);
     library.setSearch('');
     registry.setSearch('');
+    library.setTypeFilter(undefined);
+    registry.setTypeFilter(undefined);
   };
 
   const handleTypeFilterChange = (f: CombinedTypeFilter) => {
@@ -120,7 +123,7 @@ export function StorePanel({
   };
 
   const loading = section === 'shared' ? library.loading : registry.loading;
-  const error = section === 'registry' ? registry.error : '';
+  const error = section === 'shared' ? library.error : registry.error;
 
   const typeFilterOptions = section === 'registry'
     ? (['skill', 'mcp', 'bundle'] as const)

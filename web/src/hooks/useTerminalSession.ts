@@ -60,6 +60,7 @@ export function useTerminalSession({
   const xtermRef = useRef<XtermTerminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const resizeListenerRef = useRef<(() => void) | null>(null);
+  const resizeObserverRef = useRef<ResizeObserver | null>(null);
   const termDataDisposableRef = useRef<{ dispose: () => void } | null>(null);
   const retryTimerRef = useRef<number | null>(null);
   const layoutFrameRef = useRef<number | null>(null);
@@ -94,6 +95,8 @@ export function useTerminalSession({
       window.removeEventListener('resize', resizeListenerRef.current);
       resizeListenerRef.current = null;
     }
+    resizeObserverRef.current?.disconnect();
+    resizeObserverRef.current = null;
     xtermRef.current?.dispose();
     xtermRef.current = null;
     fitAddonRef.current = null;
@@ -207,6 +210,14 @@ export function useTerminalSession({
 
         resizeListenerRef.current = syncLayout;
         window.addEventListener('resize', syncLayout);
+        if ('ResizeObserver' in window) {
+          const resizeObserver = new ResizeObserver(syncLayout);
+          resizeObserver.observe(currentHost);
+          if (currentHost.parentElement) {
+            resizeObserver.observe(currentHost.parentElement);
+          }
+          resizeObserverRef.current = resizeObserver;
+        }
 
         ws.onopen = () => {
           syncLayout();

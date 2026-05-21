@@ -3,7 +3,7 @@
   "title.commandConfirm": "命令确认",
   "button.reject": "拒绝并关闭审批",
   "directoryRequest": "AI 请求访问目录：",
-  "directoryHint": "允许后将自动把该目录加入当前对话的白名单。",
+  "directoryHint": "本次允许仅对当前目录访问请求生效。",
   "tool": "工具：{{name}}",
   "directory": "目录：{{path}}",
   "scope.title": "授权范围",

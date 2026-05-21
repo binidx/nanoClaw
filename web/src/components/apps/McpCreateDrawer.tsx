@@ -157,11 +157,11 @@ export function McpCreateDrawer({ editing, onImportJson, onSave, onClose }: McpC
           </div>
           <div className="form-group">
             <label>Transport</label>
-            <select value={transport} onChange={(e) => setTransport(e.target.value as 'stdio' | 'streamable-http' | 'sse')}>
+            <NcSelect value={transport} onChange={(e) => setTransport(e.target.value as 'stdio' | 'streamable-http' | 'sse')}>
               <option value="stdio">stdio</option>
               <option value="streamable-http">streamable-http</option>
               <option value="sse">sse</option>
-            </select>
+            </NcSelect>
           </div>
           {transport === 'stdio' ? (
             <>

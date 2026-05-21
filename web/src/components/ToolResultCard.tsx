@@ -219,15 +219,17 @@ export function ToolResultCard({
 }: ToolResultCardProps) {
   const { t } = useTranslation('common');
   const bodyId = useId();
-  const formatted = variant === 'arguments' ? formatMaybeJson(output) : output;
+  const autoCollapsed = output.length > 500;
+  const startCollapsed = collapsed === undefined ? autoCollapsed : collapsed;
+  const [expanded, setExpanded] = useState(!startCollapsed);
+  const formatted = useMemo(
+    () => (variant === 'arguments' && expanded ? formatMaybeJson(output) : output),
+    [expanded, output, variant],
+  );
   const mode = useMemo(
     () => classifyResultMode(toolName, formatted, variant),
     [toolName, formatted, variant],
   );
-
-  const autoCollapsed = formatted.length > 500;
-  const startCollapsed = collapsed === undefined ? autoCollapsed : collapsed;
-  const [expanded, setExpanded] = useState(!startCollapsed);
 
   const icon = toolIconSvg(toolName);
   const langLabel =
@@ -238,6 +240,9 @@ export function ToolResultCard({
         : 'output';
 
   const body = useMemo(() => {
+    if (!expanded) {
+      return null;
+    }
     if (isError) {
       return (
         <pre className="md-code-block turn-item-code turn-item-code-error">
@@ -265,7 +270,7 @@ export function ToolResultCard({
       );
     }
     return renderCodeBody(formatted, langLabel);
-  }, [formatted, isError, langLabel, mode, variant]);
+  }, [expanded, formatted, isError, langLabel, mode, variant]);
 
   return (
     <div
@@ -276,7 +281,7 @@ export function ToolResultCard({
         <span className="tool-result-card-title" title={toolName}>
           {toolName}
         </span>
-        <span className="tool-result-card-meta">{formatted.length} {t('toolResult.chars')}</span>
+        <span className="tool-result-card-meta">{output.length} {t('toolResult.chars')}</span>
         <button
           type="button"
           className="tool-result-card-toggle"
@@ -293,7 +298,7 @@ export function ToolResultCard({
           expanded ? 'tool-result-card-body' : 'tool-result-card-body-collapsed'
         }
       >
-        {body}
+        {expanded ? body : null}
       </div>
     </div>
   );

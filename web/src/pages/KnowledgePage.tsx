@@ -3891,27 +3891,19 @@ export function KnowledgePage({ apiBase }: KnowledgePageProps) {
                                 {doc.filename}
                               </strong>
                               {doc.superseded_by ? (
-                                <span
-                                  role="button"
-                                  tabIndex={0}
+                                <button
+                                  type="button"
                                   className="knowledge-llm-badge failed knowledge-supersede-link"
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     jumpToSupersedingDoc(doc.superseded_by!);
-                                  }}
-                                  onKeyDown={(e) => {
-                                    if (e.key === 'Enter' || e.key === ' ') {
-                                      e.preventDefault();
-                                      e.stopPropagation();
-                                      jumpToSupersedingDoc(doc.superseded_by!);
-                                    }
                                   }}
                                   title={t('已被文档 {{id}} 替代', {
                                     id: doc.superseded_by,
                                   })}
                                 >
                                   {t('已替代')} →
-                                </span>
+                                </button>
                               ) : null}
                               {kbEnhancementLevel(selectedKb) === 'wiki_lite' ||
                               kbEnhancementLevel(selectedKb) === 'wiki_full'
