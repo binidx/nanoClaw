@@ -1711,6 +1711,10 @@
   align-items: start;
 }
 
+.repo-review-framework-board--single {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .repo-review-framework-main,
 .repo-review-framework-side {
   display: grid;
@@ -2697,20 +2701,25 @@
   margin-bottom: 16px;
 }
 
-.modal.repo-review-branch-status-modal .repo-review-branch-status-layout {
+.modal.repo-review-branch-status-modal .repo-review-branch-status-body {
   flex: 1 1 auto;
-  height: 100%;
   min-height: 0;
+  overflow-y: auto;
+  padding-right: 6px;
+  scrollbar-color: rgba(148, 163, 184, 0.48) transparent;
+}
+
+.modal.repo-review-branch-status-modal .repo-review-branch-status-layout {
+  min-height: min-content;
 }
 
 .repo-review-branch-status-layout {
   display: grid;
   grid-template-columns: minmax(320px, 420px) minmax(0, 1fr);
-  grid-template-rows: minmax(0, 1fr);
   gap: 20px;
-  flex: 1;
-  min-height: 0;
-  overflow: hidden;
+  align-items: start;
+  min-height: min-content;
+  overflow: visible;
 }
 
 .repo-review-branch-status-layout.single-branch {
@@ -2719,7 +2728,7 @@
 
 .repo-review-branch-status-layout.single-branch,
 .repo-review-branch-status-layout.single-branch .repo-review-branch-status-main {
-  height: 100%;
+  min-height: min-content;
 }
 
 .repo-review-branch-status-sidebar {
@@ -2727,8 +2736,8 @@
   flex-direction: column;
   gap: 10px;
   min-width: 0;
-  min-height: 0;
-  overflow: hidden;
+  min-height: min-content;
+  overflow: visible;
 }
 
 .repo-review-branch-status-sidebar::-webkit-scrollbar,
@@ -2760,8 +2769,6 @@
 .repo-review-branch-status-toolbar {
   display: grid;
   gap: 8px;
-  position: sticky;
-  top: 0;
   z-index: var(--z-content);
   padding-bottom: 4px;
   background: inherit;
@@ -2770,11 +2777,6 @@
 .repo-review-branch-status-list {
   display: grid;
   gap: 10px;
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  -webkit-overflow-scrolling: touch;
   padding-right: 6px;
 }
 
@@ -2846,10 +2848,8 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
-  min-height: 0;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  -webkit-overflow-scrolling: touch;
+  min-height: min-content;
+  overflow: visible;
   padding-right: 6px;
 }
 

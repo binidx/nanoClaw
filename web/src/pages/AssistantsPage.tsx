@@ -344,10 +344,7 @@ function formatAssistantCatalogStatusTone(
 }
 
 function getAssistantInitials(name: string): string {
-  const parts = name
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean);
+  const parts = name.trim().split(/\s+/).filter(Boolean);
   if (parts.length === 0) return 'AG';
   if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
   return `${parts[0][0] ?? ''}${parts[1][0] ?? ''}`.toUpperCase();
@@ -415,9 +412,24 @@ function normalizeAssistantResources(
         (entry): entry is string => typeof entry === 'string',
       )
     : [];
-  const availableMcpTemplates = Array.isArray(record.availableMcpTemplates)
-    ? record.availableMcpTemplates.filter(
-        (entry): entry is AssistantResources['availableMcpTemplates'][number] =>
+  const knowledgeBases = Array.isArray(record.knowledgeBases)
+    ? record.knowledgeBases.filter(
+        (entry): entry is AssistantResources['knowledgeBases'][number] =>
+          !!entry &&
+          typeof entry === 'object' &&
+          typeof (entry as { id?: unknown }).id === 'string',
+      )
+    : [];
+  const selectedKnowledgeBaseIds = Array.isArray(
+    record.selectedKnowledgeBaseIds,
+  )
+    ? record.selectedKnowledgeBaseIds.filter(
+        (entry): entry is string => typeof entry === 'string',
+      )
+    : [];
+  const repositories = Array.isArray(record.repositories)
+    ? record.repositories.filter(
+        (entry): entry is AssistantResources['repositories'][number] =>
           !!entry &&
           typeof entry === 'object' &&
           typeof (entry as { id?: unknown }).id === 'string',
@@ -466,9 +478,11 @@ function normalizeAssistantResources(
       typeof record.assistantId === 'string' && record.assistantId.trim()
         ? record.assistantId
         : assistantId,
+    knowledgeBases,
+    selectedKnowledgeBaseIds,
     availableSkills,
     selectedSkillIds,
-    availableMcpTemplates,
+    repositories,
     mcpBindings,
     repoBindings,
     projectGraphResourceHints,
@@ -1119,6 +1133,7 @@ export function AssistantsPage({
                     command?: string;
                     args?: string[];
                     enabled?: boolean;
+                    envKeyCount?: number;
                   } =>
                     !!entry &&
                     typeof entry === 'object' &&
@@ -1132,12 +1147,17 @@ export function AssistantsPage({
                     command?: string;
                     args?: string[];
                     enabled?: boolean;
+                    envKeyCount?: number;
                   }) => ({
                     id: server.id,
                     name: server.name,
                     command: server.command || '',
                     args: Array.isArray(server.args) ? server.args : [],
                     env: {},
+                    envKeyCount:
+                      typeof server.envKeyCount === 'number'
+                        ? server.envKeyCount
+                        : 0,
                     enabled: server.enabled !== false,
                   }),
                 )
@@ -1441,16 +1461,9 @@ export function AssistantsPage({
       ),
     );
     if (!newBindingTemplateId) {
-      const firstEnabled = selectedResources.availableMcpTemplates.find(
-        (template) => template.enabled,
-      );
-      setNewBindingTemplateId(
-        firstEnabled?.id ||
-          selectedResources.availableMcpTemplates[0]?.id ||
-          '',
-      );
+      setNewBindingTemplateId(selectableMcpServers[0]?.id || '');
     }
-  }, [newBindingTemplateId, selectedResources]);
+  }, [newBindingTemplateId, selectableMcpServers, selectedResources]);
 
   const handleCreateOpen = () => {
     setCreateForm(emptyFormState);
@@ -1583,6 +1596,36 @@ export function AssistantsPage({
     }
   };
 
+  const handleKnowledgeBaseToggle = async (kbId: string) => {
+    if (!selectedAssistant || !selectedResources) return;
+    const currentKbIds =
+      selectedResources.selectedKnowledgeBaseIds.length > 0
+        ? selectedResources.selectedKnowledgeBaseIds
+        : detailForm.kbIds;
+    const nextState = {
+      ...detailForm,
+      kbIds: toggleIdSelection(currentKbIds, kbId),
+    };
+    setResourceSavingKey(`kb:${kbId}`);
+    try {
+      await onSubmit(selectedAssistant.id, {
+        name: nextState.name.trim(),
+        description: nextState.description.trim() || null,
+        enabled: nextState.enabled,
+        config: buildConfigFromState(nextState),
+      });
+      setDetailForm(nextState);
+      await loadAssistantResources(selectedAssistant.id, true);
+      persistResourceMessage(t('assistants.助手知识库已更新。'));
+    } catch (err) {
+      setAssistantResourceError(
+        err instanceof Error ? err.message : t('assistants.更新助手知识库失败'),
+      );
+    } finally {
+      setResourceSavingKey('');
+    }
+  };
+
   const handleSyncProjectGraphResources = async () => {
     if (!selectedAssistant) return;
     setResourceSavingKey('project-graph:sync');
@@ -1617,9 +1660,11 @@ export function AssistantsPage({
       } else {
         await loadAssistantResources(selectedAssistant.id, true);
       }
-      const added = (data as {
-        added?: { skillIds?: unknown[]; mcpServerIds?: unknown[] };
-      }).added;
+      const added = (
+        data as {
+          added?: { skillIds?: unknown[]; mcpServerIds?: unknown[] };
+        }
+      ).added;
       const skillCount = Array.isArray(added?.skillIds)
         ? added.skillIds.length
         : 0;
@@ -1627,10 +1672,13 @@ export function AssistantsPage({
         ? added.mcpServerIds.length
         : 0;
       persistResourceMessage(
-        t('assistants.已同步项目图谱推荐资源：Skills {{skillCount}}，MCP {{mcpCount}}', {
-          skillCount,
-          mcpCount,
-        }),
+        t(
+          'assistants.已同步项目图谱推荐资源：Skills {{skillCount}}，MCP {{mcpCount}}',
+          {
+            skillCount,
+            mcpCount,
+          },
+        ),
       );
     } catch (err) {
       setAssistantResourceError(
@@ -1849,13 +1897,25 @@ export function AssistantsPage({
 
   const renderAssistantResources = () => {
     if (!selectedAssistant) return null;
-    const templates = selectedResources?.availableMcpTemplates || [];
+    const templates = selectableMcpServers;
     const availableSkills = selectedResources?.availableSkills || [];
+    const knowledgeBases = selectedResources?.knowledgeBases.length
+      ? selectedResources.knowledgeBases
+      : availableKbs;
+    const repositories = selectedResources?.repositories.length
+      ? selectedResources.repositories
+      : availableRepositories;
+    const selectedKnowledgeBaseIds = new Set(
+      selectedResources?.selectedKnowledgeBaseIds || detailForm.kbIds,
+    );
     const selectedSkillIds = new Set(
       selectedResources?.selectedSkillIds || detailForm.skillIds,
     );
     const bindings = selectedResources?.mcpBindings || [];
     const repoBindings = selectedResources?.repoBindings || [];
+    const boundRepositoryIds = new Set(
+      repoBindings.map((binding) => binding.repositoryId),
+    );
     const projectGraphHints = selectedResources?.projectGraphResourceHints;
     const projectGraphRecommendedResources =
       selectedResources?.projectGraphRecommendedResources || [];
@@ -1989,123 +2049,155 @@ export function AssistantsPage({
           </section>
         ) : null}
 
-        <div className="assistant-modal-columns">
-          <section className="assistant-modal-panel">
-            <div className="assistant-section-heading">
-              <div>
-                <h4>{t('技能')}</h4>
-                <p>
-                  {t(
-                    'assistants.这里管理当前助手自己的技能包，不再依赖全局启停状态来决定是否可用',
-                  )}
-                </p>
-              </div>
+        <section className="assistant-modal-panel">
+          <div className="assistant-section-heading">
+            <div>
+              <h4>{t('知识库资源')}</h4>
+              <p>{t('当前助手可使用的知识库资源')}</p>
             </div>
-            {availableSkills.length > 0 ? (
-              <div className="assistant-settings-option-grid">
-                {availableSkills.map((skill) => {
-                  const checked = selectedSkillIds.has(skill.id);
-                  return (
-                    <label
-                      key={skill.id}
-                      className={`assistant-settings-option-card${checked ? ' selected' : ''}`}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={() => void handleSkillToggle(skill.id)}
-                        disabled={resourceSavingKey === `skill:${skill.id}`}
-                      />
-                      <span>{skill.name}</span>
-                      <small>
-                        {skill.description || skill.id}
-                        {skill.enabled
-                          ? t('assistants. · 模板已启用')
-                          : t('assistants. · 模板当前关闭')}
-                      </small>
-                    </label>
-                  );
-                })}
-              </div>
-            ) : (
-              <div className="assistant-empty-state assistant-compact-empty">
-                <h3>{t('当前没有可用技能')}</h3>
-                <p>
-                  {t(
-                    'assistants.先去全局 Skills 管理安装或启用模板，再回来选择要分配给这个助手的技能',
-                  )}
-                </p>
-              </div>
-            )}
-          </section>
-
-          <section className="assistant-modal-panel">
-            <div className="assistant-section-heading">
-              <div>
-                <h4>{t('assistants.认证迁移队列')}</h4>
-                <p>
-                  {t(
-                    'assistants.优先处理仍在使用模板回退或尚未写入助手私有认证的绑定',
-                  )}
-                </p>
-              </div>
-            </div>
-            {pendingSecretBindings.length > 0 ? (
-              <div className="assistant-validation-list">
-                {pendingSecretBindings.map((binding) => (
-                  <div
-                    key={`${binding.id}:pending-secret`}
-                    className={`assistant-validation-item ${
-                      binding.usesTemplateEnvFallback
-                        ? 'is-warning'
-                        : 'is-error'
-                    }`}
+          </div>
+          {knowledgeBases.length > 0 ? (
+            <div className="assistant-settings-option-grid">
+              {knowledgeBases.map((kb) => {
+                const checked = selectedKnowledgeBaseIds.has(kb.id);
+                return (
+                  <label
+                    key={kb.id}
+                    className={`assistant-settings-option-card${checked ? ' selected' : ''}`}
                   >
-                    <div className="assistant-validation-item-copy">
-                      <strong>{binding.alias || binding.templateName}</strong>
-                      <p>
-                        {binding.usesTemplateEnvFallback
-                          ? t(
-                              'assistants.当前仍使用模板级认证回退。建议迁移为当前助手独享的密钥。',
-                            )
-                          : t('assistants.当前还没有配置助手私有认证。')}
-                      </p>
-                    </div>
-                    <div className="assistant-stage-actions">
-                      <span
-                        className={`assistant-validation-state ${
-                          binding.usesTemplateEnvFallback
-                            ? 'is-warning'
-                            : 'is-error'
-                        }`}
-                      >
-                        {binding.usesTemplateEnvFallback
-                          ? t('assistants.待迁移')
-                          : t('assistants.缺认证')}
-                      </span>
-                      <button
-                        type="button"
-                        className="btn-outline btn-sm"
-                        onClick={() => void handleOpenSecrets(binding.id)}
-                      >
-                        {t('assistants.管理认证')}
-                      </button>
-                    </div>
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => void handleKnowledgeBaseToggle(kb.id)}
+                      disabled={resourceSavingKey === `kb:${kb.id}`}
+                    />
+                    <span>{kb.name}</span>
+                    <small>{kb.description || kb.id}</small>
+                  </label>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="assistant-empty-state assistant-compact-empty">
+              <h3>{t('当前没有可用知识库')}</h3>
+              <p>{t('知识库资源会从知识库页面创建后显示在这里。')}</p>
+            </div>
+          )}
+        </section>
+
+        <section className="assistant-modal-panel">
+          <div className="assistant-section-heading">
+            <div>
+              <h4>{t('技能')}</h4>
+              <p>
+                {t(
+                  'assistants.这里管理当前助手自己的技能包，不再依赖全局启停状态来决定是否可用',
+                )}
+              </p>
+            </div>
+          </div>
+          {availableSkills.length > 0 ? (
+            <div className="assistant-settings-option-grid">
+              {availableSkills.map((skill) => {
+                const checked = selectedSkillIds.has(skill.id);
+                return (
+                  <label
+                    key={skill.id}
+                    className={`assistant-settings-option-card${checked ? ' selected' : ''}`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => void handleSkillToggle(skill.id)}
+                      disabled={resourceSavingKey === `skill:${skill.id}`}
+                    />
+                    <span>{skill.name}</span>
+                    <small>
+                      {skill.description || skill.id}
+                      {skill.enabled
+                        ? t('assistants. · 模板已启用')
+                        : t('assistants. · 模板当前关闭')}
+                    </small>
+                  </label>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="assistant-empty-state assistant-compact-empty">
+              <h3>{t('当前没有可用技能')}</h3>
+              <p>
+                {t(
+                  'assistants.先去全局 Skills 管理安装或启用模板，再回来选择要分配给这个助手的技能',
+                )}
+              </p>
+            </div>
+          )}
+        </section>
+
+        <section className="assistant-modal-panel">
+          <div className="assistant-section-heading">
+            <div>
+              <h4>{t('assistants.认证迁移队列')}</h4>
+              <p>
+                {t(
+                  'assistants.优先处理仍在使用模板回退或尚未写入助手私有认证的绑定',
+                )}
+              </p>
+            </div>
+          </div>
+          {pendingSecretBindings.length > 0 ? (
+            <div className="assistant-validation-list">
+              {pendingSecretBindings.map((binding) => (
+                <div
+                  key={`${binding.id}:pending-secret`}
+                  className={`assistant-validation-item ${
+                    binding.usesTemplateEnvFallback ? 'is-warning' : 'is-error'
+                  }`}
+                >
+                  <div className="assistant-validation-item-copy">
+                    <strong>{binding.alias || binding.templateName}</strong>
+                    <p>
+                      {binding.usesTemplateEnvFallback
+                        ? t(
+                            'assistants.当前仍使用模板级认证回退。建议迁移为当前助手独享的密钥。',
+                          )
+                        : t('assistants.当前还没有配置助手私有认证。')}
+                    </p>
                   </div>
-                ))}
-              </div>
-            ) : (
-              <div className="assistant-inline-stack">
-                <strong>{t('assistants.当前没有迁移阻塞项')}</strong>
-                <span>
-                  {t(
-                    'assistants.所有绑定都已写入当前助手自己的认证，不再依赖模板回退',
-                  )}
-                </span>
-              </div>
-            )}
-          </section>
-        </div>
+                  <div className="assistant-stage-actions">
+                    <span
+                      className={`assistant-validation-state ${
+                        binding.usesTemplateEnvFallback
+                          ? 'is-warning'
+                          : 'is-error'
+                      }`}
+                    >
+                      {binding.usesTemplateEnvFallback
+                        ? t('assistants.待迁移')
+                        : t('assistants.缺认证')}
+                    </span>
+                    <button
+                      type="button"
+                      className="btn-outline btn-sm"
+                      onClick={() => void handleOpenSecrets(binding.id)}
+                    >
+                      {t('assistants.管理认证')}
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="assistant-inline-stack">
+              <strong>{t('assistants.当前没有迁移阻塞项')}</strong>
+              <span>
+                {t(
+                  'assistants.所有绑定都已写入当前助手自己的认证，不再依赖模板回退',
+                )}
+              </span>
+            </div>
+          )}
+        </section>
 
         <section className="assistant-modal-panel">
           <div className="assistant-section-heading">
@@ -2127,7 +2219,10 @@ export function AssistantsPage({
                 ariaLabel={t('assistants.选择 MCP 模板')}
                 options={templates.map((template) => ({
                   value: template.id,
-                  label: `${template.name} · env ${template.envKeyCount}`,
+                  label: `${template.name} · env ${
+                    template.envKeyCount ??
+                    Object.keys(template.env || {}).length
+                  }`,
                   disabled: !template.enabled,
                 }))}
               />
@@ -2151,8 +2246,9 @@ export function AssistantsPage({
           </div>
           {templates.length > 0 ? (
             <div className="assistant-inline-stack">
-              {templates.find((template) => template.id === newBindingTemplateId)
-                ?.command || t('assistants.未选择模板')}
+              {templates.find(
+                (template) => template.id === newBindingTemplateId,
+              )?.command || t('assistants.未选择模板')}
             </div>
           ) : null}
           <div className="assistant-form-actions">
@@ -2354,6 +2450,28 @@ export function AssistantsPage({
               </p>
             </div>
           </div>
+          {repositories.length > 0 ? (
+            <div className="assistant-settings-option-grid">
+              {repositories.map((repo) => {
+                const checked = boundRepositoryIds.has(repo.id);
+                return (
+                  <div
+                    key={repo.id}
+                    className={`assistant-settings-option-card${checked ? ' selected' : ''}`}
+                  >
+                    <span>{repo.name}</span>
+                    <small>
+                      {repo.description || repo.defaultBranch || repo.id}
+                      {' · '}
+                      {checked
+                        ? t('assistants.已绑定')
+                        : t('assistants.可绑定')}
+                    </small>
+                  </div>
+                );
+              })}
+            </div>
+          ) : null}
           <RepositoryBindingPicker
             ownerType="assistant"
             ownerId={selectedAssistant.id}
@@ -2518,7 +2636,8 @@ export function AssistantsPage({
       t,
     );
     const modelLabel = getAssistantModelLabel(selectedAssistant, providers, t);
-    const conversationCount = conversationCountMap.get(selectedAssistant.id) ?? 0;
+    const conversationCount =
+      conversationCountMap.get(selectedAssistant.id) ?? 0;
     const runState = getAssistantRunState(
       selectedAssistant,
       statusMeta?.status || 'attention',
@@ -2537,9 +2656,7 @@ export function AssistantsPage({
               <h3>{selectedAssistant.name}</h3>
               <p>{selectedAssistant.description || t('暂无描述')}</p>
               <div className="assistant-modal-chip-row">
-                <span
-                  className={`assistant-run-pill tone-${runState.tone}`}
-                >
+                <span className={`assistant-run-pill tone-${runState.tone}`}>
                   {runState.label}
                 </span>
                 <span className="assistant-card-visibility-tag">
@@ -2574,13 +2691,25 @@ export function AssistantsPage({
             </div>
             <div className="assistant-modal-stat-row">
               {(selectedAssistant.config.kbIds?.length ?? 0) > 0 ? (
-                <span>{t('知识库计数', { count: selectedAssistant.config.kbIds.length })}</span>
+                <span>
+                  {t('知识库计数', {
+                    count: selectedAssistant.config.kbIds.length,
+                  })}
+                </span>
               ) : null}
               {(selectedAssistant.config.skillIds?.length ?? 0) > 0 ? (
-                <span>{t('技能计数', { count: selectedAssistant.config.skillIds.length })}</span>
+                <span>
+                  {t('技能计数', {
+                    count: selectedAssistant.config.skillIds.length,
+                  })}
+                </span>
               ) : null}
               {(selectedAssistant.config.mcpServerIds?.length ?? 0) > 0 ? (
-                <span>{t('MCP计数', { count: selectedAssistant.config.mcpServerIds.length })}</span>
+                <span>
+                  {t('MCP计数', {
+                    count: selectedAssistant.config.mcpServerIds.length,
+                  })}
+                </span>
               ) : null}
               {conversationCount > 0 ? (
                 <span>{t('会话计数', { count: conversationCount })}</span>
@@ -2749,7 +2878,11 @@ export function AssistantsPage({
             <div className="assistant-section-heading">
               <div>
                 <h4>{t('人设配置')}</h4>
-                <p>{t('assistants.定义助手的角色定位、回复风格、行为准则和约束限制')}</p>
+                <p>
+                  {t(
+                    'assistants.定义助手的角色定位、回复风格、行为准则和约束限制',
+                  )}
+                </p>
               </div>
             </div>
             <div className="assistant-persona-grid">
@@ -2813,7 +2946,11 @@ export function AssistantsPage({
           <div className="assistant-section-heading">
             <div>
               <h4>{t('资源与接入')}</h4>
-              <p>{t('assistants.助手独立持有自己的 Skills、MCP 绑定和认证状态，全局这里只作为模板库来源')}</p>
+              <p>
+                {t(
+                  'assistants.助手独立持有自己的 Skills、MCP 绑定和认证状态，全局这里只作为模板库来源',
+                )}
+              </p>
             </div>
           </div>
           {renderAssistantResources()}
@@ -2882,29 +3019,28 @@ export function AssistantsPage({
           </>
         }
       >
+        {error ? (
+          <div className="page-error">
+            <p>{error}</p>
+          </div>
+        ) : null}
 
-      {error ? (
-        <div className="page-error">
-          <p>{error}</p>
-        </div>
-      ) : null}
-
-      <div className="nc-catalog-stack">
-        {loading ? (
-          <div className="assistant-empty-state assistant-compact-empty">
-            <p>{t('助手列表加载中')}</p>
-          </div>
-        ) : assistants.length === 0 ? (
-          <div className="assistant-empty-state">
-            <h3>{t('当前没有创建任何助手')}</h3>
-            <p>{t('创建后这里会展示你的助手卡片和运行配置')}</p>
-          </div>
-        ) : filteredAssistants.length === 0 ? (
-          <div className="assistant-empty-state assistant-compact-empty">
-            <h3>{t('没有匹配的助手')}</h3>
-            <p>{t('试试更短的关键词或检查拼写')}</p>
-          </div>
-        ) : (
+        <div className="nc-catalog-stack">
+          {loading ? (
+            <div className="assistant-empty-state assistant-compact-empty">
+              <p>{t('助手列表加载中')}</p>
+            </div>
+          ) : assistants.length === 0 ? (
+            <div className="assistant-empty-state">
+              <h3>{t('当前没有创建任何助手')}</h3>
+              <p>{t('创建后这里会展示你的助手卡片和运行配置')}</p>
+            </div>
+          ) : filteredAssistants.length === 0 ? (
+            <div className="assistant-empty-state assistant-compact-empty">
+              <h3>{t('没有匹配的助手')}</h3>
+              <p>{t('试试更短的关键词或检查拼写')}</p>
+            </div>
+          ) : (
             <div className="nc-catalog-grid">
               {filteredAssistants.map((assistant) => {
                 const meta = assistantCatalogMetaById[assistant.id];
@@ -2955,14 +3091,12 @@ export function AssistantsPage({
                 return (
                   <LibraryCard
                     key={assistant.id}
-                    className={
-                      `assistant-catalog-card ${
-                        assistantWorkbenchOpen &&
-                        selectedAssistantId === assistant.id
-                          ? 'active'
-                          : ''
-                      }`
-                    }
+                    className={`assistant-catalog-card ${
+                      assistantWorkbenchOpen &&
+                      selectedAssistantId === assistant.id
+                        ? 'active'
+                        : ''
+                    }`}
                     onClick={() => openAssistantWorkbench(assistant.id)}
                     heading={assistant.name}
                     badge={
@@ -2971,10 +3105,7 @@ export function AssistantsPage({
                           status,
                         )}`}
                       >
-                        {formatAssistantCatalogStatusLabel(
-                          status,
-                          t,
-                        )}
+                        {formatAssistantCatalogStatusLabel(status, t)}
                       </span>
                     }
                     rows={[
@@ -3012,8 +3143,8 @@ export function AssistantsPage({
                 );
               })}
             </div>
-        )}
-      </div>
+          )}
+        </div>
       </CatalogPageShell>
 
       {assistantWorkbenchOpen && selectedAssistant ? (
@@ -3079,8 +3210,8 @@ export function AssistantsPage({
                     .configured
                     ? t('auto.7ea1dabf', {
                         count:
-                          bindingSecretsById[secretModalBindingId]
-                            ?.secretStatus.keyCount,
+                          bindingSecretsById[secretModalBindingId]?.secretStatus
+                            .keyCount,
                       })
                     : t('auto.7df6c9b5')}
                 </strong>

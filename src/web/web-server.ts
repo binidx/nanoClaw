@@ -79,6 +79,7 @@ import {
 import { registerAdminSettingsRoutes } from '../routes/admin-settings-routes.js';
 import { registerAssistantRoutes } from '../routes/assistant-routes.js';
 import { registerAssistantRepoRoutes } from '../routes/assistant-repo-routes.js';
+import { registerCapabilityRoutes } from '../routes/capability-routes.js';
 import {
   registerConversationAdminRoutes,
   type CreateConversationFeishuDocInput,
@@ -909,6 +910,11 @@ export function createWebServer(opts: WebServerOptions) {
   registerAssistantRepoRoutes(app, {
     requirePermission,
     auditMutation,
+  });
+  registerCapabilityRoutes(app, {
+    requirePermission,
+    listAvailableManagedSkills: getManagedSkillsForResponseService,
+    listAvailableManagedMcpServers: getManagedMcpServersForResponseService,
   });
   registerStockAnalysisRoutes(app, {
     requirePermission,

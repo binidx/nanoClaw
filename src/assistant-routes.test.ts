@@ -106,7 +106,9 @@ vi.mock('./repo-review/repository-service.js', () => ({
 
 vi.mock('./project-graph/project-graph-service.js', async (importOriginal) => {
   const actual =
-    await importOriginal<typeof import('./project-graph/project-graph-service.js')>();
+    await importOriginal<
+      typeof import('./project-graph/project-graph-service.js')
+    >();
   return {
     ...actual,
     getProjectGraphOverview,
@@ -327,6 +329,16 @@ describe('assistant routes', () => {
           env: { API_TOKEN: 'template-secret' },
           enabled: true,
         },
+        {
+          id: 'archery',
+          name: 'Archery SQL',
+          command: 'node',
+          args: [
+            'C:/project/kibana_archery_doris_mcp/mcp-node/archery/index.mjs',
+          ],
+          env: { TOKEN: 'old-template-secret' },
+          enabled: true,
+        },
       ]),
     });
 
@@ -521,10 +533,13 @@ describe('assistant routes', () => {
     });
 
     await withServer(app, async (baseUrl) => {
-      const response = await fetch(`${baseUrl}/api/assistants/demo-assistant/resources`);
+      const response = await fetch(
+        `${baseUrl}/api/assistants/demo-assistant/resources`,
+      );
       expect(response.status).toBe(200);
       const data = (await response.json()) as Record<string, any>;
       expect(data.selectedSkillIds).toEqual(['demo-skill']);
+      expect(data.availableMcpTemplates).toBeUndefined();
       expect(data.mcpBindings).toEqual([
         expect.objectContaining({
           id: 'amb-demo-jira',
@@ -830,7 +845,6 @@ describe('assistant routes', () => {
       SYSTEM_USER_ID,
     );
   });
-
 
   it('deletes an assistant when it is no longer referenced', async () => {
     getAssistant.mockReset();

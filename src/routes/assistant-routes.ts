@@ -1,3 +1,6 @@
+import fs from 'fs';
+import path from 'path';
+
 import type { Express, Request, Response } from 'express';
 
 import { auditAdminAction, AUDIT_ACTIONS } from '../auth/audit-middleware.js';
@@ -59,7 +62,7 @@ function containsLocalizedFragment(
 }
 
 function decodeRouteParam(raw: string | string[] | undefined): string {
-  const s = Array.isArray(raw) ? raw[0] ?? '' : raw ?? '';
+  const s = Array.isArray(raw) ? (raw[0] ?? '') : (raw ?? '');
   return decodeURIComponent(s).trim();
 }
 
@@ -132,7 +135,10 @@ export interface AssistantRouteOptions {
 
 async function validateAssistantConfig(
   config: AssistantConfig,
-  opts: Pick<AssistantRouteOptions, 'listAvailableManagedSkills' | 'listAvailableManagedMcpServers'>,
+  opts: Pick<
+    AssistantRouteOptions,
+    'listAvailableManagedSkills' | 'listAvailableManagedMcpServers'
+  >,
   userId: string,
 ): Promise<void> {
   const availableSkillIds = new Set(
@@ -171,7 +177,10 @@ async function validateAssistantConfig(
     }
   }
 
-  if (config.providerId && !await isProviderVisibleToUser(config.providerId, userId, 'llm')) {
+  if (
+    config.providerId &&
+    !(await isProviderVisibleToUser(config.providerId, userId, 'llm'))
+  ) {
     throw new Error(`Unknown provider id: ${config.providerId}`);
   }
 
@@ -205,9 +214,7 @@ function normalizeBindingArgs(value: unknown): string[] | undefined {
   if (!Array.isArray(value)) {
     throw new Error('args must be an array of strings');
   }
-  const args = value
-    .map((entry) => String(entry || '').trim())
-    .filter(Boolean);
+  const args = value.map((entry) => String(entry || '').trim()).filter(Boolean);
   return args;
 }
 
@@ -216,7 +223,9 @@ function normalizeSecretEnv(value: unknown): Record<string, string> {
     throw new Error('env must be an object');
   }
   const output: Record<string, string> = {};
-  for (const [key, rawValue] of Object.entries(value as Record<string, unknown>)) {
+  for (const [key, rawValue] of Object.entries(
+    value as Record<string, unknown>,
+  )) {
     if (typeof rawValue !== 'string') {
       throw new Error(`env.${key} must be a string`);
     }
@@ -254,6 +263,148 @@ interface ProjectGraphResourceSyncSkippedItem {
   reason: Exclude<ProjectGraphRecommendedResourceStatus, 'available'>;
 }
 
+function isWindowsAbsolutePath(value: string): boolean {
+  return path.win32.isAbsolute(value) && !path.isAbsolute(value);
+}
+
+function unwrapFilePathArg(value: string): string {
+  const trimmed = value.trim();
+  if (trimmed.startsWith('file://')) {
+    try {
+      return new URL(trimmed).pathname;
+    } catch {
+      return trimmed;
+    }
+  }
+  return trimmed;
+}
+
+function findNodeScriptArg(server: ManagedMcpTemplate): string | null {
+  const commandName = path
+    .basename(server.command)
+    .toLowerCase()
+    .replace(/\.exe$/, '');
+  if (commandName !== 'node') return null;
+  for (const arg of server.args) {
+    const trimmed = String(arg || '').trim();
+    if (!trimmed || trimmed.startsWith('-')) continue;
+    const candidate = unwrapFilePathArg(trimmed);
+    if (
+      path.isAbsolute(candidate) ||
+      path.win32.isAbsolute(candidate) ||
+      /\.(?:cjs|mjs|js|ts)$/i.test(candidate)
+    ) {
+      return candidate;
+    }
+    return null;
+  }
+  return null;
+}
+
+function isRunnableMcpTemplate(server: ManagedMcpTemplate): boolean {
+  if (server.enabled === false) return false;
+  const scriptArg = findNodeScriptArg(server);
+  if (!scriptArg) return true;
+  if (isWindowsAbsolutePath(scriptArg)) return false;
+  if (path.isAbsolute(scriptArg)) return fs.existsSync(scriptArg);
+  return true;
+}
+
+function toMcpTemplateSummary(server: ManagedMcpTemplate) {
+  return {
+    id: server.id,
+    name: server.name,
+    command: server.command,
+    args: [...server.args],
+    enabled: server.enabled !== false,
+    envKeyCount: Object.keys(server.env || {}).length,
+  };
+}
+
+async function buildAssistantCatalogResources(
+  userId: string,
+  opts: Pick<
+    AssistantRouteOptions,
+    'listAvailableManagedSkills' | 'listAvailableManagedMcpServers'
+  >,
+) {
+  const [allKbs, providers, skills, rawMcpTemplates, repos] = await Promise.all(
+    [
+      listKnowledgeBases(),
+      getVisibleProvidersForUser(userId, 'llm'),
+      Promise.resolve(opts.listAvailableManagedSkills()),
+      Promise.resolve(opts.listAvailableManagedMcpServers()),
+      listRepositories(userId),
+    ],
+  );
+  const [userSkills, userMcpServers] = await Promise.all([
+    listUserSkills({ userId, enabled: true }),
+    listUserMcpServers({ userId, enabled: true }),
+  ]);
+  const knowledgeBases = allKbs.filter(
+    (kb) =>
+      (kb as { user_id?: string }).user_id === userId ||
+      (userId === SYSTEM_USER_ID &&
+        (kb as { user_id?: string }).user_id === SYSTEM_USER_ID) ||
+      (kb as { visibility?: string }).visibility === 'shared',
+  );
+  const runnableMcpTemplates = rawMcpTemplates.filter(isRunnableMcpTemplate);
+  return {
+    knowledgeBases: knowledgeBases.map((kb) => ({
+      id: kb.id,
+      name: kb.name,
+      description: kb.description || null,
+    })),
+    skills: skills.map((skill) => ({
+      id: skill.id,
+      name: skill.name,
+      description: skill.description || '',
+      source: skill.source || 'unknown',
+      enabled: skill.enabled !== false,
+    })),
+    userSkills: userSkills.map((skill) => ({
+      id: skill.id,
+      name: skill.name,
+      description: skill.description || '',
+      source: skill.source_type || 'user',
+      enabled: skill.enabled !== 0,
+      sourceType: skill.source_type,
+      sourceRef: skill.source_ref || null,
+      isOwner: true,
+    })),
+    mcpTemplates: runnableMcpTemplates.map(toMcpTemplateSummary),
+    userMcpServers: userMcpServers.map((server) => ({
+      id: server.id,
+      name: server.name,
+      command: server.command,
+      args: JSON.parse(server.args_json || '[]') as string[],
+      enabled: server.enabled !== 0,
+      envKeyCount: Object.keys(
+        JSON.parse(server.env_json || '{}') as Record<string, string>,
+      ).length,
+      sourceType: server.source_type,
+      sourceRef: server.source_ref || null,
+      isOwner: true,
+    })),
+    repositories: repos.map((repo) => ({
+      id: repo.id,
+      name: repo.name,
+      description: repo.ai_description || null,
+      defaultBranch: repo.default_target_branch || null,
+      visibility: repo.visibility || 'private',
+      enabled: repo.enabled === 1,
+    })),
+    providers: providers.map((p) => ({
+      id: p.id,
+      alias: p.alias,
+      type: p.type,
+      model: p.model,
+      visibility: p.visibility || 'private',
+    })),
+    runnableMcpTemplates,
+  };
+}
+
 function normalizeInitialRepositoryBindings(
   value: unknown,
 ): InitialAssistantRepositoryBindingInput[] {
@@ -289,18 +440,17 @@ function normalizeInitialRepositoryBindings(
 
 async function buildAssistantResourcePayload(
   assistantId: string,
-  opts: Pick<AssistantRouteOptions, 'listAvailableManagedSkills' | 'listAvailableManagedMcpServers'>,
+  userId: string,
+  opts: Pick<
+    AssistantRouteOptions,
+    'listAvailableManagedSkills' | 'listAvailableManagedMcpServers'
+  >,
 ) {
   const assistant = await getAssistant(assistantId);
   if (!assistant) return null;
-  const templates = await Promise.resolve(opts.listAvailableManagedMcpServers());
-  const availableSkills = (await Promise.resolve(opts.listAvailableManagedSkills())).map((skill) => ({
-    id: skill.id,
-    name: skill.name,
-    description: skill.description || '',
-    source: skill.source || 'unknown',
-    enabled: skill.enabled !== false,
-  }));
+  const catalog = await buildAssistantCatalogResources(userId, opts);
+  const templates = catalog.runnableMcpTemplates;
+  const availableSkills = catalog.skills;
   const secretRecords = await listAssistantMcpBindingSecrets(assistant.id);
   const mcpBindings = buildAssistantMcpBindingViews({
     assistantId: assistant.id,
@@ -315,8 +465,9 @@ async function buildAssistantResourcePayload(
   const repoBindingViews = await Promise.all(
     repoBindings.map(async (binding) => {
       const repository = await getRepositoryInfo(binding.repository_id);
-      let projectGraph: ReturnType<typeof buildProjectGraphResourceContext> | null =
-        null;
+      let projectGraph: ReturnType<
+        typeof buildProjectGraphResourceContext
+      > | null = null;
       if (repository) {
         projectGraph = buildProjectGraphResourceContext(
           await getProjectGraphOverview(repository),
@@ -340,7 +491,11 @@ async function buildAssistantResourcePayload(
   );
   const projectGraphResourceHints = {
     skillIds: Array.from(
-      new Set(repoBindingViews.flatMap((binding) => binding.projectGraph?.skillIds || [])),
+      new Set(
+        repoBindingViews.flatMap(
+          (binding) => binding.projectGraph?.skillIds || [],
+        ),
+      ),
     ),
     mcpServerIds: Array.from(
       new Set(
@@ -355,16 +510,11 @@ async function buildAssistantResourcePayload(
   };
   return {
     assistantId: assistant.id,
+    knowledgeBases: catalog.knowledgeBases,
+    selectedKnowledgeBaseIds: [...(assistant.config.kbIds || [])],
     availableSkills,
     selectedSkillIds: [...assistant.config.skillIds],
-    availableMcpTemplates: templates.map((server) => ({
-      id: server.id,
-      name: server.name,
-      command: server.command,
-      args: [...server.args],
-      enabled: server.enabled,
-      envKeyCount: Object.keys(server.env || {}).length,
-    })),
+    repositories: catalog.repositories,
     mcpBindings,
     repoBindings: repoBindingViews,
     projectGraphResourceHints,
@@ -417,8 +567,12 @@ function buildProjectGraphRecommendedResources(input: {
     }
   }
 
-  const skillsById = new Map(input.availableSkills.map((skill) => [skill.id, skill]));
-  const templatesById = new Map(input.templates.map((template) => [template.id, template]));
+  const skillsById = new Map(
+    input.availableSkills.map((skill) => [skill.id, skill]),
+  );
+  const templatesById = new Map(
+    input.templates.map((template) => [template.id, template]),
+  );
   const selectedSkillIds = new Set(input.selectedSkillIds);
   const boundMcpServerIds = new Set(
     input.mcpBindings.map((binding) => binding.templateServerId),
@@ -438,7 +592,11 @@ function buildProjectGraphRecommendedResources(input: {
       available,
       enabled,
       bound,
-      status: getProjectGraphRecommendationStatus({ available, enabled, bound }),
+      status: getProjectGraphRecommendationStatus({
+        available,
+        enabled,
+        bound,
+      }),
     });
   }
 
@@ -455,7 +613,11 @@ function buildProjectGraphRecommendedResources(input: {
       available,
       enabled,
       bound,
-      status: getProjectGraphRecommendationStatus({ available, enabled, bound }),
+      status: getProjectGraphRecommendationStatus({
+        available,
+        enabled,
+        bound,
+      }),
     });
   }
 
@@ -473,7 +635,10 @@ async function materializeLegacyAssistantBindings(
   const existingBindings = await listAssistantMcpBindings(assistantId);
   if (existingBindings.length > 0) return;
   for (const templateServerId of assistant.config.mcpServerIds) {
-    const bindingId = createAssistantMcpBindingId(assistantId, templateServerId);
+    const bindingId = createAssistantMcpBindingId(
+      assistantId,
+      templateServerId,
+    );
     if (await getAssistantMcpBinding(assistantId, bindingId)) continue;
     await createAssistantMcpBinding({
       assistantId,
@@ -487,91 +652,39 @@ export function registerAssistantRoutes(
   app: Express,
   opts: AssistantRouteOptions,
 ): void {
-  const viewGuard = opts.requirePermission('assistant.manage', 'assistant.view');
-  const manageGuard = opts.requirePermission('assistant.manage', 'assistant.edit');
-  app.get('/api/assistants/available-resources', viewGuard, async (req, res) => {
-    try {
-      const userId = getTenantUserId(req);
-      const [allKbs, providers, skills, mcpTemplates, repos] = await Promise.all([
-        listKnowledgeBases(),
-        getVisibleProvidersForUser(userId, 'llm'),
-        Promise.resolve(opts.listAvailableManagedSkills()),
-        Promise.resolve(opts.listAvailableManagedMcpServers()),
-        listRepositories(userId),
-      ]);
-      const [userSkills, userMcpServers] = await Promise.all([
-        listUserSkills({ userId, enabled: true }),
-        listUserMcpServers({ userId, enabled: true }),
-      ]);
-      const kbs = allKbs.filter(
-        (kb) =>
-          (kb as { user_id?: string }).user_id === userId ||
-          (userId === SYSTEM_USER_ID && (kb as { user_id?: string }).user_id === SYSTEM_USER_ID) ||
-          (kb as { visibility?: string }).visibility === 'shared',
-      );
-      res.json({
-        knowledgeBases: kbs.map((kb) => ({
-          id: kb.id,
-          name: kb.name,
-          description: kb.description || null,
-        })),
-        skills: skills.map((skill) => ({
-          id: skill.id,
-          name: skill.name,
-          description: skill.description || '',
-          source: skill.source || 'unknown',
-          enabled: skill.enabled !== false,
-        })),
-        userSkills: userSkills.map((skill) => ({
-          id: skill.id,
-          name: skill.name,
-          description: skill.description || '',
-          source: skill.source_type || 'user',
-          enabled: skill.enabled !== 0,
-          sourceType: skill.source_type,
-          sourceRef: skill.source_ref || null,
-          isOwner: true,
-        })),
-        mcpTemplates: mcpTemplates.map((server) => ({
-          id: server.id,
-          name: server.name,
-          command: server.command,
-          args: [...server.args],
-          enabled: server.enabled !== false,
-          envKeyCount: Object.keys(server.env || {}).length,
-        })),
-        userMcpServers: userMcpServers.map((server) => ({
-          id: server.id,
-          name: server.name,
-          command: server.command,
-          args: JSON.parse(server.args_json || '[]') as string[],
-          enabled: server.enabled !== 0,
-          envKeyCount: Object.keys(JSON.parse(server.env_json || '{}') as Record<string, string>).length,
-          sourceType: server.source_type,
-          sourceRef: server.source_ref || null,
-          isOwner: true,
-        })),
-        repositories: repos.map((repo) => ({
-          id: repo.id,
-          name: repo.name,
-          description: repo.ai_description || null,
-          defaultBranch: repo.default_target_branch || null,
-          visibility: repo.visibility || 'private',
-          enabled: repo.enabled === 1,
-        })),
-        providers: providers.map((p) => ({
-          id: p.id,
-          alias: p.alias,
-          type: p.type,
-          model: p.model,
-          visibility: p.visibility || 'private',
-        })),
-      });
-    } catch (err) {
-      logger.error({ err }, 'Failed to list available resources for assistant');
-      res.status(500).json({ error: 'Internal error' });
-    }
-  });
+  const viewGuard = opts.requirePermission(
+    'assistant.manage',
+    'assistant.view',
+  );
+  const manageGuard = opts.requirePermission(
+    'assistant.manage',
+    'assistant.edit',
+  );
+  app.get(
+    '/api/assistants/available-resources',
+    viewGuard,
+    async (req, res) => {
+      try {
+        const userId = getTenantUserId(req);
+        const catalog = await buildAssistantCatalogResources(userId, opts);
+        res.json({
+          knowledgeBases: catalog.knowledgeBases,
+          skills: catalog.skills,
+          userSkills: catalog.userSkills,
+          mcpTemplates: catalog.mcpTemplates,
+          userMcpServers: catalog.userMcpServers,
+          repositories: catalog.repositories,
+          providers: catalog.providers,
+        });
+      } catch (err) {
+        logger.error(
+          { err },
+          'Failed to list available resources for assistant',
+        );
+        res.status(500).json({ error: 'Internal error' });
+      }
+    },
+  );
 
   app.get('/api/assistants', viewGuard, async (req, res) => {
     try {
@@ -579,7 +692,9 @@ export function registerAssistantRoutes(
       if (typeof req.query.page === 'string') {
         const pq = parsePaginationQuery(req);
         const filtered = pq.search
-          ? all.filter(a => a.name.toLowerCase().includes(pq.search!.toLowerCase()))
+          ? all.filter((a) =>
+              a.name.toLowerCase().includes(pq.search!.toLowerCase()),
+            )
           : all;
         res.json(paginateArray(filtered, pq));
       } else {
@@ -616,7 +731,7 @@ export function registerAssistantRoutes(
         res.status(404).json({ error: 'Assistant not found' });
         return;
       }
-      const payload = await buildAssistantResourcePayload(id!, opts);
+      const payload = await buildAssistantResourcePayload(id!, userId, opts);
       if (!payload) {
         res.status(404).json({ error: 'Assistant not found' });
         return;
@@ -628,86 +743,103 @@ export function registerAssistantRoutes(
     }
   });
 
-  app.post('/api/assistants/:id/project-graph-resources/sync', manageGuard, async (req, res) => {
-    try {
-      opts.auditMutation(req, 'assistants.project_graph_resources.sync', 'high');
-      const assistantId = decodeRouteParam(req.params.id);
-      const assistant = await requireAssistantAccess(
-        req,
-        res,
-        assistantId,
-        'manage',
-      );
-      if (!assistant) return;
-      await materializeLegacyAssistantBindings(assistantId);
+  app.post(
+    '/api/assistants/:id/project-graph-resources/sync',
+    manageGuard,
+    async (req, res) => {
+      try {
+        opts.auditMutation(
+          req,
+          'assistants.project_graph_resources.sync',
+          'high',
+        );
+        const assistantId = decodeRouteParam(req.params.id);
+        const assistant = await requireAssistantAccess(
+          req,
+          res,
+          assistantId,
+          'manage',
+        );
+        if (!assistant) return;
+        await materializeLegacyAssistantBindings(assistantId);
 
-      const before = await buildAssistantResourcePayload(assistantId, opts);
-      if (!before) {
-        res.status(404).json({ error: 'Assistant not found' });
-        return;
-      }
-
-      const skipped: ProjectGraphResourceSyncSkippedItem[] = [];
-      const skillIdsToAdd: string[] = [];
-      const mcpServerIdsToAdd: string[] = [];
-      for (const recommendation of before.projectGraphRecommendedResources) {
-        if (recommendation.status === 'available') {
-          if (recommendation.type === 'skill') {
-            skillIdsToAdd.push(recommendation.id);
-          } else {
-            mcpServerIdsToAdd.push(recommendation.id);
-          }
-          continue;
+        const userId = getTenantUserId(req);
+        const before = await buildAssistantResourcePayload(
+          assistantId,
+          userId,
+          opts,
+        );
+        if (!before) {
+          res.status(404).json({ error: 'Assistant not found' });
+          return;
         }
-        skipped.push({
-          type: recommendation.type,
-          id: recommendation.id,
-          reason: recommendation.status,
+
+        const skipped: ProjectGraphResourceSyncSkippedItem[] = [];
+        const skillIdsToAdd: string[] = [];
+        const mcpServerIdsToAdd: string[] = [];
+        for (const recommendation of before.projectGraphRecommendedResources) {
+          if (recommendation.status === 'available') {
+            if (recommendation.type === 'skill') {
+              skillIdsToAdd.push(recommendation.id);
+            } else {
+              mcpServerIdsToAdd.push(recommendation.id);
+            }
+            continue;
+          }
+          skipped.push({
+            type: recommendation.type,
+            id: recommendation.id,
+            reason: recommendation.status,
+          });
+        }
+
+        if (skillIdsToAdd.length > 0 || mcpServerIdsToAdd.length > 0) {
+          await dba.transaction(async () => {
+            if (skillIdsToAdd.length > 0) {
+              const nextSkillIds = Array.from(
+                new Set([...assistant.config.skillIds, ...skillIdsToAdd]),
+              );
+              await updateAssistant(assistantId, {
+                config: {
+                  ...assistant.config,
+                  skillIds: nextSkillIds,
+                },
+              });
+            }
+            for (const templateServerId of mcpServerIdsToAdd) {
+              await createAssistantMcpBinding({
+                assistantId,
+                templateServerId,
+                enabled: true,
+              });
+            }
+          })();
+          opts.onAssistantMutated?.(assistantId);
+        }
+
+        const resources = await buildAssistantResourcePayload(
+          assistantId,
+          userId,
+          opts,
+        );
+        res.json({
+          ok: true,
+          added: {
+            skillIds: skillIdsToAdd,
+            mcpServerIds: mcpServerIdsToAdd,
+          },
+          skipped,
+          resources,
         });
+      } catch (err) {
+        const message =
+          err instanceof Error
+            ? err.message
+            : 'Failed to sync project graph resources';
+        res.status(400).json({ error: message });
       }
-
-      if (skillIdsToAdd.length > 0 || mcpServerIdsToAdd.length > 0) {
-        await dba.transaction(async () => {
-          if (skillIdsToAdd.length > 0) {
-            const nextSkillIds = Array.from(
-              new Set([...assistant.config.skillIds, ...skillIdsToAdd]),
-            );
-            await updateAssistant(assistantId, {
-              config: {
-                ...assistant.config,
-                skillIds: nextSkillIds,
-              },
-            });
-          }
-          for (const templateServerId of mcpServerIdsToAdd) {
-            await createAssistantMcpBinding({
-              assistantId,
-              templateServerId,
-              enabled: true,
-            });
-          }
-        })();
-        opts.onAssistantMutated?.(assistantId);
-      }
-
-      const resources = await buildAssistantResourcePayload(assistantId, opts);
-      res.json({
-        ok: true,
-        added: {
-          skillIds: skillIdsToAdd,
-          mcpServerIds: mcpServerIdsToAdd,
-        },
-        skipped,
-        resources,
-      });
-    } catch (err) {
-      const message =
-        err instanceof Error
-          ? err.message
-          : 'Failed to sync project graph resources';
-      res.status(400).json({ error: message });
-    }
-  });
+    },
+  );
 
   app.get('/api/assistants/:id/export', manageGuard, async (req, res) => {
     try {
@@ -743,7 +875,10 @@ export function registerAssistantRoutes(
           enabled: b.enabled,
         })),
       };
-      res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(assistant.name)}.json"`);
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename="${encodeURIComponent(assistant.name)}.json"`,
+      );
       res.json(exportData);
     } catch (err) {
       logger.error({ err }, 'Failed to export assistant');
@@ -770,9 +905,11 @@ export function registerAssistantRoutes(
         body.initialRepositoryBindings,
       );
       const visibility =
-        body.visibility === 'shared' ? 'shared'
-          : body.visibility === 'private' ? 'private'
-          : undefined;
+        body.visibility === 'shared'
+          ? 'shared'
+          : body.visibility === 'private'
+            ? 'private'
+            : undefined;
       const assistant = await dba.transaction(async () => {
         const createdAssistant = await createAssistant({
           id: normalizeAssistantId(body.id, name),
@@ -797,11 +934,16 @@ export function registerAssistantRoutes(
         }
         return createdAssistant;
       })();
-      await auditAdminAction(req, AUDIT_ACTIONS.ASSISTANT_CREATE, { targetType: 'assistants', targetId: assistant.id, targetName: name });
+      await auditAdminAction(req, AUDIT_ACTIONS.ASSISTANT_CREATE, {
+        targetType: 'assistants',
+        targetId: assistant.id,
+        targetName: name,
+      });
       res.json({ assistant });
     } catch (err) {
       res.status(400).json({
-        error: err instanceof Error ? err.message : 'Failed to create assistant',
+        error:
+          err instanceof Error ? err.message : 'Failed to create assistant',
       });
     }
   });
@@ -815,7 +957,7 @@ export function registerAssistantRoutes(
         res.status(404).json({ error: 'Assistant not found' });
         return;
       }
-      const payload = await buildAssistantResourcePayload(id!, opts);
+      const payload = await buildAssistantResourcePayload(id!, userId, opts);
       if (!payload) {
         res.status(404).json({ error: 'Assistant not found' });
         return;
@@ -827,208 +969,274 @@ export function registerAssistantRoutes(
     }
   });
 
-  app.post('/api/assistants/:id/mcp-bindings', manageGuard, async (req, res) => {
-    try {
-      opts.auditMutation(req, 'assistants.mcp_bindings.create', 'high');
-      const assistantId = decodeRouteParam(req.params.id);
-      const assistant = await requireAssistantAccess(req, res, assistantId, 'manage');
-      if (!assistant) return;
-      materializeLegacyAssistantBindings(assistantId);
-      const body =
-        req.body && typeof req.body === 'object' && !Array.isArray(req.body)
-          ? (req.body as Record<string, unknown>)
-          : {};
-      const templateServerId = String(
-        body.templateServerId || body.template_server_id || '',
-      ).trim();
-      if (!templateServerId) {
-        res.status(400).json({ error: 'templateServerId is required' });
-        return;
-      }
-      const template = (await Promise.resolve(
-        opts.listAvailableManagedMcpServers(),
-      )).find((entry) => entry.id === templateServerId);
-      if (!template) {
-        res.status(400).json({ error: `Unknown MCP server id: ${templateServerId}` });
-        return;
-      }
-      if (
-        await getAssistantMcpBinding(
+  app.post(
+    '/api/assistants/:id/mcp-bindings',
+    manageGuard,
+    async (req, res) => {
+      try {
+        opts.auditMutation(req, 'assistants.mcp_bindings.create', 'high');
+        const assistantId = decodeRouteParam(req.params.id);
+        const assistant = await requireAssistantAccess(
+          req,
+          res,
           assistantId,
-          createAssistantMcpBindingId(assistantId, templateServerId),
-        )
-      ) {
-        res.status(400).json({
-          error: t(
-            'errors.assistantMcpAlreadyBound',
-            { templateServerId },
-            req.locale,
-          ),
+          'manage',
+        );
+        if (!assistant) return;
+        materializeLegacyAssistantBindings(assistantId);
+        const body =
+          req.body && typeof req.body === 'object' && !Array.isArray(req.body)
+            ? (req.body as Record<string, unknown>)
+            : {};
+        const templateServerId = String(
+          body.templateServerId || body.template_server_id || '',
+        ).trim();
+        if (!templateServerId) {
+          res.status(400).json({ error: 'templateServerId is required' });
+          return;
+        }
+        const template = (
+          await Promise.resolve(opts.listAvailableManagedMcpServers())
+        ).find((entry) => entry.id === templateServerId);
+        if (!template) {
+          res
+            .status(400)
+            .json({ error: `Unknown MCP server id: ${templateServerId}` });
+          return;
+        }
+        if (
+          await getAssistantMcpBinding(
+            assistantId,
+            createAssistantMcpBindingId(assistantId, templateServerId),
+          )
+        ) {
+          res.status(400).json({
+            error: t(
+              'errors.assistantMcpAlreadyBound',
+              { templateServerId },
+              req.locale,
+            ),
+          });
+          return;
+        }
+        const binding = await createAssistantMcpBinding({
+          assistantId,
+          templateServerId,
+          alias: typeof body.alias === 'string' ? body.alias : null,
+          enabled: body.enabled !== false,
+          args: normalizeBindingArgs(body.args),
         });
-        return;
+        opts.onAssistantMutated?.(assistantId);
+        res.json({ binding });
+      } catch (err) {
+        res.status(400).json({
+          error:
+            err instanceof Error
+              ? err.message
+              : 'Failed to create assistant MCP binding',
+        });
       }
-      const binding = await createAssistantMcpBinding({
-        assistantId,
-        templateServerId,
-        alias: typeof body.alias === 'string' ? body.alias : null,
-        enabled: body.enabled !== false,
-        args: normalizeBindingArgs(body.args),
-      });
-      opts.onAssistantMutated?.(assistantId);
-      res.json({ binding });
-    } catch (err) {
-      res.status(400).json({
-        error:
-          err instanceof Error ? err.message : 'Failed to create assistant MCP binding',
-      });
-    }
-  });
+    },
+  );
 
-  app.patch('/api/assistants/:id/mcp-bindings/:bindingId', manageGuard, async (req, res) => {
-    try {
-      opts.auditMutation(req, 'assistants.mcp_bindings.update', 'high');
-      const assistantId = decodeRouteParam(req.params.id);
-      if (!await requireAssistantAccess(req, res, assistantId, 'manage')) return;
-      materializeLegacyAssistantBindings(assistantId);
-      const bindingId = decodeRouteParam(req.params.bindingId);
-      const body =
-        req.body && typeof req.body === 'object' && !Array.isArray(req.body)
-          ? (req.body as Record<string, unknown>)
-          : {};
-      const binding = await updateAssistantMcpBinding(assistantId, bindingId, {
-        alias:
-          body.alias === undefined
-            ? undefined
-            : typeof body.alias === 'string'
-              ? body.alias
-              : null,
-        enabled: body.enabled === undefined ? undefined : Boolean(body.enabled),
-        args: normalizeBindingArgs(body.args),
-      });
-      if (!binding) {
-        res.status(404).json({ error: 'Assistant MCP binding not found' });
-        return;
+  app.patch(
+    '/api/assistants/:id/mcp-bindings/:bindingId',
+    manageGuard,
+    async (req, res) => {
+      try {
+        opts.auditMutation(req, 'assistants.mcp_bindings.update', 'high');
+        const assistantId = decodeRouteParam(req.params.id);
+        if (!(await requireAssistantAccess(req, res, assistantId, 'manage')))
+          return;
+        materializeLegacyAssistantBindings(assistantId);
+        const bindingId = decodeRouteParam(req.params.bindingId);
+        const body =
+          req.body && typeof req.body === 'object' && !Array.isArray(req.body)
+            ? (req.body as Record<string, unknown>)
+            : {};
+        const binding = await updateAssistantMcpBinding(
+          assistantId,
+          bindingId,
+          {
+            alias:
+              body.alias === undefined
+                ? undefined
+                : typeof body.alias === 'string'
+                  ? body.alias
+                  : null,
+            enabled:
+              body.enabled === undefined ? undefined : Boolean(body.enabled),
+            args: normalizeBindingArgs(body.args),
+          },
+        );
+        if (!binding) {
+          res.status(404).json({ error: 'Assistant MCP binding not found' });
+          return;
+        }
+        opts.onAssistantMutated?.(assistantId);
+        res.json({ binding });
+      } catch (err) {
+        res.status(400).json({
+          error:
+            err instanceof Error
+              ? err.message
+              : 'Failed to update assistant MCP binding',
+        });
       }
-      opts.onAssistantMutated?.(assistantId);
-      res.json({ binding });
-    } catch (err) {
-      res.status(400).json({
-        error:
-          err instanceof Error ? err.message : 'Failed to update assistant MCP binding',
-      });
-    }
-  });
+    },
+  );
 
-  app.delete('/api/assistants/:id/mcp-bindings/:bindingId', manageGuard, async (req, res) => {
-    try {
-      opts.auditMutation(req, 'assistants.mcp_bindings.delete', 'high');
-      const assistantId = decodeRouteParam(req.params.id);
-      if (!await requireAssistantAccess(req, res, assistantId, 'manage')) return;
-      materializeLegacyAssistantBindings(assistantId);
-      const bindingId = decodeRouteParam(req.params.bindingId);
-      if (!await deleteAssistantMcpBinding(assistantId, bindingId)) {
-        res.status(404).json({ error: 'Assistant MCP binding not found' });
-        return;
+  app.delete(
+    '/api/assistants/:id/mcp-bindings/:bindingId',
+    manageGuard,
+    async (req, res) => {
+      try {
+        opts.auditMutation(req, 'assistants.mcp_bindings.delete', 'high');
+        const assistantId = decodeRouteParam(req.params.id);
+        if (!(await requireAssistantAccess(req, res, assistantId, 'manage')))
+          return;
+        materializeLegacyAssistantBindings(assistantId);
+        const bindingId = decodeRouteParam(req.params.bindingId);
+        if (!(await deleteAssistantMcpBinding(assistantId, bindingId))) {
+          res.status(404).json({ error: 'Assistant MCP binding not found' });
+          return;
+        }
+        opts.onAssistantMutated?.(assistantId);
+        res.json({ ok: true });
+      } catch (err) {
+        res.status(400).json({
+          error:
+            err instanceof Error
+              ? err.message
+              : 'Failed to delete assistant MCP binding',
+        });
       }
-      opts.onAssistantMutated?.(assistantId);
-      res.json({ ok: true });
-    } catch (err) {
-      res.status(400).json({
-        error:
-          err instanceof Error ? err.message : 'Failed to delete assistant MCP binding',
-      });
-    }
-  });
+    },
+  );
 
-  app.get('/api/assistants/:id/mcp-bindings/:bindingId/secrets', viewGuard, async (req, res) => {
-    try {
-      const assistantId = decodeRouteParam(req.params.id);
-      const assistant = await requireAssistantAccess(req, res, assistantId, 'view');
-      if (!assistant) return;
-      const isManager = canManageAssistant(assistant, getTenantUserId(req));
-      const bindingId = decodeRouteParam(req.params.bindingId);
-      const secretRecord = await getAssistantMcpBindingSecret(assistantId, bindingId);
-      const env = parseAssistantMcpSecretEnv(secretRecord);
-      res.json({
-        bindingId,
-        configuredKeys: isManager ? Object.keys(env) : [],
-        secretStatus: {
-          configured: Object.keys(env).length > 0,
-          updatedAt: secretRecord?.updated_at || null,
-        },
-      });
-    } catch (err) {
-      logger.error({ err }, 'Failed to get assistant MCP secret status');
-      res.status(500).json({ error: 'Internal error' });
-    }
-  });
-
-  app.put('/api/assistants/:id/mcp-bindings/:bindingId/secrets', manageGuard, async (req, res) => {
-    try {
-      opts.auditMutation(req, 'assistants.mcp_bindings.secrets.put', 'high');
-      const assistantId = decodeRouteParam(req.params.id);
-      if (!await requireAssistantAccess(req, res, assistantId, 'manage')) return;
-      materializeLegacyAssistantBindings(assistantId);
-      const bindingId = decodeRouteParam(req.params.bindingId);
-      const body =
-        req.body && typeof req.body === 'object' && !Array.isArray(req.body)
-          ? (req.body as Record<string, unknown>)
-          : {};
-      const secret = await upsertAssistantMcpBindingSecret(
-        assistantId,
-        bindingId,
-        normalizeSecretEnv(body.env || {}),
-      );
-      opts.onAssistantMutated?.(assistantId);
-      const env = parseAssistantMcpSecretEnv(secret);
-      res.json({
-        bindingId,
-        configuredKeys: Object.keys(env),
-        secretStatus: {
-          configured: Object.keys(env).length > 0,
-          keyCount: Object.keys(env).length,
-          updatedAt: secret.updated_at,
-        },
-      });
-    } catch (err) {
-      const message =
-        err instanceof Error
-          ? err.message
-          : 'Failed to save assistant MCP secret';
-      res.status(
-        containsLocalizedFragment(message, [/不存在/u, /not found/i]) ? 404 : 400,
-      ).json({ error: message });
-    }
-  });
-
-  app.delete('/api/assistants/:id/mcp-bindings/:bindingId/secrets', manageGuard, async (req, res) => {
-    try {
-      opts.auditMutation(req, 'assistants.mcp_bindings.secrets.delete', 'high');
-      const assistantId = decodeRouteParam(req.params.id);
-      if (!await requireAssistantAccess(req, res, assistantId, 'manage')) return;
-      materializeLegacyAssistantBindings(assistantId);
-      const bindingId = decodeRouteParam(req.params.bindingId);
-      if (!await deleteAssistantMcpBindingSecret(assistantId, bindingId)) {
-        res.status(404).json({ error: 'Assistant MCP binding secret not found' });
-        return;
+  app.get(
+    '/api/assistants/:id/mcp-bindings/:bindingId/secrets',
+    viewGuard,
+    async (req, res) => {
+      try {
+        const assistantId = decodeRouteParam(req.params.id);
+        const assistant = await requireAssistantAccess(
+          req,
+          res,
+          assistantId,
+          'view',
+        );
+        if (!assistant) return;
+        const isManager = canManageAssistant(assistant, getTenantUserId(req));
+        const bindingId = decodeRouteParam(req.params.bindingId);
+        const secretRecord = await getAssistantMcpBindingSecret(
+          assistantId,
+          bindingId,
+        );
+        const env = parseAssistantMcpSecretEnv(secretRecord);
+        res.json({
+          bindingId,
+          configuredKeys: isManager ? Object.keys(env) : [],
+          secretStatus: {
+            configured: Object.keys(env).length > 0,
+            updatedAt: secretRecord?.updated_at || null,
+          },
+        });
+      } catch (err) {
+        logger.error({ err }, 'Failed to get assistant MCP secret status');
+        res.status(500).json({ error: 'Internal error' });
       }
-      opts.onAssistantMutated?.(assistantId);
-      res.json({
-        bindingId,
-        configuredKeys: [],
-        secretStatus: {
-          configured: false,
-          keyCount: 0,
-          updatedAt: null,
-        },
-      });
-    } catch (err) {
-      res.status(400).json({
-        error:
-          err instanceof Error ? err.message : 'Failed to delete assistant MCP secret',
-      });
-    }
-  });
+    },
+  );
+
+  app.put(
+    '/api/assistants/:id/mcp-bindings/:bindingId/secrets',
+    manageGuard,
+    async (req, res) => {
+      try {
+        opts.auditMutation(req, 'assistants.mcp_bindings.secrets.put', 'high');
+        const assistantId = decodeRouteParam(req.params.id);
+        if (!(await requireAssistantAccess(req, res, assistantId, 'manage')))
+          return;
+        materializeLegacyAssistantBindings(assistantId);
+        const bindingId = decodeRouteParam(req.params.bindingId);
+        const body =
+          req.body && typeof req.body === 'object' && !Array.isArray(req.body)
+            ? (req.body as Record<string, unknown>)
+            : {};
+        const secret = await upsertAssistantMcpBindingSecret(
+          assistantId,
+          bindingId,
+          normalizeSecretEnv(body.env || {}),
+        );
+        opts.onAssistantMutated?.(assistantId);
+        const env = parseAssistantMcpSecretEnv(secret);
+        res.json({
+          bindingId,
+          configuredKeys: Object.keys(env),
+          secretStatus: {
+            configured: Object.keys(env).length > 0,
+            keyCount: Object.keys(env).length,
+            updatedAt: secret.updated_at,
+          },
+        });
+      } catch (err) {
+        const message =
+          err instanceof Error
+            ? err.message
+            : 'Failed to save assistant MCP secret';
+        res
+          .status(
+            containsLocalizedFragment(message, [/不存在/u, /not found/i])
+              ? 404
+              : 400,
+          )
+          .json({ error: message });
+      }
+    },
+  );
+
+  app.delete(
+    '/api/assistants/:id/mcp-bindings/:bindingId/secrets',
+    manageGuard,
+    async (req, res) => {
+      try {
+        opts.auditMutation(
+          req,
+          'assistants.mcp_bindings.secrets.delete',
+          'high',
+        );
+        const assistantId = decodeRouteParam(req.params.id);
+        if (!(await requireAssistantAccess(req, res, assistantId, 'manage')))
+          return;
+        materializeLegacyAssistantBindings(assistantId);
+        const bindingId = decodeRouteParam(req.params.bindingId);
+        if (!(await deleteAssistantMcpBindingSecret(assistantId, bindingId))) {
+          res
+            .status(404)
+            .json({ error: 'Assistant MCP binding secret not found' });
+          return;
+        }
+        opts.onAssistantMutated?.(assistantId);
+        res.json({
+          bindingId,
+          configuredKeys: [],
+          secretStatus: {
+            configured: false,
+            keyCount: 0,
+            updatedAt: null,
+          },
+        });
+      } catch (err) {
+        res.status(400).json({
+          error:
+            err instanceof Error
+              ? err.message
+              : 'Failed to delete assistant MCP secret',
+        });
+      }
+    },
+  );
 
   app.put('/api/assistants/:id/visibility', manageGuard, async (req, res) => {
     try {
@@ -1048,11 +1256,19 @@ export function registerAssistantRoutes(
         req.body && typeof req.body === 'object' && !Array.isArray(req.body)
           ? (req.body as Record<string, unknown>)
           : {};
-      const rawVis = String(body.visibility ?? '').trim().toLowerCase();
+      const rawVis = String(body.visibility ?? '')
+        .trim()
+        .toLowerCase();
       const visibility =
-        rawVis === 'shared' ? 'shared' : rawVis === 'private' ? 'private' : null;
+        rawVis === 'shared'
+          ? 'shared'
+          : rawVis === 'private'
+            ? 'private'
+            : null;
       if (!visibility) {
-        res.status(400).json({ error: 'visibility must be "private" or "shared"' });
+        res
+          .status(400)
+          .json({ error: 'visibility must be "private" or "shared"' });
         return;
       }
       const assistant = await updateAssistant(id, { visibility });
@@ -1064,7 +1280,8 @@ export function registerAssistantRoutes(
       res.json({ assistant });
     } catch (err) {
       res.status(400).json({
-        error: err instanceof Error ? err.message : 'Failed to update visibility',
+        error:
+          err instanceof Error ? err.message : 'Failed to update visibility',
       });
     }
   });
@@ -1102,7 +1319,9 @@ export function registerAssistantRoutes(
               ? 'private'
               : undefined;
       if (body.visibility !== undefined && nextVisibility === undefined) {
-        res.status(400).json({ error: 'visibility must be "private" or "shared"' });
+        res
+          .status(400)
+          .json({ error: 'visibility must be "private" or "shared"' });
         return;
       }
       const assistant = await updateAssistant(id, {
@@ -1126,7 +1345,8 @@ export function registerAssistantRoutes(
       res.json({ assistant });
     } catch (err) {
       res.status(400).json({
-        error: err instanceof Error ? err.message : 'Failed to update assistant',
+        error:
+          err instanceof Error ? err.message : 'Failed to update assistant',
       });
     }
   });
@@ -1148,21 +1368,27 @@ export function registerAssistantRoutes(
         res.status(403).json({ error: 'Forbidden' });
         return;
       }
-      if (!await deleteAssistant(id)) {
+      if (!(await deleteAssistant(id))) {
         res.status(404).json({ error: 'Assistant not found' });
         return;
       }
       opts.onAssistantMutated?.(id);
-      await auditAdminAction(req, AUDIT_ACTIONS.ASSISTANT_DELETE, { targetType: 'assistants', targetId: id, targetName: existing.name });
+      await auditAdminAction(req, AUDIT_ACTIONS.ASSISTANT_DELETE, {
+        targetType: 'assistants',
+        targetId: id,
+        targetName: existing.name,
+      });
       res.json({ ok: true });
     } catch (err) {
       const message =
         err instanceof Error ? err.message : 'Failed to delete assistant';
-      res.status(
-        containsLocalizedFragment(message, [/引用/u, /referenc/i, /in use/i])
-          ? 409
-          : 400,
-      ).json({ error: message });
+      res
+        .status(
+          containsLocalizedFragment(message, [/引用/u, /referenc/i, /in use/i])
+            ? 409
+            : 400,
+        )
+        .json({ error: message });
     }
   });
 
@@ -1179,7 +1405,8 @@ export function registerAssistantRoutes(
       res.json({ assistant });
     } catch (err) {
       res.status(400).json({
-        error: err instanceof Error ? err.message : 'Failed to enable assistant',
+        error:
+          err instanceof Error ? err.message : 'Failed to enable assistant',
       });
     }
   });
