@@ -579,6 +579,7 @@ export interface ManagedMcpServer {
   args: string[];
   env: Record<string, string>;
   enabled: boolean;
+  envKeyCount?: number;
   metadata?: ExtensionMetadata;
 }
 
@@ -804,9 +805,11 @@ export interface AssistantProjectGraphRecommendedResource {
 
 export interface AssistantResources {
   assistantId: string;
+  knowledgeBases: AssistantKnowledgeBaseSummary[];
+  selectedKnowledgeBaseIds: string[];
   availableSkills: AssistantResourceSkillSummary[];
   selectedSkillIds: string[];
-  availableMcpTemplates: AssistantMcpTemplateSummary[];
+  repositories: AssistantRepositoryResource[];
   mcpBindings: AssistantMcpBindingSummary[];
   repoBindings: AssistantRepoBindingSummary[];
   projectGraphResourceHints?: {
@@ -815,6 +818,21 @@ export interface AssistantResources {
     repositoryIds: string[];
   };
   projectGraphRecommendedResources?: AssistantProjectGraphRecommendedResource[];
+}
+
+export interface AssistantKnowledgeBaseSummary {
+  id: string;
+  name: string;
+  description?: string | null;
+}
+
+export interface AssistantRepositoryResource {
+  id: string;
+  name: string;
+  description?: string | null;
+  defaultBranch?: string | null;
+  visibility?: string;
+  enabled?: boolean;
 }
 
 export interface AssistantBindingSecretsResponse {

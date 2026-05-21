@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { CSSProperties, ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import {
@@ -14,7 +14,6 @@ import {
 import { Pagination } from './common/Pagination';
 import { AppSelect, type AppSelectOption } from './AppSelect';
 import {
-  IconCalendar,
   IconChat,
   IconCheck,
   IconChevronDown,
@@ -2084,97 +2083,6 @@ export function RepoReviewSettingsPanel({
     selectedRepositoryLatestRun,
   ]);
 
-  const workspaceSetupChecks = useMemo(() => {
-    if (!selectedRepository) return [];
-
-    return [
-      {
-        label: t('repoReview.workspace.source'),
-        ready: Boolean(
-          selectedRepository.localRepoPath || selectedRepository.remoteRepoSlug,
-        ),
-        detail: selectedRepository.localRepoPath
-          ? t('repoReview.workspace.source.connected')
-          : t('repoReview.workspace.source.pending'),
-      },
-      {
-        label: t('repoReview.workspace.delivery'),
-        ready: Boolean(selectedRepository.reviewChatJid),
-        detail: selectedRepository.reviewChatJid
-          ? t('repoReview.workspace.delivery.ready')
-          : t('repoReview.workspace.delivery.default'),
-      },
-      {
-        label: t('repoReview.workspace.profile'),
-        ready: profilesForSelectedRepository.length > 0,
-        detail:
-          profilesForSelectedRepository.length > 0
-            ? t('repoReview.workspace.profile.configured')
-            : t('repoReview.workspace.profile.pending'),
-      },
-      {
-        label: t('repoReview.workspace.autosync'),
-        ready: selectedRepository.autoSyncEnabled,
-        detail: selectedRepository.autoSyncEnabled
-          ? t('repoReview.workspace.autosync.enabled')
-          : t('repoReview.workspace.autosync.manual'),
-      },
-    ];
-  }, [profilesForSelectedRepository.length, selectedRepository, t]);
-
-  const workspaceCompletionPercent = useMemo(() => {
-    if (workspaceSetupChecks.length === 0) return 0;
-    const completedCount = workspaceSetupChecks.filter(
-      (item) => item.ready,
-    ).length;
-    return Math.round((completedCount / workspaceSetupChecks.length) * 100);
-  }, [workspaceSetupChecks]);
-
-  const workspaceStatusFacts = useMemo(() => {
-    if (!selectedRepository) return [];
-
-    return [
-      {
-        label: t('repoReview.overview.latestReview'),
-        value: selectedRepositoryLatestRun
-          ? formatRunOutcomeLabel(
-              selectedRepositoryLatestRun.overall ||
-                selectedRepositoryLatestRun.status,
-            )
-          : t('repoReview.workspace.profile.noRuns'),
-      },
-      {
-        label: t('repoReview.reviewTabs.branches'),
-        value: t('repoReview.branchStatus.branchCount', {
-          count: allRepositoryBranchStates.length,
-        }),
-      },
-      {
-        label: t('repoReview.manualDecision.title'),
-        value:
-          manualPendingRuns.length > 0
-            ? t('repoReview.manualDecision.pendingCount', {
-                count: manualPendingRuns.length,
-              })
-            : t('repoReview.branchStatus.noRuns'),
-      },
-      {
-        label: t('repoReview.workspace.digest'),
-        value:
-          selectedRepository.digestDailyEnabled ||
-          selectedRepository.digestWeeklyEnabled
-            ? t('repoReview.workspace.digest.enabled')
-            : t('repoReview.workspace.digest.disabled'),
-      },
-    ];
-  }, [
-    allRepositoryBranchStates.length,
-    manualPendingRuns.length,
-    selectedRepository,
-    selectedRepositoryLatestRun,
-    t,
-  ]);
-
   const openRepositoryEditor = (
     create = false,
     section: RepositoryEditorSection = 'all',
@@ -4100,44 +4008,34 @@ export function RepoReviewSettingsPanel({
             onClose={closeWorkspaceDetail}
           >
             <section className="repo-review-workspace-detail">
-              <div className="repo-review-workspace-detail-header">
-                <div>
-                  {embedded && !creatingRepository ? (
+              {creatingRepository || !repositoryWorkspaceFocused ? (
+                <div className="repo-review-workspace-detail-header">
+                  <div>
+                    <h3>
+                      {creatingRepository
+                        ? t('repoReview.drawer.newWorkspace')
+                        : selectedRepository?.name ||
+                          t('repoReview.drawer.repoDetail')}
+                    </h3>
+                    <p className="settings-hint">
+                      {creatingRepository
+                        ? t('repoReview.hero.newRepoHint')
+                        : selectedRepository?.remoteRepoSlug ||
+                          t('repoReview.repo.noMatch')}
+                    </p>
+                  </div>
+                  {(selectedRepositoryId || creatingRepository) &&
+                  !hideRepositoryList ? (
                     <button
                       type="button"
-                      className="repo-review-backlink"
+                      className="btn-outline btn-sm"
                       onClick={closeWorkspaceDetail}
                     >
-                      {t('auto.c270fc6f')} /{' '}
-                      {selectedRepository?.name ||
-                        t('repoReview.drawer.repoDetail')}
+                      {embedded ? '返回列表' : t('repoReview.button.close')}
                     </button>
                   ) : null}
-                  <h3>
-                    {creatingRepository
-                      ? t('repoReview.drawer.newWorkspace')
-                      : selectedRepository?.name ||
-                        t('repoReview.drawer.repoDetail')}
-                  </h3>
-                  <p className="settings-hint">
-                    {creatingRepository
-                      ? t('repoReview.hero.newRepoHint')
-                      : selectedRepository?.localRepoPath ||
-                        selectedRepository?.remoteRepoSlug ||
-                        t('repoReview.repo.noMatch')}
-                  </p>
                 </div>
-                {(selectedRepositoryId || creatingRepository) &&
-                !hideRepositoryList ? (
-                  <button
-                    type="button"
-                    className="btn-outline btn-sm"
-                    onClick={closeWorkspaceDetail}
-                  >
-                    {embedded ? '返回列表' : t('repoReview.button.close')}
-                  </button>
-                ) : null}
-              </div>
+              ) : null}
               {!!selectedRepositoryId || creatingRepository ? (
                 <div className="repo-review-drawer-content repo-review-inline-detail-content">
                   {!creatingRepository &&
@@ -4219,9 +4117,12 @@ export function RepoReviewSettingsPanel({
                               </span>
                               <h3>{selectedRepository.name}</h3>
                               <div className="settings-hint repo-review-ellipsis">
-                                {selectedRepository.localRepoPath ||
-                                  selectedRepository.remoteRepoSlug ||
-                                  selectedRepository.id}
+                                {selectedRepository.remoteRepoSlug ||
+                                  t('repoReview.workspace.defaultBaseline', {
+                                    branch:
+                                      selectedRepository.defaultTargetBranch ||
+                                      t('repoReview.repo.notSet'),
+                                  })}
                               </div>
                             </div>
                             <div className="repo-review-framework-header-main">
@@ -4284,7 +4185,7 @@ export function RepoReviewSettingsPanel({
                             </div>
                           </div>
 
-                          <div className="repo-review-framework-board">
+                          <div className="repo-review-framework-board repo-review-framework-board--single">
                             <div className="repo-review-framework-main">
                               <div className="repo-review-card repo-review-overview-hero repo-review-overview-hero--framework">
                                 <div className="repo-review-card-header">
@@ -4527,80 +4428,6 @@ export function RepoReviewSettingsPanel({
                                 </div>
                               </div>
                             </div>
-
-                            <aside className="repo-review-framework-side">
-                              <div className="repo-review-card repo-review-framework-status-card">
-                                <div className="repo-review-card-header">
-                                  <div>
-                                    <h4>{t('repoReview.workspace.profile')}</h4>
-                                    <div className="settings-hint">
-                                      {t('repoReview.panel.description')}
-                                    </div>
-                                  </div>
-                                  <button
-                                    type="button"
-                                    className="btn-outline btn-sm btn-icon-only"
-                                    onClick={() =>
-                                      void refreshCurrentView(true)
-                                    }
-                                    aria-label={t('repoReview.button.refresh')}
-                                    title={t('repoReview.button.refresh')}
-                                  >
-                                    <IconRefresh />
-                                  </button>
-                                </div>
-                                <div
-                                  className="repo-review-framework-meter"
-                                  style={
-                                    {
-                                      '--repo-review-completion': `${workspaceCompletionPercent}%`,
-                                    } as CSSProperties
-                                  }
-                                >
-                                  <div className="repo-review-framework-meter-inner">
-                                    <strong>
-                                      {workspaceCompletionPercent}%
-                                    </strong>
-                                    <span>
-                                      {t('repoReview.repo.enabledBadge')}
-                                    </span>
-                                  </div>
-                                </div>
-                                <div className="repo-review-framework-checklist">
-                                  {workspaceSetupChecks.map((item) => (
-                                    <div
-                                      key={item.label}
-                                      className={`repo-review-framework-check ${
-                                        item.ready ? 'is-ready' : 'is-pending'
-                                      }`}
-                                    >
-                                      <span className="repo-review-framework-check-icon">
-                                        {item.ready ? (
-                                          <IconCheck />
-                                        ) : (
-                                          <IconCalendar />
-                                        )}
-                                      </span>
-                                      <div>
-                                        <strong>{item.label}</strong>
-                                        <span>{item.detail}</span>
-                                      </div>
-                                    </div>
-                                  ))}
-                                </div>
-                                <div className="repo-review-framework-facts">
-                                  {workspaceStatusFacts.map((item) => (
-                                    <div
-                                      key={item.label}
-                                      className="repo-review-framework-fact"
-                                    >
-                                      <span>{item.label}</span>
-                                      <strong>{item.value}</strong>
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-                            </aside>
                           </div>
                         </div>
 

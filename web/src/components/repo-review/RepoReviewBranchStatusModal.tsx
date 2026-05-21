@@ -153,6 +153,7 @@ export function RepoReviewBranchStatusModal({
       closeAriaLabel={t('branchStatusModal.closeLabel')}
       onClose={onClose}
     >
+      <div className="repo-review-branch-status-body">
         {items.length === 0 ? (
           <div className="settings-hint">{t('branchStatus.noBranches')}</div>
         ) : (
@@ -512,6 +513,7 @@ export function RepoReviewBranchStatusModal({
             </div>
           </div>
         )}
+      </div>
     </RepoReviewModalShell>
   );
 }
