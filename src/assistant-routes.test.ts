@@ -34,6 +34,8 @@ const {
   upsertAssistantMcpBindingSecret,
   listRepositories,
   dbaTransaction,
+  getRepositoryInfo,
+  getProjectGraphOverview,
 } = vi.hoisted(() => ({
   listAssistantRepoBindings: vi.fn(() => []),
   createRepositoryBinding: vi.fn(),
@@ -59,6 +61,8 @@ const {
   upsertAssistantMcpBindingSecret: vi.fn(),
   listRepositories: vi.fn(() => []),
   dbaTransaction: vi.fn((fn: (...args: unknown[]) => unknown) => fn),
+  getRepositoryInfo: vi.fn(() => undefined),
+  getProjectGraphOverview: vi.fn(),
 }));
 
 vi.mock('./db.js', () => ({
@@ -95,6 +99,19 @@ vi.mock('./assistant-repo.js', () => ({
 vi.mock('./resource-binding-service.js', () => ({
   createRepositoryBinding,
 }));
+
+vi.mock('./repo-review/repository-service.js', () => ({
+  getRepository: getRepositoryInfo,
+}));
+
+vi.mock('./project-graph/project-graph-service.js', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('./project-graph/project-graph-service.js')>();
+  return {
+    ...actual,
+    getProjectGraphOverview,
+  };
+});
 
 vi.mock('./db/engine-access.js', () => ({
   dba: {
@@ -463,6 +480,7 @@ describe('assistant routes', () => {
       {
         id: 'arb-demo-main',
         assistant_id: 'demo-assistant',
+        repository_id: 'repo-1',
         repo_url: 'https://example.com/demo.git',
         name: 'Demo Repo',
         description: 'Main development repository',
@@ -533,6 +551,192 @@ describe('assistant routes', () => {
       expect(JSON.stringify(data)).not.toContain('secret-value');
       expect(JSON.stringify(data)).not.toContain('template-secret');
     });
+  });
+
+  it('syncs project graph recommended resources into assistant building blocks', async () => {
+    getAssistant.mockReset();
+    listAssistantMcpBindings.mockReset();
+    listAssistantMcpBindingSecrets.mockReset();
+    listAssistantRepoBindings.mockReset();
+    getRepositoryInfo.mockReset();
+    getProjectGraphOverview.mockReset();
+    updateAssistant.mockReset();
+    createAssistantMcpBinding.mockReset();
+    dbaTransaction.mockClear();
+    const onAssistantMutated = vi.fn();
+    const assistantRecord = {
+      id: 'demo-assistant',
+      name: '演示助手',
+      description: null,
+      enabled: true,
+      user_id: SYSTEM_USER_ID,
+      visibility: 'private',
+      created_at: '2024-01-01T00:00:00.000Z',
+      updated_at: '2024-01-01T00:00:00.000Z',
+      config: {
+        skillIds: [],
+        mcpServerIds: [],
+        userSkillIds: [],
+        userMcpServerIds: [],
+        kbIds: [],
+        rules: { mode: 'append' },
+        persona: {
+          role: '',
+          style: '',
+          guidelines: '',
+          constraints: '',
+        },
+        providerId: null,
+        model: null,
+      },
+    };
+    getAssistant.mockReturnValue(assistantRecord);
+    updateAssistant.mockReturnValue({
+      ...assistantRecord,
+      config: {
+        ...assistantRecord.config,
+        skillIds: ['demo-skill'],
+      },
+    });
+    createAssistantMcpBinding.mockReturnValue({
+      id: 'amb-demo-assistant-jira',
+      assistant_id: 'demo-assistant',
+      template_server_id: 'jira',
+      alias: null,
+      enabled: 1,
+      args_json: null,
+      created_at: '2024-01-01T00:00:00.000Z',
+      updated_at: '2024-01-01T00:00:00.000Z',
+    });
+    listAssistantMcpBindings.mockReturnValue([]);
+    listAssistantMcpBindingSecrets.mockReturnValue([]);
+    listAssistantRepoBindings.mockReturnValue([
+      {
+        id: 'arb-demo-main',
+        assistant_id: 'demo-assistant',
+        repository_id: 'repo-1',
+        repo_url: 'https://example.com/demo.git',
+        name: 'Demo Repo',
+        description: null,
+        local_path: '/repos/demo',
+        default_branch: 'main',
+        branch_filter: [],
+        active_branch: null,
+        worktree_path: null,
+        enabled: 1,
+        created_at: '2024-01-01T00:00:00.000Z',
+        updated_at: '2024-01-01T00:00:00.000Z',
+      },
+    ]);
+    getRepositoryInfo.mockReturnValue({
+      id: 'repo-1',
+      name: 'Demo Repo',
+    });
+    getProjectGraphOverview.mockReturnValue({
+      repositoryId: 'repo-1',
+      config: {
+        enabled: true,
+        scanners: [],
+        skillIds: ['demo-skill', 'disabled-skill'],
+        mcpServerIds: ['jira', 'missing-mcp'],
+        includePaths: [],
+        excludePaths: [],
+        serviceNames: {
+          production: '',
+          testing: '',
+          nacosKeys: [],
+          logServiceNames: [],
+        },
+        owners: [],
+        businessDomain: '',
+        systemAliases: [],
+        databaseBindings: [],
+        logBindings: [],
+      },
+      latestRun: null,
+      facts: [],
+      edges: [],
+      documents: [],
+      runs: [],
+    });
+    const app = express();
+    app.use(express.json());
+    registerAssistantRoutes(app, {
+      requirePermission: testRequirePermission,
+      auditMutation: vi.fn(),
+      listAvailableManagedSkills: vi.fn(() => [
+        {
+          id: 'demo-skill',
+          name: 'Demo Skill',
+          description: 'demo',
+          source: 'builtin',
+          enabled: true,
+        },
+        {
+          id: 'disabled-skill',
+          name: 'Disabled Skill',
+          description: 'disabled',
+          source: 'builtin',
+          enabled: false,
+        },
+      ]),
+      listAvailableManagedMcpServers: vi.fn(() => [
+        {
+          id: 'jira',
+          name: 'Jira',
+          command: 'node',
+          args: ['jira.js'],
+          env: {},
+          enabled: true,
+        },
+      ]),
+      onAssistantMutated,
+    });
+
+    await withServer(app, async (baseUrl) => {
+      const response = await fetch(
+        `${baseUrl}/api/assistants/demo-assistant/project-graph-resources/sync`,
+        { method: 'POST' },
+      );
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toEqual(
+        expect.objectContaining({
+          ok: true,
+          added: {
+            skillIds: ['demo-skill'],
+            mcpServerIds: ['jira'],
+          },
+          skipped: expect.arrayContaining([
+            {
+              type: 'skill',
+              id: 'disabled-skill',
+              reason: 'disabled',
+            },
+            {
+              type: 'mcp_template',
+              id: 'missing-mcp',
+              reason: 'unknown',
+            },
+          ]),
+        }),
+      );
+    });
+
+    expect(dbaTransaction).toHaveBeenCalled();
+    expect(updateAssistant).toHaveBeenCalledWith(
+      'demo-assistant',
+      expect.objectContaining({
+        config: expect.objectContaining({
+          skillIds: ['demo-skill'],
+        }),
+      }),
+    );
+    expect(createAssistantMcpBinding).toHaveBeenCalledWith({
+      assistantId: 'demo-assistant',
+      templateServerId: 'jira',
+      enabled: true,
+    });
+    expect(onAssistantMutated).toHaveBeenCalledWith('demo-assistant');
   });
 
   it('creates assistants with initial repository bindings in one request', async () => {

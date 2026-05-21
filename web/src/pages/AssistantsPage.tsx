@@ -288,6 +288,25 @@ function formatBindingSourceLabel(
     : t('assistants.助手私有绑定');
 }
 
+function formatProjectGraphRecommendationStatus(
+  status: NonNullable<
+    AssistantResources['projectGraphRecommendedResources']
+  >[number]['status'],
+  t: (key: string) => string,
+): string {
+  switch (status) {
+    case 'available':
+      return t('assistants.可同步');
+    case 'already_bound':
+      return t('assistants.已绑定');
+    case 'disabled':
+      return t('assistants.已停用');
+    case 'unknown':
+    default:
+      return t('assistants.未安装');
+  }
+}
+
 function formatAssistantCatalogStatusLabel(
   status: AssistantCatalogFilter,
   t: (key: string) => string,
@@ -426,6 +445,22 @@ function normalizeAssistantResources(
     !Array.isArray(record.projectGraphResourceHints)
       ? (record.projectGraphResourceHints as AssistantResources['projectGraphResourceHints'])
       : undefined;
+  const projectGraphRecommendedResources = Array.isArray(
+    record.projectGraphRecommendedResources,
+  )
+    ? record.projectGraphRecommendedResources.filter(
+        (
+          entry,
+        ): entry is NonNullable<
+          AssistantResources['projectGraphRecommendedResources']
+        >[number] =>
+          !!entry &&
+          typeof entry === 'object' &&
+          typeof (entry as { id?: unknown }).id === 'string' &&
+          ((entry as { type?: unknown }).type === 'skill' ||
+            (entry as { type?: unknown }).type === 'mcp_template'),
+      )
+    : [];
   return {
     assistantId:
       typeof record.assistantId === 'string' && record.assistantId.trim()
@@ -437,6 +472,7 @@ function normalizeAssistantResources(
     mcpBindings,
     repoBindings,
     projectGraphResourceHints,
+    projectGraphRecommendedResources,
   };
 }
 
@@ -1547,6 +1583,66 @@ export function AssistantsPage({
     }
   };
 
+  const handleSyncProjectGraphResources = async () => {
+    if (!selectedAssistant) return;
+    setResourceSavingKey('project-graph:sync');
+    setAssistantResourceError('');
+    try {
+      const res = await fetch(
+        `${apiBase}/api/assistants/${encodeURIComponent(selectedAssistant.id)}/project-graph-resources/sync`,
+        { method: 'POST' },
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(
+          typeof (data as { error?: unknown }).error === 'string'
+            ? (data as { error: string }).error
+            : t('assistants.同步项目图谱推荐资源失败'),
+        );
+      }
+      const rawResources = (data as { resources?: unknown }).resources;
+      if (rawResources) {
+        const resources = normalizeAssistantResources(
+          selectedAssistant.id,
+          rawResources,
+        );
+        setAssistantResourcesById((prev) => ({
+          ...prev,
+          [selectedAssistant.id]: resources,
+        }));
+        setDetailForm((prev) => ({
+          ...prev,
+          skillIds: resources.selectedSkillIds,
+        }));
+      } else {
+        await loadAssistantResources(selectedAssistant.id, true);
+      }
+      const added = (data as {
+        added?: { skillIds?: unknown[]; mcpServerIds?: unknown[] };
+      }).added;
+      const skillCount = Array.isArray(added?.skillIds)
+        ? added.skillIds.length
+        : 0;
+      const mcpCount = Array.isArray(added?.mcpServerIds)
+        ? added.mcpServerIds.length
+        : 0;
+      persistResourceMessage(
+        t('assistants.已同步项目图谱推荐资源：Skills {{skillCount}}，MCP {{mcpCount}}', {
+          skillCount,
+          mcpCount,
+        }),
+      );
+    } catch (err) {
+      setAssistantResourceError(
+        err instanceof Error
+          ? err.message
+          : t('assistants.同步项目图谱推荐资源失败'),
+      );
+    } finally {
+      setResourceSavingKey('');
+    }
+  };
+
   const handleCreateBinding = async () => {
     if (!selectedAssistant || !newBindingTemplateId.trim()) return;
     setResourceSavingKey('binding:create');
@@ -1761,6 +1857,12 @@ export function AssistantsPage({
     const bindings = selectedResources?.mcpBindings || [];
     const repoBindings = selectedResources?.repoBindings || [];
     const projectGraphHints = selectedResources?.projectGraphResourceHints;
+    const projectGraphRecommendedResources =
+      selectedResources?.projectGraphRecommendedResources || [];
+    const syncableProjectGraphResourceCount =
+      projectGraphRecommendedResources.filter(
+        (resource) => resource.status === 'available',
+      ).length;
     const pendingSecretBindings = bindings.filter(
       (binding) =>
         !binding.secretStatus.configured || binding.usesTemplateEnvFallback,
@@ -1815,6 +1917,77 @@ export function AssistantsPage({
             </div>
           </div>
         </section>
+
+        {projectGraphRecommendedResources.length > 0 ? (
+          <section className="assistant-modal-panel">
+            <div className="assistant-section-heading">
+              <div>
+                <h4>{t('assistants.项目图谱推荐资源')}</h4>
+                <p>
+                  {t(
+                    'assistants.把仓库图谱中配置的 Skills 和 MCP 作为可组合底层能力同步到当前助手',
+                  )}
+                </p>
+              </div>
+              <button
+                type="button"
+                className="btn-outline btn-sm"
+                onClick={() => void handleSyncProjectGraphResources()}
+                disabled={
+                  syncableProjectGraphResourceCount === 0 ||
+                  resourceSavingKey === 'project-graph:sync'
+                }
+              >
+                {resourceSavingKey === 'project-graph:sync'
+                  ? t('assistants.同步中...')
+                  : t('assistants.同步推荐资源')}
+              </button>
+            </div>
+            <div className="assistant-validation-list">
+              {projectGraphRecommendedResources.map((resource) => (
+                <div
+                  key={`${resource.type}:${resource.id}`}
+                  className={`assistant-validation-item ${
+                    resource.status === 'available'
+                      ? ''
+                      : resource.status === 'already_bound'
+                        ? 'is-success'
+                        : resource.status === 'disabled'
+                          ? 'is-warning'
+                          : 'is-error'
+                  }`}
+                >
+                  <div className="assistant-validation-item-copy">
+                    <strong>{resource.name}</strong>
+                    <p>
+                      {resource.type === 'skill'
+                        ? t('assistants.Skill 能力')
+                        : t('assistants.MCP 工具能力')}
+                      {' · '}
+                      {resource.repositoryIds.join(', ')}
+                    </p>
+                  </div>
+                  <div className="assistant-stage-actions">
+                    <span
+                      className={`assistant-validation-state ${
+                        resource.status === 'unknown'
+                          ? 'is-error'
+                          : resource.status === 'disabled'
+                            ? 'is-warning'
+                            : ''
+                      }`}
+                    >
+                      {formatProjectGraphRecommendationStatus(
+                        resource.status,
+                        t,
+                      )}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        ) : null}
 
         <div className="assistant-modal-columns">
           <section className="assistant-modal-panel">

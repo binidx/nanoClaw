@@ -230,6 +230,30 @@ interface InitialAssistantRepositoryBindingInput {
   branch?: string;
 }
 
+type ProjectGraphRecommendedResourceType = 'skill' | 'mcp_template';
+type ProjectGraphRecommendedResourceStatus =
+  | 'available'
+  | 'already_bound'
+  | 'disabled'
+  | 'unknown';
+
+interface ProjectGraphRecommendedResource {
+  type: ProjectGraphRecommendedResourceType;
+  id: string;
+  name: string;
+  repositoryIds: string[];
+  available: boolean;
+  enabled: boolean;
+  bound: boolean;
+  status: ProjectGraphRecommendedResourceStatus;
+}
+
+interface ProjectGraphResourceSyncSkippedItem {
+  type: ProjectGraphRecommendedResourceType;
+  id: string;
+  reason: Exclude<ProjectGraphRecommendedResourceStatus, 'available'>;
+}
+
 function normalizeInitialRepositoryBindings(
   value: unknown,
 ): InitialAssistantRepositoryBindingInput[] {
@@ -270,6 +294,13 @@ async function buildAssistantResourcePayload(
   const assistant = await getAssistant(assistantId);
   if (!assistant) return null;
   const templates = await Promise.resolve(opts.listAvailableManagedMcpServers());
+  const availableSkills = (await Promise.resolve(opts.listAvailableManagedSkills())).map((skill) => ({
+    id: skill.id,
+    name: skill.name,
+    description: skill.description || '',
+    source: skill.source || 'unknown',
+    enabled: skill.enabled !== false,
+  }));
   const secretRecords = await listAssistantMcpBindingSecrets(assistant.id);
   const mcpBindings = buildAssistantMcpBindingViews({
     assistantId: assistant.id,
@@ -307,15 +338,24 @@ async function buildAssistantResourcePayload(
       };
     }),
   );
+  const projectGraphResourceHints = {
+    skillIds: Array.from(
+      new Set(repoBindingViews.flatMap((binding) => binding.projectGraph?.skillIds || [])),
+    ),
+    mcpServerIds: Array.from(
+      new Set(
+        repoBindingViews.flatMap(
+          (binding) => binding.projectGraph?.mcpServerIds || [],
+        ),
+      ),
+    ),
+    repositoryIds: repoBindingViews
+      .filter((binding) => binding.projectGraph?.enabled)
+      .map((binding) => binding.repositoryId),
+  };
   return {
     assistantId: assistant.id,
-    availableSkills: (await Promise.resolve(opts.listAvailableManagedSkills())).map((skill) => ({
-      id: skill.id,
-      name: skill.name,
-      description: skill.description || '',
-      source: skill.source || 'unknown',
-      enabled: skill.enabled !== false,
-    })),
+    availableSkills,
     selectedSkillIds: [...assistant.config.skillIds],
     availableMcpTemplates: templates.map((server) => ({
       id: server.id,
@@ -327,22 +367,102 @@ async function buildAssistantResourcePayload(
     })),
     mcpBindings,
     repoBindings: repoBindingViews,
-    projectGraphResourceHints: {
-      skillIds: Array.from(
-        new Set(repoBindingViews.flatMap((binding) => binding.projectGraph?.skillIds || [])),
-      ),
-      mcpServerIds: Array.from(
-        new Set(
-          repoBindingViews.flatMap(
-            (binding) => binding.projectGraph?.mcpServerIds || [],
-          ),
-        ),
-      ),
-      repositoryIds: repoBindingViews
-        .filter((binding) => binding.projectGraph?.enabled)
-        .map((binding) => binding.repositoryId),
-    },
+    projectGraphResourceHints,
+    projectGraphRecommendedResources: buildProjectGraphRecommendedResources({
+      repoBindings: repoBindingViews,
+      availableSkills,
+      templates,
+      selectedSkillIds: assistant.config.skillIds,
+      mcpBindings,
+    }),
   };
+}
+
+function getProjectGraphRecommendationStatus(input: {
+  available: boolean;
+  enabled: boolean;
+  bound: boolean;
+}): ProjectGraphRecommendedResourceStatus {
+  if (!input.available) return 'unknown';
+  if (!input.enabled) return 'disabled';
+  if (input.bound) return 'already_bound';
+  return 'available';
+}
+
+function buildProjectGraphRecommendedResources(input: {
+  repoBindings: Array<{
+    repositoryId: string;
+    projectGraph: ReturnType<typeof buildProjectGraphResourceContext> | null;
+  }>;
+  availableSkills: Array<{ id: string; name: string; enabled?: boolean }>;
+  templates: ManagedMcpTemplate[];
+  selectedSkillIds: string[];
+  mcpBindings: Array<{ templateServerId: string; enabled: boolean }>;
+}): ProjectGraphRecommendedResource[] {
+  const skillRepositoryIds = new Map<string, Set<string>>();
+  const mcpRepositoryIds = new Map<string, Set<string>>();
+  for (const binding of input.repoBindings) {
+    if (!binding.projectGraph?.enabled) continue;
+    for (const skillId of binding.projectGraph.skillIds) {
+      if (!skillRepositoryIds.has(skillId)) {
+        skillRepositoryIds.set(skillId, new Set());
+      }
+      skillRepositoryIds.get(skillId)!.add(binding.repositoryId);
+    }
+    for (const serverId of binding.projectGraph.mcpServerIds) {
+      if (!mcpRepositoryIds.has(serverId)) {
+        mcpRepositoryIds.set(serverId, new Set());
+      }
+      mcpRepositoryIds.get(serverId)!.add(binding.repositoryId);
+    }
+  }
+
+  const skillsById = new Map(input.availableSkills.map((skill) => [skill.id, skill]));
+  const templatesById = new Map(input.templates.map((template) => [template.id, template]));
+  const selectedSkillIds = new Set(input.selectedSkillIds);
+  const boundMcpServerIds = new Set(
+    input.mcpBindings.map((binding) => binding.templateServerId),
+  );
+  const recommendations: ProjectGraphRecommendedResource[] = [];
+
+  for (const [skillId, repositoryIds] of skillRepositoryIds) {
+    const skill = skillsById.get(skillId);
+    const available = !!skill;
+    const enabled = skill?.enabled !== false;
+    const bound = selectedSkillIds.has(skillId);
+    recommendations.push({
+      type: 'skill',
+      id: skillId,
+      name: skill?.name || skillId,
+      repositoryIds: Array.from(repositoryIds),
+      available,
+      enabled,
+      bound,
+      status: getProjectGraphRecommendationStatus({ available, enabled, bound }),
+    });
+  }
+
+  for (const [serverId, repositoryIds] of mcpRepositoryIds) {
+    const template = templatesById.get(serverId);
+    const available = !!template;
+    const enabled = template?.enabled !== false;
+    const bound = boundMcpServerIds.has(serverId);
+    recommendations.push({
+      type: 'mcp_template',
+      id: serverId,
+      name: template?.name || serverId,
+      repositoryIds: Array.from(repositoryIds),
+      available,
+      enabled,
+      bound,
+      status: getProjectGraphRecommendationStatus({ available, enabled, bound }),
+    });
+  }
+
+  return recommendations.sort((a, b) => {
+    if (a.type !== b.type) return a.type.localeCompare(b.type);
+    return a.id.localeCompare(b.id);
+  });
 }
 
 async function materializeLegacyAssistantBindings(
@@ -505,6 +625,87 @@ export function registerAssistantRoutes(
     } catch (err) {
       logger.error({ err }, 'Failed to load assistant resources');
       res.status(500).json({ error: 'Internal error' });
+    }
+  });
+
+  app.post('/api/assistants/:id/project-graph-resources/sync', manageGuard, async (req, res) => {
+    try {
+      opts.auditMutation(req, 'assistants.project_graph_resources.sync', 'high');
+      const assistantId = decodeRouteParam(req.params.id);
+      const assistant = await requireAssistantAccess(
+        req,
+        res,
+        assistantId,
+        'manage',
+      );
+      if (!assistant) return;
+      await materializeLegacyAssistantBindings(assistantId);
+
+      const before = await buildAssistantResourcePayload(assistantId, opts);
+      if (!before) {
+        res.status(404).json({ error: 'Assistant not found' });
+        return;
+      }
+
+      const skipped: ProjectGraphResourceSyncSkippedItem[] = [];
+      const skillIdsToAdd: string[] = [];
+      const mcpServerIdsToAdd: string[] = [];
+      for (const recommendation of before.projectGraphRecommendedResources) {
+        if (recommendation.status === 'available') {
+          if (recommendation.type === 'skill') {
+            skillIdsToAdd.push(recommendation.id);
+          } else {
+            mcpServerIdsToAdd.push(recommendation.id);
+          }
+          continue;
+        }
+        skipped.push({
+          type: recommendation.type,
+          id: recommendation.id,
+          reason: recommendation.status,
+        });
+      }
+
+      if (skillIdsToAdd.length > 0 || mcpServerIdsToAdd.length > 0) {
+        await dba.transaction(async () => {
+          if (skillIdsToAdd.length > 0) {
+            const nextSkillIds = Array.from(
+              new Set([...assistant.config.skillIds, ...skillIdsToAdd]),
+            );
+            await updateAssistant(assistantId, {
+              config: {
+                ...assistant.config,
+                skillIds: nextSkillIds,
+              },
+            });
+          }
+          for (const templateServerId of mcpServerIdsToAdd) {
+            await createAssistantMcpBinding({
+              assistantId,
+              templateServerId,
+              enabled: true,
+            });
+          }
+        })();
+        opts.onAssistantMutated?.(assistantId);
+      }
+
+      const resources = await buildAssistantResourcePayload(assistantId, opts);
+      res.json({
+        ok: true,
+        added: {
+          skillIds: skillIdsToAdd,
+          mcpServerIds: mcpServerIdsToAdd,
+        },
+        skipped,
+        resources,
+      });
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : 'Failed to sync project graph resources';
+      res.status(400).json({ error: message });
     }
   });
 

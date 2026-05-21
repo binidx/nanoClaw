@@ -791,6 +791,17 @@ export interface AssistantRepoBindingSummary {
   projectGraph?: ProjectGraphResourceContext | null;
 }
 
+export interface AssistantProjectGraphRecommendedResource {
+  type: 'skill' | 'mcp_template';
+  id: string;
+  name: string;
+  repositoryIds: string[];
+  available: boolean;
+  enabled: boolean;
+  bound: boolean;
+  status: 'available' | 'already_bound' | 'disabled' | 'unknown';
+}
+
 export interface AssistantResources {
   assistantId: string;
   availableSkills: AssistantResourceSkillSummary[];
@@ -803,6 +814,7 @@ export interface AssistantResources {
     mcpServerIds: string[];
     repositoryIds: string[];
   };
+  projectGraphRecommendedResources?: AssistantProjectGraphRecommendedResource[];
 }
 
 export interface AssistantBindingSecretsResponse {
