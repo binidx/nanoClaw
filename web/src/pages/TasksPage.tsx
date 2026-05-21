@@ -33,6 +33,8 @@ interface TasksPageProps {
   setSelectedChatJid: (jid: string) => void;
   tasks: ScheduledTaskSummary[];
   loading: boolean;
+  selectedTaskId: string | null;
+  setSelectedTaskId: (taskId: string | null) => void;
   onCreateTask: (
     input: TaskDraft & { chatJid: string },
   ) => Promise<boolean | void>;
@@ -393,6 +395,8 @@ export function TasksPage({
   setSelectedChatJid,
   tasks,
   loading,
+  selectedTaskId,
+  setSelectedTaskId,
   onCreateTask,
   onParseTaskDraft,
   onPauseTask,
@@ -408,7 +412,6 @@ export function TasksPage({
   const [showCreator, setShowCreator] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [taskSearch, setTaskSearch] = useState('');
-  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [taskNotice, setTaskNotice] = useState<TaskNoticeState | null>(null);
   const [taskEditor, setTaskEditor] = useState<
     (TaskDraft & { id: string; status: ScheduledTaskSummary['status'] }) | null
@@ -536,9 +539,10 @@ export function TasksPage({
 
   useEffect(() => {
     if (!selectedTaskId) return;
+    if (loading || tasks.length === 0) return;
     if (tasks.some((task) => task.id === selectedTaskId)) return;
     setSelectedTaskId(null);
-  }, [selectedTaskId, tasks]);
+  }, [loading, selectedTaskId, setSelectedTaskId, tasks]);
 
   const closeCreator = () => {
     setShowAdvanced(false);

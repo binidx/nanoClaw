@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 
 import type { Conversation, ScheduledTaskSummary } from '../app-types';
+import { getUrlSubPath, navPageToPath } from '../router/paths';
 import { TasksPage } from './TasksPage';
 import '../styles/tasks.css';
 
@@ -36,16 +38,55 @@ function resolvePreferredChatJid(
   return '';
 }
 
+function decodeRouteComponent(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+function getRouteTaskId(pathname: string, search: string): string | null {
+  const pathTaskId = getUrlSubPath(pathname);
+  if (pathTaskId) {
+    return decodeRouteComponent(pathTaskId);
+  }
+  const queryTaskId = new URLSearchParams(search).get('taskId')?.trim();
+  return queryTaskId ? decodeRouteComponent(queryTaskId) : null;
+}
+
 export function TasksPageContainer({
   apiBase,
   conversations,
   activeJid,
   authenticated,
 }: TasksPageContainerProps) {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const routeTaskId = useMemo(
+    () => getRouteTaskId(location.pathname, location.search),
+    [location.pathname, location.search],
+  );
   const [tasks, setTasks] = useState<ScheduledTaskSummary[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedChatJid, setSelectedChatJid] = useState<string>(() =>
     resolvePreferredChatJid(conversations, activeJid),
+  );
+  const [selectedTaskId, setSelectedTaskIdState] = useState<string | null>(
+    routeTaskId,
+  );
+
+  const setSelectedTaskId = useCallback(
+    (taskId: string | null) => {
+      setSelectedTaskIdState(taskId);
+      const nextPath = taskId
+        ? navPageToPath('tasks', encodeURIComponent(taskId))
+        : navPageToPath('tasks');
+      if (location.pathname !== nextPath || location.search) {
+        navigate(nextPath);
+      }
+    },
+    [location.pathname, location.search, navigate],
   );
 
   const loadTasks = useCallback(
@@ -220,6 +261,17 @@ export function TasksPageContainer({
   }, [authenticated, loadTasks]);
 
   useEffect(() => {
+    setSelectedTaskIdState(routeTaskId);
+  }, [routeTaskId]);
+
+  useEffect(() => {
+    if (!routeTaskId || !location.search) return;
+    navigate(navPageToPath('tasks', encodeURIComponent(routeTaskId)), {
+      replace: true,
+    });
+  }, [location.search, navigate, routeTaskId]);
+
+  useEffect(() => {
     if (!hasRuntimeTasks) return;
 
     const timer = window.setInterval(() => {
@@ -235,6 +287,8 @@ export function TasksPageContainer({
       setSelectedChatJid={setSelectedChatJid}
       tasks={tasks}
       loading={loading}
+      selectedTaskId={selectedTaskId}
+      setSelectedTaskId={setSelectedTaskId}
       onCreateTask={createScheduledTask}
       onParseTaskDraft={parseTaskDraft}
       onPauseTask={pauseTask}

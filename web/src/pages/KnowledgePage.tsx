@@ -621,9 +621,14 @@ export function KnowledgePage({ apiBase }: KnowledgePageProps) {
   const urlTab = urlParams.get('tab');
   const urlContent = urlParams.get('content');
   const urlView = urlParams.get('view');
+  const urlDoc = urlParams.get('doc');
+  const urlWiki = urlParams.get('wiki');
 
   const setUrlState = useCallback(
-    (params: Record<string, string | null>) => {
+    (
+      params: Record<string, string | null>,
+      options?: { replace?: boolean },
+    ) => {
       const next = new URLSearchParams(location.search);
       for (const [k, v] of Object.entries(params)) {
         if (v === null) next.delete(k);
@@ -632,7 +637,7 @@ export function KnowledgePage({ apiBase }: KnowledgePageProps) {
       const qs = next.toString();
       navigate(
         { pathname: location.pathname, search: qs ? `?${qs}` : '' },
-        { replace: true },
+        { replace: options?.replace ?? true },
       );
     },
     [location.search, location.pathname, navigate],
@@ -641,7 +646,7 @@ export function KnowledgePage({ apiBase }: KnowledgePageProps) {
   const [limits, setLimits] = useState<KbLimits>(DEFAULT_LIMITS);
 
   const drawerOpen = Boolean(
-    urlKb || urlView === 'create' || urlView === 'search',
+    urlKb || urlDoc || urlWiki || urlView === 'create' || urlView === 'search',
   );
   const creatingKb = urlView === 'create';
   const [kbFilter, setKbFilter] = useState('');
@@ -810,7 +815,14 @@ export function KnowledgePage({ apiBase }: KnowledgePageProps) {
   const setDetailTab = useCallback(
     (tab: KnowledgeWorkbenchTab) => {
       if (tab === 'search') {
-        setUrlState({ kb: null, tab: 'search', content: null, view: 'search' });
+        setUrlState({
+          kb: null,
+          tab: 'search',
+          content: null,
+          view: 'search',
+          doc: null,
+          wiki: null,
+        });
         return;
       }
       setUrlState({
@@ -822,13 +834,21 @@ export function KnowledgePage({ apiBase }: KnowledgePageProps) {
               : 'docs')
             : null,
         view: null,
+        doc: null,
+        wiki: null,
       });
     },
     [setUrlState, urlContent],
   );
   const setContentTab = useCallback(
     (next: KnowledgeContentView) => {
-      setUrlState({ tab: 'content', content: next, view: null });
+      setUrlState({
+        tab: 'content',
+        content: next,
+        view: null,
+        doc: null,
+        wiki: null,
+      });
     },
     [setUrlState],
   );
@@ -1164,7 +1184,23 @@ export function KnowledgePage({ apiBase }: KnowledgePageProps) {
   );
 
   const openWikiPageDetail = useCallback(
-    async (pageId: string) => {
+    async (
+      pageId: string,
+      options?: { syncUrl?: boolean; replaceUrl?: boolean; kbId?: string },
+    ) => {
+      if (options?.syncUrl !== false) {
+        setUrlState(
+          {
+            kb: options?.kbId ?? selectedKbId,
+            tab: 'content',
+            content: 'wiki',
+            view: null,
+            doc: null,
+            wiki: pageId,
+          },
+          { replace: options?.replaceUrl ?? false },
+        );
+      }
       setWikiDetailLoading(true);
       setWikiDetail(null);
       setWikiEditing(false);
@@ -1174,22 +1210,16 @@ export function KnowledgePage({ apiBase }: KnowledgePageProps) {
       setWikiDetail(detail);
       setWikiDetailLoading(false);
     },
-    [fetchWikiDetailRaw],
+    [fetchWikiDetailRaw, selectedKbId, setUrlState],
   );
 
   const openWikiSearchResult = useCallback(
     async (pageId: string) => {
       if (!selectedKbId) return;
-      setUrlState({
-        kb: selectedKbId,
-        tab: 'content',
-        content: 'wiki',
-        view: null,
-      });
       await fetchWikiPagesData(selectedKbId);
       await openWikiPageDetail(pageId);
     },
-    [selectedKbId, setUrlState, fetchWikiPagesData, openWikiPageDetail],
+    [selectedKbId, fetchWikiPagesData, openWikiPageDetail],
   );
 
   const scrollWikiHeadingIntoView = useCallback((headingId: string) => {
@@ -1261,7 +1291,7 @@ export function KnowledgePage({ apiBase }: KnowledgePageProps) {
       });
       if (res.ok) {
         setWikiEditing(false);
-        await openWikiPageDetail(pageId);
+        await openWikiPageDetail(pageId, { syncUrl: false });
         await fetchWikiPagesData(selectedKbId);
       } else {
         const data = (await res.json().catch(() => ({}))) as {
@@ -1314,7 +1344,7 @@ export function KnowledgePage({ apiBase }: KnowledgePageProps) {
         },
       );
       if (res.ok) {
-        await openWikiPageDetail(pageId);
+        await openWikiPageDetail(pageId, { syncUrl: false });
         await fetchWikiPagesData(selectedKbId);
       } else {
         const data = (await res.json().catch(() => ({}))) as { error?: string };
@@ -1389,8 +1419,99 @@ export function KnowledgePage({ apiBase }: KnowledgePageProps) {
 
   useEffect(() => {
     if (urlKb && urlKb !== selectedKbId) setSelectedKbId(urlKb);
-    else if (!urlKb && selectedKbId) setSelectedKbId(null);
-  }, [urlKb]); // eslint-disable-line react-hooks/exhaustive-deps
+    else if (!urlKb && !urlWiki && selectedKbId) setSelectedKbId(null);
+  }, [urlKb, urlWiki]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (urlWiki) {
+      if (
+        urlDoc ||
+        urlTab !== 'content' ||
+        urlContent !== 'wiki' ||
+        urlView
+      ) {
+        setUrlState(
+          {
+            tab: 'content',
+            content: 'wiki',
+            view: null,
+            doc: null,
+          },
+          { replace: true },
+        );
+      }
+      return;
+    }
+    if (
+      urlDoc &&
+      (urlTab !== 'content' || urlContent !== 'docs' || urlView)
+    ) {
+      setUrlState(
+        {
+          tab: 'content',
+          content: 'docs',
+          view: null,
+          wiki: null,
+        },
+        { replace: true },
+      );
+    }
+  }, [setUrlState, urlContent, urlDoc, urlTab, urlView, urlWiki]);
+
+  useEffect(() => {
+    if (!urlWiki) {
+      if (wikiDetail) {
+        setWikiDetail(null);
+        setWikiEditing(false);
+        setWikiEditError(null);
+        setWikiConflictVersion(null);
+      }
+      return;
+    }
+    if (String(wikiDetail?.id ?? '') === urlWiki) return;
+
+    let cancelled = false;
+    setWikiDetailLoading(true);
+    setWikiDetail(null);
+    setWikiEditing(false);
+    setWikiEditError(null);
+    setWikiConflictVersion(null);
+    void fetchWikiDetailRaw(urlWiki)
+      .then((detail) => {
+        if (cancelled) return;
+        setWikiDetail(detail);
+        const kbId = detail ? String(detail.kb_id ?? '') : '';
+        if (kbId && kbId !== selectedKbId) {
+          setSelectedKbId(kbId);
+        }
+        if (kbId && kbId !== urlKb) {
+          setUrlState(
+            {
+              kb: kbId,
+              tab: 'content',
+              content: 'wiki',
+              view: null,
+              doc: null,
+              wiki: urlWiki,
+            },
+            { replace: true },
+          );
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setWikiDetailLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    fetchWikiDetailRaw,
+    selectedKbId,
+    setUrlState,
+    urlKb,
+    urlWiki,
+    wikiDetail,
+  ]);
 
   useEffect(() => {
     setSelectedDocIds(new Set());
@@ -1702,9 +1823,17 @@ export function KnowledgePage({ apiBase }: KnowledgePageProps) {
             tab: 'overview',
             content: null,
             view: null,
+            doc: null,
+            wiki: null,
           });
         } else {
-          setUrlState({ kb: null, tab: null, view: null });
+          setUrlState({
+            kb: null,
+            tab: null,
+            view: null,
+            doc: null,
+            wiki: null,
+          });
         }
       } else {
         const data = await res.json().catch(() => ({}));
@@ -1741,7 +1870,13 @@ export function KnowledgePage({ apiBase }: KnowledgePageProps) {
             }
             if (selectedKbId === id) {
               setSelectedKbId(null);
-              setUrlState({ kb: null, tab: null, view: null });
+              setUrlState({
+                kb: null,
+                tab: null,
+                view: null,
+                doc: null,
+                wiki: null,
+              });
               setSearchResults([]);
               setWikiResults([]);
             }
@@ -2220,35 +2355,80 @@ export function KnowledgePage({ apiBase }: KnowledgePageProps) {
     );
   };
 
-  const fetchChunks = async (docId: string) => {
-    if (expandedDocId === docId) {
-      setExpandedDocId(null);
+  const fetchChunks = useCallback(
+    async (
+      docId: string,
+      options?: {
+        forceOpen?: boolean;
+        syncUrl?: boolean;
+        replaceUrl?: boolean;
+      },
+    ) => {
+      if (expandedDocId === docId && !options?.forceOpen) {
+        setExpandedDocId(null);
+        setDocChunks([]);
+        if (options?.syncUrl) {
+          setUrlState({ doc: null }, { replace: options.replaceUrl ?? false });
+        }
+        return;
+      }
+      if (options?.syncUrl) {
+        setUrlState(
+          {
+            kb: selectedKbId,
+            tab: 'content',
+            content: 'docs',
+            view: null,
+            doc: docId,
+            wiki: null,
+          },
+          { replace: options.replaceUrl ?? false },
+        );
+      }
+      setLoadingChunks(true);
+      setExpandedDocId(docId);
       setDocChunks([]);
+      try {
+        const res = await fetch(
+          `${apiBase}/api/knowledge/documents/${docId}/chunks`,
+          {
+            credentials: 'include',
+          },
+        );
+        if (res.ok) {
+          setDocChunks(await res.json());
+        } else {
+          setDocChunks([]);
+          setError(t('加载文档内容失败'));
+        }
+      } catch {
+        setDocChunks([]);
+        setError(t('网络错误，加载文档内容失败'));
+      } finally {
+        setLoadingChunks(false);
+      }
+    },
+    [apiBase, expandedDocId, selectedKbId, setUrlState, t],
+  );
+
+  useEffect(() => {
+    if (!urlDoc) {
+      if (expandedDocId) {
+        setExpandedDocId(null);
+        setDocChunks([]);
+      }
       return;
     }
-    setLoadingChunks(true);
-    setExpandedDocId(docId);
-    setDocChunks([]);
-    try {
-      const res = await fetch(
-        `${apiBase}/api/knowledge/documents/${docId}/chunks`,
-        {
-          credentials: 'include',
-        },
-      );
-      if (res.ok) {
-        setDocChunks(await res.json());
-      } else {
-        setDocChunks([]);
-        setError(t('加载文档内容失败'));
-      }
-    } catch {
-      setDocChunks([]);
-      setError(t('网络错误，加载文档内容失败'));
-    } finally {
-      setLoadingChunks(false);
+    if (!selectedKbId || docs.length === 0) return;
+    const idx = docs.findIndex((doc) => doc.id === urlDoc);
+    if (idx < 0) return;
+    setDocsPage(Math.floor(idx / DOCS_PAGE_SIZE) + 1);
+    setFlashDocId(urlDoc);
+    const doc = docs[idx];
+    if (doc.status === 'indexed' && expandedDocId !== urlDoc) {
+      void fetchChunks(urlDoc, { forceOpen: true });
     }
-  };
+  }, [docs, expandedDocId, fetchChunks, selectedKbId, urlDoc]);
 
   const handleImportUrl = async () => {
     if (!selectedKbId || !importUrl.trim()) return;
@@ -2299,17 +2479,27 @@ export function KnowledgePage({ apiBase }: KnowledgePageProps) {
       if (!target) return;
       const idx = docs.findIndex((doc) => doc.id === docId);
       if (idx >= 0) setDocsPage(Math.floor(idx / DOCS_PAGE_SIZE) + 1);
-      setUrlState({ tab: 'content', content: 'docs', view: null });
+      setUrlState(
+        {
+          kb: selectedKbId,
+          tab: 'content',
+          content: 'docs',
+          view: null,
+          doc: docId,
+          wiki: null,
+        },
+        { replace: false },
+      );
       setFlashDocId(docId);
       if (
         options?.expand &&
         target.status === 'indexed' &&
         expandedDocId !== docId
       ) {
-        void fetchChunks(docId);
+        void fetchChunks(docId, { forceOpen: true });
       }
     },
-    [docs, expandedDocId, fetchChunks, setUrlState],
+    [docs, expandedDocId, fetchChunks, selectedKbId, setUrlState],
   );
 
   const jumpToSupersedingDoc = useCallback(
@@ -2543,7 +2733,14 @@ export function KnowledgePage({ apiBase }: KnowledgePageProps) {
 
   const openKbDrawer = (kbId: string) => {
     setSelectedKbId(kbId);
-    setUrlState({ kb: kbId, tab: 'overview', content: null, view: null });
+    setUrlState({
+      kb: kbId,
+      tab: 'overview',
+      content: null,
+      view: null,
+      doc: null,
+      wiki: null,
+    });
     setDocsPage(1);
     setSearchResults([]);
     setWikiResults([]);
@@ -2551,18 +2748,39 @@ export function KnowledgePage({ apiBase }: KnowledgePageProps) {
 
   const openCreateDrawer = () => {
     setSelectedKbId(null);
-    setUrlState({ kb: null, tab: null, content: null, view: 'create' });
+    setUrlState({
+      kb: null,
+      tab: null,
+      content: null,
+      view: 'create',
+      doc: null,
+      wiki: null,
+    });
     setEditingKb(null);
   };
 
   const openGlobalSearch = () => {
     setSelectedKbId(null);
-    setUrlState({ kb: null, tab: 'search', content: null, view: 'search' });
+    setUrlState({
+      kb: null,
+      tab: 'search',
+      content: null,
+      view: 'search',
+      doc: null,
+      wiki: null,
+    });
     setEditingKb(null);
   };
 
   const closeDrawer = () => {
-    setUrlState({ kb: null, tab: null, content: null, view: null });
+    setUrlState({
+      kb: null,
+      tab: null,
+      content: null,
+      view: null,
+      doc: null,
+      wiki: null,
+    });
     setEditingKb(null);
     setSearchResults([]);
     setWikiResults([]);
@@ -2725,13 +2943,12 @@ export function KnowledgePage({ apiBase }: KnowledgePageProps) {
       setGraphFocusId(node.id);
       setGraphViewMode('focus');
       if (node.type === 'wiki') {
-        setUrlState({ tab: 'content', content: 'wiki', view: null });
         void openWikiPageDetail(node.id);
         return;
       }
       openDocumentDetail(node.id, { expand: true });
     },
-    [openDocumentDetail, openWikiPageDetail, setUrlState],
+    [openDocumentDetail, openWikiPageDetail],
   );
 
   const overviewPage = useMemo(
@@ -3982,7 +4199,9 @@ export function KnowledgePage({ apiBase }: KnowledgePageProps) {
                             <button
                               type="button"
                               className="btn-outline btn-sm"
-                              onClick={() => void fetchChunks(doc.id)}
+                              onClick={() =>
+                                void fetchChunks(doc.id, { syncUrl: true })
+                              }
                               disabled={doc.status !== 'indexed'}
                             >
                               {expandedDocId === doc.id
@@ -4637,7 +4856,12 @@ export function KnowledgePage({ apiBase }: KnowledgePageProps) {
                                 <button
                                   type="button"
                                   className="btn-outline btn-xs"
-                                  onClick={() => setWikiDetail(null)}
+                                  onClick={() =>
+                                    setUrlState(
+                                      { wiki: null },
+                                      { replace: false },
+                                    )
+                                  }
                                 >
                                   {t('关闭')}
                                 </button>
