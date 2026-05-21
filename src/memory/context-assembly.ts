@@ -25,6 +25,13 @@ import type { PromptSegment } from '../types/prompt.js';
 import { getChatContextConfig } from './chat-context-config.js';
 import { getMemoryContextConfig } from './context-config.js';
 import { applyTemporalDecay } from './temporal-decay.js';
+import {
+  getUserMemoryDocumentConfidence,
+  getUserMemoryDocumentImportance,
+  isCoreUserMemoryDocument,
+  isUserMemoryDocumentCurrent,
+  parseUserMemoryDocumentMetadata,
+} from './user-memory-policy.js';
 
 const MAX_PROMPT_CONTEXT_ENTRY_CHARS = 600;
 const MAX_PROMPT_RECALL_ENTRY_CHARS = 800;
@@ -595,7 +602,7 @@ function createPromptMemoryEntry(input: {
       scope: input.scope,
       sourceType: input.sourceType,
       memoryClass: input.memoryClass,
-      metadata: safeParseDocumentMetadata(input.metadataJson),
+      metadata: parseUserMemoryDocumentMetadata(input.metadataJson),
       lineStart: 1,
       lineEnd: Math.max(1, input.body.split(/\r?\n/).length),
     }),
@@ -611,64 +618,6 @@ const DEFAULT_PRETHINK_MIN_QUERY_LENGTH = 4;
 const PRETHINK_SKIP_PATTERNS = /^(你好|嗨|hi|hello|hey|ok|好的|嗯|谢谢|thanks|thank you|bye|再见|晚安)[\s!！。.?？]*$/i;
 
 let prethinkMinQueryLength: number | null = null;
-
-function safeParseDocumentMetadata(value: string | null | undefined): Record<string, unknown> {
-  try {
-    const parsed = value ? JSON.parse(value) : null;
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
-      ? parsed as Record<string, unknown>
-      : {};
-  } catch {
-    return {};
-  }
-}
-
-function isCurrentUserMemoryDocument(
-  result: {
-    metadataJson: string | null;
-    sourceType: string;
-  },
-  chatJid: string,
-): boolean {
-  if (result.sourceType !== 'user_memory') return true;
-  const metadata = safeParseDocumentMetadata(result.metadataJson);
-  const now = new Date().toISOString();
-  const validFrom = typeof metadata.validFrom === 'string' ? metadata.validFrom : null;
-  const validTo = typeof metadata.validTo === 'string' ? metadata.validTo : null;
-  const expiresAt = typeof metadata.expiresAt === 'string' ? metadata.expiresAt : null;
-  if (validFrom && validFrom > now) return false;
-  if (validTo && validTo <= now) return false;
-  if (expiresAt && expiresAt <= now) return false;
-  if (metadata.scope === 'conversation') {
-    return metadata.conversationId === chatJid;
-  }
-  return true;
-}
-
-function getUserMemoryImportance(result: {
-  metadataJson: string | null;
-}): number {
-  const metadata = safeParseDocumentMetadata(result.metadataJson);
-  return typeof metadata.importance === 'number' && Number.isFinite(metadata.importance)
-    ? metadata.importance
-    : 5;
-}
-
-function getUserMemoryConfidence(result: {
-  metadataJson: string | null;
-}): number {
-  const metadata = safeParseDocumentMetadata(result.metadataJson);
-  return typeof metadata.confidence === 'number' && Number.isFinite(metadata.confidence)
-    ? metadata.confidence
-    : 0.5;
-}
-
-function isCoreUserMemoryDocument(result: {
-  metadataJson: string | null;
-}): boolean {
-  const metadata = safeParseDocumentMetadata(result.metadataJson);
-  return metadata.tier === 'core' || getUserMemoryImportance(result) >= 8;
-}
 
 function getUserMemoryIdFromEntry(entry: ContextEntryRecord): string | null {
   const parsed = parseEntryJson(entry);
@@ -829,12 +778,12 @@ async function collectDurablePromptEntries(input: {
       sourceType: 'user_memory',
       limit: Math.max(8, input.maxEntries * 3),
     })).filter((doc) =>
-      isCurrentUserMemoryDocument(
+      isUserMemoryDocumentCurrent(
         {
           sourceType: doc.source_type,
           metadataJson: doc.metadata_json,
         },
-        input.chatJid,
+        { chatJid: input.chatJid },
       ),
     );
     for (const doc of userMemoryDocs.filter((item) =>
@@ -871,7 +820,7 @@ async function collectDurablePromptEntries(input: {
           ownerId: ownerUserId,
           sourceTypes: ['user_memory'],
         })).filter((result) =>
-          isCurrentUserMemoryDocument(result, input.chatJid),
+          isUserMemoryDocumentCurrent(result, { chatJid: input.chatJid }),
         )
       : []),
     ...(await searchMemoryDocuments(query, {
@@ -900,7 +849,7 @@ async function collectDurablePromptEntries(input: {
         : result.score;
       const userMemoryBoost =
         result.sourceType === 'user_memory'
-          ? 1 + (getUserMemoryImportance(result) / 10) * 0.25 + getUserMemoryConfidence(result) * 0.15
+          ? 1 + (getUserMemoryDocumentImportance(result) / 10) * 0.25 + getUserMemoryDocumentConfidence(result) * 0.15
           : 1;
       return {
         ...result,

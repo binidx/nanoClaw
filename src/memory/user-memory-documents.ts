@@ -8,6 +8,7 @@ import {
   upsertMemoryDocuments,
 } from '../db.js';
 import type { MemoryDocumentRecord, UserMemoryRecord } from '../types.js';
+import { isUserMemoryRecordCurrent } from './user-memory-policy.js';
 
 export interface UserMemoryProjectionRepairResult {
   checkedMemories: number;
@@ -63,19 +64,12 @@ function buildUserMemoryDocument(memory: UserMemoryRecord): MemoryDocumentRecord
   };
 }
 
-function isCurrentUserMemory(memory: UserMemoryRecord, queryTime = new Date().toISOString()): boolean {
-  if (memory.valid_from && memory.valid_from > queryTime) return false;
-  if (memory.valid_to && memory.valid_to <= queryTime) return false;
-  if (memory.expires_at && memory.expires_at <= queryTime) return false;
-  return true;
-}
-
 export async function projectUserMemoryToDocument(
   memoryId: string,
 ): Promise<MemoryDocumentRecord | null> {
   const memory = await getUserMemoryById(memoryId);
   if (!memory) return null;
-  if (!isCurrentUserMemory(memory)) {
+  if (!isUserMemoryRecordCurrent(memory)) {
     await deleteUserMemoryProjection(memoryId);
     return null;
   }
