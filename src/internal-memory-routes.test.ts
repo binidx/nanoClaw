@@ -7,15 +7,19 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   _initTestDatabase,
+  addUserMemory,
   bindConversationIdentity,
   createPersonProfile,
   getContextEntries,
+  getMemorySearchStats,
   getUserMemories,
   listMemoryDocuments,
   listMemoryEvents,
   storeChatMetadata,
+  upsertMemoryDocuments,
 } from './db.js';
 import { registerInternalMemoryRoutes } from './routes/internal-memory-routes.js';
+import type { UserMemoryRecord } from './types.js';
 
 const createdPaths: string[] = [];
 
@@ -395,5 +399,102 @@ describe('internal memory routes', () => {
         source_type: 'memory_file',
       }),
     ]);
+  });
+
+  it('repairs missing and orphaned user memory projections', async () => {
+    const memory: UserMemoryRecord = {
+      id: 'projection-memory',
+      user_id: 'projection-user',
+      scope: 'global',
+      conversation_id: null,
+      category: 'preference',
+      content: 'User wants architectural memory recalls to prefer ledger evidence.',
+      importance: 7,
+      confidence: 0.9,
+      source: 'manual',
+      tier: 'durable',
+      promoted_from: null,
+      last_verified_at: null,
+      source_event_id: null,
+      valid_from: '2026-05-20T00:00:00.000Z',
+      valid_to: null,
+      access_count: 0,
+      last_accessed_at: null,
+      expires_at: null,
+      created_at: '2026-05-20T00:00:00.000Z',
+      updated_at: '2026-05-20T00:00:00.000Z',
+    };
+    await addUserMemory(memory);
+    await upsertMemoryDocuments([
+      {
+        doc_id: 'user-memory:orphan-projection',
+        scope: 'global',
+        owner_type: 'global',
+        owner_id: 'projection-user',
+        path_ref: 'user_memory:orphan-projection',
+        source_type: 'user_memory',
+        title: 'orphaned user memory',
+        body: 'This projection no longer has a source user memory.',
+        metadata_json: JSON.stringify({ memoryId: 'orphan-projection' }),
+        updated_at: '2026-05-20T00:01:00.000Z',
+      },
+    ]);
+
+    const beforeStats = await getMemorySearchStats();
+    expect(beforeStats.userMemoryProjection).toMatchObject({
+      sourceMemories: 1,
+      projectedDocuments: 1,
+      missingDocuments: 1,
+      orphanDocuments: 1,
+    });
+
+    const app = express();
+    app.use(express.json());
+    registerInternalMemoryRoutes(app, {
+      requireInternalApi: (_req, _res, next) => next(),
+    });
+
+    const response = await inject(app, {
+      method: 'POST',
+      url: '/internal/memory/user/repair-projections',
+      payload: {
+        userId: 'projection-user',
+      },
+      headers: {
+        'content-type': 'application/json',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const payload = response.json() as {
+      ok: boolean;
+      checkedMemories: number;
+      projectedDocuments: number;
+      deletedOrphans: number;
+      after: {
+        missingDocuments: number;
+        orphanDocuments: number;
+      };
+    };
+    expect(payload).toMatchObject({
+      ok: true,
+      checkedMemories: 1,
+      projectedDocuments: 1,
+      deletedOrphans: 1,
+      after: {
+        missingDocuments: 0,
+        orphanDocuments: 0,
+      },
+    });
+    expect(
+      (
+        await listMemoryDocuments({
+          ownerType: 'global',
+          ownerId: 'projection-user',
+          sourceType: 'user_memory',
+          limit: 10,
+        })
+      ).map((document) => document.path_ref),
+    ).toEqual(['user_memory:projection-memory']);
   });
 });

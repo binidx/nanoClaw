@@ -74,6 +74,64 @@ type MemorySearchEventType =
   | 'sync_file_skipped'
   | 'sync_file_deleted';
 
+export async function getUserMemoryProjectionStats(options?: {
+  userId?: string;
+}): Promise<MemorySearchStatsSnapshot['userMemoryProjection']> {
+  const userId = normalizeMemoryText(options?.userId || '');
+  const memoryParams: string[] = [];
+  const memoryWhere = userId ? 'WHERE user_id = ?' : '';
+  if (userId) memoryParams.push(userId);
+  const memoryRows = await dba
+    .prepare(`SELECT id FROM user_memories ${memoryWhere}`)
+    .all(...memoryParams) as Array<{ id: string }>;
+
+  const documentParams: string[] = [];
+  const documentWhere = userId ? 'AND owner_id = ?' : '';
+  if (userId) documentParams.push(userId);
+  const documentRows = await dba
+    .prepare(
+      `
+        SELECT path_ref
+        FROM memory_documents
+        WHERE source_type = 'user_memory'
+        ${documentWhere}
+      `,
+    )
+    .all(...documentParams) as Array<{ path_ref: string | null }>;
+
+  const sourceIds = new Set(memoryRows.map((row) => row.id));
+  const projectedIds = new Set(
+    documentRows
+      .map((row) => String(row.path_ref || ''))
+      .filter((pathRef) => pathRef.startsWith('user_memory:'))
+      .map((pathRef) => pathRef.slice('user_memory:'.length)),
+  );
+
+  let missingDocuments = 0;
+  for (const id of sourceIds) {
+    if (!projectedIds.has(id)) missingDocuments += 1;
+  }
+
+  let orphanDocuments = 0;
+  for (const row of documentRows) {
+    const pathRef = String(row.path_ref || '');
+    if (!pathRef.startsWith('user_memory:')) {
+      orphanDocuments += 1;
+      continue;
+    }
+    if (!sourceIds.has(pathRef.slice('user_memory:'.length))) {
+      orphanDocuments += 1;
+    }
+  }
+
+  return {
+    sourceMemories: memoryRows.length,
+    projectedDocuments: documentRows.length,
+    missingDocuments,
+    orphanDocuments,
+  };
+}
+
 export async function upsertMemoryDocuments(documents: MemoryDocumentRecord[]): Promise<void> {
   if (documents.length === 0) return;
 
@@ -182,6 +240,35 @@ export async function listMemoryDocuments(options?: {
     .all(...params) as MemoryDocumentRecord[];
 }
 
+export async function listUserMemoryProjectionDocuments(options?: {
+  userId?: string;
+}): Promise<MemoryDocumentRecord[]> {
+  const params: string[] = [];
+  const ownerSql = options?.userId ? 'AND owner_id = ?' : '';
+  if (options?.userId) params.push(options.userId);
+  return await dba
+    .prepare(
+      `
+        SELECT
+          doc_id,
+          scope,
+          owner_type,
+          owner_id,
+          path_ref,
+          source_type,
+          title,
+          body,
+          metadata_json,
+          updated_at
+        FROM memory_documents
+        WHERE source_type = 'user_memory'
+        ${ownerSql}
+        ORDER BY updated_at DESC, doc_id ASC
+      `,
+    )
+    .all(...params) as MemoryDocumentRecord[];
+}
+
 /**
  * Paginated query for all memory documents that have a path_ref (file-backed).
  * Used by startup hydration to replay DB content to the filesystem.
@@ -237,6 +324,7 @@ export async function deleteMemoryDocumentsByPathRefs(pathRefs: string[]): Promi
 }
 
 export async function deleteMemoryDocuments(options: {
+  docIds?: string[];
   ownerType?: MemoryDocumentRecord['owner_type'];
   ownerId?: string;
   scope?: MemoryDocumentRecord['scope'];
@@ -245,6 +333,10 @@ export async function deleteMemoryDocuments(options: {
 }): Promise<void> {
   const clauses: string[] = [];
   const params: Array<string | number> = [];
+  if (options.docIds && options.docIds.length > 0) {
+    clauses.push(`doc_id IN (${options.docIds.map(() => '?').join(', ')})`);
+    params.push(...options.docIds);
+  }
   if (options.ownerType) {
     clauses.push(`owner_type = ?`);
     params.push(options.ownerType);
@@ -702,6 +794,7 @@ export async function getMemorySearchStats(options?: {
         last_sync_pass_at: string | null;
       }
     | undefined;
+  const userMemoryProjection = await getUserMemoryProjectionStats();
   const recalls = await dba
     .prepare(
       `
@@ -1010,6 +1103,7 @@ export async function getMemorySearchStats(options?: {
   return {
     indexedDocuments: summary?.indexed_documents || 0,
     syncStateDocuments: syncSummary?.sync_state_documents || 0,
+    userMemoryProjection,
     lastIndexedAt: summary?.last_indexed_at || null,
     lastSyncPassAt: syncSummary?.last_sync_pass_at || null,
     recallCount24h: recalls.length,

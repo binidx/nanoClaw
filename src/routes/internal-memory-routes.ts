@@ -11,6 +11,7 @@ import {
 } from '../db.js';
 import { logger } from '../logger.js';
 import { addUnifiedMemory } from '../soul/soul-service.js';
+import { repairUserMemoryProjections } from '../memory/user-memory-documents.js';
 import {
   type IndexedMemoryScope as MemoryScope,
   refreshIndexedMemoryPathRefsForSearch,
@@ -569,6 +570,27 @@ export function registerInternalMemoryRoutes(
         res.json({ ok: true });
       } catch (err) {
         logger.error({ err }, 'Failed to touch user memory recall');
+        res.status(500).json({ error: 'Internal error' });
+      }
+    },
+  );
+
+  app.post(
+    '/internal/memory/user/repair-projections',
+    options.requireInternalApi,
+    async (req, res) => {
+      try {
+        const userIdRaw = String(req.body?.userId || '').trim();
+        const limitRaw = Number.parseInt(String(req.body?.limit || ''), 10);
+        const result = await repairUserMemoryProjections({
+          userId: userIdRaw || undefined,
+          limit: Number.isFinite(limitRaw)
+            ? Math.max(1, Math.min(limitRaw, 10000))
+            : undefined,
+        });
+        res.json({ ok: true, ...result });
+      } catch (err) {
+        logger.error({ err }, 'Failed to repair user memory projections');
         res.status(500).json({ error: 'Internal error' });
       }
     },

@@ -1,9 +1,20 @@
 import {
   deleteMemoryDocuments,
   getUserMemoryById,
+  getUserMemoryProjectionStats,
+  listUserMemoriesForProjectionRepair,
+  listUserMemoryProjectionDocuments,
   upsertMemoryDocuments,
 } from '../db.js';
 import type { MemoryDocumentRecord, UserMemoryRecord } from '../types.js';
+
+export interface UserMemoryProjectionRepairResult {
+  checkedMemories: number;
+  projectedDocuments: number;
+  deletedOrphans: number;
+  before: Awaited<ReturnType<typeof getUserMemoryProjectionStats>>;
+  after: Awaited<ReturnType<typeof getUserMemoryProjectionStats>>;
+}
 
 export function buildUserMemoryDocumentId(memoryId: string): string {
   return `user-memory:${memoryId}`;
@@ -66,4 +77,47 @@ export async function deleteUserMemoryProjection(memoryId: string): Promise<void
     sourceType: 'user_memory',
     pathRefs: [buildUserMemoryPathRef(memoryId)],
   });
+}
+
+export async function repairUserMemoryProjections(options?: {
+  userId?: string;
+  limit?: number;
+}): Promise<UserMemoryProjectionRepairResult> {
+  const userId = options?.userId?.trim() || undefined;
+  const before = await getUserMemoryProjectionStats({ userId });
+  const memories = await listUserMemoriesForProjectionRepair({
+    userId,
+    limit: options?.limit,
+  });
+  const documents = memories.map(buildUserMemoryDocument);
+  await upsertMemoryDocuments(documents);
+
+  const sourceIds = new Set(memories.map((memory) => memory.id));
+  const projectionDocuments = await listUserMemoryProjectionDocuments({ userId });
+  const orphanDocIds = options?.limit
+    ? []
+    : projectionDocuments
+        .filter((document) => {
+          const pathRef = String(document.path_ref || '');
+          if (!pathRef.startsWith('user_memory:')) return true;
+          return !sourceIds.has(pathRef.slice('user_memory:'.length));
+        })
+        .map((document) => document.doc_id)
+        .filter(Boolean);
+
+  if (orphanDocIds.length > 0) {
+    await deleteMemoryDocuments({
+      docIds: orphanDocIds,
+      sourceType: 'user_memory',
+    });
+  }
+
+  const after = await getUserMemoryProjectionStats({ userId });
+  return {
+    checkedMemories: memories.length,
+    projectedDocuments: documents.length,
+    deletedOrphans: orphanDocIds.length,
+    before,
+    after,
+  };
 }

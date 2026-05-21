@@ -1260,6 +1260,12 @@ export interface StatusInfo {
     search?: {
       indexedDocuments: number;
       syncStateDocuments: number;
+      userMemoryProjection?: {
+        sourceMemories: number;
+        projectedDocuments: number;
+        missingDocuments: number;
+        orphanDocuments: number;
+      };
       lastIndexedAt: string | null;
       lastSyncPassAt: string | null;
       recallCount24h: number;

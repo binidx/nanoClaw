@@ -208,6 +208,30 @@ export async function getUserMemories(
     .all(...params)) as UserMemoryRecord[];
 }
 
+export async function listUserMemoriesForProjectionRepair(options?: {
+  userId?: string;
+  limit?: number;
+}): Promise<UserMemoryRecord[]> {
+  const conditions: string[] = [];
+  const params: unknown[] = [];
+  if (options?.userId) {
+    conditions.push('user_id = ?');
+    params.push(options.userId);
+  }
+  const limit = options?.limit
+    ? Math.max(1, Math.min(Math.trunc(options.limit), 10000))
+    : null;
+  if (limit) params.push(limit);
+  return (await dba
+    .prepare(
+      `SELECT * FROM user_memories
+       ${conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''}
+       ORDER BY updated_at DESC, id ASC
+       ${limit ? 'LIMIT ?' : ''}`,
+    )
+    .all(...params)) as UserMemoryRecord[];
+}
+
 export async function getUserMemoryById(
   id: string,
   userId?: string,

@@ -738,13 +738,21 @@ export function useSettingsPageModel(props: SettingsPageProps) {
     ? [
         `fallback ${memorySearchStatus.fallbackSyncCount24h}`,
         `stale ${memorySearchStatus.staleRefreshCount24h}`,
+        memorySearchStatus.userMemoryProjection
+          ? `projection ${memorySearchStatus.userMemoryProjection.missingDocuments}/${memorySearchStatus.userMemoryProjection.orphanDocuments}`
+          : null,
         i18n.t('settings.model.质量', { value: formatRatePercent(memorySearchStatus.followupReadRate24h) }),
-      ].join(' / ')
+      ].filter(Boolean).join(' / ')
     : i18n.t('settings.model.状态接口已返回memory');
   const memorySearchOverviewTone: 'default' | 'attention' | 'calm' =
     memorySearchStatus &&
     (memorySearchStatus.fallbackSyncCount24h > 0 ||
-      memorySearchStatus.staleRefreshCount24h > 0)
+      memorySearchStatus.staleRefreshCount24h > 0 ||
+      Boolean(
+        memorySearchStatus.userMemoryProjection &&
+          (memorySearchStatus.userMemoryProjection.missingDocuments > 0 ||
+            memorySearchStatus.userMemoryProjection.orphanDocuments > 0),
+      ))
       ? 'attention'
       : memorySearchStatus?.indexedDocuments
         ? 'calm'
@@ -755,6 +763,18 @@ export function useSettingsPageModel(props: SettingsPageProps) {
         label: i18n.t('settings.model.已索引记忆'),
         value: memorySearchStatus
           ? `${memorySearchStatus.indexedDocuments} / ${memorySearchStatus.syncStateDocuments}`
+          : '-',
+      },
+      {
+        label: i18n.t('settings.model.用户记忆投影'),
+        value: memorySearchStatus?.userMemoryProjection
+          ? `${memorySearchStatus.userMemoryProjection.projectedDocuments}/${memorySearchStatus.userMemoryProjection.sourceMemories}`
+          : '-',
+      },
+      {
+        label: i18n.t('settings.model.投影缺口'),
+        value: memorySearchStatus?.userMemoryProjection
+          ? `${memorySearchStatus.userMemoryProjection.missingDocuments}/${memorySearchStatus.userMemoryProjection.orphanDocuments}`
           : '-',
       },
       {
