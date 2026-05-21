@@ -14,7 +14,7 @@
 
 - 数据源：`.env` 中的 PostgreSQL 连接，读取现有 `repo-nanoclaw` / `main` 代码索引。
 - Snapshot：`cis_repo-nanoclaw_main`。
-- 代码源：`remote_worktree`，`source_branch=main`，`source_head_sha=31fb1af16249ee6d4c0ec36be3528158b16dfce5`。
+- 代码源：`remote_worktree`，`source_branch=main`，`source_head_sha=4e6c67530d0012052d549278cf908c27726cdec2`。
 - 明细索引：`code_index_files=845`、`code_index_chunks=20062`、`code_index_functions=15079`、`code_index_function_edges=14579`。
 - 语言分布：TypeScript 760 files / 264300 lines，Python 26 / 6397，JavaScript 25 / 4526，JSON 21 / 13531，YAML 10 / 483，Shell 3 / 317。
 - 注意：当前 `code_index_snapshots.stats_json` 显示 0，但明细表已填充；做统计时以明细表 `COUNT(*)` 为准，或重建/修复 snapshot meta。
