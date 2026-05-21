@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import type { Express, Request } from 'express';
+import type { Express, Request, Response } from 'express';
 import express from 'express';
 
 import { parsePaginationQuery, paginateArray } from '../pagination.js';
@@ -48,6 +48,7 @@ import {
 import {
   deleteReviewRepositoryMember,
   deleteSshKey,
+  getReviewProfileById,
   getReviewRepositoryById,
   getSshKeyById,
   isUserReviewRepositoryMember,
@@ -138,6 +139,50 @@ async function userCanAccessReviewRepository(
     return true;
   }
   return hasResourceAccess(userId, 'repository', repositoryId);
+}
+
+async function requireReviewRepositoryAccess(
+  req: Request,
+  res: Response,
+  opts: Pick<RepoReviewRouteOptions, 'getAuthenticatedUsername'>,
+  repositoryId: string,
+): Promise<boolean> {
+  const username = opts.getAuthenticatedUsername(req.headers.cookie);
+  if (!username || (await userHasAllReviewPermissions(username))) {
+    return true;
+  }
+  const user = await getUserByUsername(username);
+  if (
+    !user ||
+    !(await userCanAccessReviewRepository(user.id, repositoryId))
+  ) {
+    res.status(404).json({ error: 'Repository not found' });
+    return false;
+  }
+  return true;
+}
+
+async function requireReviewRunAccess(
+  req: Request,
+  res: Response,
+  opts: Pick<RepoReviewRouteOptions, 'getAuthenticatedUsername'>,
+  runId: string,
+): Promise<boolean> {
+  const username = opts.getAuthenticatedUsername(req.headers.cookie);
+  if (!username || (await userHasAllReviewPermissions(username))) {
+    return true;
+  }
+  const run = await getRepoReviewRun(runId);
+  const user = await getUserByUsername(username);
+  if (
+    !run ||
+    !user ||
+    !(await userCanAccessReviewRunRepository(user.id, runId, run.repositoryId))
+  ) {
+    res.status(404).json({ error: 'Run not found' });
+    return false;
+  }
+  return true;
 }
 
 const REVIEW_MEMBER_ACCESS_LEVELS = new Set(['viewer', 'reviewer', 'manager']);
@@ -334,6 +379,12 @@ export function registerRepoReviewAdminRoutes(
       const preExisting = payloadId
         ? await getReviewRepositoryById(payloadId)
         : undefined;
+      if (
+        preExisting &&
+        !(await requireReviewRepositoryAccess(req, res, opts, payloadId))
+      ) {
+        return;
+      }
       const result = await saveRepoReviewRepositoryConfig(payload);
       if (!preExisting) {
         const creatorName = opts.getAuthenticatedUsername(req.headers.cookie);
@@ -364,10 +415,18 @@ export function registerRepoReviewAdminRoutes(
     async (req, res) => {
       try {
         opts.auditMutation(req, 'repo-reviews.repositories.upsert', 'high');
+        const repositoryId = decodeURIComponent(
+          String(req.params.repositoryId || ''),
+        );
+        if (
+          !(await requireReviewRepositoryAccess(req, res, opts, repositoryId))
+        ) {
+          return;
+        }
         res.json(
           await saveRepoReviewRepositoryConfig({
             ...(req.body || {}),
-            id: decodeURIComponent(String(req.params.repositoryId || '')),
+            id: repositoryId,
           }),
         );
       } catch (err) {
@@ -387,9 +446,15 @@ export function registerRepoReviewAdminRoutes(
     async (req, res) => {
       try {
         opts.auditMutation(req, 'repo-reviews.repositories.delete', 'high');
-        await removeRepoReviewRepository(
-          decodeURIComponent(String(req.params.repositoryId || '')),
+        const repositoryId = decodeURIComponent(
+          String(req.params.repositoryId || ''),
         );
+        if (
+          !(await requireReviewRepositoryAccess(req, res, opts, repositoryId))
+        ) {
+          return;
+        }
+        await removeRepoReviewRepository(repositoryId);
         res.json({ ok: true });
       } catch (err) {
         res.status(400).json({
@@ -410,6 +475,11 @@ export function registerRepoReviewAdminRoutes(
         const repositoryId = decodeURIComponent(
           String(req.params.repositoryId || ''),
         );
+        if (
+          !(await requireReviewRepositoryAccess(req, res, opts, repositoryId))
+        ) {
+          return;
+        }
         const members = await listReviewRepositoryMembers(repositoryId);
         res.json({ members });
       } catch (err) {
@@ -436,6 +506,11 @@ export function registerRepoReviewAdminRoutes(
         const repositoryId = decodeURIComponent(
           String(req.params.repositoryId || ''),
         );
+        if (
+          !(await requireReviewRepositoryAccess(req, res, opts, repositoryId))
+        ) {
+          return;
+        }
         const body = (req.body || {}) as Record<string, unknown>;
         const userId =
           typeof body.userId === 'string' ? body.userId.trim() : '';
@@ -493,6 +568,11 @@ export function registerRepoReviewAdminRoutes(
         const repositoryId = decodeURIComponent(
           String(req.params.repositoryId || ''),
         );
+        if (
+          !(await requireReviewRepositoryAccess(req, res, opts, repositoryId))
+        ) {
+          return;
+        }
         const userId = decodeURIComponent(String(req.params.userId || ''));
         await deleteReviewRepositoryMember(repositoryId, userId);
         res.json({ ok: true });
@@ -515,6 +595,11 @@ export function registerRepoReviewAdminRoutes(
         const repositoryId = decodeURIComponent(
           String(req.params.repositoryId || ''),
         );
+        if (
+          !(await requireReviewRepositoryAccess(req, res, opts, repositoryId))
+        ) {
+          return;
+        }
         const force =
           req.query.force === '1' ||
           req.query.force === 'true' ||
@@ -543,6 +628,11 @@ export function registerRepoReviewAdminRoutes(
         const repositoryId = decodeURIComponent(
           String(req.params.repositoryId || ''),
         );
+        if (
+          !(await requireReviewRepositoryAccess(req, res, opts, repositoryId))
+        ) {
+          return;
+        }
         res.json(
           await installRepoReviewHooks({
             repositoryId,
@@ -570,6 +660,11 @@ export function registerRepoReviewAdminRoutes(
         const repositoryId = decodeURIComponent(
           String(req.params.repositoryId || ''),
         );
+        if (
+          !(await requireReviewRepositoryAccess(req, res, opts, repositoryId))
+        ) {
+          return;
+        }
         res.json(await uninstallRepoReviewHooks({ repositoryId }));
       } catch (err) {
         res.status(400).json({
@@ -591,6 +686,11 @@ export function registerRepoReviewAdminRoutes(
         const repositoryId = decodeURIComponent(
           String(req.params.repositoryId || ''),
         );
+        if (
+          !(await requireReviewRepositoryAccess(req, res, opts, repositoryId))
+        ) {
+          return;
+        }
         const stage = req.body?.stage === 'commit' ? 'commit' : 'push';
         const result = await triggerLocalRepoReview({
           repositoryId,
@@ -619,6 +719,11 @@ export function registerRepoReviewAdminRoutes(
         const repositoryId = decodeURIComponent(
           String(req.params.repositoryId || ''),
         );
+        if (
+          !(await requireReviewRepositoryAccess(req, res, opts, repositoryId))
+        ) {
+          return;
+        }
         const result = await queueRemoteRepoReview({
           repositoryId,
           userId: getTenantUserId(req),
@@ -644,6 +749,11 @@ export function registerRepoReviewAdminRoutes(
         const repositoryId = decodeURIComponent(
           String(req.params.repositoryId || ''),
         );
+        if (
+          !(await requireReviewRepositoryAccess(req, res, opts, repositoryId))
+        ) {
+          return;
+        }
         const branch =
           typeof req.body?.branch === 'string' ? req.body.branch.trim() : '';
         const result = await queueRemoteBranchReview({
@@ -685,6 +795,12 @@ export function registerRepoReviewAdminRoutes(
       typeof req.query.repositoryId === 'string'
         ? req.query.repositoryId.trim()
         : '';
+    if (
+      repositoryId &&
+      !(await requireReviewRepositoryAccess(req, res, opts, repositoryId))
+    ) {
+      return;
+    }
     res.json({
       profiles: await listRepoReviewProfiles(repositoryId || undefined),
     });
@@ -693,6 +809,18 @@ export function registerRepoReviewAdminRoutes(
   app.post('/api/repo-reviews/profiles', createGuard, async (req, res) => {
     try {
       opts.auditMutation(req, 'repo-reviews.profiles.upsert', 'high');
+      const repositoryId =
+        typeof req.body?.repository_id === 'string'
+          ? req.body.repository_id.trim()
+          : typeof req.body?.repositoryId === 'string'
+            ? req.body.repositoryId.trim()
+            : '';
+      if (
+        repositoryId &&
+        !(await requireReviewRepositoryAccess(req, res, opts, repositoryId))
+      ) {
+        return;
+      }
       res.json(await saveRepoReviewProfileConfig(req.body || {}));
     } catch (err) {
       res.status(400).json({
@@ -710,10 +838,23 @@ export function registerRepoReviewAdminRoutes(
     async (req, res) => {
       try {
         opts.auditMutation(req, 'repo-reviews.profiles.upsert', 'high');
+        const profileId = decodeURIComponent(String(req.params.profileId || ''));
+        const existingProfile = await getReviewProfileById(profileId);
+        if (
+          existingProfile &&
+          !(await requireReviewRepositoryAccess(
+            req,
+            res,
+            opts,
+            existingProfile.repository_id,
+          ))
+        ) {
+          return;
+        }
         res.json(
           await saveRepoReviewProfileConfig({
             ...(req.body || {}),
-            id: decodeURIComponent(String(req.params.profileId || '')),
+            id: profileId,
           }),
         );
       } catch (err) {
@@ -733,9 +874,20 @@ export function registerRepoReviewAdminRoutes(
     async (req, res) => {
       try {
         opts.auditMutation(req, 'repo-reviews.profiles.delete', 'high');
-        await removeRepoReviewProfile(
-          decodeURIComponent(String(req.params.profileId || '')),
-        );
+        const profileId = decodeURIComponent(String(req.params.profileId || ''));
+        const existingProfile = await getReviewProfileById(profileId);
+        if (
+          existingProfile &&
+          !(await requireReviewRepositoryAccess(
+            req,
+            res,
+            opts,
+            existingProfile.repository_id,
+          ))
+        ) {
+          return;
+        }
+        await removeRepoReviewProfile(profileId);
         res.json({ ok: true });
       } catch (err) {
         res.status(400).json({
@@ -952,6 +1104,11 @@ export function registerRepoReviewAdminRoutes(
         const repositoryId = decodeURIComponent(
           String(req.params.repositoryId || ''),
         );
+        if (
+          !(await requireReviewRepositoryAccess(req, res, opts, repositoryId))
+        ) {
+          return;
+        }
         const stage = req.query.stage === 'commit' ? 'commit' : 'push';
         res.json({
           branches: await listRepoReviewBranchStatesForRepository(
@@ -977,6 +1134,9 @@ export function registerRepoReviewAdminRoutes(
       try {
         opts.auditMutation(req, 'repo-reviews.runs.rerun', 'high');
         const runId = decodeURIComponent(String(req.params.runId || ''));
+        if (!(await requireReviewRunAccess(req, res, opts, runId))) {
+          return;
+        }
         const result = await rerunRepoReviewRun({
           runId,
           userId: getTenantUserId(req),
@@ -1007,6 +1167,9 @@ export function registerRepoReviewAdminRoutes(
       try {
         opts.auditMutation(req, 'repo-reviews.runs.cancel', 'high');
         const runId = decodeURIComponent(String(req.params.runId || ''));
+        if (!(await requireReviewRunAccess(req, res, opts, runId))) {
+          return;
+        }
         const cancelledBy =
           opts.getAuthenticatedUsername(req.headers.cookie) || 'web-user';
         const run = await cancelRepoReviewRun({
@@ -1036,6 +1199,11 @@ export function registerRepoReviewAdminRoutes(
         const repositoryId = decodeURIComponent(
           String(req.params.repositoryId || ''),
         );
+        if (
+          !(await requireReviewRepositoryAccess(req, res, opts, repositoryId))
+        ) {
+          return;
+        }
         const branch =
           typeof req.query.branch === 'string' ? req.query.branch.trim() : '';
         const limit =
@@ -1069,6 +1237,9 @@ export function registerRepoReviewAdminRoutes(
       try {
         opts.auditMutation(req, 'repo-reviews.runs.manual-decision', 'high');
         const runId = decodeURIComponent(String(req.params.runId || ''));
+        if (!(await requireReviewRunAccess(req, res, opts, runId))) {
+          return;
+        }
         const decision =
           req.body?.decision === 'pass' || req.body?.decision === 'fail'
             ? req.body.decision

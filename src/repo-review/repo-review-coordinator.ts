@@ -88,6 +88,10 @@ const MAIN_REVIEW_TIMEOUT_GRACE_MS = Math.max(
     Number(process.env.NANOCLAW_REVIEW_SUBAGENT_TIMEOUT_GRACE_MS) ||
     20_000,
 );
+const DEFAULT_MAIN_REVIEW_TIMEOUT_MS = Math.max(
+  0,
+  Number(process.env.NANOCLAW_REVIEW_MAIN_TIMEOUT_MS) || 0,
+);
 const REDUCER_TIMEOUT_MS = 120_000;
 const MAX_DIRECT_MAIN_AGENT_PROMPT_BYTES = Math.max(
   16 * 1024,
@@ -1349,7 +1353,6 @@ async function runBoundedReviewAgent(input: {
   const outputText =
     streamedResult ||
     latestResultText ||
-    latestCompletedAssistantMessageText ||
     latestUsableAssistantMessageText ||
     '';
   return {
@@ -1368,7 +1371,10 @@ const MAIN_REVIEW_IDLE_TIMEOUT_MS = Math.max(
 );
 
 function resolveRepoReviewDefaultWorkerTimeoutSeconds(): number {
-  return Math.max(1, Math.trunc(DEFAULT_WORKER_TIMEOUT_MS / 1000));
+  return Math.max(
+    1,
+    Math.trunc(resolveRepoReviewWorkerTimeoutMs({}) / 1000),
+  );
 }
 
 async function prepareRepoReviewScopedWorkspace(input: {
@@ -1709,13 +1715,51 @@ function buildRepoReviewMainOutputContractBlock(): string {
 }
 
 function resolveRepoReviewWorkerTimeoutMs(
-  profile: Pick<RepoReviewProfile, 'subagentTimeoutSeconds'>,
+  profile: Partial<Pick<RepoReviewProfile, 'subagentTimeoutSeconds'>>,
 ): number {
+  const envMs =
+    Number(process.env.NANOCLAW_REVIEW_SUBAGENT_TIMEOUT_MS) ||
+    Number(process.env.NANOCLAW_REVIEW_WORKER_TIMEOUT_MS);
+  if (Number.isFinite(envMs) && envMs > 0) {
+    return Math.max(50, Math.trunc(envMs));
+  }
   const seconds = Math.max(
     30,
     Math.trunc(Number(profile.subagentTimeoutSeconds) || 420),
   );
   return seconds * 1000;
+}
+
+function resolveRepoReviewWorkerTimeoutGraceMs(): number {
+  const envMs =
+    Number(process.env.NANOCLAW_REVIEW_SUBAGENT_TIMEOUT_GRACE_MS) ||
+    Number(process.env.NANOCLAW_REVIEW_WORKER_TIMEOUT_GRACE_MS);
+  if (Number.isFinite(envMs) && envMs > 0) {
+    return Math.max(25, Math.trunc(envMs));
+  }
+  return WORKER_TIMEOUT_GRACE_MS;
+}
+
+function resolveRepoReviewMainTimeoutMs(
+  directReview: boolean,
+  phase: 'review' | 'finalize' = 'review',
+): number {
+  const phaseSpecific =
+    phase === 'finalize'
+      ? Number(process.env.NANOCLAW_REVIEW_MAIN_FINALIZE_TIMEOUT_MS)
+      : 0;
+  const strategySpecific = directReview
+    ? Number(process.env.NANOCLAW_REVIEW_MAIN_DIRECT_TIMEOUT_MS)
+    : Number(process.env.NANOCLAW_REVIEW_MAIN_FALLBACK_TIMEOUT_MS);
+  return Math.max(
+    0,
+    Math.trunc(
+      phaseSpecific ||
+        strategySpecific ||
+        DEFAULT_MAIN_REVIEW_TIMEOUT_MS ||
+        0,
+    ),
+  );
 }
 
 type RepoReviewMissingEvidenceItem = {
@@ -2211,6 +2255,18 @@ function extractLooseRepoReviewSummary(markdown: string): string {
   return lines.slice(0, 3).join('\n');
 }
 
+function extractFirstMarkdownCodeFence(markdown: string): {
+  fence: string;
+  code: string;
+} | null {
+  const match = String(markdown || '').match(/```[^\n`]*\n([\s\S]*?)```/);
+  if (!match?.[0]) return null;
+  return {
+    fence: match[0].trimEnd(),
+    code: String(match[1] || '').trimEnd(),
+  };
+}
+
 function parseLooseRepoReviewFindings(markdown: string): {
   findings: RepoReviewRunFinding[];
   suggestions: string[];
@@ -2259,7 +2315,15 @@ function parseLooseRepoReviewFindings(markdown: string): {
     findings.push({
       severity,
       title: title || '未命名问题',
-      detail: detailLines.join('\n\n') || suggestion || '暂无详细说明。',
+      detail:
+        uniqueStrings([
+          detailLines.join('\n\n'),
+          codeMatch?.[0]?.trimEnd() || '',
+        ])
+          .filter(Boolean)
+          .join('\n\n') ||
+        suggestion ||
+        '暂无详细说明。',
       ...(file ? { file } : {}),
       ...(line ? { line } : {}),
       ...(codeSnippet ? { codeSnippet } : {}),
@@ -2280,6 +2344,7 @@ function buildLocalStructuredResultFallback(input: {
   const looseParsed = parseLooseRepoReviewFindings(markdown);
   const markdownFindings: RepoReviewRunFinding[] = [...looseParsed.findings];
   const markdownSummary = extractLooseRepoReviewSummary(markdown);
+  const firstCodeFence = extractFirstMarkdownCodeFence(markdown);
   const issueMatch = markdown.match(
     /-\s*`([^`]+)`:\s*([^\n]+)[\s\S]*?证据[:：]([^\n]+)(?:[\s\S]*?影响[:：]([^\n]+))?[\s\S]*?修复建议[:：]([^\n]+)/,
   );
@@ -2292,8 +2357,7 @@ function buildLocalStructuredResultFallback(input: {
         ? 'low'
         : 'medium';
     const [file, line] = String(issueMatch[1] || '').split(':');
-    const codeSnippet =
-      markdown.match(/```[^\n`]*\n([\s\S]*?)```/)?.[1]?.trimEnd() || '';
+    const codeSnippet = firstCodeFence?.code || '';
     markdownFindings.push({
       severity,
       file: stringValue(file) || undefined,
@@ -2302,12 +2366,28 @@ function buildLocalStructuredResultFallback(input: {
       detail: [
         `证据：${normalizeLine(issueMatch[3] || '')}`,
         issueMatch[4] ? `影响：${normalizeLine(issueMatch[4] || '')}` : '',
+        firstCodeFence?.fence || '',
       ]
         .filter(Boolean)
         .join('\n'),
       ...(codeSnippet ? { codeSnippet } : {}),
       suggestion: normalizeLine(issueMatch[5] || '') || undefined,
     });
+  }
+  if (firstCodeFence && markdownFindings.length > 0) {
+    const firstFinding = markdownFindings[0]!;
+    const hasFenceInDetail = String(firstFinding.detail || '').includes('```');
+    markdownFindings[0] = {
+      ...firstFinding,
+      detail: hasFenceInDetail
+        ? firstFinding.detail
+        : uniqueStrings([firstFinding.detail, firstCodeFence.fence])
+            .filter(Boolean)
+            .join('\n\n'),
+      ...(!stringValue(firstFinding.codeSnippet)
+        ? { codeSnippet: firstCodeFence.code }
+        : {}),
+    };
   }
   const findings = dedupeFindings([
     ...input.workerResults.flatMap((result) => result.findings),
@@ -2381,6 +2461,29 @@ function buildLocalStructuredResultFallback(input: {
   };
   result.markdownBody = buildStructuredMarkdownFallback(result);
   return result;
+}
+
+function looksLikeFinalizableLooseRepoReviewOutput(outputText: string): boolean {
+  const text = String(outputText || '').trim();
+  if (!text) return false;
+  if (/代码审查报告|(?:^|\n)\s*#{1,6}\s*[一二三四五六七八九十]、/.test(text)) {
+    return false;
+  }
+  return /重点问题|主要问题|发现的问题|高风险|中风险|低风险|修复建议|风险等级|(?:^|\n)\s*\d+\.\s+/i.test(
+    text,
+  );
+}
+
+function withGeneratedRepoReviewMarkdown(
+  result: RepoReviewStructuredResult,
+): RepoReviewStructuredResult {
+  if (stringValue(result.markdownBody)) {
+    return result;
+  }
+  return {
+    ...result,
+    markdownBody: buildStructuredMarkdownFallback(result),
+  };
 }
 
 const REVIEW_SCOPE_LIMITATION_PATTERNS = [
@@ -2910,6 +3013,7 @@ async function runWorker(input: {
   const stepId = input.chunk.id;
   const stepLabel = `Worker ${input.chunk.title}`;
   const workerTimeoutMs = resolveRepoReviewWorkerTimeoutMs(input.profile);
+  const workerTimeoutGraceMs = resolveRepoReviewWorkerTimeoutGraceMs();
   await input.onProgressStep?.({
     id: stepId,
     label: stepLabel,
@@ -2997,7 +3101,7 @@ async function runWorker(input: {
       await input.onTurnProgress?.(turns);
     },
     timeoutMs: workerTimeoutMs,
-    timeoutGraceMs: WORKER_TIMEOUT_GRACE_MS,
+    timeoutGraceMs: workerTimeoutGraceMs,
     timeoutFollowupPrompt: buildRepoReviewTimeoutFollowupPrompt({
       repository: input.repository,
       prepared: input.prepared,
@@ -3019,7 +3123,7 @@ async function runWorker(input: {
           ['worker', stepLabel],
           ['timeout_status', 'timeout_followup_requested'],
           ['timeout_ms', workerTimeoutMs],
-          ['grace_ms', WORKER_TIMEOUT_GRACE_MS],
+          ['grace_ms', workerTimeoutGraceMs],
         ]),
       });
     },
@@ -3891,7 +3995,7 @@ export async function runRepoReviewGraphCoordinator(input: {
       input.repository.localRepoPath,
     userId: input.userId,
     providerOverrideId: mainProvider?.id,
-    timeoutMs: 0,
+    timeoutMs: resolveRepoReviewMainTimeoutMs(bundle.directMainAgentReview),
     idleTimeoutMs: MAIN_REVIEW_IDLE_TIMEOUT_MS,
     timeoutGraceMs: MAIN_REVIEW_TIMEOUT_GRACE_MS,
     turnContext: buildRepoReviewTurnContext({
@@ -3941,9 +4045,13 @@ export async function runRepoReviewGraphCoordinator(input: {
     ? getRepoReviewMissingEvidenceItems(parsedDraft.findings)
     : [];
   const needsMainFinalize =
-    !parsedDraft ||
-    !hasFixedRepoReviewMarkdownTemplate(parsedDraft.markdownBody) ||
-    parsedDraftMissingEvidence.length > 0;
+    (Boolean(parsedDraft) &&
+      Boolean(stringValue(parsedDraft?.markdownBody)) &&
+      parsedDraftMissingEvidence.length > 0) ||
+    (!parsedDraft &&
+      looksLikeFinalizableLooseRepoReviewOutput(
+        mainReviewResponse.outputText || '',
+      ));
   if (needsMainFinalize) {
     parsed = null;
     const finalizeWorkspacePath =
@@ -4009,7 +4117,10 @@ export async function runRepoReviewGraphCoordinator(input: {
         userId: input.userId,
         providerOverrideId: mainProvider?.id,
         toolPolicy: 'readonly',
-        timeoutMs: 0,
+        timeoutMs: resolveRepoReviewMainTimeoutMs(
+          bundle.directMainAgentReview,
+          'finalize',
+        ),
         idleTimeoutMs: MAIN_REVIEW_IDLE_TIMEOUT_MS,
         timeoutGraceMs: MAIN_REVIEW_TIMEOUT_GRACE_MS,
         allowedDirectoriesOverride: finalizeWorkspacePath
@@ -4097,6 +4208,28 @@ export async function runRepoReviewGraphCoordinator(input: {
     }
   }
   if (!parsed) {
+    if (parsedDraft) {
+      parsed = withGeneratedRepoReviewMarkdown(parsedDraft);
+      await input.onProgressStep?.({
+        id: 'main_agent_finalize',
+        label: '主代理终稿补证',
+        status: 'completed',
+        detail: '终稿补证未产出合格模板，已保留主代理结构化结论并由本地渲染报告',
+        kind: 'main',
+        outputText: JSON.stringify(
+          {
+            overall: parsed.overall,
+            findings: parsed.findings.length,
+            markdown_template: 'local_rendered',
+            preserved_structured_draft: true,
+          },
+          null,
+          2,
+        ),
+      });
+    }
+  }
+  if (!parsed) {
     if (workerResults.length > 0) {
       try {
         parsed = await reduceRepoReviewWorkerResults({
@@ -4142,7 +4275,7 @@ export async function runRepoReviewGraphCoordinator(input: {
       ),
     ]),
   };
-  if (!hasFixedRepoReviewMarkdownTemplate(parsed.markdownBody)) {
+  if (!stringValue(parsed.markdownBody)) {
     parsed.markdownBody = buildStructuredRepoReviewMarkdown(
       {
         summary: parsed.summary,

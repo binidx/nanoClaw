@@ -6,7 +6,7 @@ import type {
 
 export interface RepoReviewExecutionQueue<T> {
   enqueue(item: T): void;
-  removeWhere(predicate: (item: T) => boolean): void;
+  removeWhere(predicate: (item: T) => boolean): number;
   some(predicate: (item: T) => boolean): boolean;
 }
 
@@ -42,11 +42,14 @@ export function createRepoReviewExecutionQueue<T>(input: {
       drain();
     },
     removeWhere(predicate: (item: T) => boolean) {
+      let removed = 0;
       for (let index = pending.length - 1; index >= 0; index -= 1) {
         if (predicate(pending[index]!)) {
           pending.splice(index, 1);
+          removed += 1;
         }
       }
+      return removed;
     },
     some(predicate: (item: T) => boolean) {
       return pending.some(predicate) || runningItems.some(predicate);

@@ -3288,10 +3288,13 @@ async function executeQueuedRepoReviewRun(
   if (!runRecord) {
     throw new Error(`Queued review run not found: ${runId}`);
   }
-  if (runRecord.status === 'running' || runRecord.status === 'completed') {
+  if (repoReviewCancellationRequestedRunIds.has(runId)) {
+    throw createRepoReviewCancellationError(runId);
+  }
+  if (runRecord.status !== 'queued') {
     logger.warn(
       { runId, status: runRecord.status },
-      'Skipping duplicate execution: run already in progress or completed',
+      'Skipping queued review execution: run is no longer queued',
     );
     return buildRepoReviewExecutionSummary(
       await normalizeRunRecord(runRecord),
@@ -3352,6 +3355,7 @@ async function failQueuedRepoReviewRun(
 ): Promise<void> {
   const runRecord = await getReviewRunById(runId);
   if (!runRecord) return;
+  if (runRecord.status !== 'queued' && runRecord.status !== 'running') return;
   const updated = await updateReviewRun(runId, {
     status: 'error',
     result_state: 'error',
@@ -10356,7 +10360,7 @@ async function publishReviewMessage(input: {
         { err, chatJid, repositoryId: input.repository.id },
         'Failed to deliver repo review message via channel, falling back to local persistence',
       );
-      storeReviewMessageLocally({
+      await storeReviewMessageLocally({
         repository: input.repository,
         chatJid,
         content: input.content,
@@ -10368,7 +10372,7 @@ async function publishReviewMessage(input: {
   }
   if (!localManaged) {
     const error = 'Repo review message sender is not configured';
-    storeReviewMessageLocally({
+    await storeReviewMessageLocally({
       repository: input.repository,
       chatJid,
       content: input.content,
@@ -10377,7 +10381,7 @@ async function publishReviewMessage(input: {
     });
     return { status: 'not_configured', error };
   }
-  storeReviewMessageLocally({
+  await storeReviewMessageLocally({
     repository: input.repository,
     chatJid,
     content: input.content,
@@ -14329,7 +14333,7 @@ async function executeRepoReviewEvent(
         if (!startedRunRecord) {
           throw new Error(`Review run missing after start: ${runRecord.id}`);
         }
-        applyRunChatDeliveryResult(
+        await applyRunChatDeliveryResult(
           await normalizeRunRecord(startedRunRecord),
           await publishReviewMessage({
             repository,
@@ -15440,8 +15444,12 @@ export async function cancelRepoReviewRun(input: {
   });
 
   if (runRecord.status === 'queued') {
-    reviewExecutionQueue.removeWhere((item) => item.runId === runRecord.id);
-    repoReviewCancellationRequestedRunIds.delete(runRecord.id);
+    const removed = reviewExecutionQueue.removeWhere(
+      (item) => item.runId === runRecord.id,
+    );
+    if (removed > 0) {
+      repoReviewCancellationRequestedRunIds.delete(runRecord.id);
+    }
     return await markRepoReviewRunCancelled(runRecord, reason);
   }
 
