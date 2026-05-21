@@ -1267,6 +1267,12 @@ export function buildMySQLSchema(autoPk: string): string {
       chunk_index INT NOT NULL,
       content TEXT NOT NULL,
       token_count INT NOT NULL DEFAULT 0,
+      heading_path TEXT,
+      context_label TEXT,
+      prev_chunk_id VARCHAR(64) DEFAULT NULL,
+      next_chunk_id VARCHAR(64) DEFAULT NULL,
+      parent_chunk_id VARCHAR(64) DEFAULT NULL,
+      chunk_type VARCHAR(32) NOT NULL DEFAULT 'paragraph',
       created_at VARCHAR(64) NOT NULL,
       KEY idx_knowledge_chunks_doc (document_id, chunk_index)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
@@ -3442,4 +3448,10 @@ export async function runMySQLMigrations(engine: DbEngine): Promise<void> {
   await safeMigrate(
     `ALTER TABLE knowledge_bases ADD COLUMN overview_dirty_at VARCHAR(32) DEFAULT NULL`,
   );
+  await safeMigrate(`ALTER TABLE knowledge_chunks ADD COLUMN heading_path TEXT`);
+  await safeMigrate(`ALTER TABLE knowledge_chunks ADD COLUMN context_label TEXT`);
+  await safeMigrate(`ALTER TABLE knowledge_chunks ADD COLUMN prev_chunk_id VARCHAR(64) DEFAULT NULL`);
+  await safeMigrate(`ALTER TABLE knowledge_chunks ADD COLUMN next_chunk_id VARCHAR(64) DEFAULT NULL`);
+  await safeMigrate(`ALTER TABLE knowledge_chunks ADD COLUMN parent_chunk_id VARCHAR(64) DEFAULT NULL`);
+  await safeMigrate(`ALTER TABLE knowledge_chunks ADD COLUMN chunk_type VARCHAR(32) NOT NULL DEFAULT 'paragraph'`);
 }

@@ -333,6 +333,19 @@ export interface KnowledgeSearchHit {
   title?: string;
   pageType?: string;
   isStale?: boolean;
+  headingPath?: string | null;
+  contextLabel?: string | null;
+  chunkType?: string | null;
+  adjacentChunks?: Array<{
+    chunkId: string;
+    documentId: string;
+    content: string;
+    chunkIndex: number;
+    direction: 'previous' | 'next';
+    headingPath?: string | null;
+    contextLabel?: string | null;
+    chunkType?: string | null;
+  }>;
   evidenceChunks?: Array<{
     chunkId: string;
     documentId: string;
@@ -432,6 +445,26 @@ export async function searchKnowledgeBaseViaApi(
         title: r.title != null ? String(r.title) : undefined,
         pageType: r.pageType != null ? String(r.pageType) : (r.page_type != null ? String(r.page_type) : undefined),
         isStale: Boolean(r.isStale ?? r.is_stale),
+        headingPath: r.headingPath != null ? String(r.headingPath) : null,
+        contextLabel: r.contextLabel != null ? String(r.contextLabel) : null,
+        chunkType: r.chunkType != null ? String(r.chunkType) : null,
+        adjacentChunks: Array.isArray(r.adjacentChunks)
+          ? r.adjacentChunks
+            .filter((entry): entry is Record<string, unknown> => Boolean(entry) && typeof entry === 'object')
+            .map((entry) => {
+              const direction = String(entry.direction ?? '') === 'previous' ? 'previous' : 'next';
+              return {
+                chunkId: String(entry.chunkId ?? ''),
+                documentId: String(entry.documentId ?? ''),
+                content: String(entry.content ?? ''),
+                chunkIndex: Number.isFinite(Number(entry.chunkIndex)) ? Number(entry.chunkIndex) : 0,
+                direction,
+                headingPath: entry.headingPath != null ? String(entry.headingPath) : null,
+                contextLabel: entry.contextLabel != null ? String(entry.contextLabel) : null,
+                chunkType: entry.chunkType != null ? String(entry.chunkType) : null,
+              };
+            })
+          : undefined,
         evidenceChunks: Array.isArray(r.evidenceChunks)
           ? r.evidenceChunks
             .filter((entry): entry is Record<string, unknown> => Boolean(entry) && typeof entry === 'object')

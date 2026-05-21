@@ -21,6 +21,12 @@
 - 条件边缺失 verdict 时不再默认 pass，可通过 `outputContract` / `requireVerdict` 进入 blocked 路由或失败。
 - `web/src/pages/WorkteamPage.tsx` 节点/边属性面板新增输出契约和上下文策略配置。
 
+## [2026-05-21] update | 知识库 RAG 检索链路优化
+
+- 将知识库检索从“FTS 候选内向量重排”升级为“FTS + 授权 KB 范围直接向量召回 + RRF 辅助融合”。
+- 记录 Qwen3-Embedding-8B 维度默认与实际向量长度校验，避免 1536/4096 混用静默降级。
+- Wiki claim evidence 选择新增 embedding 相似度辅助，保留词面匹配兜底。
+
 ## [2026-04-24] ingest | 初始功能 Map
 
 - 读取仓库协作入口：`AGENTS.md`、`.codex/README.md`、`docs/agent-harness.md`。
@@ -151,6 +157,18 @@
 - 新增 `src/retrieval/*` 作为 knowledge / memory 共用检索编排层，提供 query variants、候选融合、trace、本地 rerank 与文本 MMR。
 - 新增 `/api/retrieval/search` 与 `/internal/retrieval/search`，保留旧 `knowledge/search` 兼容路径；内部路由复用 agent 可访问 KB 解析。
 - 新增 `src/rag-eval/*` 的 Ragas-style 本地指标工具和对应测试，作为后续评测集 / run 持久化的基础。
+
+## [2026-05-21] optimize | 知识库体验与性能可观测性
+
+- 新增 `GET /api/knowledge/bases/:id/health`，向前端暴露文档/chunk、向量覆盖率、缺失向量、维度不匹配、Wiki 页和关系边统计。
+- 知识库概览页展示向量覆盖率、缺失/维度不符、Wiki 页和关系边，并支持对当前知识库单独执行向量补录，完成后自动刷新健康状态。
+- 直接向量召回增加应用层扫描上限，超大知识库会有限扫描并保留 FTS 候选向量补分，降低普通查询长时间等待风险。
+
+## [2026-05-21] optimize | 知识库 RAG 第二轮结构化 chunk 上下文
+
+- `knowledge_chunks` 增加 `heading_path`、`context_label`、`prev_chunk_id`、`next_chunk_id`、`parent_chunk_id`、`chunk_type`，三套数据库 schema 与启动迁移同步补齐。
+- `src/knowledge/chunker.ts` 开始识别 Markdown 标题、列表、表格和代码块，索引管线写入标题路径和相邻 chunk 指针，embedding 文本也带上文档与 chunk 结构上下文。
+- `searchKnowledge()` 返回命中 chunk 的结构元数据和同文档前后相邻片段；统一 retrieval 与 Agent 知识库工具会把这些上下文交给 LLM，作为不引入额外 rerank 模型的上下文增强。
 
 ## [2026-05-18] update | 代码智能图谱优化文档
 

@@ -201,6 +201,25 @@ interface KnowledgeProcessingStatus {
   } | null;
 }
 
+interface KnowledgeHealthStatus {
+  kb_id: string;
+  enhancement_level: KnowledgeEnhancementLevel;
+  embedding_provider_id: string | null;
+  expected_dimensions: number | null;
+  total_documents: number;
+  indexed_documents: number;
+  failed_documents: number;
+  document_chunk_count: number;
+  total_chunks: number;
+  embedded_chunks: number;
+  missing_vectors: number;
+  dimension_mismatch: number;
+  vector_coverage_percent: number | null;
+  vector_status: 'disabled' | 'empty' | 'complete' | 'partial';
+  wiki_pages: number;
+  relation_edges: number;
+}
+
 interface KnowledgeRelationRow {
   id: string;
   source_doc_id: string;
@@ -749,6 +768,9 @@ export function KnowledgePage({ apiBase }: KnowledgePageProps) {
   const [wikiLinting, setWikiLinting] = useState(false);
   const [processingStatus, setProcessingStatus] =
     useState<KnowledgeProcessingStatus | null>(null);
+  const [healthStatus, setHealthStatus] =
+    useState<KnowledgeHealthStatus | null>(null);
+  const [healthLoading, setHealthLoading] = useState(false);
   const [globalLlmConcurrency, setGlobalLlmConcurrency] = useState('4');
   const [savingLlmConcurrency, setSavingLlmConcurrency] = useState(false);
   const [graphFullscreen, setGraphFullscreen] = useState(false);
@@ -998,6 +1020,30 @@ export function KnowledgePage({ apiBase }: KnowledgePageProps) {
         }
       } catch {
         setProcessingStatus(null);
+      }
+    },
+    [apiBase],
+  );
+
+  const fetchKnowledgeHealth = useCallback(
+    async (kbId: string) => {
+      setHealthLoading(true);
+      try {
+        const res = await fetch(
+          `${apiBase}/api/knowledge/bases/${kbId}/health`,
+          {
+            credentials: 'include',
+          },
+        );
+        if (res.ok) {
+          setHealthStatus((await res.json()) as KnowledgeHealthStatus);
+        } else {
+          setHealthStatus(null);
+        }
+      } catch {
+        setHealthStatus(null);
+      } finally {
+        setHealthLoading(false);
       }
     },
     [apiBase],
@@ -1352,11 +1398,13 @@ export function KnowledgePage({ apiBase }: KnowledgePageProps) {
     if (selectedKbId) {
       void fetchDocs(selectedKbId);
       void fetchProcessingStatus(selectedKbId);
+      void fetchKnowledgeHealth(selectedKbId);
     } else {
       setDocs([]);
       setProcessingStatus(null);
+      setHealthStatus(null);
     }
-  }, [selectedKbId, fetchDocs, fetchProcessingStatus]);
+  }, [selectedKbId, fetchDocs, fetchProcessingStatus, fetchKnowledgeHealth]);
 
   useEffect(() => {
     if (!selectedKbId) return;
@@ -1396,6 +1444,7 @@ export function KnowledgePage({ apiBase }: KnowledgePageProps) {
     if (!selectedKbId || !isLlmRunActive) return;
     const timer = window.setInterval(() => {
       void fetchProcessingStatus(selectedKbId);
+      void fetchKnowledgeHealth(selectedKbId);
       void fetchDocs(selectedKbId);
       if (drawerTab === 'tree') void fetchTreeData(selectedKbId);
       if (drawerTab === 'wiki') void fetchWikiPagesData(selectedKbId);
@@ -1406,6 +1455,7 @@ export function KnowledgePage({ apiBase }: KnowledgePageProps) {
     isLlmRunActive,
     drawerTab,
     fetchDocs,
+    fetchKnowledgeHealth,
     fetchTreeData,
     fetchWikiPagesData,
     fetchProcessingStatus,
@@ -2412,7 +2462,7 @@ export function KnowledgePage({ apiBase }: KnowledgePageProps) {
     }
   };
 
-  const handleBackfillEmbeddings = async () => {
+  const handleBackfillEmbeddings = async (kbId?: string) => {
     setBackfilling(true);
     setMaintenanceMsg(null);
     try {
@@ -2420,16 +2470,18 @@ export function KnowledgePage({ apiBase }: KnowledgePageProps) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({}),
+        body: JSON.stringify(kbId ? { kb_id: kbId } : {}),
       });
       if (res.ok) {
         const data = await res.json();
         setMaintenanceMsg(
-          t('向量补录完成 — 新增 {{embedded}} 条，跳过 {{skipped}} 条', {
+          t('{{scope}}向量补录完成 — 新增 {{embedded}} 条，跳过 {{skipped}} 条', {
+            scope: kbId ? t('本库') : t('全局'),
             embedded: data.embedded,
             skipped: data.skipped,
           }),
         );
+        if (kbId) void fetchKnowledgeHealth(kbId);
       } else {
         const data = await res.json().catch(() => ({}));
         setMaintenanceMsg(
@@ -2561,6 +2613,14 @@ export function KnowledgePage({ apiBase }: KnowledgePageProps) {
           : processingStatus?.stage === 'completed'
             ? t('已完成')
             : t('空闲');
+  const vectorStatusLabel =
+    healthStatus?.vector_status === 'complete'
+      ? t('已完成')
+      : healthStatus?.vector_status === 'partial'
+        ? t('待补录')
+        : healthStatus?.vector_status === 'empty'
+          ? t('无分块')
+          : t('仅 FTS');
 
   /* ── Workbench tab definitions ── */
   const drawerTabs = useMemo(() => {
@@ -3304,6 +3364,17 @@ export function KnowledgePage({ apiBase }: KnowledgePageProps) {
                     >
                       {recleaning ? t('清洗中...') : t('重新清洗')}
                     </button>
+                    {selectedKb.embedding_provider_id ? (
+                      <button
+                        type="button"
+                        className="btn-outline btn-xs"
+                        disabled={backfilling}
+                        onClick={() => void handleBackfillEmbeddings(selectedKb.id)}
+                        title={t('只为当前知识库补录缺失向量')}
+                      >
+                        {backfilling ? t('补录中...') : t('补录本库向量')}
+                      </button>
+                    ) : null}
                     {kbEnhancementLevel(selectedKb) === 'wiki_lite' ||
                     kbEnhancementLevel(selectedKb) === 'wiki_full' ? (
                       <>
@@ -3368,6 +3439,41 @@ export function KnowledgePage({ apiBase }: KnowledgePageProps) {
                   <strong>{indexedDocCount}</strong>
                   <span>{t('已索引')}</span>
                 </div>
+                <div className="knowledge-overview-stat">
+                  <strong>
+                    {healthLoading && !healthStatus
+                      ? '…'
+                      : (healthStatus?.total_chunks ?? '—')}
+                  </strong>
+                  <span>{t('知识块')}</span>
+                </div>
+                <div
+                  className={`knowledge-overview-stat ${
+                    healthStatus?.vector_status === 'partial' ||
+                    (healthStatus?.dimension_mismatch ?? 0) > 0
+                      ? 'is-warning'
+                      : ''
+                  }`}
+                >
+                  <strong>
+                    {healthStatus?.vector_coverage_percent == null
+                      ? vectorStatusLabel
+                      : `${healthStatus.vector_coverage_percent}%`}
+                  </strong>
+                  <span>{t('向量覆盖率')}</span>
+                </div>
+                {healthStatus?.missing_vectors ||
+                healthStatus?.dimension_mismatch ? (
+                  <div className="knowledge-overview-stat is-warning">
+                    <strong>
+                      {healthStatus.missing_vectors}
+                      {healthStatus.dimension_mismatch
+                        ? ` / ${healthStatus.dimension_mismatch}`
+                        : ''}
+                    </strong>
+                    <span>{t('缺失/维度不符')}</span>
+                  </div>
+                ) : null}
                 {kbEnhancementLevel(selectedKb) === 'wiki_lite' ||
                 kbEnhancementLevel(selectedKb) === 'wiki_full' ? (
                   <div className="knowledge-overview-stat">
@@ -3411,6 +3517,14 @@ export function KnowledgePage({ apiBase }: KnowledgePageProps) {
                   </strong>
                   <span>{t('查询回填 Wiki')}</span>
                 </div>
+                <div className="knowledge-overview-stat">
+                  <strong>{healthStatus?.wiki_pages ?? '—'}</strong>
+                  <span>{t('Wiki 页')}</span>
+                </div>
+                <div className="knowledge-overview-stat">
+                  <strong>{healthStatus?.relation_edges ?? '—'}</strong>
+                  <span>{t('关系边')}</span>
+                </div>
                 {kbEnhancementLevel(selectedKb) === 'wiki_lite' ||
                 kbEnhancementLevel(selectedKb) === 'wiki_full' ? (
                   <div className="knowledge-overview-stat">
@@ -3427,6 +3541,18 @@ export function KnowledgePage({ apiBase }: KnowledgePageProps) {
                         selectedKb.embedding_provider_id,
                       ) || selectedKb.embedding_provider_id
                     : t('仅 FTS')}
+                  {healthStatus?.expected_dimensions
+                    ? ` · ${healthStatus.expected_dimensions}d`
+                    : ''}
+                </span>
+                <span>
+                  {t('向量')}：
+                  {healthStatus?.vector_coverage_percent == null
+                    ? vectorStatusLabel
+                    : t('{{embedded}}/{{total}} 已完成', {
+                        embedded: healthStatus.embedded_chunks,
+                        total: healthStatus.total_chunks,
+                      })}
                 </span>
                 <span>
                   LLM：

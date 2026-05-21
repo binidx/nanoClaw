@@ -3503,6 +3503,23 @@ async function executeSemanticSearch(
           sections.push(
             `   ${r.content.slice(0, 300)}${r.content.length > 300 ? '...' : ''}\n`,
           );
+          if (r.kind === 'chunk') {
+            if (r.headingPath) {
+              sections.push(`   Heading: ${r.headingPath}`);
+            }
+            if (Array.isArray(r.adjacentChunks) && r.adjacentChunks.length > 0) {
+              sections.push('   Adjacent context:');
+              for (const chunk of r.adjacentChunks) {
+                sections.push(
+                  `   - ${chunk.direction === 'previous' ? 'Previous' : 'Next'} #${chunk.chunkIndex + 1}${chunk.headingPath ? ` (${chunk.headingPath})` : ''}`,
+                );
+                sections.push(
+                  `     ${chunk.content.slice(0, 220)}${chunk.content.length > 220 ? '...' : ''}`,
+                );
+              }
+              sections.push('');
+            }
+          }
           if (
             r.kind === 'wiki' &&
             Array.isArray(r.evidenceChunks) &&
