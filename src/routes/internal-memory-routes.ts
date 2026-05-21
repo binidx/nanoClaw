@@ -3,11 +3,13 @@ import type { Express, RequestHandler } from 'express';
 import {
   getConversationIdentityBinding,
   recordMemorySearchEvent,
+  recordMemoryEvent,
   searchMemoryDocuments,
   storeMemoryRecallEntry,
   searchUserMemories,
   touchUserMemoryAccess,
   getUserMemories,
+  getUserMemoryById,
 } from '../db.js';
 import { logger } from '../logger.js';
 import { addUnifiedMemory } from '../soul/soul-service.js';
@@ -561,12 +563,42 @@ export function registerInternalMemoryRoutes(
     options.requireInternalApi,
     async (req, res) => {
       try {
-        const { memoryId } = req.body as { memoryId?: string };
+        const { memoryId, conversationId, reason } = req.body as {
+          memoryId?: string;
+          conversationId?: string;
+          reason?: string;
+        };
         if (!memoryId) {
           res.status(400).json({ error: 'memoryId is required' });
           return;
         }
+        const memory = await getUserMemoryById(memoryId);
+        if (!memory) {
+          res.status(404).json({ error: 'Memory not found' });
+          return;
+        }
         await touchUserMemoryAccess(memoryId);
+        const normalizedReason = String(reason || '').trim() || 'memory_tool';
+        await recordMemoryEvent({
+          user_id: memory.user_id,
+          scope: memory.scope,
+          action_type: 'RECALL',
+          target_type: 'user_memory',
+          target_id: memory.id,
+          conversation_id: String(conversationId || '').trim() || memory.conversation_id,
+          source_message_id: null,
+          before_snapshot: null,
+          after_snapshot: JSON.stringify({
+            content: memory.content.slice(0, 500),
+            category: memory.category,
+            tier: memory.tier,
+            source: normalizedReason,
+          }),
+          decision_reason: normalizedReason,
+          metadata_json: JSON.stringify({
+            source: 'internal_memory_user_recall',
+          }),
+        });
         res.json({ ok: true });
       } catch (err) {
         logger.error({ err }, 'Failed to touch user memory recall');

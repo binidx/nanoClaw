@@ -204,6 +204,63 @@ describe('internal memory routes', () => {
     ]);
   });
 
+  it('records a raw ledger event when user memory is recalled via internal route', async () => {
+    const memory: UserMemoryRecord = {
+      id: 'recall-memory',
+      user_id: 'memory-user',
+      scope: 'global',
+      conversation_id: null,
+      category: 'preference',
+      content: 'User prefers recall actions to be auditable.',
+      importance: 8,
+      confidence: 0.9,
+      source: 'manual',
+      tier: 'durable',
+      promoted_from: null,
+      last_verified_at: null,
+      source_event_id: null,
+      valid_from: '2026-05-20T00:00:00.000Z',
+      valid_to: null,
+      access_count: 0,
+      last_accessed_at: null,
+      expires_at: null,
+      created_at: '2026-05-20T00:00:00.000Z',
+      updated_at: '2026-05-20T00:00:00.000Z',
+    };
+    await addUserMemory(memory);
+
+    const app = express();
+    app.use(express.json());
+    registerInternalMemoryRoutes(app, {
+      requireInternalApi: (_req, _res, next) => next(),
+    });
+
+    const response = await inject(app, {
+      method: 'POST',
+      url: '/internal/memory/user/recall',
+      payload: {
+        memoryId: 'recall-memory',
+        conversationId: 'memory-route@g.us',
+        reason: 'memory_get',
+      },
+      headers: {
+        'content-type': 'application/json',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(
+      (await getUserMemories('memory-user', { timeScope: 'all' }))[0]?.access_count,
+    ).toBe(1);
+    expect(await listMemoryEvents({ targetType: 'user_memory', targetId: memory.id })).toEqual([
+      expect.objectContaining({
+        action_type: 'RECALL',
+        conversation_id: 'memory-route@g.us',
+        decision_reason: 'memory_get',
+      }),
+    ]);
+  });
+
   it('searches bound identity memory before returning regular file hits', async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'nanoclaw-internal-identity-'));
     createdPaths.push(root);

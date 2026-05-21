@@ -238,6 +238,7 @@ export async function saveUserMemoryViaApi(
 
 export async function touchUserMemoryRecallViaApi(
   memoryId: string,
+  opts?: { reason?: string },
 ): Promise<void> {
   if (!canUseUserMemoryApi()) return;
 
@@ -248,7 +249,11 @@ export async function touchUserMemoryRecallViaApi(
         'Content-Type': 'application/json',
         [INTERNAL_API_TOKEN_HEADER]: INTERNAL_API_TOKEN,
       },
-      body: JSON.stringify({ memoryId }),
+      body: JSON.stringify({
+        memoryId,
+        conversationId: chatJid || undefined,
+        reason: opts?.reason || undefined,
+      }),
     });
   } catch {
     // best-effort

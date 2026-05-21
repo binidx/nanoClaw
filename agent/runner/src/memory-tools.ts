@@ -682,7 +682,9 @@ export async function searchMemoryRuntime(
     );
     for (const result of merged) {
       const memoryId = parseUserMemoryPathRef(result.path);
-      if (memoryId) touchUserMemoryRecallViaApi(memoryId).catch(() => {});
+      if (memoryId) {
+        touchUserMemoryRecallViaApi(memoryId, { reason: 'memory_search' }).catch(() => {});
+      }
     }
     rememberRecentMemorySearchHits(query, merged);
     return merged;
@@ -695,7 +697,9 @@ export async function searchMemoryRuntime(
   );
   for (const result of merged) {
     const memoryId = parseUserMemoryPathRef(result.path);
-    if (memoryId) touchUserMemoryRecallViaApi(memoryId).catch(() => {});
+    if (memoryId) {
+      touchUserMemoryRecallViaApi(memoryId, { reason: 'memory_search' }).catch(() => {});
+    }
   }
   rememberRecentMemorySearchHits(query, merged);
   return merged;
@@ -759,7 +763,7 @@ export function readMemoryFile(
         `User memory ref not found in recent search results: ${normalizedPath}. Run memory_search again first.`,
       );
     }
-    void touchUserMemoryRecallViaApi(userMemoryId);
+    void touchUserMemoryRecallViaApi(userMemoryId, { reason: 'memory_get' });
     return {
       path: normalizedPath,
       scope: 'group',
